@@ -343,7 +343,7 @@ contract Prover is SimpleProver {
     }
 
     /**
-     * @notice assembles the game status storage slot
+     * @notice assembles the game status storage slot (this is provided as a helper function for external calls)
      * @param createdAt the time the game was created
      * @param resolvedAt the time the game was resolved
      * @param gameStatus the status of the game
@@ -351,33 +351,30 @@ contract Prover is SimpleProver {
      * @param l2BlockNumberChallenged whether the l2 block number has been challenged
      * @return gameStatusStorageSlotRLP the game status storage slot in RLP format
      */
-    /// NOTE: Unused!
     function assembleGameStatusStorage(
         uint64 createdAt,
         uint64 resolvedAt,
         uint8 gameStatus,
         bool initialized,
         bool l2BlockNumberChallenged
-    ) public pure returns (bytes memory gameStatusStorageSlotRLP) {
-        // The if test is to remove leaing zeroes from the bytes
-        // Assumption is that initialized is always true
-        if (l2BlockNumberChallenged) {
-            gameStatusStorageSlotRLP = RLPWriter.writeBytes(
-                abi.encodePacked(l2BlockNumberChallenged, initialized, gameStatus, resolvedAt, createdAt)
-            );
-        } else {
-            gameStatusStorageSlotRLP = bytes.concat(
-                RLPWriter.writeBytes(
-                    abi.encodePacked(
-                        // abi.encodePacked(l2BlockNumberChallenged),
-                        initialized,
-                        gameStatus,
-                        resolvedAt,
-                        createdAt
+    ) public pure returns (bytes32 gameStatusStorageSlotRLP) {
+      // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
+      // Need to convert to `uint152` to preserve right alignment.
+        return bytes32(
+            uint256(
+                uint152(
+                    bytes19(
+                        abi.encodePacked(
+                            l2BlockNumberChallenged,
+                            initialized,
+                            gameStatus,
+                            resolvedAt,
+                            createdAt
+                        )
                     )
                 )
-            );
-        }
+            )
+        );
     }
 
     /**
@@ -557,22 +554,12 @@ contract Prover is SimpleProver {
             bytes32(faultDisputeGameProofData.faultDisputeGameStateRoot)
         );
 
-        // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
-        // Need to convert to `uint152` to preserve right alignment.
-        bytes32 faultDisputeGameStatusStorage = bytes32(
-            uint256(
-                uint152(
-                    bytes19(
-                        abi.encodePacked(
-                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.l2BlockNumberChallenged,
-                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.initialized,
-                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus,
-                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
-                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt
-                        )
-                    )
-                )
-            )
+         bytes32 faultDisputeGameStatusStorage = assembleGameStatusStorage(
+            faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt,
+            faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
+            faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus,
+            faultDisputeGameProofData.faultDisputeGameStatusSlotData.initialized,
+            faultDisputeGameProofData.faultDisputeGameStatusSlotData.l2BlockNumberChallenged
         );
 
         // faultDisputeGameProofData.faultDisputeGameStatusSlotData.filler
