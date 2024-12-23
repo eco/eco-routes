@@ -241,6 +241,22 @@ contract Prover is SimpleProver {
             revert InvalidStorageProof(_key, _val, _proof, _root);
         }
     }
+
+    /**
+     * @notice validates a storage proof against using SecureMerkleTrie.verifyInclusionProof
+     * @param _key key
+     * @param _val value
+     * @param _proof proof
+     * @param _root root
+     */
+    function proveStorageBytes32(bytes memory _key, bytes32 _val, bytes[] memory _proof, bytes32 _root) public pure {
+        // `RLPWriter.writeUint` properly encodes values by removing any leading zeros.
+        bytes memory rlpEncodedValue = RLPWriter.writeUint(uint256(_val));
+        if (!SecureMerkleTrie.verifyInclusionProof(_key, rlpEncodedValue, _proof, _root)) {
+            revert InvalidStorageProof(_key, rlpEncodedValue, _proof, _root);
+        }
+    }
+
     /**
      * @notice validates an account proof against using SecureMerkleTrie.verifyInclusionProof
      * @param _address address of contract
@@ -248,7 +264,6 @@ contract Prover is SimpleProver {
      * @param _proof proof
      * @param _root root
      */
-
     function proveAccount(bytes memory _address, bytes memory _data, bytes[] memory _proof, bytes32 _root)
         public
         pure
@@ -336,6 +351,7 @@ contract Prover is SimpleProver {
      * @param l2BlockNumberChallenged whether the l2 block number has been challenged
      * @return gameStatusStorageSlotRLP the game status storage slot in RLP format
      */
+    /// NOTE: Unused!
     function assembleGameStatusStorage(
         uint64 createdAt,
         uint64 resolvedAt,
@@ -448,11 +464,8 @@ contract Prover is SimpleProver {
             revert IncorrectOutputOracleStateRoot(outputOracleStateRoot);
         }
 
-        proveStorage(
-            abi.encodePacked(outputRootStorageSlot),
-            RLPWriter.writeBytes(abi.encodePacked(outputRoot)),
-            l1StorageProof,
-            bytes32(outputOracleStateRoot)
+        proveStorageBytes32(
+            abi.encodePacked(outputRootStorageSlot), outputRoot, l1StorageProof, bytes32(outputOracleStateRoot)
         );
 
         proveAccount(
@@ -484,22 +497,6 @@ contract Prover is SimpleProver {
         DisputeGameFactoryProofData calldata disputeGameFactoryProofData,
         bytes32 l1WorldStateRoot
     ) internal pure returns (address faultDisputeGameProxyAddress, bytes32 rootClaim) {
-        bytes32 gameId = disputeGameFactoryProofData.gameId;
-        bytes24 gameId24;
-        bytes29 gameId29;
-        bytes memory _value;
-        assembly {
-            gameId24 := shl(64, gameId)
-        }
-        assembly {
-            gameId29 := shl(24, gameId)
-        }
-        if (bytes1(uint8(gameId29[0])) == bytes1(uint8(0x00))) {
-            _value = RLPWriter.writeBytes(abi.encodePacked(gameId24));
-        } else {
-            _value = RLPWriter.writeBytes(abi.encodePacked(gameId29));
-        }
-
         bytes32 _rootClaim = generateOutputRoot(
             L2_OUTPUT_ROOT_VERSION_NUMBER,
             l2WorldStateRoot,
@@ -523,9 +520,9 @@ contract Prover is SimpleProver {
             revert IncorrectDisputeGameFactoryStateRoot(disputeGameFactoryStateRoot);
         }
 
-        proveStorage(
+        proveStorageBytes32(
             abi.encodePacked(disputeGameFactoryStorageSlot),
-            _value,
+            disputeGameFactoryProofData.gameId,
             disputeGameFactoryProofData.disputeFaultGameStorageProof,
             bytes32(disputeGameFactoryStateRoot)
         );
@@ -553,23 +550,34 @@ contract Prover is SimpleProver {
         } // ensure faultDisputeGame is resolved
         // Prove that the FaultDispute game has been settled
         // storage proof for FaultDisputeGame rootClaim (means block is valid)
-        proveStorage(
+        proveStorageBytes32(
             abi.encodePacked(uint256(L2_FAULT_DISPUTE_GAME_ROOT_CLAIM_SLOT)),
-            RLPWriter.writeBytes(abi.encodePacked(rootClaim)),
+            rootClaim,
             faultDisputeGameProofData.faultDisputeGameRootClaimStorageProof,
             bytes32(faultDisputeGameProofData.faultDisputeGameStateRoot)
         );
 
-        bytes memory faultDisputeGameStatusStorage = assembleGameStatusStorage(
-            faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt,
-            faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
-            faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus,
-            faultDisputeGameProofData.faultDisputeGameStatusSlotData.initialized,
-            faultDisputeGameProofData.faultDisputeGameStatusSlotData.l2BlockNumberChallenged
+        // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
+        // Need to convert to `uint152` to preserve right alignment.
+        bytes32 faultDisputeGameStatusStorage = bytes32(
+            uint256(
+                uint152(
+                    bytes19(
+                        abi.encodePacked(
+                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.l2BlockNumberChallenged,
+                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.initialized,
+                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus,
+                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
+                            faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt
+                        )
+                    )
+                )
+            )
         );
+
         // faultDisputeGameProofData.faultDisputeGameStatusSlotData.filler
         // storage proof for FaultDisputeGame status (showing defender won)
-        proveStorage(
+        proveStorageBytes32(
             abi.encodePacked(uint256(L2_FAULT_DISPUTE_GAME_STATUS_SLOT)),
             faultDisputeGameStatusStorage,
             faultDisputeGameProofData.faultDisputeGameStatusStorageProof,
@@ -686,9 +694,9 @@ contract Prover is SimpleProver {
             revert IncorrectInboxStateRoot(inboxStateRoot);
         }
         // proves that the claimaint address corresponds to the intentHash on the contract
-        proveStorage(
+        proveStorageBytes32(
             abi.encodePacked(messageMappingSlot),
-            RLPWriter.writeBytes(abi.encodePacked(claimant)),
+            bytes32(uint256(uint160(claimant))),
             l2StorageProof,
             bytes32(inboxStateRoot)
         );
