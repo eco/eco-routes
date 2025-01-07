@@ -7,7 +7,6 @@ import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
 
 contract TestMailbox {
-
     using TypeCasts for bytes32;
     using TypeCasts for address;
 
@@ -16,13 +15,13 @@ contract TestMailbox {
     uint32 public destinationDomain;
 
     bytes32 public recipientAddress;
-    
+
     bytes public messageBody;
-    
+
     bytes public metadata;
-    
+
     address public relayer;
-    
+
     bool public dispatched;
 
     bool public dispatchedWithRelayer;
@@ -51,8 +50,7 @@ contract TestMailbox {
             revert("no");
         }
 
-        return(msg.value);
-        
+        return (msg.value);
     }
 
     function dispatch(
@@ -78,11 +76,15 @@ contract TestMailbox {
             revert("no");
         }
 
-        return(msg.value);
+        return (msg.value);
     }
 
     function process(bytes calldata _msg) public {
-        IMessageRecipient(recipientAddress.bytes32ToAddress()).handle(uint32(block.chainid), msg.sender.addressToBytes32(), _msg);
+        IMessageRecipient(recipientAddress.bytes32ToAddress()).handle(
+            uint32(block.chainid),
+            msg.sender.addressToBytes32(),
+            _msg
+        );
     }
 
     function quoteDispatch(

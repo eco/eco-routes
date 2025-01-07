@@ -2,8 +2,6 @@
 // EIP-2470
 pragma solidity ^0.8.26; // originally 0.6.2
 
-
-
 /**
  * @title Singleton Factory (EIP-2470)
  * @notice Exposes CREATE2 (EIP-1014) to deploy bytecode on deterministic addresses based on initialization code and salt.
@@ -16,10 +14,10 @@ contract SingletonFactory {
      * @param _salt Arbitrary value to modify resulting address.
      * @return createdContract Created contract address.
      */
-    function deploy(bytes memory _initCode, bytes32 _salt)
-        public
-        returns (address payable createdContract)
-    {
+    function deploy(
+        bytes memory _initCode,
+        bytes32 _salt
+    ) public returns (address payable createdContract) {
         assembly {
             createdContract := create2(0, add(_initCode, 0x20), mload(_initCode), _salt)
         }

@@ -7,16 +7,33 @@ import {Route} from "../types/Intent.sol";
 
 interface IInbox is ISemver {
     // Event emitted when an intent is succesfully fulfilled
-    event Fulfillment(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant);
+    event Fulfillment(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
 
     // Event emitted when an intent is ready to be proven via a storage prover
-    event ToBeProven(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant);
+    event ToBeProven(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
 
     // Event emitted when an intent is fulfilled with the instant hyperprover path
-    event HyperInstantFulfillment(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant);
+    event HyperInstantFulfillment(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
 
     // Event emitted when an intent is added to a batch to be proven with the hyperprover
-    event AddToBatch(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant, address _prover);
+    event AddToBatch(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant,
+        address _prover
+    );
 
     // Event emitted when solving is made public
     event SolvingIsPublic();
@@ -120,5 +137,9 @@ interface IInbox is ISemver {
      * @param _prover The prover against which these intents will be proven. Should be the same for all intents in a given batch
      * @param _intentHashes The array of intent hashes to be proven
      */
-    function sendBatch(uint256 _sourceChainID, address _prover, bytes32[] calldata _intentHashes) external payable;
+    function sendBatch(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes
+    ) external payable;
 }

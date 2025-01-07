@@ -108,7 +108,9 @@ contract Prover is SimpleProver {
      * @param _L2WorldStateRoot the world state root at _blockNumber
      */
     event L2WorldStateProven(
-        uint256 indexed _destinationChainID, uint256 indexed _blockNumber, bytes32 _L2WorldStateRoot
+        uint256 indexed _destinationChainID,
+        uint256 indexed _blockNumber,
+        bytes32 _L2WorldStateRoot
     );
 
     /**
@@ -130,7 +132,10 @@ contract Prover is SimpleProver {
      * @param _expectedBlockHash the expected block hash for the RLP encoded data
      * @param _calculatedBlockHash the calculated block hash from the RLP encoded data
      */
-    error InvalidRLPEncodedBlock(bytes32 _expectedBlockHash, bytes32 _calculatedBlockHash);
+    error InvalidRLPEncodedBlock(
+        bytes32 _expectedBlockHash,
+        bytes32 _calculatedBlockHash
+    );
 
     /**
      * @notice emitted when proveStorage fails
@@ -157,21 +162,30 @@ contract Prover is SimpleProver {
      * @param _blockProofStateRoot the state root of the block that we are trying to prove
      * @param _l1WorldStateRoot the state root of the last block that was proven on the settlement chain
      */
-    error SettlementChainStateRootNotProved(bytes32 _blockProofStateRoot, bytes32 _l1WorldStateRoot);
+    error SettlementChainStateRootNotProved(
+        bytes32 _blockProofStateRoot,
+        bytes32 _l1WorldStateRoot
+    );
 
     /**
      * @notice emitted when the settlement chain state root has not yet been proven
      * @param _blockProofStateRoot the state root of the block that we are trying to prove
      * @param _l2WorldStateRoot the state root of the last block that was proven on the settlement chain
      */
-    error DestinationChainStateRootNotProved(bytes32 _blockProofStateRoot, bytes32 _l2WorldStateRoot);
+    error DestinationChainStateRootNotProved(
+        bytes32 _blockProofStateRoot,
+        bytes32 _l2WorldStateRoot
+    );
 
     /**
      * @notice emitted when the settlement chain state root has not yet been proven
      * @param _blockTimeStamp the timestamp of the block that we are trying to prove
      * @param _finalityDelayTimeStamp the time stamp including finality delay that we need to wait for
      */
-    error BlockBeforeFinalityPeriod(uint256 _blockTimeStamp, uint256 _finalityDelayTimeStamp);
+    error BlockBeforeFinalityPeriod(
+        uint256 _blockTimeStamp,
+        uint256 _finalityDelayTimeStamp
+    );
 
     /**
      * @notice emitted when we receive an incorrectly encoded contract state root
@@ -198,7 +212,10 @@ contract Prover is SimpleProver {
     error FaultDisputeGameUnresolved(uint8 _gameStatus);
 
     // Check that the intent has not expired and that the sender is permitted to solve intents
-    modifier validRLPEncodeBlock(bytes calldata _rlpEncodedBlockData, bytes32 _expectedBlockHash) {
+    modifier validRLPEncodeBlock(
+        bytes calldata _rlpEncodedBlockData,
+        bytes32 _expectedBlockHash
+    ) {
         bytes32 calculatedBlockHash = keccak256(_rlpEncodedBlockData);
         if (calculatedBlockHash == _expectedBlockHash) {
             _;
@@ -207,10 +224,16 @@ contract Prover is SimpleProver {
         }
     }
 
-    constructor(uint256 _settlementBlocksDelay, ChainConfigurationConstructor[] memory _chainConfigurations) {
+    constructor(
+        uint256 _settlementBlocksDelay,
+        ChainConfigurationConstructor[] memory _chainConfigurations
+    ) {
         SETTLEMENT_BLOCKS_DELAY = _settlementBlocksDelay;
         for (uint256 i = 0; i < _chainConfigurations.length; ++i) {
-            _setChainConfiguration(_chainConfigurations[i].chainId, _chainConfigurations[i].chainConfiguration);
+            _setChainConfiguration(
+                _chainConfigurations[i].chainId,
+                _chainConfigurations[i].chainConfiguration
+            );
         }
     }
 
@@ -222,7 +245,10 @@ contract Prover is SimpleProver {
         return PROOF_TYPE;
     }
 
-    function _setChainConfiguration(uint256 chainId, ChainConfiguration memory chainConfiguration) internal {
+    function _setChainConfiguration(
+        uint256 chainId,
+        ChainConfiguration memory chainConfiguration
+    ) internal {
         chainConfigurations[chainId] = chainConfiguration;
         if (block.chainid == chainId) {
             l1BlockhashOracle = IL1Block(chainConfiguration.blockhashOracle);
@@ -236,7 +262,12 @@ contract Prover is SimpleProver {
      * @param _proof proof
      * @param _root root
      */
-    function proveStorage(bytes memory _key, bytes memory _val, bytes[] memory _proof, bytes32 _root) public pure {
+    function proveStorage(
+        bytes memory _key,
+        bytes memory _val,
+        bytes[] memory _proof,
+        bytes32 _root
+    ) public pure {
         if (!SecureMerkleTrie.verifyInclusionProof(_key, _val, _proof, _root)) {
             revert InvalidStorageProof(_key, _val, _proof, _root);
         }
@@ -256,10 +287,17 @@ contract Prover is SimpleProver {
      * @param _proof proof
      * @param _root root
      */
-    function proveStorageBytes32(bytes memory _key, bytes32 _val, bytes[] memory _proof, bytes32 _root) public pure {
+    function proveStorageBytes32(
+        bytes memory _key,
+        bytes32 _val,
+        bytes[] memory _proof,
+        bytes32 _root
+    ) public pure {
         // `RLPWriter.writeUint` properly encodes values by removing any leading zeros.
         bytes memory rlpEncodedValue = RLPWriter.writeUint(uint256(_val));
-        if (!SecureMerkleTrie.verifyInclusionProof(_key, rlpEncodedValue, _proof, _root)) {
+        if (
+            !SecureMerkleTrie.verifyInclusionProof(_key, rlpEncodedValue, _proof, _root)
+        ) {
             revert InvalidStorageProof(_key, rlpEncodedValue, _proof, _root);
         }
     }
@@ -271,10 +309,12 @@ contract Prover is SimpleProver {
      * @param _proof proof
      * @param _root root
      */
-    function proveAccount(bytes memory _address, bytes memory _data, bytes[] memory _proof, bytes32 _root)
-        public
-        pure
-    {
+    function proveAccount(
+        bytes memory _address,
+        bytes memory _data,
+        bytes[] memory _proof,
+        bytes32 _root
+    ) public pure {
         if (!SecureMerkleTrie.verifyInclusionProof(_address, _data, _proof, _root)) {
             revert InvalidAccountProof(_address, _data, _proof, _root);
         }
@@ -293,14 +333,24 @@ contract Prover is SimpleProver {
         bytes32 messagePasserStateRoot,
         bytes32 latestBlockHash
     ) public pure returns (bytes32) {
-        return keccak256(abi.encode(outputRootVersion, worldStateRoot, messagePasserStateRoot, latestBlockHash));
+        return
+            keccak256(
+                abi.encode(
+                    outputRootVersion,
+                    worldStateRoot,
+                    messagePasserStateRoot,
+                    latestBlockHash
+                )
+            );
     }
 
     /**
      * @notice helper function for getting all rlp data encoded
      * @param dataList list of data elements to be encoded
      */
-    function rlpEncodeDataLibList(bytes[] memory dataList) external pure returns (bytes memory) {
+    function rlpEncodeDataLibList(
+        bytes[] memory dataList
+    ) external pure returns (bytes memory) {
         for (uint256 i = 0; i < dataList.length; ++i) {
             dataList[i] = RLPWriter.writeBytes(dataList[i]);
         }
@@ -315,7 +365,11 @@ contract Prover is SimpleProver {
      * @param _gameProxy The game proxy address.
      * @return gameId_ The packed GameId.
      */
-    function pack(uint32 _gameType, uint64 _timestamp, address _gameProxy) public pure returns (bytes32 gameId_) {
+    function pack(
+        uint32 _gameType,
+        uint64 _timestamp,
+        address _gameProxy
+    ) public pure returns (bytes32 gameId_) {
         assembly {
             gameId_ := or(or(shl(224, _gameType), shl(160, _timestamp)), _gameProxy)
         }
@@ -328,7 +382,9 @@ contract Prover is SimpleProver {
      * @return timestamp_ The timestamp of the game's creation.
      * @return gameProxy_ The game proxy address.
      */
-    function unpack(bytes32 _gameId) public pure returns (uint32 gameType_, uint64 timestamp_, address gameProxy_) {
+    function unpack(
+        bytes32 _gameId
+    ) public pure returns (uint32 gameType_, uint64 timestamp_, address gameProxy_) {
         assembly {
             gameType_ := shr(224, _gameId)
             timestamp_ := and(shr(160, _gameId), 0xFFFFFFFFFFFFFFFF)
@@ -365,23 +421,24 @@ contract Prover is SimpleProver {
         bool initialized,
         bool l2BlockNumberChallenged
     ) public pure returns (bytes32 gameStatusStorageSlotRLP) {
-      // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
-      // Need to convert to `uint152` to preserve right alignment.
-        return bytes32(
-            uint256(
-                uint152(
-                    bytes19(
-                        abi.encodePacked(
-                            l2BlockNumberChallenged,
-                            initialized,
-                            gameStatus,
-                            resolvedAt,
-                            createdAt
+        // Packed data is 64 + 64 + 8 + 8 + 8 = 152 bits / 19 bytes.
+        // Need to convert to `uint152` to preserve right alignment.
+        return
+            bytes32(
+                uint256(
+                    uint152(
+                        bytes19(
+                            abi.encodePacked(
+                                l2BlockNumberChallenged,
+                                initialized,
+                                gameStatus,
+                                resolvedAt,
+                                createdAt
+                            )
                         )
                     )
                 )
-            )
-        );
+            );
     }
 
     /**
@@ -392,25 +449,34 @@ contract Prover is SimpleProver {
      * in that block corresponds to the block on the oracle contract, and that it represents a valid
      * state.
      */
-    function proveSettlementLayerState(bytes calldata rlpEncodedBlockData)
-        public
-        validRLPEncodeBlock(rlpEncodedBlockData, l1BlockhashOracle.hash())
-    {
+    function proveSettlementLayerState(
+        bytes calldata rlpEncodedBlockData
+    ) public validRLPEncodeBlock(rlpEncodedBlockData, l1BlockhashOracle.hash()) {
         uint256 settlementChainId = chainConfigurations[block.chainid].settlementChainId;
         // not necessary because we already confirm that the data is correct by ensuring that it hashes to the block hash
         // require(l1WorldStateRoot.length <= 32); // ensure lossless casting to bytes32
 
         BlockProof memory blockProof = BlockProof({
-            blockNumber: _bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: _bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(rlpEncodedBlockData),
-            stateRoot: bytes32(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3]))
+            stateRoot: bytes32(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[3])
+            )
         });
         BlockProof memory existingBlockProof = provenStates[settlementChainId];
-        if (existingBlockProof.blockNumber + SETTLEMENT_BLOCKS_DELAY < blockProof.blockNumber) {
+        if (
+            existingBlockProof.blockNumber + SETTLEMENT_BLOCKS_DELAY <
+            blockProof.blockNumber
+        ) {
             provenStates[settlementChainId] = blockProof;
             emit L1WorldStateProven(blockProof.blockNumber, blockProof.stateRoot);
         } else {
-            revert NeedLaterBlock(blockProof.blockNumber, existingBlockProof.blockNumber + SETTLEMENT_BLOCKS_DELAY);
+            revert NeedLaterBlock(
+                blockProof.blockNumber,
+                existingBlockProof.blockNumber + SETTLEMENT_BLOCKS_DELAY
+            );
         }
     }
     /**
@@ -441,35 +507,56 @@ contract Prover is SimpleProver {
         // can also use timestamp instead of block when this is proven for better crosschain knowledge
         // failing the need for all that, change the mapping to map to bool
         ChainConfiguration memory chainConfiguration = chainConfigurations[chainId];
-        BlockProof memory existingSettlementBlockProof = provenStates[chainConfiguration.settlementChainId];
+        BlockProof memory existingSettlementBlockProof = provenStates[
+            chainConfiguration.settlementChainId
+        ];
         if (existingSettlementBlockProof.stateRoot != l1WorldStateRoot) {
-            revert SettlementChainStateRootNotProved(existingSettlementBlockProof.stateRoot, l1WorldStateRoot);
+            revert SettlementChainStateRootNotProved(
+                existingSettlementBlockProof.stateRoot,
+                l1WorldStateRoot
+            );
         }
 
         // check that the End Batch Block timestamp is greater than the current timestamp + finality delay
-        uint256 endBatchBlockTimeStamp = _bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[11]));
+        uint256 endBatchBlockTimeStamp = _bytesToUint(
+            RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[11])
+        );
 
-        if (block.timestamp <= endBatchBlockTimeStamp + chainConfiguration.finalityDelaySeconds) {
+        if (
+            block.timestamp <=
+            endBatchBlockTimeStamp + chainConfiguration.finalityDelaySeconds
+        ) {
             revert BlockBeforeFinalityPeriod(
-                block.timestamp, endBatchBlockTimeStamp + chainConfiguration.finalityDelaySeconds
+                block.timestamp,
+                endBatchBlockTimeStamp + chainConfiguration.finalityDelaySeconds
             );
         }
 
         bytes32 blockHash = keccak256(rlpEncodedBlockData);
-        bytes32 outputRoot =
-            generateOutputRoot(L2_OUTPUT_ROOT_VERSION_NUMBER, l2WorldStateRoot, l2MessagePasserStateRoot, blockHash);
+        bytes32 outputRoot = generateOutputRoot(
+            L2_OUTPUT_ROOT_VERSION_NUMBER,
+            l2WorldStateRoot,
+            l2MessagePasserStateRoot,
+            blockHash
+        );
 
-        bytes32 outputRootStorageSlot =
-            bytes32((uint256(keccak256(abi.encode(L2_OUTPUT_SLOT_NUMBER))) + l2OutputIndex * 2));
+        bytes32 outputRootStorageSlot = bytes32(
+            (uint256(keccak256(abi.encode(L2_OUTPUT_SLOT_NUMBER))) + l2OutputIndex * 2)
+        );
 
-        bytes memory outputOracleStateRoot = RLPReader.readBytes(RLPReader.readList(rlpEncodedOutputOracleData)[2]);
+        bytes memory outputOracleStateRoot = RLPReader.readBytes(
+            RLPReader.readList(rlpEncodedOutputOracleData)[2]
+        );
 
         if (outputOracleStateRoot.length > 32) {
             revert IncorrectOutputOracleStateRoot(outputOracleStateRoot);
         }
 
         proveStorageBytes32(
-            abi.encodePacked(outputRootStorageSlot), outputRoot, l1StorageProof, bytes32(outputOracleStateRoot)
+            abi.encodePacked(outputRootStorageSlot),
+            outputRoot,
+            l1StorageProof,
+            bytes32(outputOracleStateRoot)
         );
 
         proveAccount(
@@ -481,16 +568,25 @@ contract Prover is SimpleProver {
 
         BlockProof memory existingBlockProof = provenStates[chainId];
         BlockProof memory blockProof = BlockProof({
-            blockNumber: _bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: _bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: blockHash,
             stateRoot: l2WorldStateRoot
         });
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
             provenStates[chainId] = blockProof;
-            emit L2WorldStateProven(chainId, blockProof.blockNumber, blockProof.stateRoot);
+            emit L2WorldStateProven(
+                chainId,
+                blockProof.blockNumber,
+                blockProof.stateRoot
+            );
         } else {
             if (existingBlockProof.blockNumber > blockProof.blockNumber) {
-                revert OutdatedBlock(blockProof.blockNumber, existingBlockProof.blockNumber);
+                revert OutdatedBlock(
+                    blockProof.blockNumber,
+                    existingBlockProof.blockNumber
+                );
             }
         }
     }
@@ -510,15 +606,17 @@ contract Prover is SimpleProver {
 
         bytes32 disputeGameFactoryStorageSlot = bytes32(
             abi.encode(
-                (
-                    uint256(keccak256(abi.encode(L2_DISPUTE_GAME_FACTORY_LIST_SLOT_NUMBER)))
-                        + disputeGameFactoryProofData.gameIndex
-                )
+                (uint256(
+                    keccak256(abi.encode(L2_DISPUTE_GAME_FACTORY_LIST_SLOT_NUMBER))
+                ) + disputeGameFactoryProofData.gameIndex)
             )
         );
 
-        bytes memory disputeGameFactoryStateRoot =
-            RLPReader.readBytes(RLPReader.readList(disputeGameFactoryProofData.rlpEncodedDisputeGameFactoryData)[2]);
+        bytes memory disputeGameFactoryStateRoot = RLPReader.readBytes(
+            RLPReader.readList(
+                disputeGameFactoryProofData.rlpEncodedDisputeGameFactoryData
+            )[2]
+        );
 
         if (disputeGameFactoryStateRoot.length > 32) {
             revert IncorrectDisputeGameFactoryStateRoot(disputeGameFactoryStateRoot);
@@ -538,7 +636,9 @@ contract Prover is SimpleProver {
             l1WorldStateRoot
         );
 
-        (,, address _faultDisputeGameProxyAddress) = unpack(disputeGameFactoryProofData.gameId);
+        (, , address _faultDisputeGameProxyAddress) = unpack(
+            disputeGameFactoryProofData.gameId
+        );
 
         return (_faultDisputeGameProxyAddress, _rootClaim);
     }
@@ -550,7 +650,9 @@ contract Prover is SimpleProver {
         bytes32 l1WorldStateRoot
     ) internal pure {
         if (faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus != 2) {
-            revert FaultDisputeGameUnresolved(faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus);
+            revert FaultDisputeGameUnresolved(
+                faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus
+            );
         } // ensure faultDisputeGame is resolved
         // Prove that the FaultDispute game has been settled
         // storage proof for FaultDisputeGame rootClaim (means block is valid)
@@ -561,12 +663,14 @@ contract Prover is SimpleProver {
             bytes32(faultDisputeGameProofData.faultDisputeGameStateRoot)
         );
 
-         bytes32 faultDisputeGameStatusStorage = assembleGameStatusStorage(
+        bytes32 faultDisputeGameStatusStorage = assembleGameStatusStorage(
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.createdAt,
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.resolvedAt,
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.gameStatus,
             faultDisputeGameProofData.faultDisputeGameStatusSlotData.initialized,
-            faultDisputeGameProofData.faultDisputeGameStatusSlotData.l2BlockNumberChallenged
+            faultDisputeGameProofData
+                .faultDisputeGameStatusSlotData
+                .l2BlockNumberChallenged
         );
 
         // faultDisputeGameProofData.faultDisputeGameStatusSlotData.filler
@@ -576,7 +680,11 @@ contract Prover is SimpleProver {
             faultDisputeGameStatusStorage,
             faultDisputeGameProofData.faultDisputeGameStatusStorageProof,
             bytes32(
-                RLPReader.readBytes(RLPReader.readList(faultDisputeGameProofData.rlpEncodedFaultDisputeGameData)[2])
+                RLPReader.readBytes(
+                    RLPReader.readList(
+                        faultDisputeGameProofData.rlpEncodedFaultDisputeGameData
+                    )[2]
+                )
             )
         );
 
@@ -610,11 +718,22 @@ contract Prover is SimpleProver {
         DisputeGameFactoryProofData calldata disputeGameFactoryProofData,
         FaultDisputeGameProofData memory faultDisputeGameProofData,
         bytes32 l1WorldStateRoot
-    ) public validRLPEncodeBlock(rlpEncodedBlockData, disputeGameFactoryProofData.latestBlockHash) {
+    )
+        public
+        validRLPEncodeBlock(
+            rlpEncodedBlockData,
+            disputeGameFactoryProofData.latestBlockHash
+        )
+    {
         ChainConfiguration memory chainConfiguration = chainConfigurations[chainId];
-        BlockProof memory existingSettlementBlockProof = provenStates[chainConfiguration.settlementChainId];
+        BlockProof memory existingSettlementBlockProof = provenStates[
+            chainConfiguration.settlementChainId
+        ];
         if (existingSettlementBlockProof.stateRoot != l1WorldStateRoot) {
-            revert SettlementChainStateRootNotProved(existingSettlementBlockProof.stateRoot, l1WorldStateRoot);
+            revert SettlementChainStateRootNotProved(
+                existingSettlementBlockProof.stateRoot,
+                l1WorldStateRoot
+            );
         }
         // prove that the FaultDisputeGame was created by the Dispute Game Factory
 
@@ -622,25 +741,40 @@ contract Prover is SimpleProver {
         address faultDisputeGameProxyAddress;
 
         (faultDisputeGameProxyAddress, rootClaim) = _faultDisputeGameFromFactory(
-            chainConfiguration.settlementContract, l2WorldStateRoot, disputeGameFactoryProofData, l1WorldStateRoot
+            chainConfiguration.settlementContract,
+            l2WorldStateRoot,
+            disputeGameFactoryProofData,
+            l1WorldStateRoot
         );
 
         _faultDisputeGameIsResolved(
-            rootClaim, faultDisputeGameProxyAddress, faultDisputeGameProofData, l1WorldStateRoot
+            rootClaim,
+            faultDisputeGameProxyAddress,
+            faultDisputeGameProofData,
+            l1WorldStateRoot
         );
 
         BlockProof memory existingBlockProof = provenStates[chainId];
         BlockProof memory blockProof = BlockProof({
-            blockNumber: _bytesToUint(RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])),
+            blockNumber: _bytesToUint(
+                RLPReader.readBytes(RLPReader.readList(rlpEncodedBlockData)[8])
+            ),
             blockHash: keccak256(rlpEncodedBlockData),
             stateRoot: l2WorldStateRoot
         });
         if (existingBlockProof.blockNumber < blockProof.blockNumber) {
             provenStates[chainId] = blockProof;
-            emit L2WorldStateProven(chainId, blockProof.blockNumber, blockProof.stateRoot);
+            emit L2WorldStateProven(
+                chainId,
+                blockProof.blockNumber,
+                blockProof.stateRoot
+            );
         } else {
             if (existingBlockProof.blockNumber > blockProof.blockNumber) {
-                revert OutdatedBlock(blockProof.blockNumber, existingBlockProof.blockNumber);
+                revert OutdatedBlock(
+                    blockProof.blockNumber,
+                    existingBlockProof.blockNumber
+                );
             }
         }
     }
@@ -670,7 +804,10 @@ contract Prover is SimpleProver {
         // ChainConfiguration memory chainConfiguration = chainConfigurations[chainId];
         BlockProof memory existingBlockProof = provenStates[chainId];
         if (existingBlockProof.stateRoot != l2WorldStateRoot) {
-            revert DestinationChainStateRootNotProved(existingBlockProof.stateRoot, l2WorldStateRoot);
+            revert DestinationChainStateRootNotProved(
+                existingBlockProof.stateRoot,
+                l2WorldStateRoot
+            );
         }
 
         bytes32 intentHash = keccak256(abi.encode(inboxContract, intermediateHash));
@@ -682,7 +819,9 @@ contract Prover is SimpleProver {
             )
         );
 
-        bytes memory inboxStateRoot = RLPReader.readBytes(RLPReader.readList(rlpEncodedInboxData)[2]);
+        bytes memory inboxStateRoot = RLPReader.readBytes(
+            RLPReader.readList(rlpEncodedInboxData)[2]
+        );
 
         if (inboxStateRoot.length > 32) {
             revert IncorrectInboxStateRoot(inboxStateRoot);
@@ -696,7 +835,12 @@ contract Prover is SimpleProver {
         );
 
         // proves that the inbox data corresponds to the l2worldstate
-        proveAccount(abi.encodePacked(inboxContract), rlpEncodedInboxData, l2AccountProof, l2WorldStateRoot);
+        proveAccount(
+            abi.encodePacked(inboxContract),
+            rlpEncodedInboxData,
+            l2AccountProof,
+            l2WorldStateRoot
+        );
 
         provenIntents[intentHash] = claimant;
         emit IntentProven(intentHash, claimant);
