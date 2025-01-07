@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Semver, ISemver} from "./ISemver.sol";
+import {ISemver} from "../libs/Semver.sol";
 
 import {Call, TokenAmount, Reward, Intent} from "../types/Intent.sol";
 
@@ -84,7 +84,7 @@ interface IIntentSource is ISemver {
      */
     event Withdrawal(bytes32 _hash, address indexed _recipient);
 
-    function getVaultClaimant() external view returns (address);
+    function getClaimed(bytes32 intentHash) external view returns (address);
 
     function getVaultRefundToken() external view returns (address);
 

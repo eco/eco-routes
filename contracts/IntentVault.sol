@@ -11,15 +11,14 @@ import "./types/Intent.sol";
 contract IntentVault {
     using SafeERC20 for IERC20;
 
-    constructor(Reward memory reward) {
+    constructor(bytes32 intentHash, Reward memory reward) payable {
         uint256 rewardsLength = reward.tokens.length;
 
-        address claimant = IIntentSource(msg.sender).getVaultClaimant();
-        address refundToken;
+        address claimant = IIntentSource(msg.sender).getClaimed(intentHash);
+        address refundToken = IIntentSource(msg.sender).getVaultRefundToken();
 
         if (claimant == address(0)) {
             claimant = reward.creator;
-            refundToken = IIntentSource(msg.sender).getVaultRefundToken();
         }
 
         for (uint256 i; i < rewardsLength; ++i) {

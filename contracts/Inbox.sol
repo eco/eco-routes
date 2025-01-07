@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "./interfaces/IInbox.sol";
-import "./types/Intent.sol";
-import "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
-import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IInbox} from "./interfaces/IInbox.sol";
+import {Intent, Route, Call} from "./types/Intent.sol";
+import {Semver} from "./libs/Semver.sol";
 
 /**
  * @title Inbox
@@ -125,7 +126,7 @@ contract Inbox is IInbox, Ownable {
         bytes memory messageBody = abi.encode(hashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
 
-        emit HyperInstantFulfillment(_expectedHash, _sourceChainID, _claimant);
+        emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
 
         uint256 fee = fetchFee(_route.source, _prover32, messageBody, _metadata, _postDispatchHook);
         if (msg.value < fee) {
@@ -169,9 +170,6 @@ contract Inbox is IInbox, Ownable {
         emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
         bytes[] memory results =  _fulfill( _route, _rewardHash, _claimant, _expectedHash);
-
-        bytes[] memory results =
-            _fulfill(_sourceChainID, _targets, _data, _expiryTime, _nonce, _claimant, _expectedHash);
 
         return results;
     }

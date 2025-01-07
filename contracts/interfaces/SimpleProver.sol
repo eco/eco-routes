@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import "./IProver.sol";
+import {IProver} from "./IProver.sol";
 
 abstract contract SimpleProver is IProver {
     /**

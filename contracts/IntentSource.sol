@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "./interfaces/IIntentSource.sol";
-import "./interfaces/SimpleProver.sol";
-import "./types/Intent.sol";
+import {IIntentSource} from "./interfaces/IIntentSource.sol";
+import {SimpleProver} from "./interfaces/SimpleProver.sol";
+import {Intent, Reward, Route} from "./types/Intent.sol";
+import {Semver} from "./libs/Semver.sol";
 
-import "./IntentVault.sol";import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IntentVault} from "./IntentVault.sol";
 
 /**
  * This contract is the source chain portion of the Eco Protocol's intent system.
@@ -22,9 +23,8 @@ contract IntentSource is IIntentSource {
     using SafeERC20 for IERC20;
 
     // stores the intents
-    mapping(bytes32 intentHash => bool) public claimed;
+    mapping(bytes32 intentHash => address) public claimed;
 
-    address public vaultClaimant;
     address public vaultRefundToken;
 
     /**
@@ -37,40 +37,27 @@ contract IntentSource is IIntentSource {
         return Semver.version();
     }
 
-    function getVaultClaimant() external view returns (address) {
-        return vaultClaimant;
-    }
-
-    function getVaultRefundToken() external view returns (address) {
-        return vaultRefundToken;
+    function getIntentHash(
+        Intent calldata intent
+    ) public pure returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash) {
+        routeHash = keccak256(abi.encode(intent.route));
+        rewardHash = keccak256(abi.encode(intent.reward));
+        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
     }
 
     function intentVaultAddress(
         Intent calldata intent
     ) public view returns (address) {
-        /* Convert a hash which is bytes32 to an address which is 20-byte long
-        according to https://docs.soliditylang.org/en/v0.8.9/control-structures.html?highlight=create2#salted-contract-creations-create2 */
-        return
-            address(
-                uint160(
-                    uint256(
-                        keccak256(
-                            abi.encodePacked(
-                                hex"ff",
-                                address(this),
-                                keccak256(abi.encode(intent.route)),
-                                // Encoding delegateData and refundAddress as constructor params
-                                keccak256(
-                                    abi.encodePacked(
-                                        type(IntentVault).creationCode,
-                                        abi.encode(intent.reward)
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            );
+        (bytes32 intentHash, bytes32 routeHash,) = getIntentHash(intent);
+        return _getIntentVaultAddress(intentHash, routeHash, intent.reward);
+    }
+
+    function getClaimed(bytes32 intentHash) external view returns (address) {
+        return claimed[intentHash];
+    }
+
+    function getVaultRefundToken() external view returns (address) {
+        return vaultRefundToken;
     }
 
     /**
@@ -85,13 +72,11 @@ contract IntentSource is IIntentSource {
         Reward calldata reward = intent.reward;
 
         uint256 rewardsLength = reward.tokens.length;
+        bytes32 routeHash;
 
-        uint256 chainID = block.chainid;
-        bytes32 routeHash = keccak256(abi.encode(route));
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        (intentHash, routeHash,) = getIntentHash(intent);
 
-        address vault = intentVaultAddress(intent);
+        address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         if (addRewards) {
             if (reward.nativeValue > 0) {
@@ -110,7 +95,7 @@ contract IntentSource is IIntentSource {
 
                 IERC20(token).safeTransferFrom(msg.sender, vault, amount);
             }
-        } else {
+        } else if (block.chainid == intent.route.source) {
             require(_validateIntent(intent, vault), "IntentSource: invalid intent");
         }
 
@@ -131,33 +116,10 @@ contract IntentSource is IIntentSource {
     function validateIntent(
         Intent calldata intent
     ) external view returns (bool) {
-        address vault = intentVaultAddress(intent);
+        (bytes32 intentHash, bytes32 routeHash,) = getIntentHash(intent);
+        address vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
 
         return _validateIntent(intent, vault);
-    }
-
-    function _validateIntent(
-        Intent calldata intent,
-        address vault
-    ) internal view returns (bool) {
-        Reward calldata reward = intent.reward;
-        uint256 rewardsLength = reward.tokens.length;
-
-        if (reward.expiryTime < block.timestamp + MINIMUM_DURATION / 2) {
-            return false;
-        }
-
-        if (vault.balance < reward.nativeValue) return false;
-
-        for (uint256 i = 0; i < rewardsLength; i++) {
-            address token = reward.tokens[i].token;
-            uint256 amount = reward.tokens[i].amount;
-            uint256 balance = IERC20(token).balanceOf(vault);
-
-            if (balance < amount) return false;
-        }
-
-        return true;
     }
 
     /**
@@ -174,15 +136,13 @@ contract IntentSource is IIntentSource {
         );
 
         // Claim the rewards if the intent has not been claimed
-        if (claimant != address(0) && !claimed[intentHash]) {
-            vaultClaimant = claimant;
-            claimed[intentHash] = true;
+        if (claimant != address(0) && claimed[intentHash] == address(0)) {
+            claimed[intentHash] = claimant;
 
             emit Withdrawal(intentHash, claimant);
 
-            new IntentVault{salt: routeHash}(reward);
+            new IntentVault{salt: routeHash}(intentHash, reward);
 
-            vaultClaimant = address(0);
             return;
         }
 
@@ -193,7 +153,7 @@ contract IntentSource is IIntentSource {
 
         emit Withdrawal(intentHash, reward.creator);
 
-        new IntentVault{salt: routeHash}(reward);
+        new IntentVault{salt: routeHash}(intentHash, reward);
     }
 
     /**
@@ -215,14 +175,66 @@ contract IntentSource is IIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        if (!claimed[intentHash] || block.timestamp < reward.expiryTime) {
+        if (claimed[intentHash] == address(0) && block.timestamp < reward.expiryTime) {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
         vaultRefundToken = token;
 
-        new IntentVault{salt: routeHash}(reward);
+        new IntentVault{salt: routeHash}(intentHash,reward);
 
         vaultRefundToken = address(0);
     }
+
+    function _validateIntent(
+        Intent calldata intent,
+        address vault
+    ) internal view returns (bool) {
+        Reward calldata reward = intent.reward;
+        uint256 rewardsLength = reward.tokens.length;
+
+        if (vault.balance < reward.nativeValue) return false;
+
+        for (uint256 i = 0; i < rewardsLength; i++) {
+            address token = reward.tokens[i].token;
+            uint256 amount = reward.tokens[i].amount;
+            uint256 balance = IERC20(token).balanceOf(vault);
+
+            if (balance < amount) return false;
+        }
+
+        return true;
+    }
+
+
+    function _getIntentVaultAddress(
+        bytes32 intentHash,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) internal view returns (address) {
+        /* Convert a hash which is bytes32 to an address which is 20-byte long
+        according to https://docs.soliditylang.org/en/v0.8.9/control-structures.html?highlight=create2#salted-contract-creations-create2 */
+        return
+            address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            hex"ff",
+                            address(this),
+                            routeHash,
+                            // Encoding delegateData and refundAddress as constructor params
+                            keccak256(
+                                abi.encodePacked(
+                                    type(IntentVault).creationCode,
+                                    abi.encode(intentHash, reward)
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        );
+    }
+
 }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import '@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol';
-import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import './interfaces/SimpleProver.sol';
+import {IMessageRecipient} from '@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol';
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {SimpleProver} from './interfaces/SimpleProver.sol';
+import {Semver} from "./libs/Semver.sol";
 
 
 contract HyperProver is IMessageRecipient, SimpleProver {
