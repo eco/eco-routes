@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
 import "./interfaces/IInbox.sol";
 import "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";

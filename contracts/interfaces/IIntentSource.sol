@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 4 -*- */
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
 import {Intent} from "../types/Intent.sol";
 import {Semver, ISemver} from "../libs/Semver.sol";
