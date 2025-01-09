@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // from cupeyes/deployer
-pragma solidity ^0.8.26; //initially ^0.6.0
+pragma solidity ^0.8.28; //initially ^0.6.0
 
 interface IDeployer {
     function deploy(

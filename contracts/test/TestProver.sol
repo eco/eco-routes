@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 4 -*- */
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.28;
 
-import "../interfaces/SimpleProver.sol";
+import "../libs/SimpleProver.sol";
 
 contract TestProver is SimpleProver {
     function version() external pure returns (string memory) {

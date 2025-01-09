@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.28;
 
-import "./IProver.sol";
+import {ISimpleProver} from "../interfaces/ISimpleProver.sol";
 
-abstract contract SimpleProver is IProver {
+abstract contract SimpleProver is ISimpleProver {
+    // abstract contract SimpleProver is IProver {
     /**
      * @notice emitted when an intent has been successfully proven
      * @param _hash  the hash of the intent
