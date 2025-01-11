@@ -53,10 +53,8 @@ contract IntentSource is IIntentSource {
         intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
     }
 
-    function intentVaultAddress(
-        Intent calldata intent
-    ) public view returns (address) {
-        (bytes32 intentHash, bytes32 routeHash,) = getIntentHash(intent);
+    function intentVaultAddress(Intent calldata intent) public view returns (address) {
+        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
         return _getIntentVaultAddress(intentHash, routeHash, intent.reward);
     }
 
@@ -68,14 +66,17 @@ contract IntentSource is IIntentSource {
      * @param fundReward whether to fund the reward or not
      * @return intentHash the hash of the intent
      */
-    function publishIntent(Intent calldata intent, bool fundReward) external payable returns (bytes32 intentHash) {
+    function publishIntent(
+        Intent calldata intent,
+        bool fundReward
+    ) external payable returns (bytes32 intentHash) {
         Route calldata route = intent.route;
         Reward calldata reward = intent.reward;
 
         uint256 rewardsLength = reward.tokens.length;
         bytes32 routeHash;
 
-        (intentHash, routeHash,) = getIntentHash(intent);
+        (intentHash, routeHash, ) = getIntentHash(intent);
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
@@ -83,9 +84,12 @@ contract IntentSource is IIntentSource {
             if (_validateIntent(intent, vault)) {
                 revert("IntentSource: intent is already funded");
             }
-            
+
             if (reward.nativeValue > 0) {
-                require(msg.value >= reward.nativeValue, "IntentSource: insufficient native reward");
+                require(
+                    msg.value >= reward.nativeValue,
+                    "IntentSource: insufficient native reward"
+                );
 
                 payable(vault).transfer(reward.nativeValue);
 
@@ -118,10 +122,8 @@ contract IntentSource is IIntentSource {
         );
     }
 
-    function validateIntent(
-        Intent calldata intent
-    ) external view returns (bool) {
-        (bytes32 intentHash, bytes32 routeHash,) = getIntentHash(intent);
+    function validateIntent(Intent calldata intent) external view returns (bool) {
+        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
         address vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
 
         return _validateIntent(intent, vault);
@@ -136,9 +138,7 @@ contract IntentSource is IIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = SimpleProver(reward.prover).provenIntents(
-            intentHash
-        );
+        address claimant = SimpleProver(reward.prover).provenIntents(intentHash);
 
         // Claim the rewards if the intent has not been claimed
         if (claimant != address(0) && claimed[intentHash] == address(0)) {
@@ -151,7 +151,7 @@ contract IntentSource is IIntentSource {
             return;
         }
 
-        if (claimant != address(0) ) {
+        if (claimant != address(0)) {
             revert NothingToWithdraw(intentHash);
         }
 
@@ -170,7 +170,10 @@ contract IntentSource is IIntentSource {
      * @param routeHashes The hashes of the routes of the intents
      * @param rewards The rewards of the intents
      */
-    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external {
+    function batchWithdraw(
+        bytes32[] calldata routeHashes,
+        Reward[] calldata rewards
+    ) external {
         uint256 length = routeHashes.length;
         require(length == rewards.length, "IntentSource: array length mismatch");
 
@@ -185,7 +188,11 @@ contract IntentSource is IIntentSource {
      * @param reward The reward of the intent
      * @param token Any specific token that could be wrongly sent to the vault
      */
-    function refundIntent(bytes32 routeHash, Reward calldata reward, address token) external {
+    function refundIntent(
+        bytes32 routeHash,
+        Reward calldata reward,
+        address token
+    ) external {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
@@ -198,11 +205,9 @@ contract IntentSource is IIntentSource {
         }
 
         vaultRefundToken = token;
-        new IntentVault{salt: routeHash}(intentHash,reward);
-
+        new IntentVault{salt: routeHash}(intentHash, reward);
 
         vaultRefundToken = address(0);
-
     }
 
     function _validateIntent(
@@ -225,7 +230,6 @@ contract IntentSource is IIntentSource {
         return true;
     }
 
-
     function _getIntentVaultAddress(
         bytes32 intentHash,
         bytes32 routeHash,
@@ -235,24 +239,23 @@ contract IntentSource is IIntentSource {
         according to https://docs.soliditylang.org/en/v0.8.9/control-structures.html?highlight=create2#salted-contract-creations-create2 */
         return
             address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            hex"ff",
-                            address(this),
-                            routeHash,
-                            keccak256(
-                                abi.encodePacked(
-                                    type(IntentVault).creationCode,
-                                    abi.encode(intentHash, reward)
+                uint160(
+                    uint256(
+                        keccak256(
+                            abi.encodePacked(
+                                hex"ff",
+                                address(this),
+                                routeHash,
+                                keccak256(
+                                    abi.encodePacked(
+                                        type(IntentVault).creationCode,
+                                        abi.encode(intentHash, reward)
+                                    )
                                 )
                             )
                         )
                     )
                 )
-            )
-        );
+            );
     }
-
 }

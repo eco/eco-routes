@@ -92,9 +92,7 @@ interface IIntentSource is ISemver {
         Intent calldata intent
     ) external pure returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
-    function intentVaultAddress(
-        Intent calldata intent
-    ) external view returns (address);
+    function intentVaultAddress(Intent calldata intent) external view returns (address);
 
     /**
      * @notice Creates an intent to execute instructions on a contract on a supported chain in exchange for a bundle of assets.
@@ -104,20 +102,21 @@ interface IIntentSource is ISemver {
      * @param fundReward whether to fund the reward or not
      * @return intentHash the hash of the intent
      */
-    function publishIntent(Intent calldata intent, bool fundReward) external payable returns (bytes32 intentHash);
+    function publishIntent(
+        Intent calldata intent,
+        bool fundReward
+    ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Validates an intent by checking that the intent's rewards are  valid.
      * @param intent the intent to validate
      */
-    function validateIntent(
-        Intent calldata intent
-    ) external view returns (bool);
+    function validateIntent(Intent calldata intent) external view returns (bool);
 
     /**
      * @notice allows withdrawal of reward funds locked up for a given intent
      * @param routeHash the hash of the route of the intent
-        * @param reward the reward struct of the intent
+     * @param reward the reward struct of the intent
      */
     function withdrawRewards(bytes32 routeHash, Reward calldata reward) external;
 
@@ -126,7 +125,10 @@ interface IIntentSource is ISemver {
      * @param routeHashes the hashes of the routes of the intents
      * @param rewards the rewards struct of the intents
      */
-    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external;
+    function batchWithdraw(
+        bytes32[] calldata routeHashes,
+        Reward[] calldata rewards
+    ) external;
 
     /**
      * @notice Refunds the rewards associated with an intent to its creator
@@ -134,5 +136,9 @@ interface IIntentSource is ISemver {
      * @param reward The reward of the intent
      * @param token Any specific token that could be wrongly sent to the vault
      */
-    function refundIntent(bytes32 routeHash, Reward calldata reward, address token) external;
+    function refundIntent(
+        bytes32 routeHash,
+        Reward calldata reward,
+        address token
+    ) external;
 }
