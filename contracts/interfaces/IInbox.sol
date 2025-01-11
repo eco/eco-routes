@@ -53,6 +53,9 @@ interface IInbox is ISemver {
     // Error thrown when the intent has already been fulfilled
     error IntentAlreadyFulfilled(bytes32 _hash);
 
+    // Error thrown when the inbox address is not a contract
+    error InvalidInbox(address _inbox);
+
     // Error thrown when the hash generated on the inbox contract does not match the expected hash
     error InvalidHash(bytes32 _expectedHash);
 

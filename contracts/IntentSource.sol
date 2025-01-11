@@ -37,19 +37,6 @@ contract IntentSource is IIntentSource {
         return Semver.version();
     }
 
-    function getIntentHash(
-        Intent calldata intent
-    ) public pure returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash) {
-        routeHash = keccak256(abi.encode(intent.route));
-        rewardHash = keccak256(abi.encode(intent.reward));
-        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
-    }
-
-    function intentVaultAddress(Intent calldata intent) public view returns (address) {
-        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
-        return _getIntentVaultAddress(intentHash, routeHash, intent.reward);
-    }
-
     function getClaimed(bytes32 intentHash) external view returns (address) {
         return claimed[intentHash];
     }
@@ -58,33 +45,47 @@ contract IntentSource is IIntentSource {
         return vaultRefundToken;
     }
 
+    function getIntentHash(
+        Intent calldata intent
+    ) public pure returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash) {
+        routeHash = keccak256(abi.encode(intent.route));
+        rewardHash = keccak256(abi.encode(intent.reward));
+        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+    }
+
+    function intentVaultAddress(
+        Intent calldata intent
+    ) public view returns (address) {
+        (bytes32 intentHash, bytes32 routeHash,) = getIntentHash(intent);
+        return _getIntentVaultAddress(intentHash, routeHash, intent.reward);
+    }
+
     /**
      * @notice Creates an intent to execute instructions on a contract on a supported chain in exchange for a bundle of assets.
      * @dev If a proof ON THE SOURCE CHAIN is not completed by the expiry time, the reward funds will not be redeemable by the solver, REGARDLESS OF WHETHER THE INSTRUCTIONS WERE EXECUTED.
      * The onus of that time management (i.e. how long it takes for data to post to L1, etc.) is on the intent solver.
      * @param intent The intent struct with all the intent params
+     * @param fundReward whether to fund the reward or not
+     * @return intentHash the hash of the intent
      */
-
-    function publishIntent(
-        Intent calldata intent,
-        bool addRewards
-    ) external payable returns (bytes32 intentHash) {
+    function publishIntent(Intent calldata intent, bool fundReward) external payable returns (bytes32 intentHash) {
         Route calldata route = intent.route;
         Reward calldata reward = intent.reward;
 
         uint256 rewardsLength = reward.tokens.length;
         bytes32 routeHash;
 
-        (intentHash, routeHash, ) = getIntentHash(intent);
+        (intentHash, routeHash,) = getIntentHash(intent);
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
-        if (addRewards) {
+        if (fundReward) {
+            if (_validateIntent(intent, vault)) {
+                revert("IntentSource: intent is already funded");
+            }
+            
             if (reward.nativeValue > 0) {
-                require(
-                    msg.value >= reward.nativeValue,
-                    "IntentSource: insufficient native reward"
-                );
+                require(msg.value >= reward.nativeValue, "IntentSource: insufficient native reward");
 
                 payable(vault).transfer(reward.nativeValue);
 
@@ -117,8 +118,10 @@ contract IntentSource is IIntentSource {
         );
     }
 
-    function validateIntent(Intent calldata intent) external view returns (bool) {
-        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
+    function validateIntent(
+        Intent calldata intent
+    ) external view returns (bool) {
+        (bytes32 intentHash, bytes32 routeHash,) = getIntentHash(intent);
         address vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
 
         return _validateIntent(intent, vault);
@@ -133,7 +136,9 @@ contract IntentSource is IIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = SimpleProver(reward.prover).provenIntents(intentHash);
+        address claimant = SimpleProver(reward.prover).provenIntents(
+            intentHash
+        );
 
         // Claim the rewards if the intent has not been claimed
         if (claimant != address(0) && claimed[intentHash] == address(0)) {
@@ -146,8 +151,12 @@ contract IntentSource is IIntentSource {
             return;
         }
 
+        if (claimant != address(0) ) {
+            revert NothingToWithdraw(intentHash);
+        }
+
         // Refund the rewards if the intent has expired
-        if (block.timestamp < reward.expiryTime) {
+        if (claimant == address(0) && block.timestamp < reward.expiryTime) {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
@@ -161,11 +170,7 @@ contract IntentSource is IIntentSource {
      * @param routeHashes The hashes of the routes of the intents
      * @param rewards The rewards of the intents
      */
-
-    function batchWithdraw(
-        bytes32[] calldata routeHashes,
-        Reward[] calldata rewards
-    ) external {
+    function batchWithdraw(bytes32[] calldata routeHashes, Reward[] calldata rewards) external {
         uint256 length = routeHashes.length;
         require(length == rewards.length, "IntentSource: array length mismatch");
 
@@ -174,11 +179,13 @@ contract IntentSource is IIntentSource {
         }
     }
 
-    function refundToken(
-        bytes32 routeHash,
-        Reward calldata reward,
-        address token
-    ) external {
+    /**
+     * @notice Refunds the rewards associated with an intent to its creator
+     * @param routeHash The hash of the route of the intent
+     * @param reward The reward of the intent
+     * @param token Any specific token that could be wrongly sent to the vault
+     */
+    function refundIntent(bytes32 routeHash, Reward calldata reward, address token) external {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
@@ -186,11 +193,16 @@ contract IntentSource is IIntentSource {
             revert UnauthorizedWithdrawal(intentHash);
         }
 
-        vaultRefundToken = token;
+        if (token == address(0)) {
+            token = address(1);
+        }
 
-        new IntentVault{salt: routeHash}(intentHash, reward);
+        vaultRefundToken = token;
+        new IntentVault{salt: routeHash}(intentHash,reward);
+
 
         vaultRefundToken = address(0);
+
     }
 
     function _validateIntent(
@@ -213,6 +225,7 @@ contract IntentSource is IIntentSource {
         return true;
     }
 
+
     function _getIntentVaultAddress(
         bytes32 intentHash,
         bytes32 routeHash,
@@ -222,23 +235,24 @@ contract IntentSource is IIntentSource {
         according to https://docs.soliditylang.org/en/v0.8.9/control-structures.html?highlight=create2#salted-contract-creations-create2 */
         return
             address(
-                uint160(
-                    uint256(
-                        keccak256(
-                            abi.encodePacked(
-                                hex"ff",
-                                address(this),
-                                routeHash,
-                                keccak256(
-                                    abi.encodePacked(
-                                        type(IntentVault).creationCode,
-                                        abi.encode(intentHash, reward)
-                                    )
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            hex"ff",
+                            address(this),
+                            routeHash,
+                            keccak256(
+                                abi.encodePacked(
+                                    type(IntentVault).creationCode,
+                                    abi.encode(intentHash, reward)
                                 )
                             )
                         )
                     )
                 )
-            );
+            )
+        );
     }
+
 }

@@ -12,13 +12,18 @@ contract IntentVault {
     using SafeERC20 for IERC20;
 
     constructor(bytes32 intentHash, Reward memory reward) payable {
+        IIntentSource intentSource = IIntentSource(msg.sender);
         uint256 rewardsLength = reward.tokens.length;
 
-        address claimant = IIntentSource(msg.sender).getClaimed(intentHash);
-        address refundToken = IIntentSource(msg.sender).getVaultRefundToken();
+        address claimant = intentSource.getClaimed(intentHash);
+        address refundToken = intentSource.getVaultRefundToken();
 
-        if (claimant == address(0)) {
-            claimant = reward.creator;
+        if (claimant == address(0) || refundToken != address(0)) {
+            if (block.timestamp >= reward.expiryTime) {
+                claimant = reward.creator;
+            } else {
+                revert("IntentVault: intent is not expired");
+            }
         }
 
         for (uint256 i; i < rewardsLength; ++i) {
@@ -36,7 +41,7 @@ contract IntentVault {
                     IERC20(token).safeTransfer(claimant, balance);
                 }
             } else {
-                require(amount >= balance, "IntentVault: insufficient balance");
+                require(amount >= balance, "IntentVault: insufficient token balance");
 
                 IERC20(token).safeTransfer(claimant, amount);
                 if (balance > amount) {
@@ -48,7 +53,7 @@ contract IntentVault {
         if (claimant != reward.creator && reward.nativeValue > 0) {
             require(
                 address(this).balance >= reward.nativeValue,
-                "IntentVault: insufficient balance"
+                "IntentVault: insufficient native balance"
             );
 
             (bool success, ) = payable(claimant).call{value: reward.nativeValue}("");
