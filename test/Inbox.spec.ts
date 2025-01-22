@@ -1,12 +1,12 @@
-import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
+import type { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestMailbox, TestProver } from '../typechain-types'
+import type { TestERC20, Inbox, TestMailbox, TestProver, TestRouter, ReadOperation, TestMetalayerProver } from '../typechain-types'
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { DataHexString } from 'ethers/lib.commonjs/utils/data'
+import type { DataHexString } from 'ethers/lib.commonjs/utils/data'
 import { encodeTransfer, encodeTransferNative } from '../utils/encode'
 import { keccak256, toBeHex } from 'ethers'
 
@@ -1019,6 +1019,109 @@ describe('Inbox Test', (): void => {
         )
         expect(await mailbox.dispatched()).to.be.true
       })
+    })
+  })
+
+  describe('metalayer proving', () => {
+    let dummyMetalayerProver: TestMetalayerProver
+    let testRouter: TestRouter
+
+    beforeEach(async () => {
+      dummyMetalayerProver = await (
+        await ethers.getContractFactory('TestMetalayerProver')
+      ).deploy()
+      testRouter = await (
+        await ethers.getContractFactory('TestRouter')
+      ).deploy(await dummyMetalayerProver.getAddress())
+      await inbox.connect(owner).setRouter(await testRouter.getAddress())
+      expect(await testRouter.dispatched()).to.be.false
+
+      await erc20.connect(solver).transfer(await inbox.getAddress(), mintAmount)
+    })
+
+    it('fulfills metalayer instant', async () => {
+      const reads: ReadOperation[] = []
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillMetalayerInstant(
+            sourceChainID,
+            [erc20Address],
+            [calldata],
+            timeStamp,
+            nonce,
+            dstAddr.address,
+            intentHash,
+            await dummyMetalayerProver.getAddress(),
+            reads,
+            {
+              value: 1234, // Any value since TestRouter doesn't enforce fees
+            },
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+        .to.emit(inbox, 'MetalayerInstantFulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.recipientAddress()).to.eq(
+        await dummyMetalayerProver.getAddress(),
+      )
+      expect(await testRouter.messageBody()).to.eq(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ['bytes32[]', 'address[]'],
+          [[intentHash], [dstAddr.address]],
+        ),
+      )
+      expect(await testRouter.dispatched()).to.be.true
+    })
+
+    it('fulfills metalayer instant with reads', async () => {
+      const reads: ReadOperation[] = [{
+        sourceChainId: 1,
+        sourceContract: ethers.Wallet.createRandom().address,
+        callData: '0x1234'
+      }]
+
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillMetalayerInstant(
+            sourceChainID,
+            [erc20Address],
+            [calldata],
+            timeStamp,
+            nonce,
+            dstAddr.address,
+            intentHash,
+            await dummyMetalayerProver.getAddress(),
+            reads,
+            {
+              value: 1234, // Any value since TestRouter doesn't enforce fees
+            },
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+        .to.emit(inbox, 'MetalayerInstantFulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.recipientAddress()).to.eq(
+        await dummyMetalayerProver.getAddress(),
+      )
+      expect(await testRouter.messageBody()).to.eq(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ['bytes32[]', 'address[]'],
+          [[intentHash], [dstAddr.address]],
+        ),
+      )
+      const storedRead = await testRouter.reads(0)
+      expect(storedRead.sourceChainId).to.eq(reads[0].sourceChainId)
+      expect(storedRead.sourceContract).to.eq(reads[0].sourceContract)
+      expect(storedRead.callData).to.eq(reads[0].callData)
+      expect(await testRouter.dispatched()).to.be.true
     })
   })
 })

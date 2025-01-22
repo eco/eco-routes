@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "./interfaces/IInbox.sol";
+import "./interfaces/IMetalayerRouter.sol";
 import "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -25,6 +26,9 @@ contract Inbox is IInbox, Ownable {
 
     // address of local hyperlane mailbox
     address public mailbox;
+
+    // address of local metalayer router
+    address public router;
 
     // Is solving public
     bool public isSolvingPublic;
@@ -396,6 +400,18 @@ contract Inbox is IInbox, Ownable {
     }
 
     /**
+     * @notice allows the owner to set the metalayer router
+     * @param _router the address of the router
+     * @dev this can only be called once, to initialize the router, and should be called at time of deployment
+     */
+    function setRouter(address _router) public onlyOwner {
+        if (router == address(0)) {
+            router = _router;
+            emit RouterSet(_router);
+        }
+    }
+
+    /**
      * @notice makes solving public if it is restricted
      * @dev solving cannot be made private once it is made public
      */
@@ -503,6 +519,66 @@ contract Inbox is IInbox, Ownable {
                     )
                 )
             );
+    }
+
+    /**
+     * @notice Fulfills an intent to be proven immediately via Metalayer's router.
+     * @param _sourceChainID the chainID of the source chain
+     * @param _targets The addresses upon which {_data} will be executed, respectively
+     * @param _data The calldata to be executed on {_targets}, respectively
+     * @param _expiryTime The timestamp at which the intent expires
+     * @param _nonce The nonce of the calldata. Composed of the hash on the source chain of a global nonce & chainID
+     * @param _claimant The address that will receive the reward on the source chain
+     * @param _expectedHash The hash of the intent as created on the source chain
+     * @param _prover The address of the metalayer prover on the source chain
+     * @param _reads Array of read operations to perform
+     * @return the fulfilled results
+     */
+    function fulfillMetalayerInstant(
+        uint256 _sourceChainID,
+        address[] calldata _targets,
+        bytes[] calldata _data,
+        uint256 _expiryTime,
+        bytes32 _nonce,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover,
+        ReadOperation[] memory _reads
+    ) external payable returns (bytes[] memory) {
+        bytes32[] memory hashes = new bytes32[](1);
+        address[] memory claimants = new address[](1);
+        hashes[0] = _expectedHash;
+        claimants[0] = _claimant;
+
+        bytes memory messageBody = abi.encode(hashes, claimants);
+
+        emit MetalayerInstantFulfillment(_expectedHash, _sourceChainID, _claimant);
+
+        bytes[] memory results = _fulfill(
+            _sourceChainID,
+            _targets,
+            _data,
+            _expiryTime,
+            _nonce,
+            _claimant,
+            _expectedHash
+        );
+
+        IMetalayerRouter(router).dispatch{value: msg.value}(
+            uint32(_sourceChainID),
+            _prover,
+            _reads,
+            messageBody
+        );
+
+        // TODO: Enable fee support for Metalayer instant fulfillment
+        // uint256 expectedFee = fetchMetalayerFee(...);
+        // if (msg.value > expectedFee) {
+        //     (bool success, ) = payable(msg.sender).call{value: msg.value - expectedFee}("");
+        //     require(success, "Native transfer failed.");
+        // }
+
+        return results;
     }
 
     receive() external payable {}

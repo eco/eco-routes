@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Semver, ISemver} from "../libs/Semver.sol";
+import {ReadOperation} from "./IMetalayerRecipient.sol";
 
 interface IInbox is ISemver {
     // Event emitted when an intent is succesfully fulfilled
@@ -41,6 +42,16 @@ interface IInbox is ISemver {
 
     // Event emitted when a change is made to the solver whitelist
     event SolverWhitelistChanged(address indexed _solver, bool indexed _canSolve);
+
+    // Event emitted when an intent is fulfilled with the instant metalayer prover path
+    event MetalayerInstantFulfillment(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
+
+    // Event emitted when Metalayer Router is set
+    event RouterSet(address indexed _router);
 
     // Error thrown when solving intents is not public and a non-whitelisted address made a solve attempt
     error UnauthorizedSolveAttempt(address _solver);
@@ -158,4 +169,30 @@ interface IInbox is ISemver {
         address _prover,
         bytes32[] calldata _intentHashes
     ) external payable;
+
+    /**
+     * Same as above but with the added _prover parameter. This fulfill method is used to fulfill an intent that is proving with the MetalayerProver and wishes to prove immediately.
+     * @param _sourceChainID The chainID of the source chain
+     * @param _targets The array of addresses to call
+     * @param _data The array of calldata
+     * @param _expiryTime The timestamp at which the intent expires
+     * @param _nonce The nonce of the calldata. Composed of the hash on the src chain of a global nonce & chainID
+     * @param _claimant The address who can claim the reward on the src chain. Not part of the hash
+     * @param _expectedHash The hash a solver should expect to be generated from the params above.
+     * @dev this is a guardrail to make sure solves dont accidentally solve intents that cannot be proven.
+     * @param _prover The prover against which this intent will be checked
+     * @param _reads Array of read operations to perform
+     * @return results The results of the calls as an array of bytes
+     */
+    function fulfillMetalayerInstant(
+        uint256 _sourceChainID,
+        address[] calldata _targets,
+        bytes[] calldata _data,
+        uint256 _expiryTime,
+        bytes32 _nonce,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover,
+        ReadOperation[] memory _reads
+    ) external payable returns (bytes[] memory);
 }
