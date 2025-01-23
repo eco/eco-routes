@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { createFile, getJsonFromFile } from '../deploy/addresses'
+import { pick } from 'lodash'
 
 export const buildFolder = 'build'
 export const tsBuildFolder = 'buildTs'
@@ -42,7 +43,8 @@ export function generateBuildPckJson() {
 export function packageBuildTs() {
   const original = getJsonFromFile(outputPath) as any
   original.name = original.name + '-ts'
-  delete original.dependencies
+  const keepDeps  = pick(original.dependencies, ['viem'])
+  original.dependencies = keepDeps
   createFile(outputTsPath)
   fs.writeFileSync(outputTsPath, JSON.stringify(original, null, 2), 'utf8')
 }
