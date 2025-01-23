@@ -7,6 +7,7 @@ import {
   Abi,
   ContractFunctionArgs,
   encodeFunctionData,
+  decodeAbiParameters,
 } from 'viem'
 import { extractAbiStruct } from './utils'
 import { IntentSourceAbi, IntentVaultBytecode, InboxAbi } from '../abi'
@@ -25,17 +26,33 @@ export type ExtractAbiFunctions<abi extends Abi> = Extract<
 type GetIntentHashFunction = Extract<
   ExtractAbiFunctions<typeof IntentSourceAbi>,
   { name: 'getIntentHash' }
+>['inputs'][number]
+
+type GetIntentHashFunctionComponents = Extract<
+  ExtractAbiFunctions<typeof IntentSourceAbi>,
+  { name: 'getIntentHash' }
 >['inputs'][number]['components'][number]
 
 /**
- * The Route struct type
+ * The Route struct abi
  */
-type Route = Extract<GetIntentHashFunction, { name: 'route' }>['components']
+type Route = Extract<
+  GetIntentHashFunctionComponents,
+  { name: 'route' }
+>['components']
 
 /**
- * The Reward struct type
+ * The Reward struct abi
  */
-type Reward = Extract<GetIntentHashFunction, { name: 'reward' }>['components']
+type Reward = Extract<
+  GetIntentHashFunctionComponents,
+  { name: 'reward' }
+>['components']
+
+/**
+ * The Intent struct abi
+ */
+type Intent = Extract<GetIntentHashFunction, { name: 'intent' }>['components']
 
 /**
  * The Route struct object in the IntentSource ABI
@@ -54,9 +71,17 @@ const RewardStruct = extractAbiStruct<typeof IntentSourceAbi, Reward>(
 )
 
 /**
+ * The Reward struct object in the IntentSource ABI
+ */
+const IntentStruct = extractAbiStruct<typeof IntentSourceAbi, Intent>(
+  IntentSourceAbi,
+  'intent',
+)
+
+/**
  * Define the type for the Intent struct in the IntentSource
  */
-export type IntentViewType = ContractFunctionArgs<
+export type IntentType = ContractFunctionArgs<
   typeof IntentSourceAbi,
   'pure',
   'getIntentHash'
@@ -65,30 +90,43 @@ export type IntentViewType = ContractFunctionArgs<
 /**
  * Define the type for the Route struct in IntentSource
  */
-export type RouteViemType = IntentViewType['route']
+export type RouteType = IntentType['route']
 
 /**
  * Define the type for the Reward struct in IntentSource
  */
-export type RewardViemType = IntentViewType['reward']
+export type RewardType = IntentType['reward']
 
 /**
  * Encodes the route parameters
  * @param route the route to encode
  * @returns
  */
-export function encodeRoute(route: RouteViemType) {
+export function encodeRoute(route: RouteType) {
   return encodeAbiParameters(
     [{ type: 'tuple', components: RouteStruct }],
     [route],
   )
 }
+
+/**
+ * Decodes the route hex
+ * @param route the route to decode
+ * @returns
+ */
+export function decodeRoute(route: Hex): RouteType {
+  return decodeAbiParameters(
+    [{ type: 'tuple', components: RouteStruct }],
+    route,
+  )[0]
+}
+
 /**
  * Encodes the reward parameters
  * @param reward the reward to encode
  * @returns
  */
-export function encodeReward(reward: RewardViemType) {
+export function encodeReward(reward: RewardType) {
   return encodeAbiParameters(
     [{ type: 'tuple', components: RewardStruct }],
     [reward],
@@ -96,15 +134,39 @@ export function encodeReward(reward: RewardViemType) {
 }
 
 /**
+ * Decodes the reward hex
+ * @param reward the reward to decode
+ * @returns
+ */
+export function decodeReward(reward: Hex): RewardType {
+  return decodeAbiParameters(
+    [{ type: 'tuple', components: RewardStruct }],
+    reward,
+  )[0]
+}
+
+/**
  * Encodes the intent parameters
  * @param intent the intent to encode
  * @returns
  */
-export function encodeIntent(intent: IntentViewType) {
+export function encodeIntent(intent: IntentType) {
   return encodePacked(
     ['bytes32', 'bytes32'],
     [encodeRoute(intent.route), encodeReward(intent.reward)],
   )
+}
+
+/**
+ * Decodes the intent hex
+ * @param intent the intent to decode
+ * @returns
+ */
+export function decodeIntent(intent: Hex): IntentType {
+  return decodeAbiParameters(
+    [{ type: 'tuple', components: IntentStruct }],
+    intent,
+  )[0]
 }
 
 /**
@@ -125,7 +187,7 @@ export function encodeTransferNative(to: Hex, value: bigint): Hex {
  * @param route the route to hash
  * @returns
  */
-export function hashRoute(route: RouteViemType): Hex {
+export function hashRoute(route: RouteType): Hex {
   return keccak256(encodeRoute(route))
 }
 
@@ -134,7 +196,7 @@ export function hashRoute(route: RouteViemType): Hex {
  * @param reward the reward to hash
  * @returns
  */
-export function hashReward(reward: RewardViemType): Hex {
+export function hashReward(reward: RewardType): Hex {
   return keccak256(encodeReward(reward))
 }
 
@@ -143,7 +205,7 @@ export function hashReward(reward: RewardViemType): Hex {
  * @param intent the intent to hash
  * @returns
  */
-export function hashIntent(intent: IntentViewType): {
+export function hashIntent(intent: IntentType): {
   routeHash: Hex
   rewardHash: Hex
   intentHash: Hex
@@ -170,7 +232,7 @@ export function hashIntent(intent: IntentViewType): {
  */
 export function intentVaultAddress(
   intentSourceAddress: Hex,
-  intent: IntentViewType,
+  intent: IntentType,
 ): Hex {
   const { routeHash } = hashIntent(intent)
 
