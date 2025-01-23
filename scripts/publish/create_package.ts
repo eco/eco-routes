@@ -43,7 +43,7 @@ export function generateBuildPckJson() {
 export function packageBuildTs() {
   const original = getJsonFromFile(outputPath) as any
   original.name = original.name + '-ts'
-  const keepDeps  = pick(original.dependencies, ['viem'])
+  const keepDeps = pick(original.dependencies, ['viem'])
   original.dependencies = keepDeps
   createFile(outputTsPath)
   fs.writeFileSync(outputTsPath, JSON.stringify(original, null, 2), 'utf8')
