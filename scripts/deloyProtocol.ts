@@ -20,6 +20,7 @@ export type DeployNetwork = {
     counter: number
   }
   hyperlaneMailboxAddress: Hex
+  metalayerRouterAddress: Hex
   network: string
   pre: boolean // whether this is a pre deployment to a network, think preproduction
   chainId: number
@@ -47,6 +48,7 @@ export type ProtocolDeploy = {
   intentSourceAddress: Hex
   inboxAddress: Hex
   hyperProverAddress: Hex
+  metalayerProverAddress: Hex
   initialSalt: string
 }
 
@@ -56,6 +58,7 @@ export function getEmptyProtocolDeploy(): ProtocolDeploy {
     intentSourceAddress: zeroAddress,
     inboxAddress: zeroAddress,
     hyperProverAddress: zeroAddress,
+    metalayerProverAddress: zeroAddress,
     initialSalt: getGitHash(), // + Math.random().toString(), // randomize the salt for development as singletonDeployer.deploy(..) will fail if salt is already used
   }
 }
@@ -127,6 +130,19 @@ export async function deployProtocol(
       singletonDeployer,
     )) as Hex
   }
+
+  if (
+    isZeroAddress(protocolDeploy.metalayerProverAddress) &&
+    !isZeroAddress(protocolDeploy.inboxAddress)
+  ) {
+    protocolDeploy.metalayerProverAddress = (await deployMetalayerProver(
+      deployNetwork,
+      protocolDeploy.inboxAddress,
+      salt,
+      singletonDeployer,
+    )) as Hex
+  }
+
   // deploy preproduction contracts
   if (options.deployPre) {
     deployNetwork.pre = true
@@ -244,9 +260,17 @@ export async function deployInbox(
   }, ethers.provider)) as any as Inbox
 
   await retryFunction(async () => {
-    return await inbox
+    await inbox
       .connect(inboxOwnerSigner)
       .setMailbox(deployNetwork.hyperlaneMailboxAddress, {
+        gasLimit: deployNetwork.gasLimit,
+      })
+  }, ethers.provider)
+
+  await retryFunction(async () => {
+    await inbox
+      .connect(inboxOwnerSigner)
+      .setRouter(deployNetwork.metalayerRouterAddress, {
         gasLimit: deployNetwork.gasLimit,
       })
   }, ethers.provider)
@@ -286,4 +310,38 @@ export async function deployHyperProver(
   addJsonAddress(deployNetwork, `${contractName}`, hyperProverAddress)
   verifyContract(ethers.provider, contractName, hyperProverAddress, args)
   return hyperProverAddress
+}
+
+export async function deployMetalayerProver(
+  deployNetwork: DeployNetwork,
+  inboxAddress: Hex,
+  deploySalt: string,
+  singletonDeployer: Deployer,
+) {
+  const contractName = 'MetalayerProver'
+  const metalayerProverFactory = await ethers.getContractFactory(contractName)
+  const args = [deployNetwork.metalayerRouterAddress, inboxAddress]
+  const metalayerProverTx = (await retryFunction(async () => {
+    return await metalayerProverFactory.getDeployTransaction(
+      args[0] as Address,
+      args[1] as Address,
+    )
+  }, ethers.provider)) as unknown as ContractTransactionResponse
+
+  await retryFunction(async () => {
+    return await singletonDeployer.deploy(metalayerProverTx.data, deploySalt, {
+      gasLimit: deployNetwork.gasLimit,
+    })
+  }, ethers.provider)
+
+  const metalayerProverAddress = ethers.getCreate2Address(
+    singletonFactoryAddress,
+    deploySalt,
+    ethers.keccak256(metalayerProverTx.data),
+  ) as Hex
+
+  console.log(`${contractName} deployed to:`, metalayerProverAddress)
+  addJsonAddress(deployNetwork, `${contractName}`, metalayerProverAddress)
+  verifyContract(ethers.provider, contractName, metalayerProverAddress, args)
+  return metalayerProverAddress
 }
