@@ -23,7 +23,7 @@ interface IIntentSource is ISemver {
      * @notice Thrown when attempting to withdraw from an intent with already claimed rewards
      * @param _hash Hash of the intent
      */
-    error NothingToWithdraw(bytes32 _hash);
+    error RewardsAlreadyWithdrawn(bytes32 _hash);
 
     /**
      * @notice Thrown when target addresses and calldata arrays have mismatched lengths or are empty
@@ -91,8 +91,9 @@ interface IIntentSource is ISemver {
      * @notice Status of an intent's reward claim
      */
     enum ClaimStatus {
-        NotClaimed,
-        Claimed
+        Initiated,
+        Claimed,
+        Refunded
     }
 
     /**
@@ -232,7 +233,7 @@ interface IIntentSource is ISemver {
      * @param intent Intent to validate
      * @return True if rewards are valid and funded
      */
-    function validateIntent(
+    function isIntentFunded(
         Intent calldata intent
     ) external view returns (bool);
 

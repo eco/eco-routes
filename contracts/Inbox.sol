@@ -181,7 +181,6 @@ contract Inbox is IInbox, Ownable, Semver {
     /**
      * @notice Fulfills an intent to be proven in a batch via Hyperlane's mailbox
      * @dev Less expensive but slower than hyperinstant. Batch dispatched when sendBatch is called.
-     * Not currently supported by Eco's solver services
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
