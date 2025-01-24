@@ -346,7 +346,7 @@ describe('Intent Source Test', (): void => {
             .connect(otherPerson)
             .refundIntent(routeHash, reward, ZeroAddress),
         )
-          .to.emit(intentSource, 'Withdrawal')
+          .to.emit(intentSource, 'Refund')
           .withArgs(intentHash, reward.creator)
       })
     })
@@ -1002,9 +1002,9 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [])
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       // Check vault balance
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
@@ -1042,9 +1042,9 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [])
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       // Check vault balances
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
@@ -1079,9 +1079,9 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [])
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.false
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.false
 
       // Check vault balance reflects partial funding
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount / 2)
@@ -1107,11 +1107,11 @@ describe('Intent Source Test', (): void => {
       // Fund the intent with native value
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [], {
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress, {
           value: nativeAmount,
         })
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       // Check vault native balance
       expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
@@ -1132,12 +1132,12 @@ describe('Intent Source Test', (): void => {
       await expect(
         intentSource
           .connect(creator)
-          .fundIntent(routeHash, reward, creator.address, []),
+          .fundIntent(routeHash, reward, creator.address, [], ZeroAddress),
       )
         .to.emit(intentSource, 'IntentFunded')
         .withArgs(intentHash, creator.address)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
     })
 
     it('should handle permit calls correctly', async () => {
@@ -1169,11 +1169,15 @@ describe('Intent Source Test', (): void => {
       // Fund the intent with permit call
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, await intentSource.getAddress(), [
-          permitCall,
-        ])
+        .fundIntent(
+          routeHash,
+          reward,
+          await intentSource.getAddress(),
+          [permitCall],
+          ZeroAddress,
+        )
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       await expect(
         intentSource.connect(creator).publishIntent({ route, reward }, false),
@@ -1209,9 +1213,9 @@ describe('Intent Source Test', (): void => {
 
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [])
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       const vaultAddress = await intentSource.intentVaultAddress({
         route,
@@ -1240,9 +1244,9 @@ describe('Intent Source Test', (): void => {
       // Should not transfer additional tokens since vault is already funded
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [])
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
 
-      expect(await intentSource.validateIntent({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       const vaultAddress = await intentSource.intentVaultAddress({
         route,

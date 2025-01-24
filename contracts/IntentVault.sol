@@ -34,7 +34,7 @@ contract IntentVault is IIntentVault {
             intentHash
         );
         address claimant = state.claimant;
-        address refundToken = intentSource.getVaultRefundToken();
+        address refundToken = intentSource.getRefundToken();
 
         // Ensure intent has expired if there's no claimant
         if (claimant == address(0) && block.timestamp < reward.deadline) {
