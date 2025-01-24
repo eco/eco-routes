@@ -41,10 +41,10 @@ contract IntentVault is IIntentVault {
             revert IntentNotExpired();
         }
 
-        // Default to creator as claimant if expired or already claimed
+        // Withdrawing to creator if intent is expired or already claimed/refunded
         if (
             (claimant == address(0) && block.timestamp >= reward.deadline) ||
-            state.status == uint8(IIntentSource.ClaimStatus.Claimed)
+            state.status != uint8(IIntentSource.ClaimStatus.Initiated)
         ) {
             claimant = reward.creator;
         }
@@ -107,9 +107,4 @@ contract IntentVault is IIntentVault {
         // Self-destruct and send remaining ETH to creator
         selfdestruct(payable(reward.creator));
     }
-
-    /**
-     * @notice Allows the contract to receive native currency
-     */
-    receive() external payable {}
 }
