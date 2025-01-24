@@ -151,10 +151,7 @@ export function decodeReward(reward: Hex): RewardType {
  * @returns
  */
 export function encodeIntent(intent: IntentType) {
-  return encodePacked(
-    ['bytes32', 'bytes32'],
-    [encodeRoute(intent.route), encodeReward(intent.reward)],
-  )
+  return encodePacked(IntentStruct, [intent.route, intent.reward])
 }
 
 /**
