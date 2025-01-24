@@ -67,10 +67,6 @@ export async function getContractCreation(
 }
 
 export async function verifyContract(ver: VerifyContractType) {
-  if (ver) {
-    console.log('Verify disabled...')
-    return
-  }
   if (!ETHERSCAN_API_KEY) {
     throw new Error('ETHERSCAN_API_KEY not found')
   }
