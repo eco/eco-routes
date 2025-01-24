@@ -16,9 +16,11 @@ env COMPILE_MODE=production npm run build
 
 mkdirp build/src/abi/contracts
 mkdirp build/src/abi/interfaces
+mkdirp build/src/utils
 
 cp artifacts/contracts/**/*.json build/src/abi/contracts
 cp artifacts/contracts/interfaces/**/*.json build/src/abi/interfaces
+cp scripts/viem_deploy/assets/utils/**.ts build/src/utils
 
 rsync -av --include '*/*.sol' --exclude 'test' --exclude 'build' --exclude  'README.md' --exclude 'tools' contracts/ build/src
 
@@ -32,7 +34,6 @@ echo "Move tsconfig, README.md and LICENSE to build"
 cp tsconfig.json build/
 cp README.md build/
 cp LICENSE build/
-
 
 
 

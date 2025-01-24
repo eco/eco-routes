@@ -20,6 +20,7 @@ import {
 } from './git.utils'
 import { compareSemverIntegerStrings } from './utils'
 import { rimrafSync } from 'rimraf'
+import { getGitHashShort } from '../publish/gitUtils'
 
 // Directory containing Solidity contract files
 const contractsDir = path.join(__dirname, '../../contracts')
@@ -123,7 +124,7 @@ export class ProtocolVersion {
 
   // Returns the version of the protocol
   getVersion(): string {
-    return semver.stringify(this.version)
+    return this.version.version || semver.stringify(this.version)
   }
 
   /**
@@ -143,10 +144,10 @@ export class ProtocolVersion {
    */
   updateVersionInSolidityFiles(
     dir: string = contractsDir,
-    version: string = semver.stringify(this.version),
+    version: string = this.getVersion(),
   ) {
     const files = fs.readdirSync(dir)
-
+    const gitHash = getGitHashShort()
     files.forEach((file) => {
       const filePath = path.join(dir, file)
       const stat = fs.statSync(filePath)
@@ -156,8 +157,8 @@ export class ProtocolVersion {
       } else if (filePath.endsWith('.sol')) {
         let content = fs.readFileSync(filePath, 'utf8')
         const versionRegex =
-          /function version\(\) internal pure returns \(string memory\) \{[^}]*\}/
-        const newVersionFunction = `function version() internal pure returns (string memory) { return "${version}"; }`
+          /function version\(\) external pure returns \(string memory\) \{[^}]*\}/
+        const newVersionFunction = `function version() external pure returns (string memory) { return "${version}-${gitHash}"; }`
         content = content.replace(versionRegex, newVersionFunction)
         fs.writeFileSync(filePath, content, 'utf8')
         console.log(`Updated Version in ${filePath}`)
@@ -170,7 +171,7 @@ export class ProtocolVersion {
    *
    */
   updatePackageJsonVersion() {
-    const version = semver.stringify(this.version)
+    const version = this.getVersion()
     // Update the version in package.json
     const packageJsonPath = path.join(__dirname, '../../package.json')
     const packageJson = fs.readFileSync(packageJsonPath, 'utf8')

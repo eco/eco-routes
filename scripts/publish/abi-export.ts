@@ -7,6 +7,8 @@ import * as path from 'path'
  */
 type AbiFile = {
   abi: any[]
+  bytecode: string
+  deployedBytecode: string
   contractName: string
   sourceName: string
 }
@@ -33,6 +35,8 @@ dirs.forEach((abiDir) => {
     const abiFile = JSON.parse(fileContent)
     acc.push({
       abi: abiFile.abi,
+      bytecode: abiFile.bytecode,
+      deployedBytecode: abiFile.deployedBytecode,
       contractName: abiFile.contractName,
       sourceName: abiFile.sourceName,
     })
@@ -44,9 +48,14 @@ dirs.forEach((abiDir) => {
   const indexFilePath = path.join(abiDir, 'index.ts')
   // Generate the TypeScript code
   data.forEach((abiFile: AbiFile) => {
-    const name = `${abiFile.contractName}Abi`
+    const abi = `${abiFile.contractName}Abi`
+    const bytecode = `${abiFile.contractName}Bytecode`
+    const deployedBytecode = `${abiFile.contractName}DeployedBytecode`
     indexContent += `export * from './${abiFile.contractName}'\n`
-    const outputContent = `export const ${name} = ${JSON.stringify(abiFile.abi, null, 2)} as const\n`
+    const outputContent =
+      `export const ${abi} = ${JSON.stringify(abiFile.abi, null, 2)} as const\n\n` +
+      `export const ${bytecode} = "${abiFile.bytecode}"\n\n` +
+      `export const ${deployedBytecode} = "${abiFile.deployedBytecode}"\n`
     const filePath = path.join(abiDir, `${abiFile.contractName}.ts`)
     fs.writeFileSync(filePath, outputContent, 'utf-8')
   })
