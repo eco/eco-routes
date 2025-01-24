@@ -80,7 +80,7 @@ export function transformAddresses() {
   console.log('Transforming addresses into typescript index.ts file')
   const name = 'EcoProtocolAddresses'
   const addresses = JSON.parse(fs.readFileSync(jsonFilePath, 'utf-8'))
-  const importsExports = `export * from './abi'\n`
+  const importsExports = `export * from './abi'\nexport * from './utils'\n`
   const types = `
 // Viem Hex like type
 type Hex = \`0x\${string}\`

@@ -173,10 +173,9 @@ export class ProtocolDeploy {
    * @param opts deploy options
    */
   async deployIntentSource(chain: Chain, salt: Hex, opts?: DeployOpts) {
-    const config = getDeployChainConfig(chain)
     const params = {
       ...getConstructorArgs(chain, 'IntentSource'),
-      args: [config.intentSource.counter],
+      args: [],
     }
     await this.deployAndVerifyContract(chain, salt, params, opts)
   }
@@ -354,7 +353,7 @@ export class ProtocolDeploy {
           constructorArguements: args,
           contractname: name,
           contractaddress: deployedAddress,
-          contractFilePath: `contracts/${name}.sol`,
+          contractFilePath: `${parameters.path}/${name}.sol`,
         }),
       )
 

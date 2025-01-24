@@ -43,22 +43,33 @@ describe('ProtocolVersion Tests', () => {
   })
   describe('on constructor', () => {
     it('should set the version to that given arg', () => {
-      expect(new ProtocolVersion('1.0.0').getVersion()).toEqual('1.0.0-latest')
-      expect(new ProtocolVersion('v1.0.0').getVersion()).toEqual('1.0.0-latest')
-      expect(new ProtocolVersion('1.0.0-latest').getVersion()).toEqual(
-        '1.0.0-latest',
-      )
-      expect(new ProtocolVersion('v1.0.0-latest').getVersion()).toEqual(
-        '1.0.0-latest',
-      )
-      expect(new ProtocolVersion('1.0.0-beta').getVersion()).toEqual(
-        '1.0.0-beta',
-      )
-      expect(new ProtocolVersion('v1.0.0-beta').getVersion()).toEqual(
-        '1.0.0-beta',
-      )
-      expect(new ProtocolVersion('1.0.0-rc').getVersion()).toEqual('1.0.0-rc')
-      expect(new ProtocolVersion('v1.0.0-rc').getVersion()).toEqual('1.0.0-rc')
+      let pv = new ProtocolVersion('1.0.0')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('latest')
+
+      pv = new ProtocolVersion('1.0.0-latest')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('latest')
+
+      pv = new ProtocolVersion('1.0.0-latest')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('latest')
+
+      pv = new ProtocolVersion('1.0.0-beta')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('beta')
+
+      pv = new ProtocolVersion('v1.0.0-beta')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('beta')
+
+      pv = new ProtocolVersion('1.0.0-rc')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('rc')
+
+      pv = new ProtocolVersion('v1.0.0-rc')
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('rc')
     })
 
     it('should throw if given version arg that is invalid', () => {
@@ -72,9 +83,13 @@ describe('ProtocolVersion Tests', () => {
 
     it('should set the version to the tag to env if not given', () => {
       process.env.GITHUB_REF = 'refs/tags/v1.0.0'
-      expect(new ProtocolVersion().getVersion()).toEqual('1.0.0-latest')
+      let pv = new ProtocolVersion()
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('latest')
       process.env.GITHUB_REF = 'refs/tags/v1.0.0-beta'
-      expect(new ProtocolVersion().getVersion()).toEqual('1.0.0-beta')
+      pv = new ProtocolVersion()
+      expect(pv.getVersion()).toEqual('1.0.0')
+      expect(pv.getReleaseTag()).toEqual('beta')
     })
 
     it('should throw if version tag from env is invalid', () => {

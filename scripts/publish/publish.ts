@@ -31,7 +31,7 @@ async function publishTs(ops: any = TsBetaPublishOps) {
 async function main() {
   const pv = new ProtocolVersion()
   const tag = pv.getReleaseTag()
-  publish({ tag, cwd: 'build' })
+  await publish({ tag, cwd: 'build' })
   await publishTs({ tag, cwd: 'buildTs' })
 }
 
