@@ -101,7 +101,7 @@ export namespace s {
     IL1Block__factory.abi,
     optimismProvider,
   )
-  export const optimimsmmainnetL2L1MessageParserContract = new Contract(
+  export const optimismmainnetL2L1MessageParserContract = new Contract(
     networks.optimism.proving.l2l1MessageParserAddress,
     L2ToL1MessagePasserArtifact.abi,
     optimismProvider,
