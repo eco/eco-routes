@@ -24,10 +24,19 @@ import {IntentVault} from "./IntentVault.sol";
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
 
+    /// The mapping of an intent's hash to the state of claim to its rewards
     mapping(bytes32 intentHash => ClaimState) public claims;
 
+    /**
+     * @notice The address of the funding source for a given IntentFunder
+     * @dev This field has no persistent value - it is set and reset over the course of a single transaction
+     */
     address public fundingSource;
 
+    /**
+     * @notice The address of a token to refund from a vault in case of accidental or excess deposits
+     * @dev This field has no persistent value - it is set and reset over the course of a single transaction
+     */
     address public refundToken;
 
     constructor() {}
