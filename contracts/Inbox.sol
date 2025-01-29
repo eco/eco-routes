@@ -17,8 +17,6 @@ import {Semver} from "./libs/Semver.sol";
 contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
 
-    uint256 public constant MAX_BATCH_SIZE = 10;
-
     // Mapping of intent hash on the src chain to its fulfillment
     mapping(bytes32 => address) public fulfilled;
 
@@ -246,9 +244,6 @@ contract Inbox is IInbox, Ownable, Semver {
         address _postDispatchHook
     ) public payable {
         uint256 size = _intentHashes.length;
-        if (size > MAX_BATCH_SIZE) {
-            revert BatchTooLarge();
-        }
         address[] memory claimants = new address[](size);
         for (uint256 i = 0; i < size; i++) {
             address claimant = fulfilled[_intentHashes[i]];

@@ -535,28 +535,8 @@ describe('Inbox Test', (): void => {
       )
     })
     context('sendBatch', async () => {
-      it('should revert if number of intents exceeds MAX_BATCH_SIZE', async () => {
-        const i = intentHash
-        const hashes: string[] = [i, i, i, i, i, i, i, i, i, i, i, i, i, i]
-        expect(hashes.length).to.be.greaterThan(
-          Number(await inbox.MAX_BATCH_SIZE()),
-        )
-        await expect(
-          inbox
-            .connect(solver)
-            .sendBatch(
-              sourceChainID,
-              await mockHyperProver.getAddress(),
-              hashes,
-            ),
-        ).to.be.revertedWithCustomError(inbox, 'BatchTooLarge')
-        expect(await mailbox.dispatched()).to.be.false
-      })
       it('should revert if sending a batch containing an intent that has not been fulfilled', async () => {
         const hashes: string[] = [intentHash]
-        expect(hashes.length).to.be.lessThanOrEqual(
-          Number(await inbox.MAX_BATCH_SIZE()),
-        )
         await expect(
           inbox
             .connect(solver)

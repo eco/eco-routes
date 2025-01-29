@@ -142,11 +142,6 @@ interface IInbox is ISemver {
     error UnauthorizedTransferNative();
 
     /**
-     * @notice Batch size exceeds maximum limit
-     */
-    error BatchTooLarge();
-
-    /**
      * @notice Attempted to batch an unfulfilled intent
      * @param _hash Hash of the unfulfilled intent
      */
