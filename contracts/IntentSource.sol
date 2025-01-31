@@ -141,9 +141,11 @@ contract IntentSource is IIntentSource, Semver {
 
             payable(vault).transfer(nativeAmount);
 
-            if (msg.value > nativeAmount) {
+            uint256 currentBalance = address(this).balance;
+
+            if (currentBalance > 0) {
                 (bool success, ) = payable(msg.sender).call{
-                    value: msg.value - nativeAmount
+                    value: currentBalance
                 }("");
 
                 if (!success) {
@@ -227,9 +229,11 @@ contract IntentSource is IIntentSource, Semver {
 
                 payable(vault).transfer(reward.nativeValue);
 
-                if (msg.value > reward.nativeValue) {
+                uint256 currentBalance = address(this).balance;
+
+                if (currentBalance > 0) {
                     (bool success, ) = payable(msg.sender).call{
-                        value: msg.value - reward.nativeValue
+                        value: currentBalance
                     }("");
 
                     if (!success) {

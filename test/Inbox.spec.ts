@@ -393,6 +393,16 @@ describe('Inbox Test', (): void => {
       expect(await mailbox.dispatched()).to.be.false
     })
     it('fulfills hyper instant', async () => {
+      const initialBalance = await ethers.provider.getBalance(solver.address)
+
+      const feeAmount = await inbox.fetchFee(
+        sourceChainID,
+        ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+        calls[0].data,
+        calls[0].data,
+        ethers.ZeroAddress,
+      )
+      //send too much fee
       await expect(
         inbox
           .connect(solver)
@@ -403,15 +413,7 @@ describe('Inbox Test', (): void => {
             intentHash,
             await mockHyperProver.getAddress(),
             {
-              value: Number(
-                await inbox.fetchFee(
-                  sourceChainID,
-                  ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
-                  calls[0].data,
-                  calls[0].data,
-                  ethers.ZeroAddress,
-                ),
-              ),
+              value: feeAmount + ethers.parseEther('.1'),
             },
           ),
       )
@@ -419,6 +421,11 @@ describe('Inbox Test', (): void => {
         .withArgs(intentHash, sourceChainID, dstAddr.address)
         .to.emit(inbox, 'HyperInstantFulfillment')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
+      //does extra fee come back?
+      expect(
+        (await ethers.provider.getBalance(solver.address)) >
+          initialBalance - feeAmount - ethers.parseEther('.1'),
+      ).to.be.true
 
       expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
       expect(await mailbox.recipientAddress()).to.eq(
@@ -654,7 +661,9 @@ describe('Inbox Test', (): void => {
                 ),
               },
             ),
-        ).to.not.be.reverted
+        )
+          .to.emit(inbox, 'BatchSent')
+          .withArgs(intentHash, sourceChainID)
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
           ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),

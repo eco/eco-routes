@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, ZeroAddress } from 'ethers'
+import { keccak256, BytesLike, ZeroAddress, EtherscanProvider } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -153,18 +153,36 @@ describe('Intent Source Test', (): void => {
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
     })
     it('creates properly with native token rewards', async () => {
-      await intentSource
-        .connect(creator)
-        .publishIntent(
-          { route, reward: { ...reward, nativeValue: rewardNativeEth } },
-          true,
-          { value: rewardNativeEth },
-        )
+      // send too much reward
+      const initialBalanceNative = await ethers.provider.getBalance(
+        creator.address,
+      )
+      await intentSource.connect(creator).publishIntent(
+        {
+          route,
+          reward: { ...reward, nativeValue: rewardNativeEth },
+        },
+        true,
+        { value: rewardNativeEth * BigInt(2) },
+      )
       expect(
         await intentSource.isIntentFunded({
           route,
           reward: { ...reward, nativeValue: rewardNativeEth },
         }),
+      ).to.be.true
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward: { ...reward, nativeValue: rewardNativeEth },
+      })
+      // checks to see that the excess reward is refunded
+      expect(await ethers.provider.getBalance(vaultAddress)).to.eq(
+        rewardNativeEth,
+      )
+
+      expect(
+        (await ethers.provider.getBalance(creator.address)) >
+          initialBalanceNative - BigInt(2) * rewardNativeEth,
       ).to.be.true
     })
     it('increments counter and locks up tokens', async () => {
@@ -1104,11 +1122,14 @@ describe('Intent Source Test', (): void => {
         reward,
       })
 
+      const initialBalanceNative = await ethers.provider.getBalance(
+        creator.getAddress(),
+      )
       // Fund the intent with native value
       await intentSource
         .connect(creator)
         .fundIntent(routeHash, reward, creator.address, [], ZeroAddress, {
-          value: nativeAmount,
+          value: nativeAmount * BigInt(2),
         })
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
@@ -1117,6 +1138,11 @@ describe('Intent Source Test', (): void => {
       expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
         nativeAmount,
       )
+
+      expect(
+        (await ethers.provider.getBalance(creator.address)) >
+          initialBalanceNative - BigInt(2) * nativeAmount,
+      ).to.be.true
     })
 
     it('should emit IntentFunded event', async () => {

@@ -147,13 +147,14 @@ contract Inbox is IInbox, Ownable, Semver {
             _claimant,
             _expectedHash
         );
-        uint256 nativeBalance = address(this).balance;
-        if (nativeBalance < fee) {
+
+        uint256 currentBalance = address(this).balance;
+        if (currentBalance < fee) {
             revert InsufficientFee(fee);
         }
-        if (nativeBalance > fee) {
+        if (currentBalance > fee) {
             (bool success, ) = payable(msg.sender).call{
-                value: nativeBalance - fee
+                value: currentBalance - fee
             }("");
             if (!success) {
                 revert NativeTransferFailed();
@@ -252,6 +253,9 @@ contract Inbox is IInbox, Ownable, Semver {
             }
             claimants[i] = claimant;
         }
+
+        emit BatchSent(_intentHashes, _sourceChainID);
+
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
         uint256 fee = fetchFee(

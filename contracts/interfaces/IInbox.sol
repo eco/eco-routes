@@ -64,6 +64,13 @@ interface IInbox is ISemver {
 
     /**
      * @notice Emitted when intent solving is made public
+     * @param _hashes the intent hashes sent in the batch
+     * @param _sourceChainID ID of the source chain
+     */
+    event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
+
+    /**
+     * @notice Emitted when intent solving is made public
      */
     event SolvingIsPublic();
 
