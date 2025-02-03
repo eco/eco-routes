@@ -18,9 +18,7 @@
 
 ## Abstract
 
-An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-L2 transactions.
-
-**Warning: This code has not been audited. Use at your own risk.**
+An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of crosschain transactions.
 
 - [Intent Creation / Settlement](#intent-creation--settlement)
 - [Intent Fulfillment / Execution](#intent-fulfillment--execution)
@@ -28,25 +26,28 @@ An intents-driven, permissionless, trust-neutral protocol for facilitating the c
 
 We identify three main user profiles:
 
-- `Users`: Individuals who want to transact across different L2s.
-- `Fillers`: Individuals interested in performing transactions on behalf of others for a fee.
+- `Users`: Individuals who want to transact across chains.
+- `Solvers`: Individuals interested in performing transactions on behalf of others for a fee.
 - `Provers`: Individuals interested in proving on the source chain that an intent was fulfilled on the destination chain.
 
 ### How it works
 
-A `User` initiates a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, and the price they'd be willing to pay someone to execute this call on their behalf, along with other metadata. Seeing this intent and being enticed by the fee they'd receive, a `Filler` creates and executes a fulfill transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Filler` themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent proven, the filler can withdraw their reward.
+A `User` (or someone on the `User`'s behalf) initiates a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, and the price they'd be willing to pay someone to execute this call on their behalf, along with other metadata. Seeing this intent and being enticed by the fee they'd receive, a `Solver` creates and executes a fulfill transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Solver` themselves or a service they subscribe to - attests to the fact that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent proven, the `Solver` can withdraw their reward.
+
 
 ## Components
 
-Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox`, and `Prover`s.
+Within the following sections, the terms `source chain` and `destination chain` will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox`, and `Prover`s.
 
-### Intent Creation / Settlement
+## Intent Funding
 
-Intent creation and filler settlement processes both exist on the `IntentSource` on the source chain, and is where the full intent lifecycle will start and end. Both `Users` and `Fillers` interact with this contract, Users to create intents and `Fillers` to claim their reward after fulfillment has been proven.
+### Intent Publishing / Settlement
+
+Intent creation and settlement processes both exist on the `IntentSource` on the source chain. Both `Users` and `Solvers` interact with this contract, Users to create intents and `Solvers` to claim their reward after fulfillment has been proven.
 
 ### Intent Fulfillment / Execution
 
-Intent fulfillment lives on the `Inbox`, which lives on the destination chain. `Fillers` interact with this contract to `fulfill` Users' intents. At time of launch solving may be private, restricted only to a whitelisted set of filler addresses while we live test the system, but it will soon become possible for anyone to fill orders.
+Intent fulfillment lives on the `Inbox`, which lives on the destination chain. `Solvers` interact with this contract to solve `User`s' intents. At time of launch solving may be private, restricted only to a whitelisted set of solver addresses while we live test the system, but it will soon become possible for anyone to fulfill orders.
 
 ### Intent Proving
 
