@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+ /* solhint-disable no-inline-assembly */
 // EIP-2470
 pragma solidity ^0.8.26; // originally 0.6.2
 

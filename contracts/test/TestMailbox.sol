@@ -1,10 +1,10 @@
 /* -*- c-basic-offset: 4 -*- */
+ /* solhint-disable gas-custom-errors */
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
-import "@hyperlane-xyz/core/contracts/libs/Message.sol";
-import "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
-import "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
+import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
 
 contract TestMailbox {
     using TypeCasts for bytes32;
@@ -26,7 +26,7 @@ contract TestMailbox {
 
     bool public dispatchedWithRelayer;
 
-    uint256 public constant fee = 100000;
+    uint256 public constant FEE = 100000;
 
     constructor(address _processor) {
         processor = _processor;
@@ -46,7 +46,7 @@ contract TestMailbox {
             process(_messageBody);
         }
 
-        if (msg.value < fee) {
+        if (msg.value < FEE) {
             revert("no");
         }
 
@@ -72,7 +72,7 @@ contract TestMailbox {
             process(_messageBody);
         }
 
-        if (msg.value < fee) {
+        if (msg.value < FEE) {
             revert("no");
         }
 
@@ -92,7 +92,7 @@ contract TestMailbox {
         bytes32,
         bytes calldata
     ) public pure returns (bytes32) {
-        return bytes32(fee);
+        return bytes32(FEE);
     }
 
     function quoteDispatch(
@@ -102,6 +102,6 @@ contract TestMailbox {
         bytes calldata,
         address
     ) public pure returns (bytes32) {
-        return bytes32(fee);
+        return bytes32(FEE);
     }
 }

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+ /* solhint-disable immutable-vars-naming, avoid-tx-origin, gas-custom-errors */
 // from cupeyes/deployer
 pragma solidity ^0.8.26; //initially ^0.6.0
 
