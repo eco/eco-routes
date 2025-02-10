@@ -18,7 +18,7 @@ import {
   Intent,
 } from '../utils/intent'
 
-describe('Intent Source Test', (): void => {
+describe.only('Intent Source Test', (): void => {
   let intentSource: IntentSource
   let prover: TestProver
   let inbox: Inbox
@@ -360,10 +360,10 @@ describe('Intent Source Test', (): void => {
       })
       it('allows refund if already claimed', async () => {
         expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
+          await intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         )
-          .to.emit(intentSource, 'Withdrawal')
-          .withArgs(intentHash, reward.creator)
+        .to.emit(intentSource, 'Withdrawal')
+        .withArgs(intentHash, reward.creator)
 
         await expect(
           intentSource
@@ -1291,6 +1291,33 @@ describe('Intent Source Test', (): void => {
         reward,
       })
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+    })
+    it('should handle overfunded vaults', async () => {
+        rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+        reward = {
+          creator: creator.address,
+          prover: await prover.getAddress(),
+          deadline: expiry,
+          nativeValue: 0n,
+          tokens: rewardTokens,
+        }
+        await intentSource.connect(creator).publishIntent({ route, reward }, true)
+
+        expect (await intentSource.isIntentFunded({ route, reward })).to.be.true
+
+        await tokenA.connect(creator).mint(creator.address, mintAmount)
+        await tokenA.connect(creator).approve(intentSource, mintAmount)
+
+        // send more tokens
+        const intentVaultAddress = await intentSource.intentVaultAddress({ route, reward })
+        await tokenA.connect(creator).transfer(intentVaultAddress, mintAmount)
+
+        //mark as proven
+        const hash = (await intentSource.getIntentHash({ route, reward }))[0]
+        await prover.addProvenIntent(hash, await claimant.getAddress())
+
+        await intentSource.connect(claimant).withdrawRewards(routeHash, reward)
     })
   })
 })

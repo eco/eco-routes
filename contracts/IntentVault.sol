@@ -67,7 +67,7 @@ contract IntentVault is IIntentVault {
                 }
             } else {
                 // For solver claims, verify sufficient balance and send reward amount
-                if (amount < balance) {
+                if (balance < amount) {
                     revert InsufficientTokenBalance();
                 }
 

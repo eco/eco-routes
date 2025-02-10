@@ -74,6 +74,9 @@ typechain/
 .DS_Store
 tmp/
 
+# Nishaad's poke script
+executeInstructions.ts
+
 
 #Publish artifacts
 package
