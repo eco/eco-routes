@@ -1,6 +1,7 @@
 import {
   arbitrumChainConfiguration,
   baseChainConfiguration,
+  curtisTestnetChainConfiguration,
   mantleChainConfiguration,
   optimismChainConfiguration,
 } from './mainnet.config'
@@ -25,4 +26,5 @@ export const MainnetChainConfigs = {
   // helixChainConfiguration,
   arbitrumChainConfiguration,
   mantleChainConfiguration,
+  curtisTestnetChainConfiguration,
 }

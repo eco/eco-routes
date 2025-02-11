@@ -56,6 +56,7 @@
     "vulnerability": "slither . --exclude-informational --exclude-low --exclude-medium 2>&1 | sed -r 's/\\x1B\\[([0-9]{1,3}(;[0-9]{1,2};?)?)?[mGK]//g' | tee  ./docs/slither/vulnerability.txt",
     "contractSummary": "slither --print contract-summary . 2>&1 | tee ./docs/slither/contract-summary.txt",
     "Testnet": "-------- Testnet scripts below",
+    "deployCurtis": "hardhat run --network curtisTestnet scripts/mainnet/deploy.ts",
     "deployEcoTestnet": "hardhat run --network ecoTestnet scripts/testnet/deploy.ts",
     "deployBaseSepolia": "hardhat run --network baseSepolia scripts/testnet/deploy.ts",
     "deployOptimismSepolia": "hardhat run --network optimismSepoliaBlockscout scripts/testnet/deploy.ts",

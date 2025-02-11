@@ -119,6 +119,11 @@ const config: HardhatUserConfig = {
       url: `https://polygon-amoy.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
       accounts: [DEPLOYER_PRIVATE_KEY],
     },
+    curtisTestnet: {
+      chainId: 33111,
+      url: `https://curtis.rpc.caldera.xyz/http`,
+      accounts: [DEPLOYER_PRIVATE_KEY],
+    },
   },
   etherscan: {
     apiKey: {
@@ -137,6 +142,7 @@ const config: HardhatUserConfig = {
       mantleSepolia: process.env.MANTLE_SCAN_API_KEY || '',
       polygon: process.env.POLYGON_SCAN_API_KEY || '',
       polygonSepolia: process.env.POLYGON_SCAN_API_KEY || '',
+      curtisTestnet: 'DummyKey',
     },
     customChains: [
       {
@@ -217,6 +223,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: 'https://api-amoy.polygonscan.com/api',
           browserURL: 'https://amoy.polygonscan.com/',
+        },
+      },
+      {
+        network: 'curtisTestnet',
+        chainId: 33111,
+        urls: {
+          apiURL: 'https://curtis.explorer.caldera.xyz/api',
+          browserURL: 'https://curtis.explorer.caldera.xyz',
         },
       },
     ],

@@ -60,3 +60,16 @@ export const mantleChainConfiguration: DeployNetworkConfig = {
     finalityDelaySeconds: 604800,
   },
 }
+
+export const curtisTestnetChainConfiguration: DeployNetworkConfig = {
+  chainId: networks.curtisTestnet.chainId, // chainId
+  chainConfiguration: {
+    provingMechanism: networks.curtisTestnet.proving.mechanism, // provingMechanism
+    settlementChainId: networks.curtisTestnet.proving.settlementChain.id, // settlementChainId
+    settlementContract: networks.curtisTestnet.proving.settlementChain.contract, // settlementContract e.g DisputGameFactory or L2OutputOracle.
+    blockhashOracle: networks.curtisTestnet.proving.l1BlockAddress, // blockhashOracle
+    outputRootVersionNumber:
+      networks.curtisTestnet.proving.outputRootVersionNumber, // outputRootVersionNumber
+    finalityDelaySeconds: 0,
+  },
+}

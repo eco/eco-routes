@@ -22,13 +22,14 @@ const networkIds: any = {
   arbitrumSepolia: 421614,
   mantleSepolia: 5003,
   polygonSepolia: 80002,
+  curtisTestnet: 33111,
   11155111: 'sepolia',
   11155420: 'optimismSepolia',
   84532: 'baseSepolia',
   471923: 'ecoTestnet',
   421614: 'arbitrumSepolia',
   5003: 'mantleSepolia',
-  80002: 'polygonSepolia',
+  33111: 'curtisTestnet',
 }
 
 // const enshrined: any = {
@@ -261,6 +262,33 @@ const networks: Record<any, DeployDisputeNetworkConfig> = {
     usdcAddress: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
     hyperlaneMailboxAddress: '0x5d934f4e2f797775e53561bB72aca21ba36B96BB',
     gasLimit: 30000000,
+  },
+  curtisTestnet: {
+    network: 'curtisTestnet',
+    chainId: networkIds.curtisTestnet,
+    proverContractAddress: '',
+    hyperProverContractAddress: '',
+    intentSourceAddress: '',
+    inboxAddress: '',
+    intentSource: {
+      counter: 0,
+    },
+    usdcAddress: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+    hyperlaneMailboxAddress: '0x3C5154a193D6e2955650f9305c8d80c18C814A68',
+    metalayerRouterAddress: '0xC41de2A4243e4304813c36Cd8952366DCb36106a',
+    gasLimit: 30000000,
+
+    proving: {
+      mechanism: provingMechanisms.cannon,
+      l1BlockAddress: '0x4200000000000000000000000000000000000015',
+      l2l1MessageParserAddress: '0x4200000000000000000000000000000000000016',
+      outputRootVersionNumber: 0,
+      settlementChain: {
+        network: 'sepolia',
+        id: networkIds.sepolia,
+        contract: '0x05F9613aDB30026FFd634f38e5C4dFd30a197Fa1',
+      },
+    },
   },
 }
 // TODO Update Bedrock with from BaseSepolia to ECOTestNet
