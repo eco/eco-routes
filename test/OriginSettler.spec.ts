@@ -47,7 +47,8 @@ describe('Origin Settler Test', (): void => {
   let chainId: number
   let routeTokens: TokenAmount[]
   let calls: Call[]
-  let expiry: number
+  let expiry_open: number
+  let expiry_fill: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
   let rewardTokens: TokenAmount[]
   let route: Route
@@ -144,7 +145,8 @@ describe('Origin Settler Test', (): void => {
 
   describe('performs actions', async () => {
     beforeEach(async (): Promise<void> => {
-      expiry = (await time.latest()) + 123
+      expiry_open = (await time.latest()) + 12345
+      expiry_fill = expiry_open + 12345
       chainId = 1
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
@@ -174,7 +176,7 @@ describe('Origin Settler Test', (): void => {
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
-        deadline: expiry,
+        deadline: expiry_fill,
         nativeValue: rewardNativeEth,
         tokens: rewardTokens,
       }
@@ -193,7 +195,7 @@ describe('Origin Settler Test', (): void => {
       }
 
       onchainCrosschainOrder = {
-        fillDeadline: expiry,
+        fillDeadline: expiry_fill,
         orderDataType: onchainCrosschainOrderDataTypehash,
         orderData: await encodeOnchainCrosschainOrderData(
           onchainCrosschainOrderData,
@@ -215,8 +217,8 @@ describe('Origin Settler Test', (): void => {
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
-        openDeadline: expiry,
-        fillDeadline: expiry,
+        openDeadline: expiry_open,
+        fillDeadline: expiry_fill,
         orderDataType: gaslessCrosschainOrderDataTypehash,
         orderData: await encodeGaslessCrosschainOrderData(
           gaslessCrosschainOrderData,
@@ -251,8 +253,8 @@ describe('Origin Settler Test', (): void => {
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         ),
-        openDeadline: expiry,
-        fillDeadline: expiry,
+        openDeadline: expiry_open,
+        fillDeadline: expiry_fill,
         orderDataType: gaslessCrosschainOrderDataTypehash,
         orderDataHash: keccak256(
           await encodeGaslessCrosschainOrderData(gaslessCrosschainOrderData),
@@ -295,7 +297,7 @@ describe('Origin Settler Test', (): void => {
             calls.map(Object.values),
             await creator.getAddress(),
             await prover.getAddress(),
-            expiry,
+            expiry_fill,
             reward.nativeValue,
             rewardTokens.map(Object.values),
           )
@@ -317,7 +319,7 @@ describe('Origin Settler Test', (): void => {
         )
         expect(resolvedOrder.openDeadline).to.eq(
           onchainCrosschainOrder.fillDeadline,
-        )
+        ) //for onchainCrosschainOrders openDeadline is the same as fillDeadline, since openDeadline is meaningless due to it being opened by the creator
         expect(resolvedOrder.fillDeadline).to.eq(
           onchainCrosschainOrder.fillDeadline,
         )
@@ -399,6 +401,29 @@ describe('Origin Settler Test', (): void => {
             reward: { ...reward, nativeValue: reward.nativeValue },
           }),
         ).to.be.true
+      })
+      it('errors if openFor is called when openDeadline has passed', async () => {
+        await time.increaseTo(expiry_open + 1)
+        await expect(
+          originSettler
+            .connect(otherPerson)
+            .openFor(gaslessCrosschainOrder, signature, '0x', {
+              value: rewardNativeEth,
+            }),
+        ).to.be.revertedWithCustomError(originSettler, 'OpenDeadlinePassed')
+      })
+      it('errors if signature does not match', async () => {
+        //TODO investigate why this sometimes reverts with our custom error BadSignature and othere times with ECDSAInvalidSignature
+        await expect(
+          originSettler
+            .connect(otherPerson)
+            .openFor(
+              gaslessCrosschainOrder,
+              signature.replace('1', '0'),
+              '0x',
+              { value: rewardNativeEth },
+            ),
+        ).to.be.reverted
       })
       it('resolvesFor gaslessCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =

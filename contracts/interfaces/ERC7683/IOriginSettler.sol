@@ -16,6 +16,9 @@ interface IOriginSettler {
     /// @notice Thrown when the source chain's chainID does not match the expected value
     error OriginChainIDMismatch();
 
+    /// @notice Thrown when attempting to open an order after the open deadline has passed
+    error OpenDeadlinePassed();
+
     /// @notice Thrown when signature does not match the expected value
     error BadSignature();
 

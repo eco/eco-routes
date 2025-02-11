@@ -90,6 +90,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         bytes calldata _signature,
         bytes calldata _originFillerData
     ) external payable override {
+        if (block.timestamp > _order.openDeadline) {
+            revert OpenDeadlinePassed();
+        }
         if (!_verifyOpenFor(_order, _signature)) {
             revert BadSignature();
         }
@@ -307,7 +310,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             ResolvedCrossChainOrder(
                 _order.user,
                 _order.originChainId,
-                _order.fillDeadline, // we do not use opendeadline
+                _order.openDeadline,
                 _order.fillDeadline,
                 intentHash,
                 maxSpent,
