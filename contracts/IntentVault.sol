@@ -37,13 +37,13 @@ contract IntentVault is IIntentVault {
         address refundToken = intentSource.getRefundToken();
 
         // Ensure intent has expired if there's no claimant
-        if (claimant == address(0) && block.timestamp < reward.deadline) {
+        if (claimant == address(0) && block.timestamp <= reward.deadline) {
             revert IntentNotExpired();
         }
 
         // Withdrawing to creator if intent is expired or already claimed/refunded
         if (
-            (claimant == address(0) && block.timestamp >= reward.deadline) ||
+            (claimant == address(0) && block.timestamp > reward.deadline) ||
             state.status != uint8(IIntentSource.ClaimStatus.Initiated)
         ) {
             claimant = reward.creator;
