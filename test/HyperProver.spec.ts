@@ -20,6 +20,11 @@ describe('HyperProver Test', (): void => {
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
+  enum MessageType {
+    STANDARD = 0,
+    COMPRESSED = 1,
+  }
+
   async function deployHyperproverFixture(): Promise<{
     inbox: Inbox
     token: TestERC20
@@ -96,6 +101,12 @@ describe('HyperProver Test', (): void => {
         ['bytes32[]', 'address[]'],
         [[intentHash], [claimantAddress]],
       )
+
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.STANDARD, msgBody],
+      )
+
       expect(await hyperProver.provenIntents(intentHash)).to.eq(
         ethers.ZeroAddress,
       )
@@ -105,7 +116,7 @@ describe('HyperProver Test', (): void => {
           .handle(
             12345,
             ethers.zeroPadValue(await inbox.getAddress(), 32),
-            msgBody,
+            msg,
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
@@ -171,11 +182,16 @@ describe('HyperProver Test', (): void => {
         ['bytes32[]', 'address[]'],
         [[intentHash], [await claimant.getAddress()]],
       )
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.STANDARD, msgbody],
+      )
+
       const fee = await inbox.fetchFee(
         sourceChainID,
         ethers.zeroPadValue(await hyperProver.getAddress(), 32),
-        msgbody,
-        msgbody, // does nothing if postDispatchHook is the zero address
+        msg,
+        msg, // does nothing if postDispatchHook is the zero address
         ethers.ZeroAddress,
       )
       await expect(
@@ -201,13 +217,14 @@ describe('HyperProver Test', (): void => {
         ['bytes32[]', 'address[]'],
         [[intentHash], [claimantAddress]],
       )
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.STANDARD, msgBody],
+      )
+
       await hyperProver
         .connect(owner)
-        .handle(
-          12345,
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          msgBody,
-        )
+        .handle(12345, ethers.zeroPadValue(await inbox.getAddress(), 32), msg)
 
       await expect(
         hyperProver
@@ -215,7 +232,7 @@ describe('HyperProver Test', (): void => {
           .handle(
             12345,
             ethers.zeroPadValue(await inbox.getAddress(), 32),
-            msgBody,
+            msg,
           ),
       )
         .to.emit(hyperProver, 'IntentAlreadyProven')
@@ -236,6 +253,10 @@ describe('HyperProver Test', (): void => {
           [claimantAddress, otherAddress],
         ],
       )
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.STANDARD, msgBody],
+      )
 
       await expect(
         hyperProver
@@ -243,7 +264,7 @@ describe('HyperProver Test', (): void => {
           .handle(
             12345,
             ethers.zeroPadValue(await inbox.getAddress(), 32),
-            msgBody,
+            msg,
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
@@ -374,11 +395,16 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.STANDARD, msgbody],
+      )
+
       const fee = await inbox.fetchFee(
         sourceChainID,
         ethers.zeroPadValue(await hyperProver.getAddress(), 32),
-        msgbody,
-        msgbody, // does nothing if postDispatchHook is the zero address
+        msg,
+        msg, // does nothing if postDispatchHook is the zero address
         ethers.ZeroAddress,
       )
 
@@ -395,6 +421,213 @@ describe('HyperProver Test', (): void => {
         .to.emit(hyperProver, `IntentProven`)
         .withArgs(intentHash0, await claimant.getAddress())
         .to.emit(hyperProver, `IntentProven`)
+        .withArgs(intentHash1, await claimant.getAddress())
+
+      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
+        await claimant.getAddress(),
+      )
+      expect(await hyperProver.provenIntents(intentHash1)).to.eq(
+        await claimant.getAddress(),
+      )
+    })
+  })
+
+  describe('Valid Compressed Batched', () => {
+    let hyperProver: HyperProver
+
+    beforeEach(async () => {
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(await owner.getAddress(), await inbox.getAddress())
+    })
+
+    it('should emit RootHashUnavailable if batch was already proven', async () => {
+      const intentHash = ethers.sha256('0x')
+      const claimantAddress = await claimant.getAddress()
+      const hashes = [intentHash]
+      const claimats = [claimantAddress]
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [hashes, claimats],
+      )
+      const rootHash = ethers.keccak256(msgBody)
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.COMPRESSED, rootHash],
+      )
+      const inboxAddress = ethers.zeroPadValue(await inbox.getAddress(), 32)
+
+      await expect(
+        await hyperProver.connect(owner).handle(12345, inboxAddress, msg),
+      )
+        .to.emit(hyperProver, 'RootHashReceived')
+        .withArgs(rootHash)
+
+      // Prove intents
+      await hyperProver.connect(owner).proveCompressedBatch(hashes, claimats)
+
+      await expect(
+        hyperProver.connect(owner).proveCompressedBatch(hashes, claimats),
+      ).to.be.revertedWithCustomError(hyperProver, 'RootHashUnavailable')
+    })
+
+    it('should work with a batch', async () => {
+      const hashes = [ethers.sha256('0x'), ethers.sha256('0x1337')]
+      const claimats = [await claimant.getAddress(), await solver.getAddress()]
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [hashes, claimats],
+      )
+      const rootHash = ethers.keccak256(msgBody)
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.COMPRESSED, rootHash],
+      )
+
+      const inboxAddress = ethers.zeroPadValue(await inbox.getAddress(), 32)
+
+      await hyperProver.connect(owner).handle(12345, inboxAddress, msg)
+
+      await expect(
+        hyperProver.connect(owner).proveCompressedBatch(hashes, claimats),
+      )
+        .to.emit(hyperProver, 'IntentProven')
+        .withArgs(hashes[0], claimats[0])
+        .to.emit(hyperProver, 'IntentProven')
+        .withArgs(hashes[1], claimats[1])
+    })
+
+    it('should work end to end', async () => {
+      await inbox.connect(owner).setMailbox(await dispatcher.getAddress())
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(await dispatcher.getAddress(), await inbox.getAddress())
+      await token.mint(solver.address, 2 * amount)
+
+      const sourceChainID = 12345
+      const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      const timeStamp = (await time.latest()) + 1000
+
+      const createRoute = async (saltString: string) => ({
+        salt: ethers.encodeBytes32String(saltString),
+        source: sourceChainID,
+        destination: Number(
+          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+        ),
+        inbox: await inbox.getAddress(),
+        calls: [{ target: await token.getAddress(), data: calldata, value: 0 }],
+      })
+
+      const createReward = async (deadlineOffset = 1000) => ({
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + deadlineOffset,
+        nativeValue: 1n,
+        tokens: [],
+      })
+
+      const [route0, reward0] = [
+        await createRoute('0x987'),
+        await createReward(),
+      ]
+      const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
+        route: route0,
+        reward: reward0,
+      })
+
+      const fulfillData0 = [
+        route0,
+        rewardHash0,
+        await claimant.getAddress(),
+        intentHash0,
+        await hyperProver.getAddress(),
+      ]
+      await token.connect(solver).transfer(await inbox.getAddress(), amount)
+
+      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
+        ethers.ZeroAddress,
+      )
+      await expect(inbox.connect(solver).fulfillHyperBatched(...fulfillData0))
+        .to.emit(inbox, 'AddToBatch')
+        .withArgs(
+          intentHash0,
+          sourceChainID,
+          await claimant.getAddress(),
+          await hyperProver.getAddress(),
+        )
+
+      const [route1, reward1] = [
+        await createRoute('0x1234'),
+        await createReward(),
+      ]
+      const { intentHash: intentHash1, rewardHash: rewardHash1 } = hashIntent({
+        route: route1,
+        reward: reward1,
+      })
+      const fulfillData1 = [
+        route1,
+        rewardHash1,
+        await claimant.getAddress(),
+        intentHash1,
+        await hyperProver.getAddress(),
+      ]
+
+      await token.connect(solver).transfer(await inbox.getAddress(), amount)
+      await expect(inbox.connect(solver).fulfillHyperBatched(...fulfillData1))
+        .to.emit(inbox, 'AddToBatch')
+        .withArgs(
+          intentHash1,
+          sourceChainID,
+          await claimant.getAddress(),
+          await hyperProver.getAddress(),
+        )
+      expect(await hyperProver.provenIntents(intentHash1)).to.eq(
+        ethers.ZeroAddress,
+      )
+
+      const hashes = [intentHash0, intentHash1]
+      const claimants = [
+        await claimant.getAddress(),
+        await claimant.getAddress(),
+      ]
+
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [hashes, claimants],
+      )
+      const rootHash = ethers.keccak256(msgBody)
+      const msg = abiCoder.encode(
+        ['uint8', 'bytes'],
+        [MessageType.COMPRESSED, rootHash],
+      )
+
+      const fee = await inbox.fetchFee(
+        sourceChainID,
+        ethers.zeroPadValue(await hyperProver.getAddress(), 32),
+        msg,
+        msg,
+        ethers.ZeroAddress,
+      )
+
+      await expect(
+        inbox
+          .connect(solver)
+          .sendCompressedBatch(
+            sourceChainID,
+            await hyperProver.getAddress(),
+            hashes,
+            { value: fee },
+          ),
+      )
+        .to.emit(hyperProver, 'RootHashReceived')
+        .withArgs(rootHash)
+
+      await expect(
+        hyperProver.connect(solver).proveCompressedBatch(hashes, claimants),
+      )
+        .to.emit(hyperProver, 'IntentProven')
+        .withArgs(intentHash0, await claimant.getAddress())
+        .to.emit(hyperProver, 'IntentProven')
         .withArgs(intentHash1, await claimant.getAddress())
 
       expect(await hyperProver.provenIntents(intentHash0)).to.eq(

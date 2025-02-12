@@ -5,13 +5,14 @@ import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessa
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
+import {MessageEncoder} from "../libs/MessageEncoder.sol";
 
 /**
  * @title HyperProver
  * @notice Prover implementation using Hyperlane's cross-chain messaging system
  * @dev Processes proof messages from Hyperlane mailbox and records proven intents
  */
-contract HyperProver is IMessageRecipient, BaseProver, Semver {
+contract HyperProver is IMessageRecipient, BaseProver, Semver, MessageEncoder {
     using TypeCasts for bytes32;
 
     /**
@@ -25,6 +26,24 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
      * @param _intentHash Hash of the already proven intent
      */
     event IntentAlreadyProven(bytes32 _intentHash);
+
+    /**
+     * @notice Emitted when a root hash is received
+     * @param rootHash Hash of batch of intents
+     */
+    event RootHashReceived(bytes32 rootHash);
+
+    /**
+     * @notice Message type not valid
+     * @param messageType Message type
+     */
+    error InvalidMessageType(MessageType messageType);
+
+    /**
+     * @notice Root hash not received yet or was already claimed
+     * @param calculatedRootHash root hash generated from input
+     */
+    error RootHashUnavailable(bytes32 calculatedRootHash);
 
     /**
      * @notice Unauthorized call to handle() detected
@@ -48,6 +67,9 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
      */
     address public immutable INBOX;
 
+    // Mapping of root hashes received
+    mapping(bytes32 => bool) public rootHashes;
+
     /**
      * @notice Initializes the HyperProver contract
      * @param _mailbox Address of local Hyperlane mailbox
@@ -63,12 +85,12 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
      * @dev Processes batch updates to proven intents from valid sources
      * param _origin Origin chain ID (unused but required by interface)
      * @param _sender Address that dispatched the message on source chain
-     * @param _messageBody Encoded array of intent hashes and claimants
+     * @param _message Encoded array of intent hashes and claimants
      */
     function handle(
         uint32,
         bytes32 _sender,
-        bytes calldata _messageBody
+        bytes calldata _message
     ) public payable {
         // Verify message is from authorized mailbox
         if (MAILBOX != msg.sender) {
@@ -82,12 +104,73 @@ contract HyperProver is IMessageRecipient, BaseProver, Semver {
             revert UnauthorizedDispatch(sender);
         }
 
+        (MessageType messageType, bytes memory messageBody) = _decodeMessage(
+            _message
+        );
+
+        if (messageType == MessageType.STANDARD) {
+            return handleStandardMessage(messageBody);
+        } else if (messageType == MessageType.COMPRESSED) {
+            return handleCompressedMessage(messageBody);
+        } else {
+            revert InvalidMessageType(messageType);
+        }
+    }
+
+    /**
+     * @dev Handles the details of how to handle standard messages.
+     * @param message The bytes memory type message.
+     */
+    function handleStandardMessage(bytes memory message) internal {
         // Decode message containing intent hashes and claimants
         (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
-            _messageBody,
+            message,
             (bytes32[], address[])
         );
 
+        proveBatch(hashes, claimants);
+    }
+
+    /**
+     * @dev Handles the details of how to handle compressed messages.
+     * @param _messageBody The body of the message in bytes memory type.
+     */
+    function handleCompressedMessage(bytes memory _messageBody) internal {
+        bytes32 rootHash = abi.decode(_messageBody, (bytes32));
+        rootHashes[rootHash] = true;
+        emit RootHashReceived(rootHash);
+    }
+
+    /**
+     * @dev Proves the entire batch from the compressed message.
+     * @param hashes Array consisting all intent hashes.
+     * @param claimants Array consisting all intent claimants.
+     */
+    function proveCompressedBatch(
+        bytes32[] memory hashes,
+        address[] memory claimants
+    ) external {
+        bytes32 rootHash = _getRootHash(hashes, claimants);
+
+        if (!rootHashes[rootHash]) {
+            revert RootHashUnavailable(rootHash);
+        }
+
+        // Remove root hash from mapping
+        rootHashes[rootHash] = false;
+
+        proveBatch(hashes, claimants);
+    }
+
+    /**
+     * @dev Proves the entire batch of given messages.
+     * @param hashes Array consisting all intent hashes.
+     * @param claimants Array consisting all intent claimants.
+     */
+    function proveBatch(
+        bytes32[] memory hashes,
+        address[] memory claimants
+    ) internal {
         // Process each intent proof
         for (uint256 i = 0; i < hashes.length; i++) {
             (bytes32 intentHash, address claimant) = (hashes[i], claimants[i]);
