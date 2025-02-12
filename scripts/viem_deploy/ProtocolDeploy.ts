@@ -142,8 +142,8 @@ export class ProtocolDeploy {
     console.log('Deploying with base salt : ' + JSON.stringify(salt))
     try {
       // await this.deployProver(chain, salt, opts)
-      await this.deployIntentSource(chain, salt, opts)
-      await this.deployInbox(chain, salt, true, opts)
+      await this.deployIntentSource(chain, salt, { pre: opts?.pre, deployType: 'create3', retry: true, })
+      await this.deployInbox(chain, salt, true, { pre: opts?.pre, deployType: 'create3', retry: true, })
     } catch (e) {
       console.error(`Failed to deploy contracts on ${chain.name}:`, e)
       console.error('Moving onto next chain...')
@@ -193,7 +193,7 @@ export class ProtocolDeploy {
     chain: Chain,
     salt: Hex,
     deployHyper: boolean,
-    opts: DeployOpts = { retry: true },
+    opts: DeployOpts = { deployType: 'create3', retry: true, pre: false },
   ) {
     const config = ViemDeployConfig[chain.id]
     const ownerAndSolver = this.account.address
