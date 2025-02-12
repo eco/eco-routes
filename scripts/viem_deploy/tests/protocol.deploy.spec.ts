@@ -186,7 +186,7 @@ describe('ProtocolDeployment Tests', () => {
     const mockInbox = jest.fn()
     const c = ds[0]
     const s = salts['salt']
-    const opts: DeployOpts = { deployType: 'create3' }
+    const opts: DeployOpts = { deployType: 'create3', retry: true }
 
     beforeEach(() => {
       mockGetClient.mockReturnValue({
