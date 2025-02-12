@@ -14,7 +14,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
-abstract contract Eco7683DestinationSettler is IDestinationSettler, IInbox {
+abstract contract Eco7683DestinationSettler is IDestinationSettler {
     using ECDSA for bytes32;
 
     /**
@@ -67,12 +67,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler, IInbox {
                 _fillerData,
                 (IProver.ProofType, address)
             );
-            IInbox(address(this)).fulfillStorage{value: msg.value}(
-                intent.route,
-                rewardHash,
-                claimant,
-                _orderId
-            );
+            fulfillStorage(intent.route, rewardHash, claimant, _orderId);
         } else if (proofType == IProver.ProofType.Hyperlane) {
             (
                 ,
@@ -83,9 +78,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler, IInbox {
                     _fillerData,
                     (IProver.ProofType, address, address, bytes)
                 );
-            IInbox(address(this)).fulfillHyperInstantWithRelayer{
-                value: msg.value
-            }(
+            fulfillHyperInstantWithRelayer(
                 intent.route,
                 rewardHash,
                 claimant,
@@ -98,4 +91,21 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler, IInbox {
             revert BadProver();
         }
     }
+
+    function fulfillStorage(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash
+    ) public payable virtual returns (bytes[] memory);
+
+    function fulfillHyperInstantWithRelayer(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover,
+        bytes memory _metadata,
+        address _postDispatchHook
+    ) public payable virtual returns (bytes[] memory);
 }
