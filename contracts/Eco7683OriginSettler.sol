@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "../types/ERC7683.sol";
-import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
-import {Intent, Reward, Route, Call, TokenAmount} from "../types/Intent.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "../types/EcoERC7683.sol";
-import {IntentSource} from "../IntentSource.sol";
-import {Semver} from "../libs/Semver.sol";
+import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
+import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
+import {Intent, Reward, Route, Call, TokenAmount} from "./types/Intent.sol";
+import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "./types/EcoERC7683.sol";
+import {IntentSource} from "./IntentSource.sol";
+import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";

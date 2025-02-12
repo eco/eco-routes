@@ -21,7 +21,7 @@ import {
   encodeOnchainCrosschainOrder,
 } from '../utils/EcoERC7683'
 
-describe.only('Destination Settler Test', (): void => {
+describe('Destination Settler Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
   let owner: SignerWithAddress
