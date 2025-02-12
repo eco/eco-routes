@@ -6,7 +6,6 @@ import {
   Inbox,
   TestMailbox,
   TestProver,
-  Eco7683DestinationSettler,
 } from '../typechain-types'
 import {
   time,
@@ -35,7 +34,6 @@ describe('Destination Settler Test', (): void => {
   let prover: TestProver
   let onchainCrosschainOrder: OnchainCrossChainOrderStruct
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
-  let destinationSettler: Eco7683DestinationSettler
   let fillerData: BytesLike
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
@@ -50,7 +48,6 @@ describe('Destination Settler Test', (): void => {
     inbox: Inbox
     prover: TestProver
     erc20: TestERC20
-    destinationSettler: Eco7683DestinationSettler
     owner: SignerWithAddress
     creator: SignerWithAddress
     solver: SignerWithAddress
@@ -65,9 +62,6 @@ describe('Destination Settler Test', (): void => {
     const prover = await (
       await ethers.getContractFactory('TestProver')
     ).deploy()
-    const destinationSettler = await (
-      await ethers.getContractFactory('Eco7683DestinationSettler')
-    ).deploy()
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -77,7 +71,6 @@ describe('Destination Settler Test', (): void => {
       inbox,
       prover,
       erc20,
-      destinationSettler,
       owner,
       creator,
       solver,
@@ -146,13 +139,14 @@ describe('Destination Settler Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, prover, erc20, destinationSettler, owner, creator, solver } =
+    ;({ inbox, prover, erc20, owner, creator, solver } =
       await loadFixture(deployInboxFixture))
     ;({ route, reward, intent, intentHash } = await createIntentDataNative(
       mintAmount,
       nativeAmount,
       timeDelta,
     ))
+
 
     onchainCrosschainOrderData = {
       route: route,
@@ -175,10 +169,10 @@ describe('Destination Settler Test', (): void => {
     expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
-    // transfer the tokens to the settler so it can process the transaction
+    // approves the tokens to the settler so it can process the transaction
     await erc20
       .connect(solver)
-      .transfer(await destinationSettler.getAddress(), mintAmount)
+      .approve(await inbox.getAddress(), mintAmount)
     const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
       onchainCrosschainOrder,
     )
@@ -187,7 +181,7 @@ describe('Destination Settler Test', (): void => {
       [0, solver.address],
     )
     expect(
-      await destinationSettler
+      await inbox
         .connect(solver)
         .fill(intentHash, onchainCrosschainOrderEncoded, fillerData, {
           value: nativeAmount,
@@ -204,7 +198,7 @@ describe('Destination Settler Test', (): void => {
     // transfer the tokens to the settler so it can process the transaction
     await erc20
       .connect(solver)
-      .transfer(await destinationSettler.getAddress(), mintAmount)
+      .approve(await inbox.getAddress(), mintAmount)
     const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
       onchainCrosschainOrder,
     )
@@ -213,7 +207,7 @@ describe('Destination Settler Test', (): void => {
       ['1', solver.address, ethers.ZeroAddress, '0x'],
     )
     expect(
-      await destinationSettler
+      await inbox
         .connect(solver)
         .fill(intentHash, onchainCrosschainOrderEncoded, fillerData, {
           value: nativeAmount + BigInt(120000), // add some extra to pay for hyperlane gas
