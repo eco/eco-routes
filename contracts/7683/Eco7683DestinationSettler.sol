@@ -5,7 +5,6 @@ pragma solidity ^0.8.26;
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "../types/ERC7683.sol";
 import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
 import {IDestinationSettler} from "../interfaces/ERC7683/IDestinationSettler.sol";
-import {IInbox} from "../interfaces/IInbox.sol";
 import {Intent, Reward, Route, TokenAmount} from "../types/Intent.sol";
 import {OnchainCrosschainOrderData} from "../types/EcoERC7683.sol";
 import {IntentSource} from "../IntentSource.sol";
@@ -93,14 +92,14 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
     }
 
     function fulfillStorage(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
     ) public payable virtual returns (bytes[] memory);
 
     function fulfillHyperInstantWithRelayer(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,

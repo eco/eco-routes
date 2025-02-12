@@ -11,7 +11,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IInbox} from "./interfaces/IInbox.sol";
 import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
-import "hardhat/console.sol";
 
 /**
  * @title Inbox
@@ -63,7 +62,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillStorage(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
@@ -96,7 +95,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstant(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
@@ -127,7 +126,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstantWithRelayer(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
@@ -390,7 +389,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      * @return Array of execution results
      */
     function _fulfill(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
@@ -425,7 +424,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         // Transfer ERC20 tokens to the inbox
         for (uint256 i = 0; i < routeTokenCount; ++i) {
             TokenAmount memory approval = _route.tokens[i];
-            console.log(msg.sender);
             IERC20(approval.token).safeTransferFrom(
                 msg.sender,
                 address(this),
@@ -437,7 +435,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes[] memory results = new bytes[](_route.calls.length);
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
-            Call calldata call = _route.calls[i];
+            Call memory call = _route.calls[i];
             if (call.target == mailbox) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();

@@ -147,9 +147,6 @@ describe.only('Destination Settler Test', (): void => {
       timeDelta,
     ))
 
-    console.log('solver:', solver.address)
-    console.log('inbox:', await inbox.getAddress())
-
 
     onchainCrosschainOrderData = {
       route: route,
@@ -176,7 +173,6 @@ describe.only('Destination Settler Test', (): void => {
     await erc20
       .connect(solver)
       .approve(await inbox.getAddress(), mintAmount)
-    console.log('inbox approval: ', await erc20.allowance(solver.address, await inbox.getAddress()))
     const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
       onchainCrosschainOrder,
     )
