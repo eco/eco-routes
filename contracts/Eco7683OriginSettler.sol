@@ -180,20 +180,27 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
         }
 
-        uint256 callCount = onchainCrosschainOrderData.route.calls.length;
-        FillInstruction[] memory fillInstructions = new FillInstruction[](
-            callCount
+        FillInstruction[] memory fillInstructions = new FillInstruction[](1);
+        fillInstructions[0] = FillInstruction(
+            uint64(onchainCrosschainOrderData.route.destination),
+            bytes32(bytes20(uint160(onchainCrosschainOrderData.route.inbox))),
+            _order.orderData
         );
 
-        for (uint256 j = 0; j < callCount; j++) {
-            fillInstructions[j] = FillInstruction(
-                uint64(onchainCrosschainOrderData.route.destination),
-                bytes32(
-                    bytes20(uint160(onchainCrosschainOrderData.route.inbox))
-                ),
-                abi.encode(onchainCrosschainOrderData.route.calls[j])
-            );
-        }
+        // uint256 callCount = onchainCrosschainOrderData.route.calls.length;
+        // FillInstruction[] memory fillInstructions = new FillInstruction[](
+        //     callCount
+        // );
+
+        // for (uint256 j = 0; j < callCount; j++) {
+        //     fillInstructions[j] = FillInstruction(
+        //         uint64(onchainCrosschainOrderData.route.destination),
+        //         bytes32(
+        //             bytes20(uint160(onchainCrosschainOrderData.route.inbox))
+        //         ),
+        //         abi.encode(onchainCrosschainOrderData.route.calls[j])
+        //     );
+        // }
 
         (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
             Intent(
