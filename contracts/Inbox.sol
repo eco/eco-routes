@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {Eco7683DestinationSettler} from "./7683/Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -17,7 +18,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity and executes calldata. Enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Ownable, Semver {
+contract Inbox is Eco7683DestinationSettler, Ownable, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 

@@ -2,25 +2,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
-import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
-import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
-import {Intent, Reward, Route, TokenAmount} from "./types/Intent.sol";
-import {OnchainCrosschainOrderData} from "./types/EcoERC7683.sol";
-import {IntentSource} from "./IntentSource.sol";
-import {Inbox} from "./Inbox.sol";
-import {IProver} from "./interfaces/IProver.sol";
-import {Semver} from "./libs/Semver.sol";
+import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "../types/ERC7683.sol";
+import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
+import {IDestinationSettler} from "../interfaces/ERC7683/IDestinationSettler.sol";
+import {IInbox} from "../interfaces/IInbox.sol";
+import {Intent, Reward, Route, TokenAmount} from "../types/Intent.sol";
+import {OnchainCrosschainOrderData} from "../types/EcoERC7683.sol";
+import {IntentSource} from "../IntentSource.sol";
+import {IProver} from "../interfaces/IProver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-contract Eco7683DestinationSettler is IDestinationSettler, Semver {
-    using ECDSA for bytes32;
 
-    uint256 constant MAX_UINT256 =
-        uint256(
-            0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-        );
+abstract contract Eco7683DestinationSettler is IDestinationSettler, IInbox {
+    using ECDSA for bytes32;
 
     /**
      * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
@@ -31,8 +26,6 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
 
     // address of local hyperlane mailbox
     error BadProver();
-
-    constructor() Semver() {}
 
     /**
      * @notice Fills a single leg of a particular order on the destination chain
@@ -65,18 +58,16 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
             )
         );
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        Inbox inbox = Inbox(payable(intent.route.inbox));
         IProver.ProofType proofType = abi.decode(
             _fillerData,
             (IProver.ProofType)
         );
-        doApprovals(address(inbox), intent.route.tokens);
         if (proofType == IProver.ProofType.Storage) {
             (, address claimant) = abi.decode(
                 _fillerData,
                 (IProver.ProofType, address)
             );
-            inbox.fulfillStorage{value: msg.value}(
+            IInbox(address(this)).fulfillStorage{value: msg.value}(
                 intent.route,
                 rewardHash,
                 claimant,
@@ -92,7 +83,9 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
                     _fillerData,
                     (IProver.ProofType, address, address, bytes)
                 );
-            inbox.fulfillHyperInstantWithRelayer{value: msg.value}(
+            IInbox(address(this)).fulfillHyperInstantWithRelayer{
+                value: msg.value
+            }(
                 intent.route,
                 rewardHash,
                 claimant,
@@ -105,18 +98,4 @@ contract Eco7683DestinationSettler is IDestinationSettler, Semver {
             revert BadProver();
         }
     }
-
-    function doApprovals(
-        address _inbox,
-        TokenAmount[] memory _tokens
-    ) internal {
-        for (uint256 i = 0; i < _tokens.length; i++) {
-            IERC20 token = IERC20(_tokens[i].token);
-            if (token.allowance(address(this), _inbox) < MAX_UINT256) {
-                token.approve(_inbox, MAX_UINT256);
-            }
-        }
-    }
-
-    receive() external payable {}
 }

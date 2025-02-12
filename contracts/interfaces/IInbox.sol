@@ -200,6 +200,28 @@ interface IInbox is ISemver {
     ) external payable returns (bytes[] memory);
 
     /**
+     * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox with relayer support
+     * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
+     * @param _claimant The address that will receive the reward on the source chain
+     * @param _expectedHash The hash of the intent as created on the source chain
+     * @param _prover The address of the hyperprover on the source chain
+     * @param _metadata Metadata for postDispatchHook (empty bytes if not applicable)
+     * @param _postDispatchHook Address of postDispatchHook (zero address if not applicable)
+     * @return Array of execution results from each call
+     */
+    function fulfillHyperInstantWithRelayer(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover,
+        bytes memory _metadata,
+        address _postDispatchHook
+    ) external payable returns (bytes[] memory);
+
+    /**
      * @notice Fulfills an intent for deferred Hyperlane batch proving
      * @dev Lower cost but slower than instant proving
      * @param _route Route information for the intent
@@ -228,5 +250,22 @@ interface IInbox is ISemver {
         uint256 _sourceChainID,
         address _prover,
         bytes32[] calldata _intentHashes
+    ) external payable;
+
+    /**
+     * @notice Sends a batch of fulfilled intents to the mailbox with relayer support
+     * @dev Intent hashes must correspond to fulfilled intents from specified source chain
+     * @param _sourceChainID Chain ID of the source chain
+     * @param _prover Address of the hyperprover on the source chain
+     * @param _intentHashes Hashes of the intents to be proven
+     * @param _metadata Metadata for postDispatchHook
+     * @param _postDispatchHook Address of postDispatchHook
+     */
+    function sendBatchWithRelayer(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes,
+        bytes memory _metadata,
+        address _postDispatchHook
     ) external payable;
 }
