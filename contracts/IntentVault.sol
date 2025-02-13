@@ -44,7 +44,7 @@ contract IntentVault is IIntentVault {
         // Withdrawing to creator if intent is expired or already claimed/refunded
         if (
             (claimant == address(0) && block.timestamp > reward.deadline) ||
-            state.status != uint8(IIntentSource.ClaimStatus.Initiated)
+            state.status != uint8(IIntentSource.ClaimStatus.Inactive)
         ) {
             claimant = reward.creator;
         }

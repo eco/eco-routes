@@ -352,28 +352,33 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         Intent memory _intent,
         address _user
     ) internal returns (bytes32 intentHash) {
-        address vault = IntentSource(INTENT_SOURCE).intentVaultAddress(_intent);
+        if (!IntentSource(INTENT_SOURCE).isIntentFunded(_intent)) {
+            address vault = IntentSource(INTENT_SOURCE).intentVaultAddress(
+                _intent
+            );
 
-        if (_intent.reward.nativeValue > 0) {
-            if (msg.value < _intent.reward.nativeValue) {
-                revert InsufficientNativeReward();
+            if (_intent.reward.nativeValue > 0) {
+                if (msg.value < _intent.reward.nativeValue) {
+                    revert InsufficientNativeReward();
+                }
+
+                payable(vault).transfer(_intent.reward.nativeValue);
+
+                if (msg.value > _intent.reward.nativeValue) {
+                    payable(msg.sender).transfer(
+                        msg.value - _intent.reward.nativeValue
+                    );
+                }
             }
+            uint256 rewardsLength = _intent.reward.tokens.length;
+            for (uint256 i = 0; i < rewardsLength; ++i) {
+                address token = _intent.reward.tokens[i].token;
+                uint256 amount = _intent.reward.tokens[i].amount;
 
-            payable(vault).transfer(_intent.reward.nativeValue);
-
-            if (msg.value > _intent.reward.nativeValue) {
-                payable(msg.sender).transfer(
-                    msg.value - _intent.reward.nativeValue
-                );
+                IERC20(token).safeTransferFrom(_user, vault, amount);
             }
         }
-        uint256 rewardsLength = _intent.reward.tokens.length;
-        for (uint256 i = 0; i < rewardsLength; ++i) {
-            address token = _intent.reward.tokens[i].token;
-            uint256 amount = _intent.reward.tokens[i].amount;
-
-            IERC20(token).safeTransferFrom(_user, vault, amount);
-        }
+        
         return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);
     }
 

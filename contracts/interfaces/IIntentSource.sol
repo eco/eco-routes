@@ -91,7 +91,7 @@ interface IIntentSource is ISemver {
      * @notice Status of an intent's reward claim
      */
     enum ClaimStatus {
-        Initiated,
+        Inactive,
         Claimed,
         Refunded
     }
