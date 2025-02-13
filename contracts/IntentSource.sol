@@ -201,7 +201,7 @@ contract IntentSource is IIntentSource, Semver {
 
         (intentHash, routeHash, ) = getIntentHash(intent);
 
-        if (claims[intentHash].status != uint8(ClaimStatus.Inactive)) {
+        if (claims[intentHash].status != uint8(ClaimStatus.Initial)) {
             revert IntentAlreadyExists(intentHash);
         }
 
@@ -285,7 +285,7 @@ contract IntentSource is IIntentSource, Semver {
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
-            claims[intentHash].status == uint8(ClaimStatus.Inactive)
+            claims[intentHash].status == uint8(ClaimStatus.Initial)
         ) {
             claims[intentHash].claimant = claimant;
 
@@ -347,7 +347,7 @@ contract IntentSource is IIntentSource, Semver {
 
         new IntentVault{salt: routeHash}(intentHash, reward);
 
-        if (claims[intentHash].status == uint8(ClaimStatus.Inactive)) {
+        if (claims[intentHash].status == uint8(ClaimStatus.Initial)) {
             claims[intentHash].status = uint8(ClaimStatus.Refunded);
         }
 
