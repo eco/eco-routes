@@ -6,7 +6,6 @@ import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder,
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
 import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
 import {Intent, Reward, Route, TokenAmount} from "./types/Intent.sol";
-import {OnchainCrosschainOrderData} from "./types/EcoERC7683.sol";
 import {IntentSource} from "./IntentSource.sol";
 import {IProver} from "./interfaces/IProver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -32,7 +31,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
      * @dev _fillerData is encoded bytes consisting of the uint256 prover type and the address claimant if the prover type is Storage (0)
      * and the address claimant, the address postDispatchHook, and the bytes metadata if the prover type is Hyperlane (1)
      * @param _orderId Unique order identifier for this order
-     * @param _originData Data emitted on the origin to parameterize the fill
+     * @param _originData Data emitted on the origin to parameterize the fill: an encoded Intent struct, or the originData from the fillInstruction of the ResolvedCrossChainOrder
      * @param _fillerData Data provided by the filler to inform the fill or express their preferences
      */
     function fill(
@@ -40,22 +39,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes calldata _originData,
         bytes calldata _fillerData
     ) external payable {
-        OnchainCrossChainOrder memory order = abi.decode(
-            _originData,
-            (OnchainCrossChainOrder)
-        );
-        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
-            .decode(order.orderData, (OnchainCrosschainOrderData));
-        Intent memory intent = Intent(
-            onchainCrosschainOrderData.route,
-            Reward(
-                onchainCrosschainOrderData.creator,
-                onchainCrosschainOrderData.prover,
-                order.fillDeadline,
-                onchainCrosschainOrderData.nativeValue,
-                onchainCrosschainOrderData.rewardTokens
-            )
-        );
+        Intent memory intent = abi.decode(_originData, (Intent));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         IProver.ProofType proofType = abi.decode(
             _fillerData,
@@ -82,7 +66,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
                 rewardHash,
                 claimant,
                 _orderId,
-                onchainCrosschainOrderData.prover,
+                intent.reward.prover,
                 metadata,
                 postDispatchHook
             );
