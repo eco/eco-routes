@@ -363,12 +363,6 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 }
 
                 payable(vault).transfer(_intent.reward.nativeValue);
-
-                if (msg.value > _intent.reward.nativeValue) {
-                    payable(msg.sender).transfer(
-                        msg.value - _intent.reward.nativeValue
-                    );
-                }
             }
             uint256 rewardsLength = _intent.reward.tokens.length;
             for (uint256 i = 0; i < rewardsLength; ++i) {
@@ -378,7 +372,13 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 IERC20(token).safeTransferFrom(_user, vault, amount);
             }
         }
-        
+
+        if (msg.value > _intent.reward.nativeValue) {
+            payable(msg.sender).transfer(
+                msg.value - _intent.reward.nativeValue
+            );
+        }
+
         return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);
     }
 
