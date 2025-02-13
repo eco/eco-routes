@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike } from 'ethers'
+import { keccak256, BytesLike, AbiCoder } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -18,6 +18,7 @@ import {
   TokenAmount,
   Route,
   Reward,
+  Intent
 } from '../utils/intent'
 import {
   OnchainCrossChainOrderStruct,
@@ -53,6 +54,7 @@ describe('Origin Settler Test', (): void => {
   let rewardTokens: TokenAmount[]
   let route: Route
   let reward: Reward
+  let intent: Intent
   let routeHash: BytesLike
   let rewardHash: BytesLike
   let intentHash: BytesLike
@@ -180,6 +182,7 @@ describe('Origin Settler Test', (): void => {
         nativeValue: rewardNativeEth,
         tokens: rewardTokens,
       }
+      const intent = { route, reward }
       routeHash = keccak256(encodeRoute(route))
       rewardHash = keccak256(encodeReward(reward))
       intentHash = keccak256(
@@ -366,6 +369,8 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           onchainCrosschainOrderData.route.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        //more checks
       })
     })
 
@@ -480,6 +485,8 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           gaslessCrosschainOrderData.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        //more checks
       })
     })
   })

@@ -13,15 +13,15 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer } from '../utils/encode'
 import { BytesLike, AbiCoder, parseEther } from 'ethers'
-import { hashIntent, Call, Route, Reward, Intent } from '../utils/intent'
+import { hashIntent, Call, Route, Reward, Intent, encodeIntent } from '../utils/intent'
 import { OnchainCrossChainOrderStruct } from '../typechain-types/contracts/Eco7683OriginSettler'
 import {
   OnchainCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
-  encodeOnchainCrosschainOrder,
+
 } from '../utils/EcoERC7683'
 
-describe('Destination Settler Test', (): void => {
+describe.only('Destination Settler Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
   let owner: SignerWithAddress
@@ -32,8 +32,6 @@ describe('Destination Settler Test', (): void => {
   let intent: Intent
   let intentHash: string
   let prover: TestProver
-  let onchainCrosschainOrder: OnchainCrossChainOrderStruct
-  let onchainCrosschainOrderData: OnchainCrosschainOrderData
   let fillerData: BytesLike
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
@@ -148,21 +146,21 @@ describe('Destination Settler Test', (): void => {
     ))
 
 
-    onchainCrosschainOrderData = {
-      route: route,
-      creator: creator.address,
-      prover: await prover.getAddress(),
-      nativeValue: reward.nativeValue,
-      tokens: reward.tokens,
-    }
+    // onchainCrosschainOrderData = {
+    //   route: route,
+    //   creator: creator.address,
+    //   prover: await prover.getAddress(),
+    //   nativeValue: reward.nativeValue,
+    //   tokens: reward.tokens,
+    // }
 
-    onchainCrosschainOrder = {
-      fillDeadline: intent.reward.deadline,
-      orderDataType: onchainCrosschainOrderDataTypehash,
-      orderData: await encodeOnchainCrosschainOrderData(
-        onchainCrosschainOrderData,
-      ),
-    }
+    // onchainCrosschainOrder = {
+    //   fillDeadline: intent.reward.deadline,
+    //   orderDataType: onchainCrosschainOrderDataTypehash,
+    //   orderData: await encodeOnchainCrosschainOrderData(
+    //     onchainCrosschainOrderData,
+    //   ),
+    // }
   })
 
   it('successfully calls storage prover fulfill', async (): Promise<void> => {
@@ -173,9 +171,6 @@ describe('Destination Settler Test', (): void => {
     await erc20
       .connect(solver)
       .approve(await inbox.getAddress(), mintAmount)
-    const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
-      onchainCrosschainOrder,
-    )
     fillerData = AbiCoder.defaultAbiCoder().encode(
       ['uint256', 'address'],
       [0, solver.address],
@@ -183,7 +178,7 @@ describe('Destination Settler Test', (): void => {
     expect(
       await inbox
         .connect(solver)
-        .fill(intentHash, onchainCrosschainOrderEncoded, fillerData, {
+        .fill(intentHash, encodeIntent(intent), fillerData, {
           value: nativeAmount,
         }),
     )
@@ -199,9 +194,7 @@ describe('Destination Settler Test', (): void => {
     await erc20
       .connect(solver)
       .approve(await inbox.getAddress(), mintAmount)
-    const onchainCrosschainOrderEncoded = await encodeOnchainCrosschainOrder(
-      onchainCrosschainOrder,
-    )
+
     fillerData = AbiCoder.defaultAbiCoder().encode(
       ['uint256', 'address', 'address', 'bytes'],
       ['1', solver.address, ethers.ZeroAddress, '0x'],
@@ -209,11 +202,11 @@ describe('Destination Settler Test', (): void => {
     expect(
       await inbox
         .connect(solver)
-        .fill(intentHash, onchainCrosschainOrderEncoded, fillerData, {
+        .fill(intentHash, encodeIntent(intent), fillerData, {
           value: nativeAmount + BigInt(120000), // add some extra to pay for hyperlane gas
         }),
     )
-      .to.emit(inbox, 'ToBeProven')
+      .to.emit(inbox, 'HyperInstantFulfillment')
       .withArgs(intentHash, route.source, solver.address)
   })
 })

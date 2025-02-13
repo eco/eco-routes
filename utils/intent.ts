@@ -99,6 +99,23 @@ export function encodeReward(reward: Reward) {
   )
 }
 
+export function encodeIntent(intent: Intent) {
+    const abiCoder = AbiCoder.defaultAbiCoder()
+    return abiCoder.encode(
+      [
+        {
+            type: 'tuple',
+            components: RouteStruct,
+        },
+        {
+          type: 'tuple',
+          components: RewardStruct,
+        },
+      ],
+      [intent.route, intent.reward],
+    )
+}
+
 export function hashIntent(intent: Intent) {
   const routeHash = keccak256(encodeRoute(intent.route))
   const rewardHash = keccak256(encodeReward(intent.reward))

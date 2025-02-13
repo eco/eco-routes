@@ -30,7 +30,7 @@ struct OnchainCrosschainOrderData {
  * is sufficient to publish an intent via Eco Protocol
  * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData
  * @param destination the ID of the chain where the intent was created
- * @param inbox the inbox contract on the destination chain that will fulfill the intent
+ * @param destinationSettler the contract on the destination chain that will fulfill the intent
  * @param calls the call instructions to be called during intent fulfillment
  * @param prover the address of the prover contract this intent will be proven against
  * @param nativeValue the amount of native token offered as a reward
@@ -38,7 +38,7 @@ struct OnchainCrosschainOrderData {
  */
 struct GaslessCrosschainOrderData {
     uint256 destination;
-    address inbox;
+    address destinationSettler;
     TokenAmount[] routeTokens;
     Call[] calls;
     address prover;
@@ -51,5 +51,5 @@ bytes32 constant ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
     "EcoOnchainGaslessCrosschainOrderData(Route route,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)Route(uint256 source,uint256 destination,address inbox,Call[] calls)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
 );
 bytes32 constant GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
-    "EcoGaslessCrosschainOrderData(uint256 destination,address inbox,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+    "EcoGaslessCrosschainOrderData(uint256 destination,address destinationSettler,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
 );
