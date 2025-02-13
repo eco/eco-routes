@@ -30,6 +30,7 @@ import {
   encodeGaslessCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
 } from '../utils/EcoERC7683'
+import { token } from '../typechain-types/@openzeppelin/contracts'
 
 describe('Origin Settler Test', (): void => {
   let originSettler: Eco7683OriginSettler
@@ -264,7 +265,7 @@ describe('Origin Settler Test', (): void => {
     })
 
     describe('onchainCrosschainOrder', async () => {
-      it('creates via open', async () => {
+      it('publishes and transfers via open', async () => {
         expect(
           await intentSource.isIntentFunded({
             route,
@@ -308,6 +309,38 @@ describe('Origin Settler Test', (): void => {
             reward: { ...reward, nativeValue: reward.nativeValue },
           }),
         ).to.be.true
+      })
+      it('publishes without transferring if intent is already funded', async () => {
+        const vaultAddress = await intentSource.intentVaultAddress({route, reward})
+        await tokenA
+            .connect(creator)
+            .transfer(vaultAddress, mintAmount)
+        await tokenB
+            .connect(creator)
+            .transfer(vaultAddress, 2 * mintAmount)
+        await creator.sendTransaction({to: vaultAddress, value: reward.nativeValue})
+
+        expect(
+            await intentSource.isIntentFunded({
+              route,
+              reward: { ...reward, nativeValue: reward.nativeValue },
+            }),
+          ).to.be.true
+
+        expect(await tokenA.balanceOf(creator)).to.eq(0)
+        expect(await tokenB.balanceOf(creator)).to.eq(0)
+  
+        await tokenA
+            .connect(creator)
+            .approve(await originSettler.getAddress(), mintAmount)
+        await tokenB
+            .connect(creator)
+            .approve(await originSettler.getAddress(), 2 * mintAmount)
+        await expect(
+            originSettler
+                .connect(creator)
+                .open(onchainCrosschainOrder, { value: rewardNativeEth }),
+            ).to.not.be.reverted
       })
       it('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
