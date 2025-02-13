@@ -18,6 +18,8 @@ import {
   TokenAmount,
   Route,
   Reward,
+  Intent,
+  encodeIntent
 } from '../utils/intent'
 import {
   OnchainCrossChainOrderStruct,
@@ -53,6 +55,7 @@ describe('Origin Settler Test', (): void => {
   let rewardTokens: TokenAmount[]
   let route: Route
   let reward: Reward
+  let intent: Intent
   let routeHash: BytesLike
   let rewardHash: BytesLike
   let intentHash: BytesLike
@@ -180,6 +183,7 @@ describe('Origin Settler Test', (): void => {
         nativeValue: rewardNativeEth,
         tokens: rewardTokens,
       }
+      intent = { route: route, reward: reward }
       routeHash = keccak256(encodeRoute(route))
       rewardHash = keccak256(encodeReward(reward))
       intentHash = keccak256(
@@ -366,6 +370,11 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           onchainCrosschainOrderData.route.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        const fillInstruction = resolvedOrder.fillInstructions[0]
+        expect(fillInstruction.destinationChainId).to.eq(route.destination)
+        expect(fillInstruction.destinationSettler).to.eq(ethers.zeroPadBytes(await inbox.getAddress(), 32))
+        expect(fillInstruction.originData).to.eq(encodeIntent(intent))
       })
     })
 
@@ -480,6 +489,12 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           gaslessCrosschainOrderData.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        const fillInstruction = resolvedOrder.fillInstructions[0]
+        expect(fillInstruction.destinationChainId).to.eq(route.destination)
+        expect(fillInstruction.destinationSettler).to.eq(ethers.zeroPadBytes(await inbox.getAddress(), 32))
+        expect(fillInstruction.originData).to.eq(encodeIntent(intent))
+        
       })
     })
   })

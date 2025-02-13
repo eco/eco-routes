@@ -8,6 +8,16 @@ pragma solidity ^0.8.26;
  */
 interface IDestinationSettler {
     /**
+     * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
+     * @param _orderId Hash of the fulfilled intent
+     * @param _solver Address that fulfilled intent
+     */
+    event orderFilled(bytes32 _orderId, address _solver);
+
+    /// @notice Thrown when attempting to fill an order after the fill deadline has passed
+    error FillDeadlinePassed();
+
+    /**
      * @notice Fills a single leg of a particular order on the destination chain
      * @dev This method has been made payable, in contrast to original interface
      * @param orderId Unique order identifier for this order
