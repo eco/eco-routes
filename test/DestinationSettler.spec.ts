@@ -21,7 +21,7 @@ import {
 
 } from '../utils/EcoERC7683'
 
-describe.only('Destination Settler Test', (): void => {
+describe('Destination Settler Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
   let owner: SignerWithAddress
@@ -144,23 +144,6 @@ describe.only('Destination Settler Test', (): void => {
       nativeAmount,
       timeDelta,
     ))
-
-
-    // onchainCrosschainOrderData = {
-    //   route: route,
-    //   creator: creator.address,
-    //   prover: await prover.getAddress(),
-    //   nativeValue: reward.nativeValue,
-    //   tokens: reward.tokens,
-    // }
-
-    // onchainCrosschainOrder = {
-    //   fillDeadline: intent.reward.deadline,
-    //   orderDataType: onchainCrosschainOrderDataTypehash,
-    //   orderData: await encodeOnchainCrosschainOrderData(
-    //     onchainCrosschainOrderData,
-    //   ),
-    // }
   })
 
   it('successfully calls storage prover fulfill', async (): Promise<void> => {

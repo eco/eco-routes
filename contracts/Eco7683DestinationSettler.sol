@@ -39,7 +39,6 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes calldata _originData,
         bytes calldata _fillerData
     ) external payable {
-        
         Intent memory intent = abi.decode(_originData, (Intent));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         IProver.ProofType proofType = abi.decode(
