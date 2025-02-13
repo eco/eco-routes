@@ -63,7 +63,14 @@ contract IntentVault is IIntentVault {
             // If creator is claiming, send full balance
             if (claimant == reward.creator) {
                 if (balance > 0) {
-                    IERC20(token).safeTransfer(claimant, balance);
+                    (bool success, ) = token.call(
+                        abi.encodeWithSignature(
+                            "transfer(address,uint256)",
+                            claimant,
+                            balance
+                        )
+                    );
+                    // IERC20(token).safeTransfer(claimant, balance);
                 }
             } else {
                 // For solver claims, verify sufficient balance and send reward amount
@@ -71,12 +78,21 @@ contract IntentVault is IIntentVault {
                     revert InsufficientTokenBalance();
                 }
 
-                IERC20(token).safeTransfer(claimant, amount);
+                (bool success, ) = token.call(
+                    abi.encodeWithSignature(
+                        "transfer(address,uint256)",
+                        claimant,
+                        balance
+                    )
+                );
                 // Return excess balance to creator
                 if (balance > amount) {
-                    IERC20(token).safeTransfer(
-                        reward.creator,
-                        balance - amount
+                    (bool success, ) = token.call(
+                        abi.encodeWithSignature(
+                            "transfer(address,uint256)",
+                            reward.creator,
+                            balance
+                        )
                     );
                 }
             }
