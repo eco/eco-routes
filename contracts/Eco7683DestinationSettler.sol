@@ -16,16 +16,6 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
     using ECDSA for bytes32;
 
     /**
-     * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
-     * @param _orderId Hash of the fulfilled intent
-     * @param _solver Address that fulfilled intent
-     */
-    event orderFilled(bytes32 _orderId, address _solver);
-
-    // address of local hyperlane mailbox
-    error BadProver();
-
-    /**
      * @notice Fills a single leg of a particular order on the destination chain
      * @dev _originData is of type OnchainCrossChainOrder
      * @dev _fillerData is encoded bytes consisting of the uint256 prover type and the address claimant if the prover type is Storage (0)
@@ -40,6 +30,9 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes calldata _fillerData
     ) external payable {
         Intent memory intent = abi.decode(_originData, (Intent));
+        if (block.timestamp > intent.reward.deadline) {
+            revert FillDeadlinePassed();
+        }
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         IProver.ProofType proofType = abi.decode(
             _fillerData,
@@ -70,8 +63,6 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
                 metadata,
                 postDispatchHook
             );
-        } else {
-            revert BadProver();
         }
     }
 

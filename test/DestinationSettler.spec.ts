@@ -4,7 +4,6 @@ import { ethers } from 'hardhat'
 import {
   TestERC20,
   Inbox,
-  TestMailbox,
   TestProver,
 } from '../typechain-types'
 import {
@@ -14,12 +13,6 @@ import {
 import { encodeTransfer } from '../utils/encode'
 import { BytesLike, AbiCoder, parseEther } from 'ethers'
 import { hashIntent, Call, Route, Reward, Intent, encodeIntent } from '../utils/intent'
-import { OnchainCrossChainOrderStruct } from '../typechain-types/contracts/Eco7683OriginSettler'
-import {
-  OnchainCrosschainOrderData,
-  encodeOnchainCrosschainOrderData,
-
-} from '../utils/EcoERC7683'
 
 describe('Destination Settler Test', (): void => {
   let inbox: Inbox
@@ -39,8 +32,6 @@ describe('Destination Settler Test', (): void => {
   const mintAmount = 1000
   const nativeAmount = parseEther('0.1')
   const sourceChainID = 123
-  const onchainCrosschainOrderDataTypehash: BytesLike =
-    '0xb6bc9eb3454e4ec88a42b6355c90dc6c1d654f0d544ba0ef3161593210a01a28'
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
@@ -146,6 +137,21 @@ describe('Destination Settler Test', (): void => {
     ))
   })
 
+  it('reverts on a fill when fillDeadline has passed', async (): Promise<void> => {
+    await time.increaseTo(intent.reward.deadline + 1)
+    await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+    fillerData = AbiCoder.defaultAbiCoder().encode(
+        ['uint256', 'address'],
+        [0, solver.address],
+    )
+    await expect(
+         inbox
+          .connect(solver)
+          .fill(intentHash, encodeIntent(intent), fillerData, {
+            value: nativeAmount,
+          }),
+      ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
+  })
   it('successfully calls storage prover fulfill', async (): Promise<void> => {
     expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
@@ -180,7 +186,7 @@ describe('Destination Settler Test', (): void => {
 
     fillerData = AbiCoder.defaultAbiCoder().encode(
       ['uint256', 'address', 'address', 'bytes'],
-      ['1', solver.address, ethers.ZeroAddress, '0x'],
+      [1, solver.address, ethers.ZeroAddress, '0x'],
     )
     expect(
       await inbox
