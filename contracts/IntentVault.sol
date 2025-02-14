@@ -63,14 +63,12 @@ contract IntentVault is IIntentVault {
             // If creator is claiming, send full balance
             if (claimant == reward.creator) {
                 if (balance > 0) {
-                    (bool success, ) = token.call(
-                        abi.encodeWithSignature(
-                            "transfer(address,uint256)",
-                            claimant,
-                            balance
-                        )
-                    );
-                    // IERC20(token).safeTransfer(claimant, balance);
+                    try IERC20(token).transfer(claimant, balance) {
+                        // If transfer succeeds, continue
+                                              
+                    } catch {
+                        // if transfer fails, skip to next token
+                    }
                 }
             } else {
                 // For solver claims, verify sufficient balance and send reward amount
@@ -78,22 +76,18 @@ contract IntentVault is IIntentVault {
                     revert InsufficientTokenBalance();
                 }
 
-                (bool success, ) = token.call(
-                    abi.encodeWithSignature(
-                        "transfer(address,uint256)",
-                        claimant,
-                        balance
-                    )
-                );
+                try IERC20(token).transfer(claimant, balance) {
+                    // If transfer succeeds, continue
+                } catch {
+                    // if transfer fails, skip to next token
+                }
                 // Return excess balance to creator
                 if (balance > amount) {
-                    (bool success, ) = token.call(
-                        abi.encodeWithSignature(
-                            "transfer(address,uint256)",
-                            reward.creator,
-                            balance
-                        )
-                    );
+                    try IERC20(token).transfer(reward.creator, balance) {
+                        // If transfer succeeds, continue
+                    } catch {
+                        // if transfer fails, skip to next token
+                    }
                 }
             }
         }
