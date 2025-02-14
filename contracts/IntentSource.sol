@@ -140,17 +140,16 @@ contract IntentSource is IIntentSource, Semver {
                 : msg.value;
 
             payable(vault).transfer(nativeAmount);
+        }
+        uint256 currentBalance = address(this).balance;
 
-            uint256 currentBalance = address(this).balance;
+        if (currentBalance > 0) {
+            (bool success, ) = payable(msg.sender).call{value: currentBalance}(
+                ""
+            );
 
-            if (currentBalance > 0) {
-                (bool success, ) = payable(msg.sender).call{
-                    value: currentBalance
-                }("");
-
-                if (!success) {
-                    revert NativeRewardTransferFailed();
-                }
+            if (!success) {
+                revert NativeRewardTransferFailed();
             }
         }
 

@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike } from 'ethers'
+import { keccak256, BytesLike, Provider } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -265,13 +265,16 @@ describe('Origin Settler Test', (): void => {
     })
 
     describe('onchainCrosschainOrder', async () => {
-      it('publishes and transfers via open', async () => {
+      it('publishes and transfers via open, checks native overfund', async () => {
+        const provider: Provider = originSettler.runner!.provider!
         expect(
           await intentSource.isIntentFunded({
             route,
             reward: { ...reward, nativeValue: reward.nativeValue },
           }),
         ).to.be.false
+
+        const creatorInitialNativeBalance: bigint = await provider.getBalance(creator.address)
 
         await tokenA
           .connect(creator)
@@ -283,7 +286,7 @@ describe('Origin Settler Test', (): void => {
         await expect(
           originSettler
             .connect(creator)
-            .open(onchainCrosschainOrder, { value: rewardNativeEth }),
+            .open(onchainCrosschainOrder, { value: rewardNativeEth * BigInt(2) }),
         )
           .to.emit(intentSource, 'IntentCreated')
           .withArgs(
@@ -309,8 +312,12 @@ describe('Origin Settler Test', (): void => {
             reward: { ...reward, nativeValue: reward.nativeValue },
           }),
         ).to.be.true
+        expect(await provider.getBalance(await intentSource.intentVaultAddress({ route, reward }))).to.eq(rewardNativeEth)
+        expect(await provider.getBalance(creator.address)).to.be.gt(creatorInitialNativeBalance - BigInt(2)*rewardNativeEth)
       })
-      it('publishes without transferring if intent is already funded', async () => {
+      it('publishes without transferring if intent is already funded, and refunds native', async () => {
+        const provider: Provider = originSettler.runner!.provider!
+
         const vaultAddress = await intentSource.intentVaultAddress({route, reward})
         await tokenA
             .connect(creator)
@@ -319,6 +326,8 @@ describe('Origin Settler Test', (): void => {
             .connect(creator)
             .transfer(vaultAddress, 2 * mintAmount)
         await creator.sendTransaction({to: vaultAddress, value: reward.nativeValue})
+
+        const creatorInitialNativeBalance: bigint = await provider.getBalance(creator.address)
 
         expect(
             await intentSource.isIntentFunded({
@@ -341,6 +350,10 @@ describe('Origin Settler Test', (): void => {
                 .connect(creator)
                 .open(onchainCrosschainOrder, { value: rewardNativeEth }),
             ).to.not.be.reverted
+
+        expect(await provider.getBalance(vaultAddress)).to.eq(rewardNativeEth)
+        expect(await provider.getBalance(creator.address)).to.be.gt(creatorInitialNativeBalance - rewardNativeEth)
+        
       })
       it('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =

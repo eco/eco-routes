@@ -3,6 +3,7 @@ import { HardhatUserConfig } from 'hardhat/config'
 import '@nomicfoundation/hardhat-toolbox'
 import '@nomicfoundation/hardhat-viem'
 import '@openzeppelin/hardhat-upgrades'
+import '@nomicfoundation/hardhat-chai-matchers'
 import 'solidity-docgen'
 dotenv.config()
 const DEPLOYER_PRIVATE_KEY =

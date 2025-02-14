@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, ZeroAddress, EtherscanProvider } from 'ethers'
+import { keccak256, BytesLike, ZeroAddress, Provider } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -1004,8 +1004,11 @@ describe('Intent Source Test', (): void => {
       expect(contractAddress).to.eq(predictedAddress)
     })
 
-    it('should fund intent with single token', async () => {
+    it('should fund intent with single token, refunding accidentally sent native', async () => {
+      const provider: Provider = intentSource.runner!.provider!
       rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+      
+      const creatorInitialNativeBalance: bigint = await provider.getBalance(creator.address)
 
       reward = {
         creator: creator.address,
@@ -1032,12 +1035,14 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
+        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress, {value: rewardNativeEth})
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
       // Check vault balance
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+      expect(await provider.getBalance(vaultAddress)).to.equal(0)
+      expect(await provider.getBalance(creator.address)).to.be.gt(creatorInitialNativeBalance - rewardNativeEth)
     })
 
     it('should fund intent with multiple tokens', async () => {
