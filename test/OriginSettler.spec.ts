@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike } from 'ethers'
+import { keccak256, BytesLike, AbiCoder, zeroPadBytes } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,

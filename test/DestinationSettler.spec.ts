@@ -183,7 +183,6 @@ describe('Destination Settler Test', (): void => {
     await erc20
       .connect(solver)
       .approve(await inbox.getAddress(), mintAmount)
-
     fillerData = AbiCoder.defaultAbiCoder().encode(
       ['uint256', 'address', 'address', 'bytes'],
       [1, solver.address, ethers.ZeroAddress, '0x'],
