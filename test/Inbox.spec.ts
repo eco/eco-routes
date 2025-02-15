@@ -200,6 +200,14 @@ describe('Inbox Test', (): void => {
   })
 
   describe('fulfill when the intent is invalid', () => {
+    it('should revert if fulfillment is attempted on an incorrect destination chain', async () => {
+        route.destination = 123
+        await expect(
+          inbox
+            .connect(owner)
+            .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
+        ).to.be.revertedWithCustomError(inbox, 'WrongChain').withArgs(123)
+      })
     it('should revert if solved by someone who isnt whitelisted when solving isnt public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
       expect(await inbox.solverWhitelist(owner.address)).to.be.false

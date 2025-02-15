@@ -97,6 +97,12 @@ interface IInbox is ISemver {
     error UnauthorizedSolveAttempt(address _solver);
 
     /**
+     * @notice Thrown when an attempt is made to fulfill an intent on the wrong destination chain
+     * @param _chainID Chain ID of the destination chain on which this intent should be fulfilled
+     */
+    error WrongChain(uint256 _chainID);
+
+    /**
      * @notice Intent has expired and can no longer be fulfilled
      */
     error IntentExpired();
