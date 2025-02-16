@@ -1032,7 +1032,7 @@ describe('Intent Source Test', (): void => {
       // Fund the intent
       await intentSource
         .connect(creator)
-        .fundIntent(routeHash, reward, creator.address, [], ZeroAddress)
+        .fundIntent(intent, creator.address, [], ZeroAddress)
 
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 

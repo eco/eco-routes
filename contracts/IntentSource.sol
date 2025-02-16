@@ -223,6 +223,9 @@ contract IntentSource is IIntentSource, Semver {
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         if (fund && !_isIntentFunded(intent, vault)) {
+            if (route.source != block.chainid) {
+                revert WrongSourceChain();
+            }
             if (reward.nativeValue > 0) {
                 if (msg.value < reward.nativeValue) {
                     revert InsufficientNativeReward();

@@ -13,6 +13,12 @@ import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
  * contract on the destination chain and verifies fulfillment via a prover contract
  */
 interface IIntentSource is ISemver {
+
+    /**
+     * @notice Thrown when funding an intent is attempted on a chain that isn't the source chain
+     */
+    error WrongSourceChain();
+
     /**
      * @notice Thrown when an unauthorized address attempts to withdraw intent rewards
      * @param _hash Hash of the intent (key in intents mapping)
