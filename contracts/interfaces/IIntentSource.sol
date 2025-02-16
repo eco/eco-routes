@@ -218,15 +218,13 @@ interface IIntentSource is ISemver {
     /**
      * @notice Funds an intent with native tokens and ERC20 tokens
      * @dev Allows for permit calls to approve token transfers
-     * @param routeHash Hash of the route component
-     * @param reward Reward structure containing distribution details
+     * @param intent the intent being funded
      * @param fundingAddress Address to fund the intent from
      * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Address of the token to recover if sent to the vault
      */
     function fundIntent(
-        bytes32 routeHash,
-        Reward calldata reward,
+        Intent calldata intent,
         address fundingAddress,
         Call[] calldata permitCalls,
         address recoverToken
