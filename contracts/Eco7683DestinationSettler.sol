@@ -33,6 +33,9 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         if (block.timestamp > intent.reward.deadline) {
             revert FillDeadlinePassed();
         }
+
+        emit orderFilled(_orderId, msg.sender);
+
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         IProver.ProofType proofType = abi.decode(
             _fillerData,
