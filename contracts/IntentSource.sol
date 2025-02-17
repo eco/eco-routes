@@ -114,14 +114,12 @@ contract IntentSource is IIntentSource, Semver {
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
-     * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Optional token address for handling incorrect vault transfers
      */
     function fundIntent(
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
-        Call[] calldata permitCalls,
         address recoverToken
     ) external payable {
         bytes32 rewardHash = keccak256(abi.encode(reward));
@@ -150,18 +148,6 @@ contract IntentSource is IIntentSource, Semver {
 
             if (!success) {
                 revert NativeRewardTransferFailed();
-            }
-        }
-
-        uint256 callsLength = permitCalls.length;
-
-        for (uint256 i = 0; i < callsLength; ++i) {
-            Call calldata call = permitCalls[i];
-
-            (bool success, ) = call.target.call(call.data);
-
-            if (!success) {
-                revert PermitCallFailed();
             }
         }
 
