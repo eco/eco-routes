@@ -63,7 +63,7 @@ interface IInbox is ISemver {
     );
 
     /**
-     * @notice Emitted when intent solving is made public
+     * @notice Emitted when a batch of fulfilled intents is sent to the Hyperlane mailbox to be relayed to the source chain
      * @param _hashes the intent hashes sent in the batch
      * @param _sourceChainID ID of the source chain
      */

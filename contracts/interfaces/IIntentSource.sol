@@ -198,7 +198,7 @@ interface IIntentSource is ISemver {
 
     /**
      * @notice Calculates the deterministic address of the intent funder
-     * @param intent Intent to calculate vault address for
+     * @param intent Intent to calculate funder address for
      * @return Address of the intent funder
      */
     function intentFunderAddress(

@@ -36,7 +36,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
     /**
      * @notice Initializes the Inbox contract
-     * @dev Privileged functions are designed to only allow one-time changes
      * @param _owner Address with access to privileged functions
      * @param _isSolvingPublic Whether solving is public at start
      * @param _solvers Initial whitelist of solvers (only relevant if solving is not public)
@@ -344,7 +343,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
     /**
      * @notice Sets the mailbox address
-     * @dev Can only be called once during deployment
+     * @dev Can only be called when mailbox is not set
      * @param _mailbox Address of the Hyperlane mailbox
      */
     function setMailbox(address _mailbox) public onlyOwner {

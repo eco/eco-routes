@@ -80,7 +80,7 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Calculates the deterministic address of the intent funder
-     * @param intent Intent to calculate vault address for
+     * @param intent Intent to calculate funder address for
      * @return Address of the intent funder
      */
     function intentFunderAddress(
@@ -308,7 +308,7 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Batch withdraws multiple intents with the same claimant
+     * @notice Batch withdraws multiple intents
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      */
@@ -392,7 +392,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param vault Address of the intent vault
      * @param routeHash Hash of the route component
      * @param reward Reward structure
-     * @return The calculated vault address
+     * @return The calculated funder address
      */
     function _getIntentFunderAddress(
         address vault,
