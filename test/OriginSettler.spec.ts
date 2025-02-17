@@ -69,9 +69,9 @@ describe('Origin Settler Test', (): void => {
   const version = '1.5.0'
 
   const onchainCrosschainOrderDataTypehash: BytesLike =
-    '0xb6bc9eb3454e4ec88a42b6355c90dc6c1d654f0d544ba0ef3161593210a01a28'
+    '0x5dd63cf8abd3430c6387c87b7d2af2290ba415b12c3f6fbc10af65f9aee8ec38'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
-    '0x58c324802ce1459a5182655ed022248fa0d67bc8ecdc1e70c632377791453c20'
+    '0x834338e3ed54385a3fac8309f6f326a71fc399ffb7d77d7366c1e1b7c9feac6f'
 
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler

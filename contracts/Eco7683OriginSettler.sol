@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
 import {Intent, Reward, Route, Call, TokenAmount} from "./types/Intent.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "./types/EcoERC7683.sol";
+import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
 import {IntentSource} from "./IntentSource.sol";
 import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -55,6 +55,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     function open(
         OnchainCrossChainOrder calldata _order
     ) external payable override {
+        if (_order.orderDataType != ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH) {
+            revert TypeSignatureMismatch();
+        }
+
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(_order.orderData, (OnchainCrosschainOrderData));
 
@@ -101,11 +105,18 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         if (!_verifyOpenFor(_order, _signature)) {
             revert BadSignature();
         }
+
+        if (_order.orderDataType != GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH) {
+            revert TypeSignatureMismatch();
+        }
+
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(_order.orderData, (GaslessCrosschainOrderData));
+
         if (_order.originChainId != block.chainid) {
             revert OriginChainIDMismatch();
         }
+
         Intent memory intent = Intent(
             Route(
                 bytes32(_order.nonce),
@@ -222,11 +233,11 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     /**
      * @notice resolves GaslessCrossChainOrder to a ResolvedCrossChainOrder
      * @param _order the GaslessCrossChainOrder to be resolved
-     * @param _originFillerData filler data for the origin chain (not used)
+     * param _originFillerData filler data for the origin chain (not used)
      */
     function resolveFor(
         GaslessCrossChainOrder calldata _order,
-        bytes calldata _originFillerData // i dont think we need this, keeping it for purpose of interface
+        bytes calldata // _originFillerData keeping it for purpose of interface
     ) public view override returns (ResolvedCrossChainOrder memory) {
         GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
             .decode(_order.orderData, (GaslessCrosschainOrderData));

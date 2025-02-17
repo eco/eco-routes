@@ -13,6 +13,9 @@ interface IOriginSettler {
     /// @notice Thrown when the sent native token amount is less than the required reward amount
     error InsufficientNativeReward();
 
+    /// @notice Thrown when data type signature does not match the expected value
+    error TypeSignatureMismatch();
+
     /// @notice Thrown when the source chain's chainID does not match the expected value
     error OriginChainIDMismatch();
 

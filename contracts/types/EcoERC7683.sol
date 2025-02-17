@@ -48,8 +48,8 @@ struct GaslessCrosschainOrderData {
 
 //EIP712 typehashes
 bytes32 constant ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
-    "EcoOnchainGaslessCrosschainOrderData(Route route,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)Route(uint256 source,uint256 destination,address inbox,Call[] calls)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+    "OnchainCrosschainOrderData(Route route,address creator,address prover,uint256 nativeValue,TokenAmount[] rewardTokens)Route(bytes32 salt,uint256 source,uint256 destination,address inbox,TokenAmount[] tokens,Call[] calls)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
 );
 bytes32 constant GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
-    "EcoGaslessCrosschainOrderData(uint256 destination,address inbox,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+    "GaslessCrosschainOrderData(uint256 destination,address inbox,TokenAmount[] routeTokens,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] rewardTokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
 );

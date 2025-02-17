@@ -170,8 +170,10 @@ describe('Destination Settler Test', (): void => {
           value: nativeAmount,
         }),
     )
-      .to.emit(inbox, 'OrderFilled').withArgs(intentHash, solver.address).and
-      .to.emit(inbox, 'ToBeProven').withArgs(intentHash, route.source, solver.address)
+      .to.emit(inbox, 'OrderFilled')
+      .withArgs(intentHash, solver.address)
+      .and.to.emit(inbox, 'ToBeProven')
+      .withArgs(intentHash, route.source, solver.address)
   })
 
   it('successfully calls hyper instant fulfill', async (): Promise<void> => {
