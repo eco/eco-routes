@@ -13,7 +13,6 @@ import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
  * contract on the destination chain and verifies fulfillment via a prover contract
  */
 interface IIntentSource is ISemver {
-
     /**
      * @notice Thrown when funding an intent is attempted on a chain that isn't the source chain
      */
@@ -218,13 +217,15 @@ interface IIntentSource is ISemver {
     /**
      * @notice Funds an intent with native tokens and ERC20 tokens
      * @dev Allows for permit calls to approve token transfers
-     * @param intent the intent being funded
+     * @param routeHash Hash of the route component
+     * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
      * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Address of the token to recover if sent to the vault
      */
     function fundIntent(
-        Intent calldata intent,
+        bytes32 routeHash,
+        Reward calldata reward,
         address fundingAddress,
         Call[] calldata permitCalls,
         address recoverToken

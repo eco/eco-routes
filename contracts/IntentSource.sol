@@ -111,34 +111,27 @@ contract IntentSource is IIntentSource, Semver {
      * @notice Funds an intent with native tokens and ERC20 tokens
      * @dev Security: this allows to call any contract from the IntentSource,
      *      which can impose a risk if anything relies on IntentSource to be msg.sender
-     * @param intent the intent to fund
+     * @param routeHash Hash of the route component
+     * @param reward Reward structure containing distribution details
      * @param fundingAddress Address to fund the intent from
      * @param permitCalls Array of permit calls to approve token transfers
      * @param recoverToken Optional token address for handling incorrect vault transfers
      */
     function fundIntent(
-        Intent calldata intent,
+        bytes32 routeHash,
+        Reward calldata reward,
         address fundingAddress,
         Call[] calldata permitCalls,
         address recoverToken
     ) external payable {
-        if (intent.route.source != block.chainid) {
-            revert WrongSourceChain();
-        }
-        (
-            bytes32 intentHash,
-            bytes32 routeHash,
-            bytes32 rewardHash
-        ) = getIntentHash(intent);
-        address vault = _getIntentVaultAddress(
-            intentHash,
-            routeHash,
-            intent.reward
-        );
+        bytes32 rewardHash = keccak256(abi.encode(reward));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+
+        address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         emit IntentFunded(intentHash, fundingAddress);
 
-        int256 vaultBalanceDeficit = int256(intent.reward.nativeValue) -
+        int256 vaultBalanceDeficit = int256(reward.nativeValue) -
             int256(vault.balance);
 
         if (vaultBalanceDeficit > 0 && msg.value > 0) {
@@ -178,7 +171,7 @@ contract IntentSource is IIntentSource, Semver {
             refundToken = recoverToken;
         }
 
-        new IntentFunder{salt: routeHash}(vault, intent.reward);
+        new IntentFunder{salt: routeHash}(vault, reward);
 
         fundingSource = address(0);
 

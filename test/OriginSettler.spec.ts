@@ -289,11 +289,9 @@ describe('Origin Settler Test', (): void => {
           .approve(await originSettler.getAddress(), 2 * mintAmount)
 
         await expect(
-          originSettler
-            .connect(creator)
-            .open(onchainCrosschainOrder, {
-              value: rewardNativeEth * BigInt(2),
-            }),
+          originSettler.connect(creator).open(onchainCrosschainOrder, {
+            value: rewardNativeEth * BigInt(2),
+          }),
         )
           .to.emit(intentSource, 'IntentCreated')
           .withArgs(
