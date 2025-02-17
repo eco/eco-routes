@@ -56,14 +56,12 @@ contract IntentFunder {
                 fundingSource,
                 address(this)
             );
-
             // Calculate how many more tokens the vault needs to be fully funded
-            // Cast to int256 to handle the case where vault is already overfunded
-            int256 balanceDeficit = int256(amount) -
-                int256(IERC20(token).balanceOf(vault));
+            uint256 balance = IERC20(token).balanceOf(vault);
 
             // Only proceed if vault needs more tokens and we have permission to transfer them
-            if (balanceDeficit > 0 && allowance > 0) {
+            if (amount > balance && allowance > 0) {
+                uint256 balanceDeficit = amount - balance;
                 // Calculate transfer amount as minimum of what's needed and what's allowed
                 uint256 transferAmount = allowance > uint256(balanceDeficit)
                     ? uint256(balanceDeficit)
