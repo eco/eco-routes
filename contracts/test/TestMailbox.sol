@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 4 -*- */
- /* solhint-disable gas-custom-errors */
+/* solhint-disable gas-custom-errors */
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";

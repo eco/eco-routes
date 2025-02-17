@@ -60,34 +60,17 @@ contract IntentVault is IIntentVault {
                 revert RefundTokenCannotBeRewardToken();
             }
 
-            // If creator is claiming, send full balance
-            if (claimant == reward.creator) {
+            // If creator is claiming or balance is below expected amount, send full balance
+            if (claimant == reward.creator || balance < amount) {
                 if (balance > 0) {
-                    try IERC20(token).transfer(claimant, balance) {
-                        // If transfer succeeds, continue
-                                              
-                    } catch {
-                        // if transfer fails, skip to next token
-                    }
+                    _tryTransfer(token, claimant, balance);
                 }
             } else {
-                // For solver claims, verify sufficient balance and send reward amount
-                if (balance < amount) {
-                    revert InsufficientTokenBalance();
-                }
+                _tryTransfer(token, claimant, amount);
 
-                try IERC20(token).transfer(claimant, balance) {
-                    // If transfer succeeds, continue
-                } catch {
-                    // if transfer fails, skip to next token
-                }
                 // Return excess balance to creator
                 if (balance > amount) {
-                    try IERC20(token).transfer(reward.creator, balance) {
-                        // If transfer succeeds, continue
-                    } catch {
-                        // if transfer fails, skip to next token
-                    }
+                    _tryTransfer(token, reward.creator, balance - amount);
                 }
             }
         }
@@ -116,5 +99,21 @@ contract IntentVault is IIntentVault {
 
         // Self-destruct and send remaining ETH to creator
         selfdestruct(payable(reward.creator));
+    }
+
+    /**
+     * @notice Attempts to transfer tokens to a recipient, emitting an event on failure
+     * @param token Address of the token being transferred
+     * @param to Address of the recipient
+     * @param amount Amount of tokens to transfer
+     */
+    function _tryTransfer(address token, address to, uint256 amount) internal {
+        (bool success, bytes memory data) = token.call(
+            abi.encodeWithSelector(IERC20.transfer.selector, to, amount)
+        );
+
+        if (!success || (data.length > 0 && !abi.decode(data, (bool)))) {
+            emit RewardTransferFailed(token, to, amount);
+        }
     }
 }
