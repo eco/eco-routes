@@ -372,7 +372,9 @@ contract IntentSource is IIntentSource, Semver {
         Reward calldata reward = intent.reward;
         uint256 rewardsLength = reward.tokens.length;
 
+        if (intent.route.source != block.chainid) return false;
         if (vault.balance < reward.nativeValue) return false;
+
         for (uint256 i = 0; i < rewardsLength; ++i) {
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;
