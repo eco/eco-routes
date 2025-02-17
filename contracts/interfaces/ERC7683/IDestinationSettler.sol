@@ -12,7 +12,7 @@ interface IDestinationSettler {
      * @param _orderId Hash of the fulfilled intent
      * @param _solver Address that fulfilled intent
      */
-    event orderFilled(bytes32 _orderId, address _solver);
+    event OrderFilled(bytes32 _orderId, address _solver);
 
     /// @notice Thrown when attempting to fill an order after the fill deadline has passed
     error FillDeadlinePassed();
