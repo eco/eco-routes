@@ -80,7 +80,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
     /**
      * @notice opens an Eco intent directly on chain for a user
-     * @dev to be called by the user
+     * @notice This method is made payable in the event that the caller of this method (a solver) wants to open 
+     * an intent that has native token as a reward. In this case, the solver would need to send the native 
+     * token as part of the transaction. How the intent's creator pays the solver is not covered by this method.
+     * @dev to be called by the intent's solver
      * @dev assumes user has erc20 funds approved for the intent, and includes any reward native token in msg.value
      * @dev transfers the reward tokens at time of open
      * @param _order the OnchainCrossChainOrder that will be opened as an eco intent
@@ -353,12 +356,6 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 }
 
                 payable(vault).transfer(_intent.reward.nativeValue);
-
-                if (msg.value > _intent.reward.nativeValue) {
-                    payable(msg.sender).transfer(
-                        msg.value - _intent.reward.nativeValue
-                    );
-                }
             }
             uint256 rewardsLength = _intent.reward.tokens.length;
             for (uint256 i = 0; i < rewardsLength; ++i) {
@@ -368,7 +365,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 IERC20(token).safeTransferFrom(_user, vault, amount);
             }
         }
-        
+
+        payable(msg.sender).transfer(address(this).balance);
+
         return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);
     }
 

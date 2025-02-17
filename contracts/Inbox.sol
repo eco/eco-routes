@@ -394,6 +394,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         address _claimant,
         bytes32 _expectedHash
     ) internal returns (bytes[] memory) {
+        if (_route.destination != block.chainid) {
+            revert WrongChain(_route.destination);
+        }
+
         if (!isSolvingPublic && !solverWhitelist[msg.sender]) {
             revert UnauthorizedSolveAttempt(msg.sender);
         }

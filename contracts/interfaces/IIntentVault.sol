@@ -31,4 +31,10 @@ interface IIntentVault {
      * @notice Thrown when the native token transfer to the claimant fails
      */
     error NativeRewardTransferFailed();
+
+    event RewardTransferFailed(
+        address indexed token,
+        address indexed to,
+        uint256 amount
+    );
 }
