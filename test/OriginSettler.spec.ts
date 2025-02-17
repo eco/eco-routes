@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, Provider, AbiCoder, zeroPadBytes } from 'ethers'
+import { keccak256, BytesLike, Provider } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -32,7 +32,6 @@ import {
   encodeGaslessCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
 } from '../utils/EcoERC7683'
-import { token } from '../typechain-types/@openzeppelin/contracts'
 
 describe('Origin Settler Test', (): void => {
   let originSettler: Eco7683OriginSettler
