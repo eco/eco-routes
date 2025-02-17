@@ -106,12 +106,6 @@ interface IIntentSource is ISemver {
     }
 
     /**
-     * @notice Emitted when a permit call fails
-     * @param target Address of the target contract
-     */
-    event PermitCallFailed(address target);
-
-    /**
      * @notice Emitted when an intent is funded with native tokens
      * @param intentHash Hash of the funded intent
      * @param fundingSource Address of the funder
