@@ -1,18 +1,21 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import {
-  TestERC20,
-  Inbox,
-  TestProver,
-} from '../typechain-types'
+import { TestERC20, Inbox, TestProver } from '../typechain-types'
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer } from '../utils/encode'
 import { BytesLike, AbiCoder, parseEther } from 'ethers'
-import { hashIntent, Call, Route, Reward, Intent, encodeIntent } from '../utils/intent'
+import {
+  hashIntent,
+  Call,
+  Route,
+  Reward,
+  Intent,
+  encodeIntent,
+} from '../utils/intent'
 
 describe('Destination Settler Test', (): void => {
   let inbox: Inbox
@@ -141,25 +144,21 @@ describe('Destination Settler Test', (): void => {
     await time.increaseTo(intent.reward.deadline + 1)
     await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
-        ['uint256', 'address'],
-        [0, solver.address],
+      ['uint256', 'address'],
+      [0, solver.address],
     )
     await expect(
-         inbox
-          .connect(solver)
-          .fill(intentHash, encodeIntent(intent), fillerData, {
-            value: nativeAmount,
-          }),
-      ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
+      inbox.connect(solver).fill(intentHash, encodeIntent(intent), fillerData, {
+        value: nativeAmount,
+      }),
+    ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
   })
   it('successfully calls storage prover fulfill', async (): Promise<void> => {
     expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction
-    await erc20
-      .connect(solver)
-      .approve(await inbox.getAddress(), mintAmount)
+    await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
       ['uint256', 'address'],
       [0, solver.address],
@@ -180,9 +179,7 @@ describe('Destination Settler Test', (): void => {
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // transfer the tokens to the settler so it can process the transaction
-    await erc20
-      .connect(solver)
-      .approve(await inbox.getAddress(), mintAmount)
+    await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
       ['uint256', 'address', 'address', 'bytes'],
       [1, solver.address, ethers.ZeroAddress, '0x'],

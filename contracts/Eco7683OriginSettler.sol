@@ -354,7 +354,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
                 payable(vault).transfer(_intent.reward.nativeValue);
             }
-                uint256 rewardsLength = _intent.reward.tokens.length;
+            uint256 rewardsLength = _intent.reward.tokens.length;
             for (uint256 i = 0; i < rewardsLength; ++i) {
                 address token = _intent.reward.tokens[i].token;
                 uint256 amount = _intent.reward.tokens[i].amount;
