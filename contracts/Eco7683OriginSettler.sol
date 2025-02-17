@@ -180,32 +180,26 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
         }
 
-        uint256 callCount = onchainCrosschainOrderData.route.calls.length;
-        FillInstruction[] memory fillInstructions = new FillInstruction[](
-            callCount
+        Intent memory intent = Intent(
+            onchainCrosschainOrderData.route,
+            Reward(
+                onchainCrosschainOrderData.creator,
+                onchainCrosschainOrderData.prover,
+                _order.fillDeadline,
+                onchainCrosschainOrderData.nativeValue,
+                onchainCrosschainOrderData.rewardTokens
+            )
         );
 
-        for (uint256 j = 0; j < callCount; j++) {
-            fillInstructions[j] = FillInstruction(
-                uint64(onchainCrosschainOrderData.route.destination),
-                bytes32(
-                    bytes20(uint160(onchainCrosschainOrderData.route.inbox))
-                ),
-                abi.encode(onchainCrosschainOrderData.route.calls[j])
-            );
-        }
+        FillInstruction[] memory fillInstructions = new FillInstruction[](1);
+        fillInstructions[0] = FillInstruction(
+            uint64(onchainCrosschainOrderData.route.destination),
+            bytes32(bytes20(uint160(onchainCrosschainOrderData.route.inbox))),
+            abi.encode(intent)
+        );
 
         (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
-            Intent(
-                onchainCrosschainOrderData.route,
-                Reward(
-                    onchainCrosschainOrderData.creator,
-                    onchainCrosschainOrderData.prover,
-                    _order.fillDeadline,
-                    onchainCrosschainOrderData.nativeValue,
-                    onchainCrosschainOrderData.rewardTokens
-                )
-            )
+            intent
         );
         return
             ResolvedCrossChainOrder(
@@ -274,37 +268,33 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
         }
 
-        uint256 callCount = gaslessCrosschainOrderData.calls.length;
-        FillInstruction[] memory fillInstructions = new FillInstruction[](
-            callCount
+        Intent memory intent = Intent(
+            Route(
+                bytes32(_order.nonce),
+                _order.originChainId,
+                gaslessCrosschainOrderData.destination,
+                gaslessCrosschainOrderData.inbox,
+                gaslessCrosschainOrderData.routeTokens,
+                gaslessCrosschainOrderData.calls
+            ),
+            Reward(
+                _order.user,
+                gaslessCrosschainOrderData.prover,
+                _order.fillDeadline,
+                gaslessCrosschainOrderData.nativeValue,
+                gaslessCrosschainOrderData.rewardTokens
+            )
         );
 
-        for (uint256 j = 0; j < callCount; j++) {
-            fillInstructions[j] = FillInstruction(
-                uint64(gaslessCrosschainOrderData.destination),
-                bytes32(bytes20(uint160(gaslessCrosschainOrderData.inbox))),
-                abi.encode(gaslessCrosschainOrderData.calls[j])
-            );
-        }
+        FillInstruction[] memory fillInstructions = new FillInstruction[](1);
+        fillInstructions[0] = FillInstruction(
+            uint64(gaslessCrosschainOrderData.destination),
+            bytes32(bytes20(uint160(gaslessCrosschainOrderData.inbox))),
+            abi.encode(intent)
+        );
 
         (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
-            Intent(
-                Route(
-                    bytes32(_order.nonce),
-                    _order.originChainId,
-                    gaslessCrosschainOrderData.destination,
-                    gaslessCrosschainOrderData.inbox,
-                    gaslessCrosschainOrderData.routeTokens,
-                    gaslessCrosschainOrderData.calls
-                ),
-                Reward(
-                    _order.user,
-                    gaslessCrosschainOrderData.prover,
-                    _order.fillDeadline,
-                    gaslessCrosschainOrderData.nativeValue,
-                    gaslessCrosschainOrderData.rewardTokens
-                )
-            )
+            intent
         );
         return
             ResolvedCrossChainOrder(
@@ -364,7 +354,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
                 payable(vault).transfer(_intent.reward.nativeValue);
             }
-            uint256 rewardsLength = _intent.reward.tokens.length;
+                uint256 rewardsLength = _intent.reward.tokens.length;
             for (uint256 i = 0; i < rewardsLength; ++i) {
                 address token = _intent.reward.tokens[i].token;
                 uint256 amount = _intent.reward.tokens[i].amount;
@@ -372,7 +362,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 IERC20(token).safeTransferFrom(_user, vault, amount);
             }
         }
-        
+
         payable(msg.sender).transfer(address(this).balance);
 
         return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);

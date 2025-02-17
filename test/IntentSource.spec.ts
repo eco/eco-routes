@@ -1,7 +1,13 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
+import {
+  TestERC20,
+  BadERC20,
+  IntentSource,
+  TestProver,
+  Inbox,
+} from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, ZeroAddress, Provider } from 'ethers'
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
@@ -360,10 +366,12 @@ describe('Intent Source Test', (): void => {
       })
       it('allows refund if already claimed', async () => {
         expect(
-          await intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
+          await intentSource
+            .connect(otherPerson)
+            .withdrawRewards(routeHash, reward),
         )
-        .to.emit(intentSource, 'Withdrawal')
-        .withArgs(intentHash, reward.creator)
+          .to.emit(intentSource, 'Withdrawal')
+          .withArgs(intentHash, reward.creator)
 
         await expect(
           intentSource
@@ -1007,7 +1015,7 @@ describe('Intent Source Test', (): void => {
     it('should fund intent with single token, refunding accidentally sent native', async () => {
       const provider: Provider = intentSource.runner!.provider!
       rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
-      
+
       const creatorInitialNativeBalance: bigint = await provider.getBalance(creator.address)
 
       reward = {
@@ -1298,31 +1306,74 @@ describe('Intent Source Test', (): void => {
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
     })
     it('should handle overfunded vaults', async () => {
-        rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
 
-        reward = {
-          creator: creator.address,
-          prover: await prover.getAddress(),
-          deadline: expiry,
-          nativeValue: 0n,
-          tokens: rewardTokens,
-        }
-        await intentSource.connect(creator).publishIntent({ route, reward }, true)
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+      await intentSource.connect(creator).publishIntent({ route, reward }, true)
 
-        expect (await intentSource.isIntentFunded({ route, reward })).to.be.true
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.true
 
-        await tokenA.connect(creator).mint(creator.address, mintAmount)
-        await tokenA.connect(creator).approve(intentSource, mintAmount)
+      await tokenA.connect(creator).mint(creator.address, mintAmount)
+      await tokenA.connect(creator).approve(intentSource, mintAmount)
 
-        // send more tokens
-        const intentVaultAddress = await intentSource.intentVaultAddress({ route, reward })
-        await tokenA.connect(creator).transfer(intentVaultAddress, mintAmount)
+      // send more tokens
+      const intentVaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+      await tokenA.connect(creator).transfer(intentVaultAddress, mintAmount)
 
-        //mark as proven
-        const hash = (await intentSource.getIntentHash({ route, reward }))[0]
-        await prover.addProvenIntent(hash, await claimant.getAddress())
+      //mark as proven
+      const hash = (await intentSource.getIntentHash({ route, reward }))[0]
+      await prover.addProvenIntent(hash, await claimant.getAddress())
 
-        await intentSource.connect(claimant).withdrawRewards(routeHash, reward)
+      await intentSource.connect(claimant).withdrawRewards(routeHash, reward)
+    })
+    it('should handle withdraws for rewards with malicious tokens', async () => {
+      const initialClaimantBalance = await tokenA.balanceOf(claimant.address)
+
+      const malicious: BadERC20 = await (
+        await ethers.getContractFactory('BadERC20')
+      ).deploy('malicious', 'MAL', creator.address)
+      await malicious.mint(creator.address, mintAmount)
+      const badRewardTokens = [
+        { token: await malicious.getAddress(), amount: mintAmount },
+        { token: await tokenA.getAddress(), amount: mintAmount },
+      ]
+
+      const badReward: Reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: badRewardTokens,
+      }
+      const badVaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward: badReward,
+      })
+      await malicious.connect(creator).transfer(badVaultAddress, mintAmount)
+      await tokenA.connect(creator).transfer(badVaultAddress, mintAmount)
+      expect(await intentSource.isIntentFunded({ route, reward: badReward })).to
+        .be.true
+
+      const badHash = (
+        await intentSource.getIntentHash({ route, reward: badReward })
+      )[0]
+      await prover.addProvenIntent(badHash, await claimant.getAddress())
+
+      await expect(intentSource.withdrawRewards(routeHash, badReward)).to.not.be
+        .reverted
+
+      expect(await tokenA.balanceOf(claimant.address)).to.eq(
+        initialClaimantBalance + BigInt(mintAmount),
+      )
     })
   })
 })

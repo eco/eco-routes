@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -17,7 +18,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity and executes calldata. Enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Ownable, Semver {
+contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 
@@ -61,11 +62,16 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillStorage(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) external payable returns (bytes[] memory) {
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
         bytes[] memory result = _fulfill(
             _route,
             _rewardHash,
@@ -89,7 +95,7 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstant(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
@@ -120,14 +126,19 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstantWithRelayer(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
         address _prover,
         bytes memory _metadata,
         address _postDispatchHook
-    ) public payable returns (bytes[] memory) {
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
         bytes32[] memory hashes = new bytes32[](1);
         address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
@@ -378,7 +389,7 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results
      */
     function _fulfill(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
@@ -424,7 +435,7 @@ contract Inbox is IInbox, Ownable, Semver {
         bytes[] memory results = new bytes[](_route.calls.length);
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
-            Call calldata call = _route.calls[i];
+            Call memory call = _route.calls[i];
             if (call.target == mailbox) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();

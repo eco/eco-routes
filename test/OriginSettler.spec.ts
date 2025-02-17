@@ -9,7 +9,7 @@ import {
   Eco7683OriginSettler,
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, Provider } from 'ethers'
+import { keccak256, BytesLike, Provider, AbiCoder, zeroPadBytes } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
@@ -18,6 +18,8 @@ import {
   TokenAmount,
   Route,
   Reward,
+  Intent,
+  encodeIntent
 } from '../utils/intent'
 import {
   OnchainCrossChainOrderStruct,
@@ -54,6 +56,7 @@ describe('Origin Settler Test', (): void => {
   let rewardTokens: TokenAmount[]
   let route: Route
   let reward: Reward
+  let intent: Intent
   let routeHash: BytesLike
   let rewardHash: BytesLike
   let intentHash: BytesLike
@@ -181,6 +184,7 @@ describe('Origin Settler Test', (): void => {
         nativeValue: rewardNativeEth,
         tokens: rewardTokens,
       }
+      intent = { route: route, reward: reward }
       routeHash = keccak256(encodeRoute(route))
       rewardHash = keccak256(encodeReward(reward))
       intentHash = keccak256(
@@ -338,7 +342,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(await tokenA.balanceOf(creator)).to.eq(0)
         expect(await tokenB.balanceOf(creator)).to.eq(0)
-  
+
         await tokenA
             .connect(creator)
             .approve(await originSettler.getAddress(), mintAmount)
@@ -353,7 +357,39 @@ describe('Origin Settler Test', (): void => {
 
         expect(await provider.getBalance(vaultAddress)).to.eq(rewardNativeEth)
         expect(await provider.getBalance(creator.address)).to.be.gt(creatorInitialNativeBalance - rewardNativeEth)
-        
+
+      })
+      it('publishes without transferring if intent is already funded', async () => {
+        const vaultAddress = await intentSource.intentVaultAddress({route, reward})
+        await tokenA
+            .connect(creator)
+            .transfer(vaultAddress, mintAmount)
+        await tokenB
+            .connect(creator)
+            .transfer(vaultAddress, 2 * mintAmount)
+        await creator.sendTransaction({to: vaultAddress, value: reward.nativeValue})
+
+        expect(
+            await intentSource.isIntentFunded({
+              route,
+              reward: { ...reward, nativeValue: reward.nativeValue },
+            }),
+          ).to.be.true
+
+        expect(await tokenA.balanceOf(creator)).to.eq(0)
+        expect(await tokenB.balanceOf(creator)).to.eq(0)
+
+        await tokenA
+            .connect(creator)
+            .approve(await originSettler.getAddress(), mintAmount)
+        await tokenB
+            .connect(creator)
+            .approve(await originSettler.getAddress(), 2 * mintAmount)
+        await expect(
+            originSettler
+                .connect(creator)
+                .open(onchainCrosschainOrder, { value: rewardNativeEth }),
+            ).to.not.be.reverted
       })
       it('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
@@ -412,6 +448,11 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           onchainCrosschainOrderData.route.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        const fillInstruction = resolvedOrder.fillInstructions[0]
+        expect(fillInstruction.destinationChainId).to.eq(route.destination)
+        expect(fillInstruction.destinationSettler).to.eq(ethers.zeroPadBytes(await inbox.getAddress(), 32))
+        expect(fillInstruction.originData).to.eq(encodeIntent(intent))
       })
     })
 
@@ -526,6 +567,12 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           gaslessCrosschainOrderData.destination,
         )
+        expect(resolvedOrder.fillInstructions.length).to.eq(1)
+        const fillInstruction = resolvedOrder.fillInstructions[0]
+        expect(fillInstruction.destinationChainId).to.eq(route.destination)
+        expect(fillInstruction.destinationSettler).to.eq(ethers.zeroPadBytes(await inbox.getAddress(), 32))
+        expect(fillInstruction.originData).to.eq(encodeIntent(intent))
+
       })
     })
   })

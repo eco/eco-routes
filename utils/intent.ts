@@ -73,6 +73,55 @@ const RewardStruct = [
   },
 ]
 
+const IntentStruct = [
+    {
+        name: 'route',
+        type: 'tuple',
+        components: [
+            { name: 'salt', type: 'bytes32' },
+            { name: 'source', type: 'uint256' },
+            { name: 'destination', type: 'uint256' },
+            { name: 'inbox', type: 'address' },
+            {
+              name: 'tokens',
+              type: 'tuple[]',
+              components: [
+                { name: 'token', type: 'address' },
+                { name: 'amount', type: 'uint256' },
+              ],
+            },
+            {
+              name: 'calls',
+              type: 'tuple[]',
+              components: [
+                { name: 'target', type: 'address' },
+                { name: 'data', type: 'bytes' },
+                { name: 'value', type: 'uint256' },
+              ],
+            },
+        ],
+    },
+    {
+        name: 'reward',
+        type: 'tuple',
+        components: [
+            { name: 'creator', type: 'address' },
+            { name: 'prover', type: 'address' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'nativeValue', type: 'uint256' },
+            {
+              name: 'tokens',
+              type: 'tuple[]',
+              components: [
+                { name: 'token', type: 'address' },
+                { name: 'amount', type: 'uint256' },
+              ],
+            },
+        ],
+    }
+
+]
+
 export function encodeRoute(route: Route) {
   const abiCoder = AbiCoder.defaultAbiCoder()
   return abiCoder.encode(
@@ -97,6 +146,19 @@ export function encodeReward(reward: Reward) {
     ],
     [reward],
   )
+}
+
+export function encodeIntent(intent: Intent) {
+    const abiCoder = AbiCoder.defaultAbiCoder()
+    return abiCoder.encode(
+      [
+        {
+            type: 'tuple',
+            components: IntentStruct,
+        },
+      ],
+      [intent],
+    )
 }
 
 export function hashIntent(intent: Intent) {
