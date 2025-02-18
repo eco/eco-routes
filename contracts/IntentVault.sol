@@ -248,12 +248,8 @@ contract IntentVault is IIntentVault {
         }
 
         if (transferAmount > 0) {
-            // Transfer tokens from funding source to vault using safe transfer
-            IERC20(token).safeTransferFrom(
-                fundingSource,
-                address(this),
-                transferAmount
-            );
+            // Transfer tokens from funding source to vault using Permit2 transferFrom
+            permit2.transferFrom(fundingSource, address(this), transferAmount, token);
         }
     }
 }

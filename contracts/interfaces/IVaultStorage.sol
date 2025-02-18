@@ -32,7 +32,7 @@ interface IVaultStorage {
      * @param mode Current mode of the vault
      * @param allowPartial Whether partial funding is allowed
      * @param isPermit2 Whether permit2 is enabled
-     * @param target Address of the funder in Fund, claimant in Claim or refund token in RefundToken mode
+     * @param target Address of the funder in Fund, claimant in Claim or refund token in RecoverToken mode
      */
     struct VaultState {
         uint8 status; // RewardStatus
@@ -50,6 +50,6 @@ interface IVaultStorage {
      */
     struct VaultStorage {
         VaultState state; // 1 bytes32 storage slot
-        address permit2; // permit2 instance
+        address permit2; // permit2 instance when enabled
     }
 }
