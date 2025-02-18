@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IIntentVault} from "./interfaces/IIntentVault.sol";
+import {IPermit2} from "./interfaces/IPermit2.sol";
+
 import {Reward} from "./types/Intent.sol";
 
 /**
@@ -21,47 +23,96 @@ contract IntentVault is IIntentVault {
     /**
      * @notice Creates and immediately executes reward distribution
      * @dev Contract self-destructs after execution
-     * @param intentHash Hash of the intent being claimed/refunded
-     * @param reward Reward data structure containing distribution details
      */
     constructor(bytes32 intentHash, Reward memory reward) {
-        // Get reference to the IntentSource contract that created this vault
         IIntentSource intentSource = IIntentSource(msg.sender);
+        VaultState memory state = intentSource.getVaultState(intentHash);
+
+        if (state.mode == uint8(VaultMode.Fund)) {
+            _fundIntent(intentSource, intentHash, state, reward);
+        } else if (state.mode == uint8(VaultMode.Claim)) {
+            _processRewardTokens(reward, state.target);
+            _processNativeReward(reward, state.target);
+        } else if (state.mode == uint8(VaultMode.Refund)) {
+            _processRewardTokens(reward, reward.creator);
+        } else if (state.mode == uint8(VaultMode.RecoverToken)) {
+            _processRecoverToken(state.target, reward.creator);
+        }
+
+        selfdestruct(payable(reward.creator));
+    }
+
+    /**
+     * @dev Funds the intent with required tokens
+     */
+    function _fundIntent(
+        IIntentSource intentSource,
+        bytes32 intentHash,
+        VaultState memory state,
+        Reward memory reward
+    ) internal {
+        // Cache array length to save gas in loop
         uint256 rewardsLength = reward.tokens.length;
 
-        // Get current claim state and any refund token override
-        IIntentSource.ClaimState memory state = intentSource.getClaim(
-            intentHash
-        );
-        address claimant = state.claimant;
-        address refundToken = intentSource.getRefundToken();
-
-        // Ensure intent has expired if there's no claimant
-        if (claimant == address(0) && block.timestamp <= reward.deadline) {
-            revert IntentNotExpired();
+        // Get the address that is providing the tokens for funding
+        address fundingSource = state.target;
+        address permit2;
+        if (state.isPermit2 == 1) {
+            permit2 = intentSource.getPermit2(intentHash);
         }
 
-        // Withdrawing to creator if intent is expired or already claimed/refunded
-        if (
-            (claimant == address(0) && block.timestamp > reward.deadline) ||
-            state.status != uint8(IIntentSource.ClaimStatus.Initial)
-        ) {
-            claimant = reward.creator;
-        }
+        // Iterate through each token in the reward structure
+        for (uint256 i; i < rewardsLength; ++i) {
+            // Get token address and required amount for current reward
+            address token = reward.tokens[i].token;
+            uint256 amount = reward.tokens[i].amount;
 
-        // Process each reward token
+            // Calculate how many more tokens the vault needs to be fully funded
+            uint256 balance = IERC20(token).balanceOf(address(this));
+
+            // Only proceed if vault needs more tokens and we have permission to transfer them
+            if (amount > balance) {
+                uint256 remainingAmount = amount - balance;
+
+                if (permit2 != address(0)) {
+                    remainingAmount = _transferFrom2(
+                        IPermit2(permit2),
+                        fundingSource,
+                        token,
+                        remainingAmount
+                    );
+                }
+
+                if (remainingAmount > 0) {
+                    _transferFrom(
+                        fundingSource,
+                        token,
+                        remainingAmount,
+                        state.allowPartialFunding
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * @dev Processes all reward tokens
+     */
+    function _processRewardTokens(
+        Reward memory reward,
+        address claimant
+    ) internal {
+        uint256 rewardsLength = reward.tokens.length;
+
         for (uint256 i; i < rewardsLength; ++i) {
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;
             uint256 balance = IERC20(token).balanceOf(address(this));
 
-            // Prevent reward tokens from being used as refund tokens
-            if (token == refundToken) {
-                revert RefundTokenCannotBeRewardToken();
-            }
-
-            // If creator is claiming or balance is below expected amount, send full balance
             if (claimant == reward.creator || balance < amount) {
+                if (claimant != reward.creator) {
+                    emit RewardTransferFailed(token, claimant, amount);
+                }
                 if (balance > 0) {
                     _tryTransfer(token, claimant, balance);
                 }
@@ -74,31 +125,40 @@ contract IntentVault is IIntentVault {
                 }
             }
         }
+    }
 
-        // Handle native token rewards for solver claims
-        if (claimant != reward.creator && reward.nativeValue > 0) {
+    /**
+     * @dev Processes native token reward
+     */
+    function _processNativeReward(
+        Reward memory reward,
+        address claimant
+    ) internal {
+        if (reward.nativeValue > 0) {
+            uint256 amount = reward.nativeValue;
             if (address(this).balance < reward.nativeValue) {
-                revert InsufficientNativeBalance();
+                emit RewardTransferFailed(address(0), claimant, amount);
+                amount = address(this).balance;
             }
 
-            (bool success, ) = payable(claimant).call{
-                value: reward.nativeValue
-            }("");
-
+            (bool success, ) = payable(claimant).call{value: amount}("");
             if (!success) {
-                revert NativeRewardTransferFailed();
+                emit RewardTransferFailed(address(0), claimant, amount);
             }
         }
+    }
 
-        // Process any refund token if specified
-        if (refundToken != address(0)) {
-            uint256 refundAmount = IERC20(refundToken).balanceOf(address(this));
-            if (refundAmount > 0)
-                IERC20(refundToken).safeTransfer(reward.creator, refundAmount);
+    /**
+     * @dev Processes refund token if specified
+     */
+    function _processRecoverToken(
+        address refundToken,
+        address creator
+    ) internal {
+        uint256 refundAmount = IERC20(refundToken).balanceOf(address(this));
+        if (refundAmount > 0) {
+            IERC20(refundToken).safeTransfer(creator, refundAmount);
         }
-
-        // Self-destruct and send remaining ETH to creator
-        selfdestruct(payable(reward.creator));
     }
 
     /**
@@ -114,6 +174,86 @@ contract IntentVault is IIntentVault {
 
         if (!success || (data.length > 0 && !abi.decode(data, (bool)))) {
             emit RewardTransferFailed(token, to, amount);
+        }
+    }
+
+    /**
+     * @notice Transfers tokens from funding source to vault
+     * @param fundingSource Address that is providing the tokens for funding
+     * @param token Address of the token being transferred
+     * @param amount Amount of tokens to transfer
+     * @param allowPartialFunding Whether to allow partial funding
+     */
+    function _transferFrom(
+        address fundingSource,
+        address token,
+        uint256 amount,
+        uint8 allowPartialFunding
+    ) internal {
+        // Check how many tokens this contract is allowed to transfer from funding source
+        uint256 allowance = IERC20(token).allowance(
+            fundingSource,
+            address(this)
+        );
+
+        uint256 transferAmount;
+        // Calculate transfer amount as minimum of what's needed and what's allowed
+        if (allowance >= amount) {
+            transferAmount = amount;
+        } else if (allowPartialFunding == 1) {
+            transferAmount = allowance;
+        } else {
+            revert InsufficientTokenAllowance(token, fundingSource, amount);
+        }
+
+        if (transferAmount > 0) {
+            // Transfer tokens from funding source to vault using safe transfer
+            IERC20(token).safeTransferFrom(
+                fundingSource,
+                address(this),
+                transferAmount
+            );
+        }
+    }
+
+    /**
+     * @notice Transfers tokens from funding source to vault using Permit2
+     * @param permit2 Permit2 contract to use for token transfer
+     * @param fundingSource Address that is providing the tokens for funding
+     * @param token Address of the token being transferred
+     * @param amount Amount of tokens to transfer
+     * @return remainingAmount Amount of tokens that still need to be transferred
+     */
+    function _transferFrom2(
+        IPermit2 permit2,
+        address fundingSource,
+        address token,
+        uint256 amount
+    ) internal returns (uint256 remainingAmount) {
+        // Check how many tokens this contract is allowed to transfer from funding source
+        (uint160 allowance, , ) = permit2.allowance(
+            fundingSource,
+            token,
+            address(this)
+        );
+
+        uint256 transferAmount;
+        // Calculate transfer amount as minimum of what's needed and what's allowed
+        if (allowance >= amount) {
+            transferAmount = amount;
+            remainingAmount = 0;
+        } else {
+            transferAmount = allowance;
+            remainingAmount = amount - allowance;
+        }
+
+        if (transferAmount > 0) {
+            // Transfer tokens from funding source to vault using safe transfer
+            IERC20(token).safeTransferFrom(
+                fundingSource,
+                address(this),
+                transferAmount
+            );
         }
     }
 }

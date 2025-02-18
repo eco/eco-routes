@@ -2,35 +2,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {IVaultStorage} from "./IVaultStorage.sol";
+
 /**
  * @title IIntentVault
  * @notice Interface defining errors for the IntentVault contract
  */
-interface IIntentVault {
+interface IIntentVault is IVaultStorage {
     /**
-     * @notice Thrown when attempting to withdraw rewards before the intent has expired
+     * @notice Thrown when the vault has insufficient token allowance for reward funding
      */
-    error IntentNotExpired();
-
-    /**
-     * @notice Thrown when trying to use a reward token as a refund token
-     */
-    error RefundTokenCannotBeRewardToken();
-
-    /**
-     * @notice Thrown when the vault has insufficient token balance for reward distribution
-     */
-    error InsufficientTokenBalance();
-
-    /**
-     * @notice Thrown when the vault has insufficient native token balance
-     */
-    error InsufficientNativeBalance();
-
-    /**
-     * @notice Thrown when the native token transfer to the claimant fails
-     */
-    error NativeRewardTransferFailed();
+    error InsufficientTokenAllowance(
+        address token,
+        address spender,
+        uint256 amount
+    );
 
     event RewardTransferFailed(
         address indexed token,

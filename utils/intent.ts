@@ -171,39 +171,6 @@ export function hashIntent(intent: Intent) {
   return { routeHash, rewardHash, intentHash }
 }
 
-export async function intentFunderAddress(
-  intentSourceAddress: string,
-  intent: Intent,
-) {
-  const vault = await intentVaultAddress(intentSourceAddress, intent)
-  const { routeHash } = hashIntent(intent)
-  const intentFunderFactory = await ethers.getContractFactory('IntentFunder')
-  const abiCoder = AbiCoder.defaultAbiCoder()
-
-  return getCreate2Address(
-    intentSourceAddress,
-    routeHash,
-    keccak256(
-      solidityPacked(
-        ['bytes', 'bytes'],
-        [
-          intentFunderFactory.bytecode,
-          abiCoder.encode(
-            [
-              'address',
-              {
-                type: 'tuple',
-                components: RewardStruct,
-              },
-            ],
-            [vault, intent.reward],
-          ),
-        ],
-      ),
-    ),
-  )
-}
-
 export async function intentVaultAddress(
   intentSourceAddress: string,
   intent: Intent,
