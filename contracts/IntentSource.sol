@@ -28,7 +28,7 @@ contract IntentSource is IIntentSource, Semver {
     constructor() {}
 
     /**
-     * @notice Retrieves claim state for a given intent hash
+     * @notice Retrieves reward status for a given intent hash
      * @param intentHash Hash of the intent to query
      * @return status Current status of the intent
      */
