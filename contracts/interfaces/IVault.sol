@@ -5,10 +5,10 @@ pragma solidity ^0.8.26;
 import {IVaultStorage} from "./IVaultStorage.sol";
 
 /**
- * @title IIntentVault
- * @notice Interface defining errors for the IntentVault contract
+ * @title IVault.sol
+ * @notice Interface defining errors for the Vault.sol contract
  */
-interface IIntentVault is IVaultStorage {
+interface IVault is IVaultStorage {
     /**
      * @notice Thrown when the vault has insufficient token allowance for reward funding
      */

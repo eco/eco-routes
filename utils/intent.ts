@@ -176,7 +176,7 @@ export async function intentVaultAddress(
   intent: Intent,
 ) {
   const { routeHash, intentHash } = hashIntent(intent)
-  const intentVaultFactory = await ethers.getContractFactory('IntentVault')
+  const intentVaultFactory = await ethers.getContractFactory('Vault')
   const abiCoder = AbiCoder.defaultAbiCoder()
 
   return getCreate2Address(

@@ -6,18 +6,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
-import {IIntentVault} from "./interfaces/IIntentVault.sol";
-import {IPermit2} from "./interfaces/IPermit2.sol";
+import {IVault} from "./interfaces/IVault.sol";
+import {IPermit} from "./interfaces/IPermit.sol";
 
 import {Reward} from "./types/Intent.sol";
 
 /**
- * @title IntentVault
+ * @title Vault.sol
  * @notice A self-destructing contract that handles reward distribution for intents
  * @dev Created by IntentSource for each intent, handles token and native currency transfers,
  * then self-destructs after distributing rewards
  */
-contract IntentVault is IIntentVault {
+contract Vault is IVault {
     using SafeERC20 for IERC20;
 
     /**
@@ -54,10 +54,10 @@ contract IntentVault is IIntentVault {
         // Get the address that is providing the tokens for funding
         address fundingSource = state.target;
         uint256 rewardsLength = reward.tokens.length;
-        address permit2;
+        address permitContract;
 
-        if (state.isPermit2 == 1) {
-            permit2 = intentSource.getPermit2(intentHash);
+        if (state.usePermit == 1) {
+            permitContract = intentSource.getPermitContract(intentHash);
         }
 
         // Iterate through each token in the reward structure
@@ -72,9 +72,9 @@ contract IntentVault is IIntentVault {
                 // Calculate how many more tokens the vault needs to be fully funded
                 uint256 remainingAmount = amount - balance;
 
-                if (permit2 != address(0)) {
-                    remainingAmount = _transferFrom2(
-                        IPermit2(permit2),
+                if (permitContract != address(0)) {
+                    remainingAmount = _transferFromPermit(
+                        IPermit(permitContract),
                         fundingSource,
                         token,
                         remainingAmount
@@ -212,21 +212,21 @@ contract IntentVault is IIntentVault {
     }
 
     /**
-     * @notice Transfers tokens from funding source to vault using Permit2
-     * @param permit2 Permit2 contract to use for token transfer
+     * @notice Transfers tokens from funding source to vault using external Permit contract
+     * @param permit Permit2 like contract to use for token transfer
      * @param fundingSource Address that is providing the tokens for funding
      * @param token Address of the token being transferred
      * @param amount Amount of tokens to transfer
      * @return remainingAmount Amount of tokens that still need to be transferred
      */
-    function _transferFrom2(
-        IPermit2 permit2,
+    function _transferFromPermit(
+        IPermit permit,
         address fundingSource,
         address token,
         uint256 amount
     ) internal returns (uint256 remainingAmount) {
         // Check how many tokens this contract is allowed to transfer from funding source
-        (uint160 allowance, , ) = permit2.allowance(
+        (uint160 allowance, , ) = permit.allowance(
             fundingSource,
             token,
             address(this)
@@ -243,8 +243,8 @@ contract IntentVault is IIntentVault {
         }
 
         if (transferAmount > 0) {
-            // Transfer tokens from funding source to vault using Permit2 transferFrom
-            permit2.transferFrom(
+            // Transfer tokens from funding source to vault using Permit.transferFrom
+            permit.transferFrom(
                 fundingSource,
                 address(this),
                 uint160(transferAmount),

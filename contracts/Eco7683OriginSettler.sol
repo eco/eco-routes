@@ -381,7 +381,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         payable(msg.sender).transfer(address(this).balance);
 
-        return IntentSource(INTENT_SOURCE).publishIntent(_intent, false);
+        return IntentSource(INTENT_SOURCE).publish(_intent);
     }
 
     /// @notice EIP712 domain separator
