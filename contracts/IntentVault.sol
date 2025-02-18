@@ -36,7 +36,7 @@ contract IntentVault is IIntentVault {
         } else if (state.mode == uint8(VaultMode.Refund)) {
             _processRewardTokens(reward, reward.creator);
         } else if (state.mode == uint8(VaultMode.RecoverToken)) {
-            _processRecoverToken(state.target, reward.creator);
+            _recoverToken(state.target, reward.creator);
         }
 
         selfdestruct(payable(reward.creator));
@@ -51,12 +51,11 @@ contract IntentVault is IIntentVault {
         VaultState memory state,
         Reward memory reward
     ) internal {
-        // Cache array length to save gas in loop
-        uint256 rewardsLength = reward.tokens.length;
-
         // Get the address that is providing the tokens for funding
         address fundingSource = state.target;
+        uint256 rewardsLength = reward.tokens.length;
         address permit2;
+
         if (state.isPermit2 == 1) {
             permit2 = intentSource.getPermit2(intentHash);
         }
@@ -66,12 +65,11 @@ contract IntentVault is IIntentVault {
             // Get token address and required amount for current reward
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;
-
-            // Calculate how many more tokens the vault needs to be fully funded
             uint256 balance = IERC20(token).balanceOf(address(this));
 
             // Only proceed if vault needs more tokens and we have permission to transfer them
             if (amount > balance) {
+                // Calculate how many more tokens the vault needs to be fully funded
                 uint256 remainingAmount = amount - balance;
 
                 if (permit2 != address(0)) {
@@ -151,10 +149,7 @@ contract IntentVault is IIntentVault {
     /**
      * @dev Processes refund token if specified
      */
-    function _processRecoverToken(
-        address refundToken,
-        address creator
-    ) internal {
+    function _recoverToken(address refundToken, address creator) internal {
         uint256 refundAmount = IERC20(refundToken).balanceOf(address(this));
         if (refundAmount > 0) {
             IERC20(refundToken).safeTransfer(creator, refundAmount);
@@ -249,7 +244,12 @@ contract IntentVault is IIntentVault {
 
         if (transferAmount > 0) {
             // Transfer tokens from funding source to vault using Permit2 transferFrom
-            permit2.transferFrom(fundingSource, address(this), transferAmount, token);
+            permit2.transferFrom(
+                fundingSource,
+                address(this),
+                uint160(transferAmount),
+                token
+            );
         }
     }
 }
