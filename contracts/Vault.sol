@@ -12,7 +12,7 @@ import {IPermit} from "./interfaces/IPermit.sol";
 import {Reward} from "./types/Intent.sol";
 
 /**
- * @title Vault.sol
+ * @title Vault
  * @notice A self-destructing contract that handles reward distribution for intents
  * @dev Created by IntentSource for each intent, handles token and native currency transfers,
  * then self-destructs after distributing rewards

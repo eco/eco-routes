@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// @title IPermit.sol
+/// @title IPermit
 /// @notice Handles ERC20 token permissions through signature based allowance setting and ERC20 token transfers by checking allowed amounts
 /// @dev Requires user's token approval on the Permit2 like contract
 /// @dev This is the subset of the Uniswap permit2 interface

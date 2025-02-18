@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
 import {IVaultStorage} from "./IVaultStorage.sol";
 
 /**
- * @title IVault.sol
+ * @title IVault
  * @notice Interface defining errors for the Vault.sol contract
  */
 interface IVault is IVaultStorage {

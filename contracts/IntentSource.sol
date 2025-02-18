@@ -13,6 +13,7 @@ import {Semver} from "./libs/Semver.sol";
 import {Vault} from "./Vault.sol";
 
 /**
+ * @title IntentSource
  * @notice Source chain contract for the Eco Protocol's intent system
  * @dev Used to create intents and withdraw associated rewards. Works in conjunction with
  *      an inbox contract on the destination chain. Verifies intent fulfillment through
