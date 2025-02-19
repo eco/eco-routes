@@ -97,12 +97,11 @@ contract IntentSource is IIntentSource, Semver {
      */
     function publish(
         Intent calldata intent
-    ) external payable returns (bytes32 intentHash) {
+    ) external returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(intent);
         VaultState memory state = vaults[intentHash].state;
 
         _validateAndPublishIntent(intent, intentHash, state);
-        _returnExcessEth(intentHash, msg.value);
     }
 
     /**
@@ -140,7 +139,7 @@ contract IntentSource is IIntentSource, Semver {
     function fund(
         bytes32 routeHash,
         Reward calldata reward
-    ) external returns (bytes32 intentHash) {
+    ) external payable returns (bytes32 intentHash) {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
         VaultState memory state = vaults[intentHash].state;
@@ -195,7 +194,7 @@ contract IntentSource is IIntentSource, Semver {
         address funder,
         address permitContact,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash) {
+    ) external returns (bytes32 intentHash) {
         bytes32 routeHash;
         (intentHash, routeHash, ) = getIntentHash(intent);
         VaultState memory state = vaults[intentHash].state;

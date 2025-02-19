@@ -201,7 +201,7 @@ interface IIntentSource is ISemver, IVaultStorage {
      */
     function publish(
         Intent calldata intent
-    ) external payable returns (bytes32 intentHash);
+    ) external returns (bytes32 intentHash);
 
     /**
      * @notice Creates and funds an intent in a single transaction
@@ -221,7 +221,7 @@ interface IIntentSource is ISemver, IVaultStorage {
     function fund(
         bytes32 routeHash,
         Reward calldata reward
-    ) external returns (bytes32 intentHash);
+    ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Funds an intent on behalf of another address using permit
@@ -253,7 +253,7 @@ interface IIntentSource is ISemver, IVaultStorage {
         address funder,
         address permitContact,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash);
+    ) external returns (bytes32 intentHash);
 
     /**
      * @notice Checks if an intent's rewards are valid and fully funded
