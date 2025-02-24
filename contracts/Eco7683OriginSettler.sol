@@ -210,7 +210,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
         fillInstructions[0] = FillInstruction(
             uint64(onchainCrosschainOrderData.route.destination),
-            bytes32(bytes20(uint160(onchainCrosschainOrderData.route.inbox))),
+            bytes32(uint256(uint160(onchainCrosschainOrderData.route.inbox))),
             abi.encode(intent)
         );
 
