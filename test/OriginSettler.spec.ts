@@ -423,11 +423,11 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.maxSpent.length).to.eq(routeTokens.length)
         for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
           expect(resolvedOrder.maxSpent[i].token).to.eq(
-            ethers.zeroPadBytes(route.tokens[i].token, 32),
+            ethers.zeroPadValue(route.tokens[i].token, 32),
           )
           expect(resolvedOrder.maxSpent[i].amount).to.eq(route.tokens[i].amount)
           expect(resolvedOrder.maxSpent[i].recipient).to.eq(
-            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+            ethers.zeroPadValue(ethers.ZeroAddress, 32),
           )
           expect(resolvedOrder.maxSpent[i].chainId).to.eq(
             onchainCrosschainOrderData.route.destination,
@@ -439,13 +439,13 @@ describe('Origin Settler Test', (): void => {
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
-            ethers.zeroPadBytes(reward.tokens[i].token, 32),
+            ethers.zeroPadValue(reward.tokens[i].token, 32),
           )
           expect(resolvedOrder.minReceived[i].amount).to.eq(
             reward.tokens[i].amount,
           )
           expect(resolvedOrder.minReceived[i].recipient).to.eq(
-            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+            ethers.zeroPadValue(ethers.ZeroAddress, 32),
           )
           expect(resolvedOrder.minReceived[i].chainId).to.eq(
             onchainCrosschainOrderData.route.destination,
@@ -453,11 +453,11 @@ describe('Origin Settler Test', (): void => {
         }
         const i = resolvedOrder.minReceived.length - 1
         expect(resolvedOrder.minReceived[i].token).to.eq(
-          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
         expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeValue)
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
-          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           onchainCrosschainOrderData.route.destination,
@@ -466,7 +466,7 @@ describe('Origin Settler Test', (): void => {
         const fillInstruction = resolvedOrder.fillInstructions[0]
         expect(fillInstruction.destinationChainId).to.eq(route.destination)
         expect(fillInstruction.destinationSettler).to.eq(
-          ethers.zeroPadBytes(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
         )
         expect(fillInstruction.originData).to.eq(encodeIntent(intent))
       })
@@ -545,11 +545,11 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.maxSpent.length).to.eq(routeTokens.length)
         for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
           expect(resolvedOrder.maxSpent[i].token).to.eq(
-            ethers.zeroPadBytes(route.tokens[i].token, 32),
+            ethers.zeroPadValue(route.tokens[i].token, 32),
           )
           expect(resolvedOrder.maxSpent[i].amount).to.eq(route.tokens[i].amount)
           expect(resolvedOrder.maxSpent[i].recipient).to.eq(
-            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+            ethers.zeroPadValue(ethers.ZeroAddress, 32),
           )
           expect(resolvedOrder.maxSpent[i].chainId).to.eq(
             onchainCrosschainOrderData.route.destination,
@@ -560,13 +560,13 @@ describe('Origin Settler Test', (): void => {
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
-            ethers.zeroPadBytes(reward.tokens[i].token, 32),
+            ethers.zeroPadValue(reward.tokens[i].token, 32),
           )
           expect(resolvedOrder.minReceived[i].amount).to.eq(
             reward.tokens[i].amount,
           )
           expect(resolvedOrder.minReceived[i].recipient).to.eq(
-            ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+            ethers.zeroPadValue(ethers.ZeroAddress, 32),
           )
           expect(resolvedOrder.minReceived[i].chainId).to.eq(
             gaslessCrosschainOrderData.destination,
@@ -574,11 +574,11 @@ describe('Origin Settler Test', (): void => {
         }
         const i = resolvedOrder.minReceived.length - 1
         expect(resolvedOrder.minReceived[i].token).to.eq(
-          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
         expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeValue)
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
-          ethers.zeroPadBytes(ethers.ZeroAddress, 32),
+          ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
           gaslessCrosschainOrderData.destination,
@@ -587,7 +587,7 @@ describe('Origin Settler Test', (): void => {
         const fillInstruction = resolvedOrder.fillInstructions[0]
         expect(fillInstruction.destinationChainId).to.eq(route.destination)
         expect(fillInstruction.destinationSettler).to.eq(
-          ethers.zeroPadBytes(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
         )
         expect(fillInstruction.originData).to.eq(encodeIntent(intent))
       })
