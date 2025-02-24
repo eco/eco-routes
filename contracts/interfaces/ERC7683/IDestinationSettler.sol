@@ -8,7 +8,7 @@ pragma solidity ^0.8.26;
  */
 interface IDestinationSettler {
     /**
-     * @notice Emitted when an intent is fulfilled using Hyperlane instant proving
+     * @notice Emitted when an intent is fulfilled
      * @param _orderId Hash of the fulfilled intent
      * @param _solver Address that fulfilled intent
      */
