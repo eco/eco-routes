@@ -439,6 +439,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
+            if (call.target.code.length == 0) {
+                // no code at this address
+                revert CallToEOA(call.target);
+            }
             if (call.target == mailbox) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();
