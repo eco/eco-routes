@@ -150,6 +150,12 @@ interface IInbox is ISemver {
     error CallToMailbox();
 
     /**
+     * @notice Attempted call to an EOA
+     * @param _EOA EOA address to which call was attempted
+     */
+    error CallToEOA(address _EOA);
+
+    /**
      * @notice Unauthorized attempt to transfer native tokens
      */
     error UnauthorizedTransferNative();

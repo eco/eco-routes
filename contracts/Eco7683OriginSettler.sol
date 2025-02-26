@@ -159,9 +159,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 .route
                 .tokens[i];
             maxSpent[i] = Output(
-                bytes32(bytes20(uint160(approval.token))),
+                bytes32(uint256(uint160(approval.token))),
                 approval.amount,
-                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                bytes32(uint256(uint160(address(0)))), //filler is not known
                 onchainCrosschainOrderData.route.destination
             );
         }
@@ -176,22 +176,22 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
             minReceived[i] = Output(
                 bytes32(
-                    bytes20(
+                    uint256(
                         uint160(
                             onchainCrosschainOrderData.rewardTokens[i].token
                         )
                     )
                 ),
                 onchainCrosschainOrderData.rewardTokens[i].amount,
-                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                bytes32(uint256(uint160(address(0)))), //filler is not known
                 onchainCrosschainOrderData.route.destination
             );
         }
         if (onchainCrosschainOrderData.nativeValue > 0) {
             minReceived[rewardTokenCount] = Output(
-                bytes32(bytes20(uint160(address(0)))),
+                bytes32(uint256(uint160(address(0)))),
                 onchainCrosschainOrderData.nativeValue,
-                bytes32(bytes20(uint160(address(0)))),
+                bytes32(uint256(uint160(address(0)))),
                 onchainCrosschainOrderData.route.destination
             );
         }
@@ -210,7 +210,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
         fillInstructions[0] = FillInstruction(
             uint64(onchainCrosschainOrderData.route.destination),
-            bytes32(bytes20(uint160(onchainCrosschainOrderData.route.inbox))),
+            bytes32(uint256(uint160(onchainCrosschainOrderData.route.inbox))),
             abi.encode(intent)
         );
 
@@ -247,9 +247,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             TokenAmount memory requirement = gaslessCrosschainOrderData
                 .routeTokens[i];
             maxSpent[i] = Output(
-                bytes32(bytes20(uint160(requirement.token))),
+                bytes32(uint256(uint160(requirement.token))),
                 requirement.amount,
-                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                bytes32(uint256(uint160(address(0)))), //filler is not known
                 gaslessCrosschainOrderData.destination
             );
         }
@@ -264,22 +264,22 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
             minReceived[i] = Output(
                 bytes32(
-                    bytes20(
+                    uint256(
                         uint160(
                             gaslessCrosschainOrderData.rewardTokens[i].token
                         )
                     )
                 ),
                 gaslessCrosschainOrderData.rewardTokens[i].amount,
-                bytes32(bytes20(uint160(address(0)))), //filler is not known
+                bytes32(uint256(uint160(address(0)))), //filler is not known
                 gaslessCrosschainOrderData.destination
             );
         }
         if (gaslessCrosschainOrderData.nativeValue > 0) {
             minReceived[rewardTokenCount] = Output(
-                bytes32(bytes20(uint160(address(0)))),
+                bytes32(uint256(uint160(address(0)))),
                 gaslessCrosschainOrderData.nativeValue,
-                bytes32(bytes20(uint160(address(0)))),
+                bytes32(uint256(uint160(address(0)))),
                 gaslessCrosschainOrderData.destination
             );
         }
@@ -305,7 +305,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
         fillInstructions[0] = FillInstruction(
             uint64(gaslessCrosschainOrderData.destination),
-            bytes32(bytes20(uint160(gaslessCrosschainOrderData.inbox))),
+            bytes32(uint256(uint160(gaslessCrosschainOrderData.inbox))),
             abi.encode(intent)
         );
 

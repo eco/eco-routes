@@ -158,16 +158,46 @@ contract Vault is IVault {
 
     /**
      * @notice Attempts to transfer tokens to a recipient, emitting an event on failure
+     * @dev Uses inline assembly to safely handle return data from token transfers
      * @param token Address of the token being transferred
      * @param to Address of the recipient
      * @param amount Amount of tokens to transfer
      */
     function _tryTransfer(address token, address to, uint256 amount) internal {
-        (bool success, bytes memory data) = token.call(
-            abi.encodeWithSelector(IERC20.transfer.selector, to, amount)
+        bytes memory data = abi.encodeWithSelector(
+            IERC20(token).transfer.selector,
+            to,
+            amount
         );
 
-        if (!success || (data.length > 0 && !abi.decode(data, (bool)))) {
+        bool success;
+        uint256 returnSize;
+        uint256 returnValue;
+
+        assembly ("memory-safe") {
+            success := call(
+                gas(),
+                token,
+                0,
+                add(data, 0x20),
+                mload(data),
+                0,
+                0x20
+            )
+            if not(iszero(success)) {
+                returnSize := returndatasize()
+                returnValue := mload(0)
+            }
+        }
+
+        if (
+            !success ||
+            (
+                returnSize == 0
+                    ? address(token).code.length == 0
+                    : returnValue != 1
+            )
+        ) {
             emit RewardTransferFailed(token, to, amount);
         }
     }

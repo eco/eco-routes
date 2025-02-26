@@ -6,7 +6,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { encodeTransfer } from '../utils/encode'
+import { encodeTransfer, encodeTransferPayable } from '../utils/encode'
 import { BytesLike, AbiCoder, parseEther } from 'ethers'
 import {
   hashIntent,
@@ -81,13 +81,13 @@ describe('Destination Settler Test', (): void => {
     erc20Address = await erc20.getAddress()
     const _timestamp = (await time.latest()) + timeDelta
 
-    const _calldata1 = await encodeTransfer(creator.address, amount)
+    const _calldata1 = await encodeTransferPayable(creator.address, mintAmount)
     const routeTokens = [
       { token: await erc20.getAddress(), amount: mintAmount },
     ]
     const _calls: Call[] = [
       {
-        target: creator.address,
+        target: await erc20.getAddress(),
         data: _calldata1,
         value: _nativeAmount,
       },
@@ -174,6 +174,8 @@ describe('Destination Settler Test', (): void => {
       .withArgs(intentHash, solver.address)
       .and.to.emit(inbox, 'ToBeProven')
       .withArgs(intentHash, route.source, solver.address)
+
+      expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })
 
   it('successfully calls hyper instant fulfill', async (): Promise<void> => {
@@ -195,5 +197,7 @@ describe('Destination Settler Test', (): void => {
     )
       .to.emit(inbox, 'HyperInstantFulfillment')
       .withArgs(intentHash, route.source, solver.address)
+
+      expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })
 })
