@@ -11,12 +11,21 @@ import {IVaultStorage} from "./IVaultStorage.sol";
 interface IVault is IVaultStorage {
     /**
      * @notice Thrown when the vault has insufficient token allowance for reward funding
+     * @param token The token address
+     * @param spender The spender address
+     * @param amount The amount of tokens required
      */
     error InsufficientTokenAllowance(
         address token,
         address spender,
         uint256 amount
     );
+
+    /**
+     * @notice Thrown when the vault has zero balance of the refund token
+     * @param token The token address
+     */
+    error ZeroRefundTokenBalance(address token);
 
     /**
      * @notice Thrown when the vault is not able to properly reward the claimant
