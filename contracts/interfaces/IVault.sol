@@ -19,7 +19,8 @@ interface IVault is IVaultStorage {
     );
 
     /**
-     * @notice Thrown when the vault has insufficient native currency balance for reward funding
+     * @notice Thrown when the vault is not able to properly reward the claimant
+     * @dev For edge cases where the reward balance is not sufficient etc
      */
     event RewardTransferFailed(
         address indexed token,
