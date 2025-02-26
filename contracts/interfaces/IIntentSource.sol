@@ -46,6 +46,15 @@ interface IIntentSource is ISemver, IVaultStorage {
     error InsufficientNativeReward(bytes32 intentHash);
 
     /**
+     * @notice Thrown when the vault has insufficient token allowance for reward funding
+     */
+    error InsufficientTokenAllowance(
+        address token,
+        address spender,
+        uint256 amount
+    );
+
+    /**
      * @notice Indicates an invalid attempt to fund with native tokens
      * @param intentHash The hash of the intent that cannot accept native tokens
      */
@@ -209,7 +218,8 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @return intentHash Unique identifier of the created and funded intent
      */
     function publishAndFund(
-        Intent calldata intent
+        Intent calldata intent,
+        bool allowPartial
     ) external payable returns (bytes32 intentHash);
 
     /**
@@ -220,7 +230,8 @@ interface IIntentSource is ISemver, IVaultStorage {
      */
     function fund(
         bytes32 routeHash,
-        Reward calldata reward
+        Reward calldata reward,
+        bool allowPartial
     ) external payable returns (bytes32 intentHash);
 
     /**

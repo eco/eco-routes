@@ -175,7 +175,7 @@ describe('Destination Settler Test', (): void => {
       .and.to.emit(inbox, 'ToBeProven')
       .withArgs(intentHash, route.source, solver.address)
 
-      expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
+    expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })
 
   it('successfully calls hyper instant fulfill', async (): Promise<void> => {
@@ -198,6 +198,6 @@ describe('Destination Settler Test', (): void => {
       .to.emit(inbox, 'HyperInstantFulfillment')
       .withArgs(intentHash, route.source, solver.address)
 
-      expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
+    expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })
 })

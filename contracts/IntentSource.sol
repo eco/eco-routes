@@ -110,7 +110,8 @@ contract IntentSource is IIntentSource, Semver {
      * @return intentHash Hash of the created and funded intent
      */
     function publishAndFund(
-        Intent calldata intent
+        Intent calldata intent,
+        bool allowPartial
     ) external payable returns (bytes32 intentHash) {
         bytes32 routeHash;
         (intentHash, routeHash, ) = getIntentHash(intent);
@@ -125,7 +126,7 @@ contract IntentSource is IIntentSource, Semver {
             routeHash,
             intent.reward
         );
-        _fundIntent(intentHash, intent.reward, vault, msg.sender);
+        _fundIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
 
         _returnExcessEth(intentHash, address(this).balance);
     }
@@ -138,7 +139,8 @@ contract IntentSource is IIntentSource, Semver {
      */
     function fund(
         bytes32 routeHash,
-        Reward calldata reward
+        Reward calldata reward,
+        bool allowPartial
     ) external payable returns (bytes32 intentHash) {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
@@ -147,7 +149,7 @@ contract IntentSource is IIntentSource, Semver {
         _validateInitialFundingState(state, intentHash);
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
-        _fundIntent(intentHash, reward, vault, msg.sender);
+        _fundIntent(intentHash, reward, vault, msg.sender, allowPartial);
     }
 
     /**
@@ -542,7 +544,8 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 intentHash,
         Reward calldata reward,
         address vault,
-        address funder
+        address funder,
+        bool allowPartial
     ) internal {
         emit IntentFunded(intentHash, msg.sender);
 
@@ -553,12 +556,45 @@ contract IntentSource is IIntentSource, Semver {
             payable(vault).transfer(reward.nativeValue);
         }
 
-        for (uint256 i = 0; i < reward.tokens.length; ++i) {
-            IERC20(reward.tokens[i].token).safeTransferFrom(
-                funder,
-                vault,
-                reward.tokens[i].amount
-            );
+        uint256 rewardsLength = reward.tokens.length;
+
+        // Iterate through each token in the reward structure
+        for (uint256 i; i < rewardsLength; ++i) {
+            // Get token address and required amount for current reward
+            address token = reward.tokens[i].token;
+            uint256 amount = reward.tokens[i].amount;
+            uint256 balance = IERC20(token).balanceOf(address(this));
+
+            // Only proceed if vault needs more tokens and we have permission to transfer them
+            if (amount > balance) {
+                // Calculate how many more tokens the vault needs to be fully funded
+                uint256 remainingAmount = amount - balance;
+
+                // Check how many tokens this contract is allowed to transfer from funding source
+                uint256 allowance = IERC20(token).allowance(
+                    funder,
+                    address(this)
+                );
+
+                uint256 transferAmount;
+                // Calculate transfer amount as minimum of what's needed and what's allowed
+                if (allowance >= amount) {
+                    transferAmount = amount;
+                } else if (allowPartial) {
+                    transferAmount = allowance;
+                } else {
+                    revert InsufficientTokenAllowance(token, funder, amount);
+                }
+
+                if (transferAmount > 0) {
+                    // Transfer tokens from funding source to vault using safe transfer
+                    IERC20(token).safeTransferFrom(
+                        funder,
+                        vault,
+                        transferAmount
+                    );
+                }
+            }
         }
     }
 
