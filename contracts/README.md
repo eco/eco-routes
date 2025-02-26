@@ -1,5 +1,3 @@
-
-
 # API Documentation
 
 Type references can be found in the (types directory)[/types].
@@ -14,6 +12,7 @@ The IntentSource is where intent publishing and reward claiming functionality li
 <h5>Signals partial funding of an intent with native tokens</h5>
 
 Parameters:
+
 - `intentHash` (bytes32) The hash of the partially funded intent
 - `fundingSource` (address) The address providing the partial funding
 
@@ -21,6 +20,7 @@ Parameters:
 <h5>Signals complete funding of an intent with native tokens</h5>
 
 Parameters:
+
 - `intentHash` (bytes32) The hash of the partially funded intent
 - `fundingSource` (address) The address providing the partial funding
 
@@ -28,6 +28,7 @@ Parameters:
 <h5>Signals the creation of a new cross-chain intent</h5>
 
 Parameters:
+
 - `hash` (bytes32) Unique identifier of the intent
 - `_destinationChain` (uint256) the destination chain
 - `salt` (bytes32) Creator-provided uniqueness factor
@@ -46,6 +47,7 @@ Parameters:
 <h5>Signals successful reward withdrawal</h5>
 
 Parameters:
+
 - `_hash` (bytes32) The hash of the claimed intent
 - `_recipient` (address) The address receiving the rewards
 
@@ -53,6 +55,7 @@ Parameters:
 <h5>Signals successful reward refund</h5>
 
 Parameters:
+
 - `_hash` (bytes32) The hash of the refunded intent
 - `_recipient` (address) The address receiving the refund
 
@@ -62,36 +65,42 @@ Parameters:
 <h5>Retrieves the current reward claim status for an intent</h5>
 
 Parameters:
+
 - `intentHash` (bytes32) The hash of the intent
 
 <h4><ins>getVaultState</ins></h4>
 <h5>Retrieves the current state of an intent's vault</h5>
 
 Parameters:
+
 - `intentHash` (bytes32) The hash of the intent
 
 <h4><ins>getPermitContract</ins></h4>
 <h5> Retrieves the permit contract for the token transfers</h5>
 
 Parameters:
+
 - `intentHash` (bytes32) The hash of the intent
 
 <h4><ins>getIntentHash</ins></h4>
 <h5>Computes the hash components of an intent</h5>
 
 Parameters:
+
 - `intent` (Intent) The intent to hash
 
 <h4><ins>intentVaultAddress</ins></h4>
 <h5>Computes the deterministic vault address for an intent</h5>
 
 Parameters:
+
 - `intent` (Intent) The intent to calculate the vault address for
 
 <h4><ins>publish</ins></h4>
 <h5>Creates a new cross-chain intent with associated rewards</h5>
 
 Parameters:
+
 - `intent` (Intent) The complete intent specification
 
 <ins>Security:</ins> This method can be called to create an intent on anyone's behalf. It does not transfer any funds. It emits an event that would give a solver all the information required to fulfill the intent, but the solver is expected to check that the intent is funded before fulfilling.
@@ -100,6 +109,7 @@ Parameters:
 <h5>Creates and funds an intent in a single transaction</h5>
 
 Parameters:
+
 - `intent` (Intent) The complete intent specification
 
 <ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
@@ -108,6 +118,7 @@ Parameters:
 <h5>Funds an existing intent</h5>
 
 Parameters:
+
 - `intent` (Intent) The complete intent specification
 - `reward` (Reward) Reward structure containing distribution details
 
@@ -117,19 +128,20 @@ Parameters:
 <h5>Funds an intent for a user with permit/allowance</h5>
 
 Parameters:
+
 - `routeHash` (bytes32) The hash of the intent's route component
 - `reward` (Reward) Reward structure containing distribution details
 - `funder` (address) Address to fund the intent from
 - `permitContract` (address) Address of the permitContract instance
 - `allowPartial` (bool) Whether to allow partial funding
 
-<ins>Security:</ins> This method will fail if allowPartial is false but incomplete funding is provided. Additionally, this method cannot be called for intents with nonzero native rewards. 
-
+<ins>Security:</ins> This method will fail if allowPartial is false but incomplete funding is provided. Additionally, this method cannot be called for intents with nonzero native rewards.
 
 <h4><ins>publishAndFundFor</ins></h4>
 <h5>Creates and funds an intent using permit/allowance</h5>
 
 Parameters:
+
 - `intent` (Intent) The complete intent specification
 - `funder` (address) Address to fund the intent from
 - `permitContract` (address) Address of the permitContract instance
@@ -141,6 +153,7 @@ Parameters:
 <h5>Checks if an intent is completely funded</h5>
 
 Parameters:
+
 - `intent` (Intent) Intent to validate
 
 <ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
@@ -149,16 +162,17 @@ Parameters:
 <h5>Claims rewards for a successfully fulfilled and proven intent</h5>
 
 Parameters:
+
 - `routeHash` (bytes32) The hash of the intent's route component
 - `reward` (Reward) Reward structure containing distribution details
 
 <ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
 
-
 <h4><ins>batchWithdraw</ins></h4>
 <h5>Claims rewards for multiple fulfilled and proven intents</h5>
 
 Parameters:
+
 - `routeHashes` (bytes32[]) Array of route component hashes
 - `reward` (Reward[]) Array of corresponding reward specifications
 
@@ -168,6 +182,7 @@ Parameters:
 <h5>Returns rewards to the intent creator</h5>
 
 Parameters:
+
 - `routeHashes` (bytes32[]) Array of route component hashes
 - `reward` (Reward[]) Array of corresponding reward specifications
 
@@ -177,6 +192,7 @@ Parameters:
 <h5>Recover tokens that were sent to the intent vault by mistake</h5>
 
 Parameters:
+
 - `routeHashes` (bytes32[]) Array of route component hashes
 - `reward` (Reward[]) Array of corresponding reward specifications
 - `token` (address) Token address for handling incorrect vault transfers
@@ -185,7 +201,7 @@ Parameters:
 
 ## Inbox (Inbox.sol)
 
-The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic. 
+The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic.
 
 ### Events
 
@@ -233,13 +249,12 @@ Parameters:
 
 - `_hash` (bytes32) the hash of the intent
 - `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_claimant` (address) the address (on the source chain) that will receive the fulfilled 
-intent's reward
+- `_claimant` (address) the address (on the source chain) that will receive the fulfilled
+  intent's reward
 - `_prover` (address) the address of the Hyperlane prover
 
 <h4><ins>SolvingIsPublic</ins></h4>
 <h5>Emitted when solving is made public</h5>
-
 
 <h4><ins>MailboxSet</ins></h4>
 <h5>Emitted when Hyperlane mailbox address is set</h5>
@@ -347,7 +362,6 @@ Parameters:
 - `_metadata` (bytes) Metadata for postDispatchHook (empty bytes if not applicable)
 - `_postDispatchHook` (address) Address of postDispatchHook (zero address if not applicable)
 
-
 <ins>Security:</ins> This method inherits all of the security features in sendBatch. Additionally, the user is charged with the responsibility of ensuring that the passed in metadata and relayer perform according to their expectations.
 
 <h4><ins>fetchFee</ins></h4>
@@ -398,7 +412,6 @@ Parameters:
 - `_destination` (address) the destination of the transferred funds
 
 <ins>Security:</ins> This method can only be called by the owner of the Inbox. This method is primarily for testing purposes.
-
 
 ## HyperProver (HyperProver.sol)
 
@@ -499,6 +512,7 @@ An implementation of the ERC-7683 OriginSettler designed to work with Eco protoc
 <h5>Signals that an order has been opened</h5>
 
 Parameters:
+
 - `orderId` (bytes32) a unique order identifier within this settlement system
 - `resolvedOrder` (ResolvedCrossChainOrder) resolved order that would be returned by resolve if called instead of Open
 
@@ -508,6 +522,7 @@ Parameters:
 <h5>Opens an Eco intent directly on chain</h5>
 
 Parameters:
+
 - `_order` (OnchainCrossChainOrder) the onchain order containing all relevant intent data. The orderData of the order is of type OnchainCrosschainOrderData.
 
 <ins>Security:</ins> This method will fail if the orderDataType does not match the typehash of OnchainCrosschainOrderData. This method is payable to account for users who wish to create intents that reward solvers with native tokens. A user should have approved the Eco7683OriginSettler to transfer reward tokens. This method will also fail if a user attempts to use it to open an intent that has already been funded.
@@ -516,9 +531,10 @@ Parameters:
 <h5>Opens an Eco intent on behalf of a user</h5>
 
 Parameters:
+
 - `_order` (GaslessCrossChainOrder) the gasless order containing all relevant intent data. The orderData of the order is of type GaslessCrosschainOrderData.
 - `_signature` (bytes32) the intent user's signature over _order
-_ `_originFillerData` (bytes) filler data for the origin chain (this is vestigial, not used and included only to maintain compatibility)
+  _ `_originFillerData` (bytes) filler data for the origin chain (this is vestigial, not used and included only to maintain compatibility)
 
 <ins>Security:</ins> This method will fail if the orderDataType does not match the typehash of GaslessCrosschainOrderData. This method is made payable in the event that the caller of this method (a solver) is opening an intent that has native token as a reward. How that solver receives the native token from the user is not within the scope of this method. This method also demands that the intent is funded in its entirety and will fail if the requisite funds have not been approved by the user. Lastly, this method will fail if the same intent has already been funded.
 
@@ -526,17 +542,19 @@ _ `_originFillerData` (bytes) filler data for the origin chain (this is vestigia
 <h5>resolves an OnchainCrossChainOrder to a ResolvedCrossChainOrder</h5>
 
 Parameters:
+
 - `_order` (OnchainCrossChainOrder) the OnchainCrossChainOrder to be resolved
 
 <h4><ins>resolveFor</ins></h4>
 <h5>resolves a GaslessCrossChainOrder to a ResolvedCrossChainOrder</h5>
 
 Parameters:
+
 - `_order` (OnchainCrossChainOrder) the GaslessCrossChainOrder to be resolved
 
 ## Eco7683DestinationSettler
 
-An implementation of the ERC-7683 DestinationSettler designed to work with Eco protocol. This is an abstract contract whose functionality is present on Eco's Inbox contract. This is where intent fulfillment lives within the ERC-7683 system. 
+An implementation of the ERC-7683 DestinationSettler designed to work with Eco protocol. This is an abstract contract whose functionality is present on Eco's Inbox contract. This is where intent fulfillment lives within the ERC-7683 system.
 
 ### Events
 
@@ -544,6 +562,7 @@ An implementation of the ERC-7683 DestinationSettler designed to work with Eco p
 <h5>Emitted when an intent is fulfilled via the Eco7683DestinationSettler using Hyperlane instant proving</h5>
 
 Parameters:
+
 - `_orderId` (bytes32) Hash of the fulfilled intent
 - `_solver` (address) Address that fulfilled the intent
 
@@ -553,9 +572,9 @@ Parameters:
 <h5>Fills an order on the destination chain</h5>
 
 Parameters:
+
 - `_orderId` (bytes32) Unique identifier for the order being filled
-- `_originData` (bytes) Data emitted on the origin chain to parameterize the fill, equivalent to the originData field from the fillInstruction of the ResolvedCrossChainOrder. An encoded Intent struct. 
+- `_originData` (bytes) Data emitted on the origin chain to parameterize the fill, equivalent to the originData field from the fillInstruction of the ResolvedCrossChainOrder. An encoded Intent struct.
 - `_fillerData` (bytes) Data provided by the filler to inform the fill or express their preferences. an encoding of the ProofType (enum), claimant (address), and optionally postDispatchHook (address) and metadata (bytes) in the event that the intent is to be proven against a HyperProver.
 
 <ins>Security:</ins> This method fails if the intent's fillDeadline has passed. It also inherits all of the security features in fulfillStorage / fulfillHyperInstantWithRelayer.
-

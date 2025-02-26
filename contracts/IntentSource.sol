@@ -149,6 +149,8 @@ contract IntentSource is IIntentSource, Semver {
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
         _fundIntent(intentHash, reward, vault, msg.sender, allowPartial);
+
+        _returnExcessEth(intentHash, address(this).balance);
     }
 
     /**
