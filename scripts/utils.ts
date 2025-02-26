@@ -20,7 +20,6 @@ import {
   polygonAmoy,
   abstractTestnet,
 } from 'viem/chains'
-import { ContractNames } from './viem_deploy/contracts/mainnet'
 export function isZeroAddress(address: Hex): boolean {
   return address === zeroAddress
 }
@@ -137,33 +136,6 @@ export async function verifyContract(
   } catch (e) {
     console.log(`Error verifying ${contractName}: `, e)
   }
-}
-
-/**
- * Checks if the storage Prover is supported on a network
- * @param network the network to check
- * @param contractName the network to check
- * @returns
- */
-export function storageProverSupported(
-  chainID: number,
-  contractName: string,
-): boolean {
-  let supported = false
-  switch (chainID) {
-    case base.id:
-    case baseSepolia.id:
-    case optimism.id:
-    case optimismSepolia.id:
-    case mantle.id:
-    case mantleSepoliaTestnet.id:
-      supported = true
-      break
-    default:
-      supported = false
-  }
-
-  return supported || contractName !== ('Prover' as ContractNames)
 }
 
 export async function waitSeconds(seconds: number) {
