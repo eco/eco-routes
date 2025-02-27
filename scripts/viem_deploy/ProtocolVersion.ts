@@ -1,32 +1,13 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import semver from 'semver-utils'
-import { Chain } from 'viem'
-import { DeployChains } from '../viem_deploy/chains'
-import pacote from 'pacote'
 import PackageJson from '../../package.json'
-import {
-  getJsonFromFile,
-  jsonFileName,
-  mergeAddresses,
-  PRE_SUFFIX,
-  saltFileName,
-  SaltsType,
-} from '../deploy/addresses'
-import {
-  getGithubTagRef,
-  getPublishedPackages,
-  setGithubStepSummary,
-} from './git.utils'
+import { getGithubTagRef, getPublishedPackages } from './git.utils'
 import { compareSemverIntegerStrings } from './utils'
-import { rimrafSync } from 'rimraf'
 import { getGitHashShort } from '../publish/gitUtils'
 
 // Directory containing Solidity contract files
 const contractsDir = path.join(__dirname, '../../contracts')
-
-// Directory to save the extracted package
-const TEMP_DIR = path.join(__dirname, '../../tmp')
 
 // Regular expression to verify that a string is a valid SemVer
 // default regex from https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string  with an optional leading v
@@ -54,58 +35,6 @@ export class ProtocolVersion {
   constructor(version?: string) {
     this.version = semver.parse(this.verifySemver(version || getGithubTagRef()))
     this.version.release = this.version.release || 'latest'
-  }
-
-  async getDeployChains(): Promise<{ chains: Chain[]; salts?: SaltsType }> {
-    let dc: { chains: Chain[]; salts?: SaltsType }
-    if (await this.isPatchUpdate()) {
-      const chains = await this.getNewChains()
-      if (chains.length === 0) {
-        throw new Error('No new chains to deploy for a patch update')
-      }
-      const salts = getJsonFromFile<SaltsType>(
-        path.join(TEMP_DIR, saltFileName),
-      )
-      console.log('Salts Detected:', salts)
-      dc = { chains, salts }
-    } else {
-      dc = { chains: DeployChains }
-    }
-    // delete tmp package directory
-    rimrafSync(TEMP_DIR)
-    return dc
-  }
-
-  /**
-   *
-   * @returns the chains that have been deployed
-   */
-  async getNewChains(): Promise<Chain[]> {
-    // extract a package into a folder
-    const pkg = `${this.packageName}@${this.getReleaseTag()}`
-    try {
-      await pacote.extract(pkg, TEMP_DIR, {})
-      console.log('Extracted package')
-      const existingData = getJsonFromFile<any>(
-        path.join(TEMP_DIR, jsonFileName),
-      )
-
-      console.debug('Existing data:', JSON.stringify(existingData))
-      const chainIDs = Object.keys(existingData)
-        .filter((val) => !val.endsWith(PRE_SUFFIX))
-        .map((val) => Number.parseInt(val))
-      console.debug('Existing data:', chainIDs)
-      console.debug('DeployChains data:', JSON.stringify(DeployChains))
-      mergeAddresses(existingData)
-      console.log('Deleted tmp package directory')
-      return DeployChains.filter((chain) => !chainIDs.includes(chain.id))
-    } catch (e) {
-      console.error('Error getting new chains', e)
-      setGithubStepSummary(
-        `### Deploying all chains\n Issue extracting package ${pkg}`,
-      )
-      return DeployChains
-    }
   }
 
   /**
