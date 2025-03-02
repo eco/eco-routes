@@ -79,10 +79,10 @@ It is recommended to use `nvm` to install Node. This is a Node version manager s
 
 1. Install `nvm` using the following command in your terminal:
 
-<ins>Security:</ins> This method has no permissioning, it can be called by anyone. Notably, it asks the user for raw calldata to be executed by the filler, and transfers tokens from the user into the IntentSource contract. It is very important, therefore, that a user know exactly what commands they are executing and what their consequences are, as well as what tokens in what quantity they intend to lock up. Also, the user must give this contract permission to move their tokens via a method like permit or approve, otherwise it will revert.
+<ins>Security:</ins> This method has no permissioning, it can be called by anyone. Notably, it asks the user for raw calldata to be executed by the filler, and transfers tokens from the user into the IntentSource contract. It is very important, therefore, that a user knows exactly what commands they are executing and what their consequences are, as well as what tokens in what quantity they intend to lock up. Also, the user must give this contract permission to move their tokens via a method like permit or approve, otherwise it will revert.
 
 <h4><ins>withdrawRewards</ins></h4>
-<h5>Allows withdawal of reward funds locked up for a given intent.</h5>
+<h5>Allows withdrawal of reward funds locked up for a given intent.</h5>
 
 Attributes:
 
@@ -284,7 +284,7 @@ Attributes:
 
 Attributes:
 
-- ` ` (uint32) this variable is not used, but is required by the interface. it is the chain ID of the intent's origin chain.
+- ` ` (uint32) this variable is not used, but is required by the interface. It is the chain ID of the intent's origin chain.
 - `_sender` (bytes32) the address that called dispatch() on the HyperLane Mailbox on the destination chain
 - `_messageBody` (bytes) the message body containing intent hashes and their corresponding claimants
 
@@ -333,7 +333,7 @@ Attributes:
 <h4><ins>proveWorldStateBedrock</ins></h4>
 <h5> Validates World state by ensuring that the passed in world state root corresponds to value in the L2 output oracle on the Settlement Layer.  We submit a `StorageProof` proving that the L2 Block is included in a batch that has been settled to L1 and an `AccountProof` proving that the `StorageProof` submitted is linked to a `WorldState` for the contract that the `StorageProof` is for.</h5>
 
-For Optimisms BedRock release we submit an `outputRoot` storage proof created by concatenating
+For Optimism's BedRock release we submit an `outputRoot` storage proof created by concatenating
 
 ```solidity
 output_root = kecakk256( version_byte || state_root || withdrawal_storage_root || latest_block_hash)
