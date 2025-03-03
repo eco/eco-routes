@@ -84,14 +84,14 @@ contract EcoDollar is IEcoDollar, Ownable {
         if (_account == address(0)) {
             revert ERC20InvalidReceiver(address(0));
         }
-        _transferFrom(address(0), _account, _tokens);
+        _update(address(0), _account, _tokens);
     }
 
     function burn(address _account, uint256 _tokens) public onlyOwner {
         if (_account == address(0)) {
             revert ERC20InvalidSender(address(0));
         }
-        _transferFrom(_account, address(0), _tokens);
+        _update(_account, address(0), _tokens);
     }
 
     function transfer(
@@ -166,26 +166,47 @@ contract EcoDollar is IEcoDollar, Ownable {
         address to,
         uint256 amount
     ) private returns (bool) {
-        require(from != address(0), ERC20InvalidSender(from));
+        require(from != address(0), ERC20InvalidReceiver(from));
         require(to != address(0), ERC20InvalidReceiver(to));
 
-        uint256 balance = balanceOf(from);
-        require(
-            balance >= amount,
-            ERC20InsufficientBalance(from, amount, amount - balance)
-        );
+        _update(from, to, amount);
+    }
 
+    function _update(address from, address to, uint256 amount) private {
         uint256 shares = convertToShares(amount);
-        uint256 fromShares = _shares[from];
-
-        unchecked {
-            _shares[from] = fromShares - shares;
-            // Overflow not possible: the sum of all _shares is capped by totalShares, and the sum is preserved by
-            // decrementing then incrementing.
-            _shares[to] += shares;
+        if (from == address(0)) {
+            // mint
+            // Overflow check required: The rest of the code assumes that totalShares never overflows
+            totalShares += shares;
+        } else {
+            uint256 fromShares = _shares[from];
+            if (fromShares < shares) {
+                uint256 fromBalance = convertToTokens(fromShares);
+                revert ERC20InsufficientBalance(
+                    from,
+                    fromBalance,
+                    amount - fromBalance
+                );
+            }
+            unchecked {
+                // Overflow not possible: shares <= fromShares <= totalSupply.
+                _shares[from] = fromShares - shares;
+            }
         }
 
-        return true;
-        // _afterTokenTransfer(from, to, amount);
+        if (to == address(0)) {
+            unchecked {
+                // burn
+                // Underflow not possible: shares <= totalShares.
+                totalShares -= shares;
+            }
+        } else {
+            unchecked {
+                // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
+                _shares[to] += shares;
+            }
+        }
+
+        emit Transfer(from, to, amount);
     }
 }

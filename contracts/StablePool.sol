@@ -153,6 +153,21 @@ contract StablePool is IStablePool, Ownable {
                 break;
             }
         }
+        // swap and pop
+        
+        // for (uint256 i = 0; i < queueLength; --i) {
+        //     WithdrawalQueueEntry storage entry = withdrawalQueues[token][i];
+        //     IERC20 stable = IERC20(token);
+        //     if (stable.balanceOf(address(this)) > tokenThresholds[token]) {
+        //         stable.safeTransfer(entry.user, entry.amount);
+        //         allowedTokens[i] = allowedTokens[queueLength - 1];
+        //         withdrawalQueues[token].pop();
+        //     } else {
+        //         // dip below threshold during withdrawal queue processing
+        //         emit WithdrawalQueueThresholdReached(token);
+        //         break;
+        //     }
+        // }
     }
 
     function _swapAndPopWhitelist(address _tokenToRemove) internal {
