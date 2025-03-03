@@ -318,10 +318,20 @@ contract IntentSource is IIntentSource, Semver {
 
         if (
             state.status != uint8(RewardStatus.Claimed) &&
-            state.status != uint8(RewardStatus.Refunded) &&
-            block.timestamp <= reward.deadline
+            state.status != uint8(RewardStatus.Refunded)
         ) {
-            revert IntentNotExpired(intentHash);
+            address claimant = BaseProver(reward.prover).provenIntents(
+                intentHash
+            );
+            // Check if the intent has been proven to withdraw rewards to the claimant
+            if (claimant != address(0)) {
+                withdrawRewards(routeHash, reward);
+                return;
+            }
+            // Revert if intent
+            if (block.timestamp <= reward.deadline) {
+                revert IntentNotExpired(intentHash);
+            }
         }
 
         if (state.status != uint8(RewardStatus.Claimed)) {
@@ -582,12 +592,16 @@ contract IntentSource is IIntentSource, Semver {
 
                 uint256 transferAmount;
                 // Calculate transfer amount as minimum of what's needed and what's allowed
-                if (allowance >= amount) {
-                    transferAmount = amount;
+                if (allowance >= remainingAmount) {
+                    transferAmount = remainingAmount;
                 } else if (allowPartial) {
                     transferAmount = allowance;
                 } else {
-                    revert InsufficientTokenAllowance(token, funder, amount);
+                    revert InsufficientTokenAllowance(
+                        token,
+                        funder,
+                        remainingAmount
+                    );
                 }
 
                 if (transferAmount > 0) {
