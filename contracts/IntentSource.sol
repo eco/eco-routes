@@ -323,12 +323,11 @@ contract IntentSource is IIntentSource, Semver {
             address claimant = BaseProver(reward.prover).provenIntents(
                 intentHash
             );
-            // Check if the intent has been proven to withdraw rewards to the claimant
+            // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
-                withdrawRewards(routeHash, reward);
-                return;
+                revert IntentNotClaimed(intentHash);
             }
-            // Revert if intent
+            // Revert if intent has not expired
             if (block.timestamp <= reward.deadline) {
                 revert IntentNotExpired(intentHash);
             }
