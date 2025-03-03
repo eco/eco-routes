@@ -8,16 +8,20 @@ import {IStablePool} from "./interfaces/IStablePool.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EcoDollar} from "./EcoDollar.sol";
 import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
-import {TokenAmount} from "./types/Intent.sol";
+import {Route, TokenAmount} from "./types/Intent.sol";
 
 contract StablePool is IStablePool, Ownable {
     using SafeERC20 for IERC20;
 
     address public immutable LIT_AGENT;
 
+    address public immutable INBOX;
+
     address public immutable REBASE_TOKEN;
 
     address public immutable MAILBOX;
+
+    bool public litPaused;
 
     address[] public allowedTokens;
 
@@ -28,11 +32,13 @@ contract StablePool is IStablePool, Ownable {
     constructor(
         address _owner,
         address _litAgent,
+        address _inbox,
         address _rebaseToken,
         address _mailbox,
         TokenAmount[] memory _initialTokens
     ) Ownable(_owner) {
         LIT_AGENT = _litAgent;
+        INBOX = _inbox;
         REBASE_TOKEN = _rebaseToken;
         MAILBOX = _mailbox;
         // Initialize with a predefined list of tokens
@@ -125,7 +131,7 @@ contract StablePool is IStablePool, Ownable {
 
     // to be restricted
     // assumes that intent fees are sent directly to the pool address
-    function broadcastYieldInfo() external {
+    function broadcastYieldInfo() external onlyOwner {
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
@@ -136,7 +142,27 @@ contract StablePool is IStablePool, Ownable {
         // TODO: hyperlane broadcasting
     }
 
-    function processWithdrawalQueue(address token) public {
+    function pauseLit() external onlyOwner {
+        litPaused = true;
+    }
+
+    function unpauseLit() external onlyOwner {
+        litPaused = false;
+    }
+
+    function accessLiquidity(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        bytes32 _intentHash,
+        bytes calldata _litSignature
+    ) external {
+        require(msg.sender == INBOX, InvalidCaller(msg.sender, INBOX));
+        require(!litPaused, LitPaused());
+
+        //signature verification logic
+    }
+
+    function processWithdrawalQueue(address token) external onlyOwner {
         uint256 queueLength = withdrawalQueues[token].length;
         // investigate risk of griefing someone by constantly queueing withdrawals that will push the pool below threshold
         // going through queue backwards to avoid writes
@@ -154,7 +180,7 @@ contract StablePool is IStablePool, Ownable {
             }
         }
         // swap and pop
-        
+
         // for (uint256 i = 0; i < queueLength; --i) {
         //     WithdrawalQueueEntry storage entry = withdrawalQueues[token][i];
         //     IERC20 stable = IERC20(token);

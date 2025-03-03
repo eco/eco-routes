@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {Route} from "../types/Intent.sol";
+
 interface IStablePool {
     struct WithdrawalQueueEntry {
         address user;
@@ -37,8 +39,17 @@ interface IStablePool {
     );
     error TransferFailed();
 
+    error InvalidCaller(address _caller, address _expectedCaller);
+    error LitPaused();
+
     function updateThreshold(address token, uint256 allowed) external;
     function deposit(address token, uint256 amount) external;
     function withdraw(address token, uint256 amount) external;
     function getBalance(address user) external view returns (uint256);
+    function accessLiquidity(
+        Route calldata _route,
+        bytes32 _rewardhash,
+        bytes32 _intentHash,
+        bytes memory _signature
+    ) external;
 }

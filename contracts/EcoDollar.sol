@@ -132,7 +132,7 @@ contract EcoDollar is IEcoDollar, Ownable {
 
     /**
      *
-     * @param _rewardMultiplier The new reward multiplier.
+     * @param _rewardMultiplier The new reward multiplier
      */
     function rebase(uint256 _rewardMultiplier) external onlyOwner {
         // sanity check
