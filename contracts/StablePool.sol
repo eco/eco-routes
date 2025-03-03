@@ -8,10 +8,13 @@ import {IStablePool} from "./interfaces/IStablePool.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {EcoDollar} from "./EcoDollar.sol";
 import {IEcoDollar} from "./interfaces/IEcoDollar.sol";
+import {IInbox} from "./interfaces/IInbox.sol";
 import {Route, TokenAmount} from "./types/Intent.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract StablePool is IStablePool, Ownable {
     using SafeERC20 for IERC20;
+    using ECDSA for bytes32;
 
     address public immutable LIT_AGENT;
 
@@ -150,16 +153,29 @@ contract StablePool is IStablePool, Ownable {
         litPaused = false;
     }
 
+    // signature implies that the intent exists and is funded
+    // msg.value is the tip to the caller of sendBatch
     function accessLiquidity(
         Route calldata _route,
         bytes32 _rewardHash,
         bytes32 _intentHash,
+        address _prover,
         bytes calldata _litSignature
-    ) external {
+    ) external payable {
         require(msg.sender == INBOX, InvalidCaller(msg.sender, INBOX));
         require(!litPaused, LitPaused());
+        require(
+            LIT_AGENT == _intentHash.recover(_litSignature),
+            InvalidSignature(_intentHash, _litSignature)
+        );
 
-        //signature verification logic
+        IInbox(INBOX).fulfillHyperBatched{value: msg.value}(
+            _route,
+            _rewardHash,
+            address(this),
+            _intentHash,
+            _prover
+        );
     }
 
     function processWithdrawalQueue(address token) external onlyOwner {

@@ -10,7 +10,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IInbox} from "./interfaces/IInbox.sol";
 import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
-import {IStablePool} from "./interfaces/IStablePool.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -31,8 +30,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
     // address of local hyperlane mailbox
     address public mailbox;
-
-    address public immutable STABLE_POOL;
 
     // Is solving public
     bool public isSolvingPublic;
@@ -78,7 +75,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _route,
             _rewardHash,
             _claimant,
-            _expectedHash,
+            _expectedHash
         );
 
         emit ToBeProven(_expectedHash, _route.source, _claimant);
@@ -162,7 +159,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _route,
             _rewardHash,
             _claimant,
-            _expectedHash,
+            _expectedHash
         );
 
         uint256 currentBalance = address(this).balance;
@@ -210,8 +207,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
-        address _prover,
-        bytes memory _crowdLiquiditySignature
+        address _prover
     ) external payable returns (bytes[] memory) {
         emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
@@ -219,8 +215,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _route,
             _rewardHash,
             _claimant,
-            _expectedHash,
-            _crowdLiquiditySignature
+            _expectedHash
         );
 
         return results;
@@ -396,8 +391,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
-        bytes32 _expectedHash,
-        bytes memory _crowdLiquiditySignature
+        bytes32 _expectedHash
     ) internal returns (bytes[] memory) {
         if (_route.destination != block.chainid) {
             revert WrongChain(_route.destination);
@@ -429,24 +423,15 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         fulfilled[intentHash] = _claimant;
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
-        if (_crowdLiquiditySignature.length > 0) {
-            IStablePool(STABLE_POOL).accessLiquidity(
-                _route,
-                _rewardHash,
-                intentHash,
-                _crowdLiquiditySignature
+        uint256 routeTokenCount = _route.tokens.length;
+        // Transfer ERC20 tokens to the inbox
+        for (uint256 i = 0; i < routeTokenCount; ++i) {
+            TokenAmount memory approval = _route.tokens[i];
+            IERC20(approval.token).safeTransferFrom(
+                msg.sender,
+                address(this),
+                approval.amount
             );
-        } else {
-            uint256 routeTokenCount = _route.tokens.length;
-            // Transfer ERC20 tokens to the inbox
-            for (uint256 i = 0; i < routeTokenCount; ++i) {
-                TokenAmount memory approval = _route.tokens[i];
-                IERC20(approval.token).safeTransferFrom(
-                    msg.sender,
-                    address(this),
-                    approval.amount
-                );
-            }
         }
 
         // Store the results of the calls

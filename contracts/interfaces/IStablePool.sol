@@ -41,6 +41,7 @@ interface IStablePool {
 
     error InvalidCaller(address _caller, address _expectedCaller);
     error LitPaused();
+    error InvalidSignature(bytes32 _hash, bytes _signature);
 
     function updateThreshold(address token, uint256 allowed) external;
     function deposit(address token, uint256 amount) external;
@@ -50,6 +51,7 @@ interface IStablePool {
         Route calldata _route,
         bytes32 _rewardhash,
         bytes32 _intentHash,
+        address _prover,
         bytes memory _signature
-    ) external;
+    ) external payable;
 }
