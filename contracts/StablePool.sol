@@ -26,6 +26,8 @@ contract StablePool is IStablePool, Ownable {
 
     bool public litPaused;
 
+    bytes32 public tokensHash;
+
     address[] public allowedTokens;
 
     mapping(address => uint256) public tokenThresholds;
@@ -55,6 +57,17 @@ contract StablePool is IStablePool, Ownable {
             tokenThresholds[token.token] = token.amount;
             emit TokenThresholdChanged(token.token, token.amount);
         }
+    }
+
+    //_newWhitelist should be sorted
+    function updateWhitelist(TokenAmount[] calldata _newWhitelist) external onlyOwner {
+        TokenAmount memory entry = _newWhitelist[0];
+        address curr = entry.token;
+        tokenThresholds[curr] = _newWhitelist[0].amount;
+        for (uint256 i = 1; i < _newWhitelist.length; ++i) {
+            require(_newWhitelist[i].token > curr, "whitelist not sorted");
+        }
+        tokensHash = keccak256(_newWhitelist);
     }
 
     // Owner can update allowed tokens
@@ -134,7 +147,8 @@ contract StablePool is IStablePool, Ownable {
 
     // to be restricted
     // assumes that intent fees are sent directly to the pool address
-    function broadcastYieldInfo() external onlyOwner {
+    function broadcastYieldInfo(address[] calldata _tokens) external onlyOwner {
+        require(keccak(_tokens) == tokensHash, InvalidTokens());
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
