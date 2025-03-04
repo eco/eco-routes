@@ -1,0 +1,38 @@
+{
+  "1": {
+    "url": "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xc005dc82818d67AF737725bD4bf75435d065D239"
+  },
+  "10": {
+    "url": "https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xd4C1905BB1D26BC93DAC913e13CaCC278CdCC80D"
+  },
+  "137": {
+    "url": "https://polygon-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x5d934f4e2f797775e53561bB72aca21ba36B96BB"
+  },
+  "5000": {
+    "url": "https://mantle-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
+  },
+  "8453": {
+    "url": "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
+  },
+  "42161": {
+    "url": "https://arb-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+  },
+  "84532": {
+    "url": "https://base-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+  },
+  "11155111": {
+    "url": "https://eth-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766"
+  },
+  "11155420": {
+    "url": "https://opt-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY}",
+    "mailbox": "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+  }
+}
