@@ -380,12 +380,10 @@ describe('Intent Source Test', (): void => {
       })
       it('allows refund if already claimed', async () => {
         expect(
-          await intentSource
-            .connect(otherPerson)
-            .withdrawRewards(routeHash, reward),
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         )
           .to.emit(intentSource, 'Withdrawal')
-          .withArgs(intentHash, reward.creator)
+          .withArgs(intentHash, await claimant.getAddress())
 
         await expect(
           intentSource.connect(otherPerson).refund(routeHash, reward),

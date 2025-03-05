@@ -1,6 +1,6 @@
 {
   "name": "@eco-foundation/routes",
-  "version": "1.7.10",
+  "version": "1.8.14",
   "description": "The Eco Routes Protocol is a decentralized intent based system that allows users to submit their intent to the network and have it fulfilled by a solver on the destination rollup of their choise.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -171,6 +171,6 @@
     "@hyperlane-xyz/sdk": "^5.1.0",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
-    "viem": "^2.22.12"
+    "viem": "^2.22.21"
   }
 }

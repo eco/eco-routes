@@ -1,6 +1,5 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { DeployNetwork } from '../deloyProtocol'
 import { merge } from 'lodash'
 import { Hex } from 'viem'
 
@@ -44,6 +43,11 @@ export function mergeAddresses(ads: AddressBook, path: string = jsonFilePath) {
   fs.writeFileSync(path, JSON.stringify(merge(addresses, ads)), 'utf8')
 }
 
+export type JsonConfig = {
+  chainId: number
+  pre?: boolean
+}
+
 /**
  * Adds a new address to the address json file
  * @param deployNetwork the network of the deployed contract
@@ -51,7 +55,7 @@ export function mergeAddresses(ads: AddressBook, path: string = jsonFilePath) {
  * @param value the deployed contract address
  */
 export function addJsonAddress(
-  deployNetwork: DeployNetwork,
+  deployNetwork: JsonConfig,
   key: string,
   value: string,
 ) {

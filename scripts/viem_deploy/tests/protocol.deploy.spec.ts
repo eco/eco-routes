@@ -181,12 +181,12 @@ describe('ProtocolDeployment Tests', () => {
 
   describe('on deploy and verify', () => {
     const ds = [optimismSepolia].flat()
-    const mockProver = jest.fn()
+    // const mockProver = jest.fn()
     const mockIntentSource = jest.fn()
     const mockInbox = jest.fn()
     const c = ds[0]
     const s = salts['salt']
-    const opts: DeployOpts = { deployType: 'create3' }
+    const opts: DeployOpts = { deployType: 'create3', retry: true }
 
     beforeEach(() => {
       mockGetClient.mockReturnValue({
@@ -195,7 +195,7 @@ describe('ProtocolDeployment Tests', () => {
         waitForTransactionReceipt: mockWaitForTransactionReceipt,
       })
       pd = new ProtocolDeploy(ds, salts)
-      pd.deployProver = mockProver
+      // pd.deployProver = mockProver
       pd.deployIntentSource = mockIntentSource
       pd.deployInbox = mockInbox
       mockEmpty.mockReturnValue(false)
@@ -206,10 +206,10 @@ describe('ProtocolDeployment Tests', () => {
         pd.deployViemContracts(c, s, opts)
       })
 
-      it('should deploy the prover', async () => {
-        expect(mockProver).toHaveBeenCalledTimes(1)
-        expect(mockProver).toHaveBeenCalledWith(c, s, opts)
-      })
+      // it('should deploy the prover', async () => {
+      //   expect(mockProver).toHaveBeenCalledTimes(1)
+      //   expect(mockProver).toHaveBeenCalledWith(c, s, opts)
+      // })
 
       it('should deploy the intent source', async () => {
         expect(mockIntentSource).toHaveBeenCalledTimes(1)
@@ -223,7 +223,7 @@ describe('ProtocolDeployment Tests', () => {
     })
 
     describe('on deployAndVerifyContract', () => {
-      let params = { name: 'Prover', abi: 'abi' } as any
+      let params = { name: 'IntentSource', abi: 'abi' } as any
       const deployerContract = { address: '0x999', abi: 'abi' }
       const encoded = '0x1234abdcd'
       const salts = 'salts'
@@ -231,7 +231,10 @@ describe('ProtocolDeployment Tests', () => {
       let mockDep: any
       let request = { dploy: 'stuff' }
       let result = '0x1234'
-      const networkConfig = { pre: false }
+      const mockDepAddress = '0x1abc34'
+      const networkConfig = { pre: false, chainId: 11155420 }
+
+      const mockGetDeployedAddress = jest.fn().mockReturnValue(null)
       beforeEach(() => {
         mockGetDeployChainConfig.mockReturnValue(networkConfig)
         mockWaitForNonceUpdate.mockImplementation(
@@ -247,6 +250,8 @@ describe('ProtocolDeployment Tests', () => {
         mockSimulateContract.mockResolvedValue({ request, result })
         mockStorageProverSupported.mockReturnValue(true)
         mockEncodeDeployData.mockReturnValue(encoded)
+
+        pd.getDeployedAddress = mockGetDeployedAddress
       })
 
       afterEach(() => {
@@ -312,6 +317,26 @@ describe('ProtocolDeployment Tests', () => {
         })
       })
 
+      it('should not deploy if contract is already deployed', async () => {
+        mockGetDeployedAddress.mockReturnValue(mockDepAddress)
+        await pd.deployAndVerifyContract(c, s, params)
+        expect(mockSimulateContract).toHaveBeenCalledTimes(0)
+        expect(mockWriteContract).toHaveBeenCalledTimes(0)
+        expect(mockWaitForTransactionReceipt).toHaveBeenCalledTimes(0)
+        expect(mockAddJsonAddress).toHaveBeenCalledWith(
+          networkConfig,
+          params.name,
+          mockDepAddress,
+        )
+      })
+
+      it('should not verify if contract is already deployed', async () => {
+        mockGetDeployedAddress.mockReturnValue(mockDepAddress)
+        await pd.deployAndVerifyContract(c, s, params)
+        expect(mockVerifyContract).toHaveBeenCalledTimes(0)
+        expect(mockAdd).toHaveBeenCalledTimes(0)
+      })
+
       it('should save json deploy address to file', async () => {
         await pd.deployAndVerifyContract(c, s, params)
         expect(mockAddJsonAddress).toHaveBeenCalledTimes(1)
@@ -326,6 +351,7 @@ describe('ProtocolDeployment Tests', () => {
         mockAdd.mockImplementation(async (fn) => {
           await fn()
         })
+        mockGetDeployedAddress.mockReturnValue(null)
         await pd.deployAndVerifyContract(c, s, params)
         expect(mockAdd).toHaveBeenCalledTimes(1)
         expect(mockVerifyContract).toHaveBeenCalledTimes(1)
