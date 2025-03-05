@@ -47,7 +47,7 @@ interface IStablePool {
     error InvalidSignature(bytes32 _hash, bytes _signature);
     error InvalidTokensHash(bytes32 _expectedHash);
 
-    function updateThreshold(address token, uint256 allowed) external;
+    // function updateThreshold(address token, uint256 allowed) external;
     function deposit(address token, uint256 amount) external;
     function withdraw(address token, uint256 amount) external;
     function getBalance(address user) external view returns (uint256);

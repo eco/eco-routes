@@ -34,8 +34,11 @@ contract StablePool is IStablePool, Ownable {
     // is there an advantage to combining these? probably not since accesses are pretty independent
     mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
 
-    modifier checkTokenList(address[] calldata tokenList) {
-        require(keccak256(abi.encode(tokenList)) == tokensHash, InvalidTokensHash(tokensHash));
+    modifier checkTokenList(address[] memory tokenList) {
+        require(
+            keccak256(abi.encode(tokenList)) == tokensHash,
+            InvalidTokensHash(tokensHash)
+        );
         _;
     }
 
@@ -52,22 +55,23 @@ contract StablePool is IStablePool, Ownable {
         REBASE_TOKEN = _rebaseToken;
         MAILBOX = _mailbox;
         address[] memory init;
-        _updateThresholds(init, _initialTokens);
+        _addTokens(init, _initialTokens);
     }
 
     function delistTokens(
         address[] calldata _oldTokens,
-        address[] memory _toDelist
-    ) external onlyOwner checkTokenList(_oldTokens){
-        address[] memory newTokenList;
-        uint256 length = _toDelist.length;
-        for (uint256 i = 0; i < length; ++i) {
+        address[] calldata _toDelist
+    ) external onlyOwner checkTokenList(_oldTokens) {
+        uint256 oldLength = _oldTokens.length;
+        uint256 delistLength = _toDelist.length;
+        address[] memory newTokens = new address[](oldLength - delistLength);
+
+        for (uint256 i = 0; i < delistLength; ++i) {
             tokenThresholds[_toDelist[i]] = 0;
         }
         //could just check if the address has a nonzero threshold
         //but i think this is cheaper than the corresponding storage reads
-        uint256 oldLength = _oldTokens.length;
-        uint256 delistLength = _toDelist.length;
+        uint256 counter = 0;
         for (uint256 i = 0; i < oldLength; ++i) {
             bool remains = true;
             for (uint256 j = 0; j < delistLength; ++j) {
@@ -77,56 +81,68 @@ contract StablePool is IStablePool, Ownable {
                 }
             }
             if (remains) {
-                newTokenList.push(_oldTokens[i]);
+                newTokens[counter] = _oldTokens[i];
+                ++counter;
             }
         }
-        tokensHash = keccak256(newTokenList);
-        emit WhitelistUpdated(newTokenList);
+        emit WhitelistUpdated(newTokens);
+    }
+
+    function addTokens(
+        address[] calldata _oldTokens,
+        TokenAmount[] calldata _whitelistChanges
+    ) external onlyOwner checkTokenList(_oldTokens) {
+        _addTokens(_oldTokens, _whitelistChanges);
     }
 
     function updateThresholds(
         address[] memory _oldTokens,
-        TokenAmount[] calldata _whitelistChanges
-    ) external onlyOwner {
-        _updateThresholds(_oldTokens, _whitelistChanges);
-    }
-
-    function _updateThresholds(
-        address[] memory _oldTokens,
-        TokenAmount[] memory _whitelistChanges
+        TokenAmount[] memory _thresholdChanges
     ) internal {
-        require(
-            keccak256(_oldTokens) == tokensHash,
-            InvalidTokensHash(tokensHash)
-        );
-        address[] memory toAdd = [];
         uint256 oldLength = _oldTokens.length;
-        uint256 changesLength = _whitelistChanges.length;
-        //could just check if the address has a zero threshold
-        //but i think this is cheaper than the corresponding storage reads
+        uint256 changesLength = _thresholdChanges.length;
+
         for (uint256 i = 0; i < changesLength; ++i) {
-            address currChange = _whitelistChanges[i];
-            require(currChange.amount > 0, "remove using delistTokens");
-            bool addNew = true;
+            TokenAmount memory currChange = _thresholdChanges[i];
+            require(currChange.amount != 0, "remove using delistTokens");
+            bool whitelisted = false;
             for (uint256 j = 0; j < oldLength; ++j) {
-                if (currChange != _oldTokens[j]) {
-                    addNew = false;
+                if (currChange.token == _oldTokens[j]) {
+                    tokenThresholds[currChange.token] = currChange.amount;
+                    whitelisted = true;
                     break;
                 }
             }
-            tokenThresholds[currChange.token] = currChange.amount;
-            if (addNew) {
-                toAdd.push(currChange.token);
+            require(whitelisted, "add using addTokens");
+        }
+        emit TokenThresholdsChanged(_thresholdChanges);
+    }
+
+    function _addTokens(
+        address[] memory _oldTokens,
+        TokenAmount[] memory _tokensToAdd
+    ) internal {
+        uint256 oldLength = _oldTokens.length;
+        uint256 addLength = _tokensToAdd.length;
+
+        address[] memory newTokens = new address[](oldLength + addLength);
+
+        uint256 i = 0;
+        for (i = 0; i < oldLength; ++i) {
+            address curr = _oldTokens[i];
+            for (uint256 j = 0; j < addLength; ++j) {
+                require(
+                    curr != _tokensToAdd[j].token,
+                    "update using updateThresholds"
+                );
             }
+            newTokens[i] = curr;
         }
-        for (uint256 i = 0; i < toAdd.length; ++i) {
-            _oldTokens.push(toAdd[i]);
+        for (uint256 j = 0; j < addLength; ++j) {
+            newTokens[i] = _tokensToAdd[j].token;
+            ++i;
         }
-        if (_oldTokens.length > oldLength) {
-            tokensHash = keccak256(_oldTokens);
-            emit WhitelistUpdated(_oldTokens);
-        }
-        emit TokenThresholdsChanged(_whitelistChanges);
+        emit TokenThresholdsChanged(_tokensToAdd);
     }
 
     // Deposit function
@@ -184,10 +200,6 @@ contract StablePool is IStablePool, Ownable {
     // to be restricted
     // assumes that intent fees are sent directly to the pool address
     function broadcastYieldInfo(address[] calldata _tokens) external onlyOwner {
-        require(
-            keccak256(_tokens) == tokensHash,
-            InvalidTokensHash(tokensHash)
-        );
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
@@ -263,15 +275,5 @@ contract StablePool is IStablePool, Ownable {
         //         break;
         //     }
         // }
-    }
-    function shrinkAddressArray(address[] memory _array) internal pure returns (address[] memory) {
-        uint256 length = _array.length;
-        address[] memory result;
-        for (uint256 i = length; i > 0; --i) {
-            if (_array[i] != address(0)) {
-                result.push(_array[i]);
-            }
-        }
-        return result;
     }
 }
