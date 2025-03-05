@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -17,7 +18,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity and executes calldata. Enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Ownable, Semver {
+contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 
@@ -33,9 +34,13 @@ contract Inbox is IInbox, Ownable, Semver {
     // Is solving public
     bool public isSolvingPublic;
 
+    struct proveBatch {
+        uint256 destinationChainID;
+        bytes32[] intentHashes;
+    }
+
     /**
      * @notice Initializes the Inbox contract
-     * @dev Privileged functions are designed to only allow one-time changes
      * @param _owner Address with access to privileged functions
      * @param _isSolvingPublic Whether solving is public at start
      * @param _solvers Initial whitelist of solvers (only relevant if solving is not public)
@@ -61,11 +66,16 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillStorage(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) external payable returns (bytes[] memory) {
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
         bytes[] memory result = _fulfill(
             _route,
             _rewardHash,
@@ -89,7 +99,7 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstant(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
@@ -120,14 +130,19 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results from each call
      */
     function fulfillHyperInstantWithRelayer(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
         address _prover,
         bytes memory _metadata,
         address _postDispatchHook
-    ) public payable returns (bytes[] memory) {
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
         bytes32[] memory hashes = new bytes32[](1);
         address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
@@ -333,7 +348,7 @@ contract Inbox is IInbox, Ownable, Semver {
 
     /**
      * @notice Sets the mailbox address
-     * @dev Can only be called once during deployment
+     * @dev Can only be called when mailbox is not set
      * @param _mailbox Address of the Hyperlane mailbox
      */
     function setMailbox(address _mailbox) public onlyOwner {
@@ -368,6 +383,115 @@ contract Inbox is IInbox, Ownable, Semver {
         emit SolverWhitelistChanged(_solver, _canSolve);
     }
 
+    function fulfillSilent(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash
+    ) external payable returns (bytes[] memory) {
+        bytes[] memory result = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
+
+        return result;
+    }
+
+    /**
+     * @notice Emits a batch of fulfilled intents and their claimants for cross-chain proving
+     * @dev Packs intent hashes and claimant addresses into a single event to optimize gas
+     * @param _destinationChainID The chain ID where the batch will be proven
+     * @param _intentHashes Array of intent hashes that have been fulfilled
+     * @custom:throws IntentNotFulfilled if any intent in the batch has not been fulfilled
+     */
+    //TODO change to proveBatch struct
+    function batchStorageEmit(uint256 _destinationChainID, bytes32[] calldata _intentHashes) public {   
+        uint256 size = _intentHashes.length;
+        bytes memory claimants;
+
+        for (uint256 i = 0; i < size; ++i) {
+            address claimant = fulfilled[_intentHashes[i]];
+            if (claimant == address(0)) {
+                revert IntentNotFulfilled(_intentHashes[i]);
+            }
+            claimants = abi.encodePacked(claimants, claimant);
+        }
+        //pack the intent hashes into a single event using abi.encodePacked
+        bytes memory messageBody = abi.encodePacked(_intentHashes, claimants);
+        emit BatchToBeProven(_destinationChainID, messageBody);
+    }
+    
+    /**
+     * @notice Emits a batch of fulfilled intents and their claimants for multiple chains
+     * @dev Packs intent hashes and claimant addresses into a single event for each destination chain
+     * @param _proveBatches Array of proveBatch structs containing destination chain ID and intent hashes
+     * @custom:throws SizeMismatch if the number of destination chain IDs and intent hashes arrays do not match
+     */
+    function multichainBatchStorageEmit(proveBatch[] calldata _proveBatches) public {
+        uint256 size = _proveBatches.length;
+
+        for (uint256 i = 0; i < size; ++i) {
+            batchStorageEmit(_proveBatches[i].destinationChainID, _proveBatches[i].intentHashes);
+        }
+    }  
+
+    // this function is used to construct the packed message efficently. it packs the intent hashes and claimants into a single bytes
+    // object. It does this very lazily, meaning that it will keep packing for a given claimant until the claimant changes. 
+    // This is done to save processing gas, but requires that the caller of this function sorts the intent hashes by claimant. 
+    // if they fail to do so, the function will end up including the same claimant multiple times in the packed message.
+    // The alternative to this would be lots of really inefficient loops that scale poorly with the number of intent hashes.
+
+    // _claimAndBatch is a boolean that tells the prover if it should just claim the intents instead of marking them as proven, 
+    // which skips the intermediate step of saving the intent hashes in storage to the prover. I might take this out because I want to reuse this
+    // method for both hyperlane and polymer -- and hyperlane needs all the claim calldata here if we're going to claim 🧐🧐🧐🧐🧐🧐
+
+    // eventually we can construct the message in assembly to save gas
+    function constructPackedMessage(bytes32[] calldata _intentHashes, bool _batchThenClaim) public view returns (bytes memory) {
+        // check that the number of intent hashes is less than 65536
+        // we might not need to check that _intentHashes fits in uint16 because calldata is limited
+        // and you can't post 2.09mb in a transaction? 
+        require(_intentHashes.length < 65536, "IntentHashArrayTooLong");
+        uint16 size = uint16(_intentHashes.length);
+        bytes memory message;
+
+        // load the first intent hash and check if it has been fulfilled
+        uint16 startIndex = 0;
+        address currentClaimant = fulfilled[_intentHashes[0]];
+        if (currentClaimant == address(0)) {
+            revert IntentNotFulfilled(_intentHashes[0]);
+        }
+
+        for (uint16 i = 1; i < size; ++i) {
+            address loopClaimant = fulfilled[_intentHashes[i]];
+            if (loopClaimant == address(0)) {
+                revert IntentNotFulfilled(_intentHashes[i]);
+            }
+            if (loopClaimant != currentClaimant) {
+                uint16 chunkSize = i - startIndex;
+                // Combine these operations to reduce memory allocations
+                message = abi.encodePacked(
+                    message, 
+                    chunkSize, 
+                    currentClaimant,
+                    _intentHashes[startIndex:i]
+                );
+                startIndex = i;
+                currentClaimant = loopClaimant;
+            }
+        }
+        
+        // Add the last chunk directly to the message with the flag
+        return abi.encodePacked(
+            _batchThenClaim,
+            message,
+            size - startIndex,  // Final chunk size
+            currentClaimant,
+            _intentHashes[startIndex:size]
+        );
+    }
+
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls
@@ -378,11 +502,15 @@ contract Inbox is IInbox, Ownable, Semver {
      * @return Array of execution results
      */
     function _fulfill(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
     ) internal returns (bytes[] memory) {
+        if (_route.destination != block.chainid) {
+            revert WrongChain(_route.destination);
+        }
+
         if (!isSolvingPublic && !solverWhitelist[msg.sender]) {
             revert UnauthorizedSolveAttempt(msg.sender);
         }
@@ -424,7 +552,11 @@ contract Inbox is IInbox, Ownable, Semver {
         bytes[] memory results = new bytes[](_route.calls.length);
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
-            Call calldata call = _route.calls[i];
+            Call memory call = _route.calls[i];
+            if (call.target.code.length == 0 && call.data.length > 0) {
+                // no code at this address
+                revert CallToEOA(call.target);
+            }
             if (call.target == mailbox) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();

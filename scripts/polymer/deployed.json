@@ -1,0 +1,9 @@
+{
+  "network": "1",
+  "optimism_intent_source": "0x82d392513c4eDf8686785a75cE23Ea15CFacb218",
+  "optimism_inbox": "0x988b42F678789565aB78AE2E9233dcaf2Bb9ceBb",
+  "optimism_prover": "0x5cEeCaeE2B6B8B5389433B396F5ACCc1DC7E9Be2",
+  "base_intent_source": "0x91640F99BFBC2bAD310219f7752dc3aF42b1D661",
+  "base_inbox": "0x543682D4dcF32De462cA95fa37174EbD4aA87195",
+  "base_prover": "0xdf241b993C71F13Cc0639f582Fe1168575F02Cd1"
+}

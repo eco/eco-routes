@@ -14,10 +14,12 @@ interface IProver is ISemver {
      * @notice Types of proofs that can validate intent fulfillment
      * @param Storage Traditional storage-based proof mechanism
      * @param Hyperlane Proof using Hyperlane's cross-chain messaging
+     * @param Polymer Proof using the Polymer's cross-chain proving service
      */
     enum ProofType {
         Storage,
-        Hyperlane
+        Hyperlane,
+        Polymer
     }
 
     /**

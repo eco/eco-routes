@@ -3,10 +3,8 @@
 
 </div>
 
-- [Abstract](#abstract)
-- [Components](#components)
-- [Contract Addresses](#contract-addresses)
-- [Future Work](#future-work)
+- [Abstract](#Abstract)
+- [Components](#Components)
 - [Usage](#usage)
   - [Installation](#installation)
   - [Testing](#testing)
@@ -20,39 +18,51 @@
 
 An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-L2 transactions.
 
-**Warning: This code has not been audited. Use at your own risk.**
-
-- [Intent Creation / Settlement](#intent-creation--settlement)
-- [Intent Fulfillment / Execution](#intent-fulfillment--execution)
+- [Intent Publishing](#intent-publishing)
+- [Intent Funding](#intent-funding)
+- [Intent Fulfillment](#intent-fulfillment)
 - [Intent Proving](#intent-proving)
+- [Reward Settlement](#intent-reward-settlement)
 
 We identify three main user profiles:
 
 - `Users`: Individuals who want to transact across different L2s.
-- `Fillers`: Individuals interested in performing transactions on behalf of others for a fee.
+- `Solvers`: Individuals interested in performing transactions on behalf of others for a fee.
 - `Provers`: Individuals interested in proving on the source chain that an intent was fulfilled on the destination chain.
 
 ### How it works
 
-A `User` initiates a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, and the price they'd be willing to pay someone to execute this call on their behalf, along with other metadata. Seeing this intent and being enticed by the fee they'd receive, a `Filler` creates and executes a fulfill transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Filler` themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent proven, the filler can withdraw their reward.
+A `User` wants to initiate a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, the resources a `Solver` would need to perform those calls, and the rewards the `User` would be willing to pay a `Solver` to execute this call on their behalf, along with other metadata. A `User` can publish this directly on our system or otherwise disseminate that information to a `Solver`. A `User` also must fund this intent - escrow the reward tokens corresponding to the intent. A `Solver`, upon seeing this intent and determining based on the inputs and outputs that it is profitable and ensuring that the `User` has funded the intent, marshalls the required resources and fulfills the intent transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Solver` themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent is marked as proven,the `Solver` can withdraw their reward.
+
+We also implement ERC-7683 and enable the creation and fulfillment of intents in our system via that interface.
 
 ## Components
 
-Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox`, and `Prover`s.
+Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox` and a set of `Prover`s.
 
-### Intent Creation / Settlement
+### Intent Publishing
 
-Intent creation and filler settlement processes both exist on the `IntentSource` on the source chain, and is where the full intent lifecycle will start and end. Both `Users` and `Fillers` interact with this contract, Users to create intents and `Fillers` to claim their reward after fulfillment has been proven.
+The `IntentSource` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `IntentSource` at all - a user can disseminate intent information directly to solvers if they so choose.
 
-### Intent Fulfillment / Execution
+### Intent Funding
 
-Intent fulfillment lives on the `Inbox`, which lives on the destination chain. `Fillers` interact with this contract to `fulfill` Users' intents. At time of launch solving may be private, restricted only to a whitelisted set of filler addresses while we live test the system, but it will soon become possible for anyone to fill orders.
+A funded intent effectively has its reward tokens stored in a `Vault`. An intent can be funded on the `IntentSource` contract during publishing, after the fact via permit2 signatures, or a user may directly transfer tokens to the `Vault`.
+
+### Intent Fulfillment
+
+Intent fulfillment happens on the `Inbox`, which lives on the destination chain. Solvers approve the `Inbox` to pull the required tokens and then call upon the `Inbox` to fulfill the intent. Fulfillment may also trigger some proving-related post-processing, for example relaying a message indicating fulfillment back to the source chain.
 
 ### Intent Proving
 
-Intent proving lives on the `Prover` and `HyperProver` contracts, which exist on the source chain. `Provers` are the parties that should be interacting with prover contracts, but the `IntentSource` does read state from it. There are currently two types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, and HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment.
+Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. There are currently two types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, and HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment.
 
-**See [contracts](/contracts) for a detailed API documentation**
+### Intent Reward Settlement
+
+Intent reward settlement occurs on the `IntentSource` on the destination chain. The withdrawal flow checks that an intent has been fulfilled on the `Prover` and then transfers reward tokens to the address provided by the solver. In the event that an intent was not fulfilled before the deadline, the user can trigger a refund of their reward tokens through the same flow. Other edge cases like overfunding an intent are also handled by the `IntentSource`.
+
+### ERC-7683
+
+Eco's implementation of ERC-7683 allows users to create and fulfill intents on Eco's ecosystem through ERC-7683's rails. `EcoERC7683OriginSettler` is the entrypoint to our system, while `EcoERC7683DestinationSettler` is where they are fulfilled. While `EcoERC7683OriginSettler` is a separate contract, `EcoERC7683DestinationSettler` is an abstract contract inherited by Eco's `Inbox`.
 
 ## Contract Addresses
 

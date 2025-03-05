@@ -19,6 +19,7 @@ import {
   TokenAmount,
 } from '../utils/intent'
 
+
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
@@ -200,6 +201,16 @@ describe('Inbox Test', (): void => {
   })
 
   describe('fulfill when the intent is invalid', () => {
+    it('should revert if fulfillment is attempted on an incorrect destination chain', async () => {
+      route.destination = 123
+      await expect(
+        inbox
+          .connect(owner)
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
+      )
+        .to.be.revertedWithCustomError(inbox, 'WrongChain')
+        .withArgs(123)
+    })
     it('should revert if solved by someone who isnt whitelisted when solving isnt public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
       expect(await inbox.solverWhitelist(owner.address)).to.be.false
@@ -278,7 +289,7 @@ describe('Inbox Test', (): void => {
           .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
-    it('should revert if one of the targets is the mailbox', async () => {
+    it('should revert if any of the targets is the mailbox', async () => {
       await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       const _route = {
         ...route,
@@ -297,6 +308,28 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'CallToMailbox')
+    })
+    it('should revert if one of the targets is an EOA', async () => {
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      const _route = {
+        ...route,
+        calls: [
+          {
+            target: solver.address,
+            data: await encodeTransfer(dstAddr.address, mintAmount * 100),
+            value: 0,
+          },
+        ],
+      }
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
+      )
+        .to.be.revertedWithCustomError(inbox, 'CallToEOA')
+        .withArgs(solver.address)
     })
     it('should not revert when called by a whitelisted solver', async () => {
       expect(await inbox.solverWhitelist(solver)).to.be.true
@@ -826,4 +859,164 @@ describe('Inbox Test', (): void => {
       })
     })
   })
+
+  describe('PolymerProver',  () => {
+    beforeEach(async () => {
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+    })
+    it('batchStorageEmit should work for multiple intents', async () => {
+      await inbox
+        .connect(solver)
+        .fulfillSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          intentHash,
+        )
+      const newTokenAmount = 12345
+      const newTimeDelta = 1123
+
+      ;({
+        calls: otherCalls,
+        route,
+        reward,
+        intent,
+        routeHash,
+        rewardHash,
+        intentHash: otherHash,
+      } = await createIntentData(newTokenAmount, newTimeDelta))
+      await erc20.mint(solver.address, newTokenAmount)
+      await erc20
+        .connect(solver)
+        .approve(await inbox.getAddress(), newTokenAmount)
+
+      await inbox
+        .connect(solver)
+        .fulfillSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          otherHash,
+        )
+
+      
+      const packedHashes = ethers.solidityPacked(
+        ['bytes32','bytes32'],
+        [intentHash, otherHash]
+      );
+      const packedAddresses = ethers.solidityPacked(
+        ['uint160','uint160'],
+        [dstAddr.address, dstAddr.address]
+      );
+
+      const messageBody = ethers.concat([packedHashes, packedAddresses]);
+      
+      await expect(
+        inbox
+          .connect(solver)
+          .batchStorageEmit( route.source,
+            [intentHash, otherHash]
+          ),
+      ).to.emit(inbox, 'BatchToBeProven').withArgs(route.source, messageBody)
+    })
+
+    it('batchStorageEmit should not allow emitting intents that have not been fulfilled', async () => {
+      await expect(
+        inbox
+          .connect(solver)
+          .batchStorageEmit(
+            route.source,
+            [intentHash]
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'IntentNotFulfilled')
+    })
+
+    it('should work with fulfillSilent ', async () => {
+      expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+      expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
+      expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
+
+      // transfer the tokens to the inbox so it can process the transaction
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      // should emit an event
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillStorage(route, rewardHash, dstAddr.address, intentHash),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+    
+      // should update the fulfilled hash
+      expect(await inbox.fulfilled(intentHash)).to.equal(dstAddr.address)
+
+      // check balances
+      expect(await erc20.balanceOf(solver.address)).to.equal(0)
+      expect(await erc20.balanceOf(dstAddr.address)).to.equal(mintAmount)
+    })
+
+    it('constructPackedMessage should work for multiple intents', async () => {
+      await inbox
+        .connect(solver)
+        .fulfillSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          intentHash,
+        )
+      const newTokenAmount = 12345
+      const newTimeDelta = 1123
+
+      ;({
+        calls: otherCalls,
+        route,
+        reward,
+        intent,
+        routeHash,
+        rewardHash,
+        intentHash: otherHash,
+      } = await createIntentData(newTokenAmount, newTimeDelta))
+      await erc20.mint(solver.address, newTokenAmount)
+      await erc20
+        .connect(solver)
+        .approve(await inbox.getAddress(), newTokenAmount)
+
+      await inbox
+        .connect(solver)
+        .fulfillSilent(
+          route,
+          rewardHash,
+          dstAddr.address,
+          otherHash,
+        )
+
+      const packedHashes = ethers.solidityPacked(
+        ['bytes32','bytes32'],
+        [intentHash, otherHash]
+      );
+      const packedMessage = ethers.solidityPacked(
+        ['bool','uint16','uint160'],
+        [true, 2, dstAddr.address]
+      );
+
+      const messageBody = ethers.concat([packedMessage, packedHashes]);
+
+      console.log("Message Body:", messageBody);
+      
+      const result = await inbox
+        .connect(solver)
+        .constructPackedMessage(
+          [intentHash, otherHash],
+          true
+        )
+      console.log("Constructed Message:", result)
+      expect(result).to.equal(messageBody)
+    })
+  })
+
+  //todo multiple claimants
+  //boolean true and false
+  //other edge cases
+  
 })

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "../prover/BaseProver.sol";
+import {BaseProver} from "../prover/BaseProver.sol";
 
 contract TestProver is BaseProver {
     function version() external pure returns (string memory) {

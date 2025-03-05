@@ -3,6 +3,7 @@ import { HardhatUserConfig } from 'hardhat/config'
 import '@nomicfoundation/hardhat-toolbox'
 import '@nomicfoundation/hardhat-viem'
 import '@openzeppelin/hardhat-upgrades'
+import '@nomicfoundation/hardhat-chai-matchers'
 import 'solidity-docgen'
 dotenv.config()
 const DEPLOYER_PRIVATE_KEY =
@@ -147,14 +148,14 @@ const config: HardhatUserConfig = {
           browserURL: 'https://sepolia-optimism.etherscan.io',
         },
       },
-      {
-        network: 'optimismSepoliaBlockscout',
-        chainId: 11155420,
-        urls: {
-          apiURL: 'https://optimism-sepolia.blockscout.com/api',
-          browserURL: 'https://optimism-sepolia.blockscout.com/',
-        },
-      },
+      // {
+      //   network: 'optimismSepoliaBlockscout',
+      //   chainId: 11155420,
+      //   urls: {
+      //     apiURL: 'https://optimism-sepolia.blockscout.com/api',
+      //     browserURL: 'https://optimism-sepolia.blockscout.com/',
+      //   },
+      // },
       {
         network: 'ecoTestnet',
         chainId: 471923,
