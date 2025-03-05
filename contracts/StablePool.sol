@@ -46,17 +46,9 @@ contract StablePool is IStablePool, Ownable {
         INBOX = _inbox;
         REBASE_TOKEN = _rebaseToken;
         MAILBOX = _mailbox;
+        tokensHash = keccak256([]);
         // Initialize with a predefined list of tokens
-        for (uint256 i = 0; i < _initialTokens.length; ++i) {
-            TokenAmount memory token = _initialTokens[i];
-            require(token.amount > 0, InvalidAmount());
-            require(token.token != address(0), InvalidToken());
-            require(tokenThresholds[token.token] == 0, InvalidToken());
-
-            allowedTokens.push(token.token);
-            tokenThresholds[token.token] = token.amount;
-            emit TokenThresholdChanged(token.token, token.amount);
-        }
+        _updateThresholds([], _initialTokens);
     }
 
     function delistTokens(
@@ -92,6 +84,13 @@ contract StablePool is IStablePool, Ownable {
         address[] memory _oldTokens,
         TokenAmount[] calldata _whitelistChanges
     ) external onlyOwner {
+        _updateThresholds(_oldTokens, _whitelistChanges);
+    }
+
+    function _updateThresholds(
+        address[] memory _oldTokens,
+        TokenAmount[] calldata _whitelistChanges
+    ) internal {
         require(keccak256(_oldTokens) == tokensHash, "invalid old whitelist");
         address[] toAdd = [];
         uint256 oldLength = _oldTokens.length;
