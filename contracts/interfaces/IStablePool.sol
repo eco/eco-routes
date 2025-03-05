@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Route} from "../types/Intent.sol";
+import {Route, TokenAmount} from "../types/Intent.sol";
 
 interface IStablePool {
     struct WithdrawalQueueEntry {
         address user;
         uint96 amount;
     }
+
+    event WhitelistUpdated(address[] _newWhitelist);
+    event TokenThresholdsChanged(TokenAmount[] _newThresholds);
 
     event TokenThresholdChanged(address indexed token, uint256 threshold);
     event Deposited(

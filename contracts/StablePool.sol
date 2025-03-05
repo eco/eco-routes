@@ -59,38 +59,68 @@ contract StablePool is IStablePool, Ownable {
         }
     }
 
-    //_newWhitelist should be sorted
-    function updateWhitelist(TokenAmount[] calldata _newWhitelist) external onlyOwner {
-        TokenAmount memory entry = _newWhitelist[0];
-        address curr = entry.token;
-        tokenThresholds[curr] = _newWhitelist[0].amount;
-        for (uint256 i = 1; i < _newWhitelist.length; ++i) {
-            require(_newWhitelist[i].token > curr, "whitelist not sorted");
+    function delistTokens(
+        address[] calldata _oldTokens,
+        address[] calldata _toDelist
+    ) external onlyOwner {
+        address[] memory newTokenList = [];
+        uint256 length = _toDelist.length;
+        for (uint256 i = 0; i < length; ++i) {
+            tokenThresholds[_toDelist[i]] = 0;
         }
-        tokensHash = keccak256(_newWhitelist);
+        //could just check if the address has a nonzero threshold
+        //but i think this is cheaper than the corresponding storage reads
+        uint256 oldLength = _oldTokens.length;
+        uint256 delistLength = _toDelist.length;
+        for (uint256 i = 0; i < oldLength; ++i) {
+            bool remains = true;
+            for (uint256 j = 0; j < delistLength; ++j) {
+                if (_oldTokens[i] == _toDelist[j]) {
+                    remains = false;
+                    break;
+                }
+            }
+            if (remains) {
+                newTokenList.push(_oldTokens[i]);
+            }
+        }
+        tokensHash = keccak256(newTokenList);
+        emit WhitelistUpdated(newTokenList);
     }
 
-    // Owner can update allowed tokens
-    function updateThreshold(
-        address _token,
-        uint256 _threshold
+    function updateThresholds(
+        address[] memory _oldTokens,
+        TokenAmount[] calldata _whitelistChanges
     ) external onlyOwner {
-        if (tokenThresholds[_token] == 0) {
-            //add new token
-            require(_threshold > 0, InvalidAmount());
-            allowedTokens.push(_token);
-            tokenThresholds[_token] = _threshold;
-            emit TokenThresholdChanged(_token, _threshold);
-        } else if (_threshold == 0) {
-            //remove existing token
-            tokenThresholds[_token] = 0;
-            _swapAndPopWhitelist(_token);
-            emit TokenThresholdChanged(_token, 0);
-        } else {
-            //update threshold
-            tokenThresholds[_token] = _threshold;
-            emit TokenThresholdChanged(_token, _threshold);
+        require(keccak256(_oldTokens) == tokensHash, "invalid old whitelist");
+        address[] toAdd = [];
+        uint256 oldLength = _oldTokens.length;
+        uint256 changesLength = _whitelistChanges.length;
+        //could just check if the address has a zero threshold
+        //but i think this is cheaper than the corresponding storage reads
+        for (uint256 i = 0; i < changesLength; ++i) {
+            address currChange = _whitelistChanges[i];
+            require(currChange.amount > 0, "remove using delistTokens");
+            bool addNew = true;
+            for (uint256 j = 0; j < oldLength; ++j) {
+                if (currChange != _oldTokens[j]) {
+                    addNew = false;
+                    break;
+                }
+            }
+            tokenThresholds[currChange.token] = currChange.amount;
+            if (addNew) {
+                toAdd.push(currChange.token);
+            }
         }
+        for (uint256 i = 0; i < toAdd.length; ++i) {
+            _oldTokens.push(toAdd[i]);
+        }
+        if (_oldTokens.length > oldLength) {
+            tokensHash = keccak256(_oldTokens);
+            emit WhitelistUpdated(_oldTokens);
+        }
+        emit TokenThresholdsChanged(_whitelistChanges);
     }
 
     // Deposit function
