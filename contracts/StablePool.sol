@@ -34,6 +34,11 @@ contract StablePool is IStablePool, Ownable {
     // is there an advantage to combining these? probably not since accesses are pretty independent
     mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
 
+    modifier checkTokenList(address[] calldata tokenList) {
+        require(keccak256(abi.encode(tokenList)) == tokensHash, InvalidTokensHash(tokensHash));
+        _;
+    }
+
     constructor(
         address _owner,
         address _litAgent,
@@ -46,16 +51,15 @@ contract StablePool is IStablePool, Ownable {
         INBOX = _inbox;
         REBASE_TOKEN = _rebaseToken;
         MAILBOX = _mailbox;
-        tokensHash = keccak256([]);
-        // Initialize with a predefined list of tokens
-        _updateThresholds([], _initialTokens);
+        address[] memory init;
+        _updateThresholds(init, _initialTokens);
     }
 
     function delistTokens(
         address[] calldata _oldTokens,
-        address[] calldata _toDelist
-    ) external onlyOwner {
-        address[] memory newTokenList = [];
+        address[] memory _toDelist
+    ) external onlyOwner checkTokenList(_oldTokens){
+        address[] memory newTokenList;
         uint256 length = _toDelist.length;
         for (uint256 i = 0; i < length; ++i) {
             tokenThresholds[_toDelist[i]] = 0;
@@ -89,10 +93,13 @@ contract StablePool is IStablePool, Ownable {
 
     function _updateThresholds(
         address[] memory _oldTokens,
-        TokenAmount[] calldata _whitelistChanges
+        TokenAmount[] memory _whitelistChanges
     ) internal {
-        require(keccak256(_oldTokens) == tokensHash, "invalid old whitelist");
-        address[] toAdd = [];
+        require(
+            keccak256(_oldTokens) == tokensHash,
+            InvalidTokensHash(tokensHash)
+        );
+        address[] memory toAdd = [];
         uint256 oldLength = _oldTokens.length;
         uint256 changesLength = _whitelistChanges.length;
         //could just check if the address has a zero threshold
@@ -177,7 +184,10 @@ contract StablePool is IStablePool, Ownable {
     // to be restricted
     // assumes that intent fees are sent directly to the pool address
     function broadcastYieldInfo(address[] calldata _tokens) external onlyOwner {
-        require(keccak(_tokens) == tokensHash, InvalidTokens());
+        require(
+            keccak256(_tokens) == tokensHash,
+            InvalidTokensHash(tokensHash)
+        );
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
@@ -254,15 +264,14 @@ contract StablePool is IStablePool, Ownable {
         //     }
         // }
     }
-
-    function _swapAndPopWhitelist(address _tokenToRemove) internal {
-        uint256 length = allowedTokens.length;
-        for (uint256 i = 0; i < length; ++i) {
-            if (allowedTokens[i] == _tokenToRemove) {
-                allowedTokens[i] = allowedTokens[length - 1];
-                allowedTokens.pop();
-                break;
+    function shrinkAddressArray(address[] memory _array) internal pure returns (address[] memory) {
+        uint256 length = _array.length;
+        address[] memory result;
+        for (uint256 i = length; i > 0; --i) {
+            if (_array[i] != address(0)) {
+                result.push(_array[i]);
             }
         }
+        return result;
     }
 }

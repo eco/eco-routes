@@ -45,6 +45,7 @@ interface IStablePool {
     error InvalidCaller(address _caller, address _expectedCaller);
     error LitPaused();
     error InvalidSignature(bytes32 _hash, bytes _signature);
+    error InvalidTokensHash(bytes32 _expectedHash);
 
     function updateThreshold(address token, uint256 allowed) external;
     function deposit(address token, uint256 amount) external;
