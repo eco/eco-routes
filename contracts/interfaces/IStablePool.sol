@@ -4,9 +4,16 @@ pragma solidity ^0.8.20;
 import {Route, TokenAmount} from "../types/Intent.sol";
 
 interface IStablePool {
+    // struct WithdrawalQueueEntry {
+    //     address user;
+    //     uint96 amount;
+    // }
+
     struct WithdrawalQueueEntry {
         address user;
-        uint96 amount;
+        uint80 amount;
+        uint8 nextNode; // may need a higher number...
+        uint8 prevNode;
     }
 
     event WhitelistUpdated(address[] _newWhitelist);
@@ -56,6 +63,6 @@ interface IStablePool {
         bytes32 _rewardhash,
         bytes32 _intentHash,
         address _prover,
-        bytes memory _signature
+        bytes calldata _signature
     ) external payable;
 }

@@ -30,9 +30,13 @@ contract StablePool is IStablePool, Ownable {
 
     address[] public allowedTokens;
 
+    uint256 public queueCounter;
+
     mapping(address => uint256) public tokenThresholds;
     // is there an advantage to combining these? probably not since accesses are pretty independent
-    mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
+    // mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
+
+    mapping(bytes32 => WithdrawalQueueEntry) public withdrawalQueue;
 
     modifier checkTokenList(address[] memory tokenList) {
         require(
@@ -85,6 +89,7 @@ contract StablePool is IStablePool, Ownable {
                 ++counter;
             }
         }
+        tokensHash = keccak256(abi.encode(newTokens));
         emit WhitelistUpdated(newTokens);
     }
 
@@ -142,6 +147,8 @@ contract StablePool is IStablePool, Ownable {
             newTokens[i] = _tokensToAdd[j].token;
             ++i;
         }
+        tokensHash = keccak256(abi.encode(newTokens));
+        emit WhitelistUpdated(newTokens);
         emit TokenThresholdsChanged(_tokensToAdd);
     }
 
@@ -181,14 +188,27 @@ contract StablePool is IStablePool, Ownable {
             emit Withdrawn(msg.sender, _preferredToken, _amount);
         } else {
             // need to rebase, add to withdrawal queue
-            WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
-                msg.sender,
-                uint96(_amount)
-            );
-            withdrawalQueues[_preferredToken].push(entry);
+            _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
             emit AddedToWithdrawalQueue(_preferredToken, entry);
         }
         IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
+    }
+
+    function _addToWithdrawalQueue(
+        address _token,
+        address _withdrawer,
+        uint80 _amount
+    ) internal {
+        bytes32 headKey = keccak256(_token);
+        WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
+            _withdrawer,
+            _amount,
+            0, //head, but i dont need to store it
+            withdrawlQueues[headKey].prevNode // last node of the queue
+        );
+        withdrawalQueue[queueCounter] = entry;
+        withdrawalQueues[headKey].prevNode = queueCounter;
+        ++queueCounter
     }
 
     // Check pool balance of a user
@@ -199,11 +219,13 @@ contract StablePool is IStablePool, Ownable {
 
     // to be restricted
     // assumes that intent fees are sent directly to the pool address
-    function broadcastYieldInfo(address[] calldata _tokens) external onlyOwner {
+    function broadcastYieldInfo(
+        address[] calldata _tokens
+    ) external onlyOwner checkTokenList(_tokens) {
         uint256 localTokens = 0;
         uint256 length = allowedTokens.length;
         for (uint256 i = 0; i < length; ++i) {
-            localTokens += IERC20(allowedTokens[i]).balanceOf(address(this));
+            localTokens += IERC20(_tokens[i]).balanceOf(address(this));
         }
         uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
 
