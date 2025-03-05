@@ -208,7 +208,7 @@ contract StablePool is IStablePool, Ownable {
         );
         withdrawalQueue[queueCounter] = entry;
         withdrawalQueues[headKey].prevNode = queueCounter;
-        ++queueCounter
+        ++queueCounter;
     }
 
     // Check pool balance of a user
