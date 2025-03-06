@@ -12,8 +12,14 @@ interface IStablePool {
     struct WithdrawalQueueEntry {
         address user;
         uint80 amount;
-        uint8 nextNode; // may need a higher number...
-        uint8 prevNode;
+        uint16 next; // may need a higher number...
+    }
+
+    struct WithdrawalQueueInfo {
+        uint16 head;
+        uint16 tail;
+        uint16 highest;
+        uint16 lowest;
     }
 
     event WhitelistUpdated(address[] _newWhitelist);

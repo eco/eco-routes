@@ -30,13 +30,13 @@ contract StablePool is IStablePool, Ownable {
 
     address[] public allowedTokens;
 
-    uint256 public queueCounter;
-
     mapping(address => uint256) public tokenThresholds;
     // is there an advantage to combining these? probably not since accesses are pretty independent
     // mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
 
-    mapping(bytes32 => WithdrawalQueueEntry) public withdrawalQueue;
+    mapping(address => WithdrawalQueueInfo) public queueInfos;
+
+    mapping(uint256 => WithdrawalQueueEntry) private withdrawalQueues;
 
     modifier checkTokenList(address[] memory tokenList) {
         require(
@@ -199,16 +199,26 @@ contract StablePool is IStablePool, Ownable {
         address _withdrawer,
         uint80 _amount
     ) internal {
-        bytes32 headKey = keccak256(_token);
+        bytes32 index;
+        WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
+        if (queueInfo.lowest == 0) {
+            index = keccak256(abi.encodePacked(_token, queueInfo.highest));
+            withdrawalQueueInfo.highest++;
+        } else {
+            index = keccak256(abi.encodePacked(_token, queueInfo.lowest));
+            withdrawalQueueInfo.highest--;
+        }
         WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
             _withdrawer,
             _amount,
-            0, //head, but i dont need to store it
-            withdrawlQueues[headKey].prevNode // last node of the queue
+            0 //sentinel
         );
-        withdrawalQueue[queueCounter] = entry;
-        withdrawalQueues[headKey].prevNode = queueCounter;
-        ++queueCounter;
+        withdrawalQueues[index] = entry;
+        withdrawalQueues(keccak256(abi.encodePacked(_token, queueInfo.tail)))
+            .next = index;
+        queueInfo.tail = index;
+
+        queueInfos[_token] = queueInfo;
     }
 
     // Check pool balance of a user
@@ -266,36 +276,23 @@ contract StablePool is IStablePool, Ownable {
     }
 
     function processWithdrawalQueue(address token) external onlyOwner {
-        uint256 queueLength = withdrawalQueues[token].length;
-        // investigate risk of griefing someone by constantly queueing withdrawals that will push the pool below threshold
-        // going through queue backwards to avoid writes
-        // can swap and pop if we cannot mitigate
-        for (uint256 i = queueLength; i > 0; --i) {
-            WithdrawalQueueEntry storage entry = withdrawalQueues[token][i];
+        WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
+        WithdrawalQueueEntry memory entry = withdrawalQueues[
+            keccak256(abi.encodePacked(token, queueInfo.head))
+        ];
+        uint256 head = queueInfo.head;
+        while (entry.next != 0) {
             IERC20 stable = IERC20(token);
             if (stable.balanceOf(address(this)) > tokenThresholds[token]) {
                 stable.safeTransfer(entry.user, entry.amount);
-                withdrawalQueues[token].pop();
+                entry = withdrawalQueues[abi.encodePacked(token, entry.next)];
+                head = entry.next;
             } else {
                 // dip below threshold during withdrawal queue processing
                 emit WithdrawalQueueThresholdReached(token);
                 break;
             }
         }
-        // swap and pop
-
-        // for (uint256 i = 0; i < queueLength; --i) {
-        //     WithdrawalQueueEntry storage entry = withdrawalQueues[token][i];
-        //     IERC20 stable = IERC20(token);
-        //     if (stable.balanceOf(address(this)) > tokenThresholds[token]) {
-        //         stable.safeTransfer(entry.user, entry.amount);
-        //         allowedTokens[i] = allowedTokens[queueLength - 1];
-        //         withdrawalQueues[token].pop();
-        //     } else {
-        //         // dip below threshold during withdrawal queue processing
-        //         emit WithdrawalQueueThresholdReached(token);
-        //         break;
-        //     }
-        // }
+        queueInfo.head = head;
     }
 }
