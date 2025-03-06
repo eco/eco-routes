@@ -568,6 +568,7 @@ contract IntentSource is IIntentSource, Semver {
         }
 
         uint256 rewardsLength = reward.tokens.length;
+        bool partiallyFunded;
 
         // Iterate through each token in the reward structure
         for (uint256 i; i < rewardsLength; ++i) {
@@ -577,7 +578,7 @@ contract IntentSource is IIntentSource, Semver {
             uint256 balance = IERC20(token).balanceOf(vault);
 
             // Only proceed if vault needs more tokens and we have permission to transfer them
-            if (amount > balance) {
+            if (balance < amount) {
                 // Calculate how many more tokens the vault needs to be fully funded
                 uint256 remainingAmount = amount - balance;
 
@@ -593,6 +594,7 @@ contract IntentSource is IIntentSource, Semver {
                     transferAmount = remainingAmount;
                 } else if (allowPartial) {
                     transferAmount = allowance;
+                    partiallyFunded = true;
                 } else {
                     revert InsufficientTokenAllowance(
                         token,
@@ -612,10 +614,10 @@ contract IntentSource is IIntentSource, Semver {
             }
         }
 
-        if (!allowPartial || _isRewardFunded(reward, vault)) {
-            emit IntentFunded(intentHash, funder);
-        } else {
+        if (partiallyFunded) {
             emit IntentPartiallyFunded(intentHash, funder);
+        } else {
+            emit IntentFunded(intentHash, funder);
         }
     }
 
