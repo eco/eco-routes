@@ -560,8 +560,6 @@ contract IntentSource is IIntentSource, Semver {
         address funder,
         bool allowPartial
     ) internal {
-        emit IntentFunded(intentHash, msg.sender);
-
         if (reward.nativeValue > 0) {
             if (msg.value < reward.nativeValue) {
                 revert InsufficientNativeReward(intentHash);
@@ -612,6 +610,12 @@ contract IntentSource is IIntentSource, Semver {
                     );
                 }
             }
+        }
+
+        if (!allowPartial || _isRewardFunded(reward, vault)) {
+            emit IntentFunded(intentHash, funder);
+        } else {
+            emit IntentPartiallyFunded(intentHash, funder);
         }
     }
 

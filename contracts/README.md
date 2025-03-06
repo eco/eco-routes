@@ -14,7 +14,7 @@ The IntentSource is where intent publishing and reward claiming functionality li
 Parameters:
 
 - `intentHash` (bytes32) The hash of the partially funded intent
-- `fundingSource` (address) The address providing the partial funding
+- `funder` (address) The address providing the partial funding
 
 <h4><ins>IntentFunded</ins></h4>
 <h5>Signals complete funding of an intent with native tokens</h5>
@@ -22,7 +22,7 @@ Parameters:
 Parameters:
 
 - `intentHash` (bytes32) The hash of the partially funded intent
-- `fundingSource` (address) The address providing the partial funding
+- `funder` (address) The address providing the partial funding
 
 <h4><ins>IntentCreated</ins></h4>
 <h5>Signals the creation of a new cross-chain intent</h5>
@@ -30,7 +30,6 @@ Parameters:
 Parameters:
 
 - `hash` (bytes32) Unique identifier of the intent
-- `_destinationChain` (uint256) the destination chain
 - `salt` (bytes32) Creator-provided uniqueness factor
 - `source` (uint256) Source chain identifier
 - `destination` (uint256) Destination chain identifier
@@ -48,16 +47,16 @@ Parameters:
 
 Parameters:
 
-- `_hash` (bytes32) The hash of the claimed intent
-- `_recipient` (address) The address receiving the rewards
+- `hash` (bytes32) The hash of the claimed intent
+- `recipient` (address) The address receiving the rewards
 
 <h4><ins>Refund</ins></h4>
 <h5>Signals successful reward refund</h5>
 
 Parameters:
 
-- `_hash` (bytes32) The hash of the refunded intent
-- `_recipient` (address) The address receiving the refund
+- `hash` (bytes32) The hash of the refunded intent
+- `recipient` (address) The address receiving the refund
 
 ### Methods
 
