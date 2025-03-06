@@ -68,7 +68,7 @@ contract Vault is IVault {
             uint256 balance = IERC20(token).balanceOf(address(this));
 
             // Only proceed if vault needs more tokens and we have permission to transfer them
-            if (amount > balance) {
+            if (balance < amount) {
                 // Calculate how many more tokens the vault needs to be fully funded
                 uint256 remainingAmount = amount - balance;
 
