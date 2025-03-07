@@ -31,12 +31,10 @@ contract StablePool is IStablePool, Ownable {
     address[] public allowedTokens;
 
     mapping(address => uint256) public tokenThresholds;
-    // is there an advantage to combining these? probably not since accesses are pretty independent
-    // mapping(address => WithdrawalQueueEntry[]) public withdrawalQueues;
 
     mapping(address => WithdrawalQueueInfo) public queueInfos;
 
-    mapping(uint256 => WithdrawalQueueEntry) private withdrawalQueues;
+    mapping(bytes32 => WithdrawalQueueEntry) private withdrawalQueues;
 
     modifier checkTokenList(address[] memory tokenList) {
         require(
@@ -62,6 +60,21 @@ contract StablePool is IStablePool, Ownable {
         _addTokens(init, _initialTokens);
     }
 
+    function pauseLit() external onlyOwner {
+        litPaused = true;
+    }
+
+    function unpauseLit() external onlyOwner {
+        litPaused = false;
+    }
+
+    function addTokens(
+        address[] calldata _oldTokens,
+        TokenAmount[] calldata _whitelistChanges
+    ) external onlyOwner checkTokenList(_oldTokens) {
+        _addTokens(_oldTokens, _whitelistChanges);
+    }
+
     function delistTokens(
         address[] calldata _oldTokens,
         address[] calldata _toDelist
@@ -73,8 +86,6 @@ contract StablePool is IStablePool, Ownable {
         for (uint256 i = 0; i < delistLength; ++i) {
             tokenThresholds[_toDelist[i]] = 0;
         }
-        //could just check if the address has a nonzero threshold
-        //but i think this is cheaper than the corresponding storage reads
         uint256 counter = 0;
         for (uint256 i = 0; i < oldLength; ++i) {
             bool remains = true;
@@ -93,23 +104,16 @@ contract StablePool is IStablePool, Ownable {
         emit WhitelistUpdated(newTokens);
     }
 
-    function addTokens(
-        address[] calldata _oldTokens,
-        TokenAmount[] calldata _whitelistChanges
-    ) external onlyOwner checkTokenList(_oldTokens) {
-        _addTokens(_oldTokens, _whitelistChanges);
-    }
-
     function updateThresholds(
         address[] memory _oldTokens,
         TokenAmount[] memory _thresholdChanges
-    ) internal {
+    ) external onlyOwner checkTokenList(_oldTokens) {
         uint256 oldLength = _oldTokens.length;
         uint256 changesLength = _thresholdChanges.length;
 
         for (uint256 i = 0; i < changesLength; ++i) {
             TokenAmount memory currChange = _thresholdChanges[i];
-            require(currChange.amount != 0, "remove using delistTokens");
+            require(currChange.amount != 0, UseDelistToken());
             bool whitelisted = false;
             for (uint256 j = 0; j < oldLength; ++j) {
                 if (currChange.token == _oldTokens[j]) {
@@ -118,38 +122,9 @@ contract StablePool is IStablePool, Ownable {
                     break;
                 }
             }
-            require(whitelisted, "add using addTokens");
+            require(whitelisted, UseAddToken());
         }
         emit TokenThresholdsChanged(_thresholdChanges);
-    }
-
-    function _addTokens(
-        address[] memory _oldTokens,
-        TokenAmount[] memory _tokensToAdd
-    ) internal {
-        uint256 oldLength = _oldTokens.length;
-        uint256 addLength = _tokensToAdd.length;
-
-        address[] memory newTokens = new address[](oldLength + addLength);
-
-        uint256 i = 0;
-        for (i = 0; i < oldLength; ++i) {
-            address curr = _oldTokens[i];
-            for (uint256 j = 0; j < addLength; ++j) {
-                require(
-                    curr != _tokensToAdd[j].token,
-                    "update using updateThresholds"
-                );
-            }
-            newTokens[i] = curr;
-        }
-        for (uint256 j = 0; j < addLength; ++j) {
-            newTokens[i] = _tokensToAdd[j].token;
-            ++i;
-        }
-        tokensHash = keccak256(abi.encode(newTokens));
-        emit WhitelistUpdated(newTokens);
-        emit TokenThresholdsChanged(_tokensToAdd);
     }
 
     // Deposit function
@@ -159,17 +134,12 @@ contract StablePool is IStablePool, Ownable {
         emit Deposited(msg.sender, _token, _amount);
     }
 
-    function _deposit(address _token, uint256 _amount) internal {
-        require(tokenThresholds[_token] > 0, InvalidToken());
-        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
-    }
-
     /**
      * @dev Withdraw `_amount` of `_preferredToken` from the pool
      * @param _preferredToken The token to withdraw
      * @param _amount The amount to withdraw
      */
-    function withdraw(address _preferredToken, uint256 _amount) external {
+    function withdraw(address _preferredToken, uint80 _amount) external {
         uint256 tokenBalance = IERC20(REBASE_TOKEN).balanceOf(msg.sender);
 
         require(
@@ -189,36 +159,8 @@ contract StablePool is IStablePool, Ownable {
         } else {
             // need to rebase, add to withdrawal queue
             _addToWithdrawalQueue(_preferredToken, msg.sender, _amount);
-            emit AddedToWithdrawalQueue(_preferredToken, entry);
         }
         IEcoDollar(REBASE_TOKEN).burn(msg.sender, _amount);
-    }
-
-    function _addToWithdrawalQueue(
-        address _token,
-        address _withdrawer,
-        uint80 _amount
-    ) internal {
-        bytes32 index;
-        WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
-        if (queueInfo.lowest == 0) {
-            index = keccak256(abi.encodePacked(_token, queueInfo.highest));
-            withdrawalQueueInfo.highest++;
-        } else {
-            index = keccak256(abi.encodePacked(_token, queueInfo.lowest));
-            withdrawalQueueInfo.highest--;
-        }
-        WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
-            _withdrawer,
-            _amount,
-            0 //sentinel
-        );
-        withdrawalQueues[index] = entry;
-        withdrawalQueues(keccak256(abi.encodePacked(_token, queueInfo.tail)))
-            .next = index;
-        queueInfo.tail = index;
-
-        queueInfos[_token] = queueInfo;
     }
 
     // Check pool balance of a user
@@ -240,14 +182,6 @@ contract StablePool is IStablePool, Ownable {
         uint256 localShares = EcoDollar(REBASE_TOKEN).totalShares();
 
         // TODO: hyperlane broadcasting
-    }
-
-    function pauseLit() external onlyOwner {
-        litPaused = true;
-    }
-
-    function unpauseLit() external onlyOwner {
-        litPaused = false;
     }
 
     // signature implies that the intent exists and is funded
@@ -275,24 +209,89 @@ contract StablePool is IStablePool, Ownable {
         );
     }
 
-    function processWithdrawalQueue(address token) external onlyOwner {
+    function processWithdrawalQueue(address _token) external onlyOwner {
         WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
         WithdrawalQueueEntry memory entry = withdrawalQueues[
-            keccak256(abi.encodePacked(token, queueInfo.head))
+            keccak256(abi.encodePacked(_token, queueInfo.head))
         ];
-        uint256 head = queueInfo.head;
+        uint16 head = queueInfo.head;
         while (entry.next != 0) {
-            IERC20 stable = IERC20(token);
-            if (stable.balanceOf(address(this)) > tokenThresholds[token]) {
+            IERC20 stable = IERC20(_token);
+            if (stable.balanceOf(address(this)) > tokenThresholds[_token]) {
                 stable.safeTransfer(entry.user, entry.amount);
-                entry = withdrawalQueues[abi.encodePacked(token, entry.next)];
                 head = entry.next;
+                entry = withdrawalQueues[
+                    keccak256(abi.encodePacked(_token, entry.next))
+                ];
             } else {
                 // dip below threshold during withdrawal queue processing
-                emit WithdrawalQueueThresholdReached(token);
+                emit WithdrawalQueueThresholdReached(_token);
                 break;
             }
         }
-        queueInfo.head = head;
+        queueInfos[_token].head = head;
+    }
+
+    /// INTERNAL
+
+    function _addTokens(
+        address[] memory _oldTokens,
+        TokenAmount[] memory _tokensToAdd
+    ) internal {
+        uint256 oldLength = _oldTokens.length;
+        uint256 addLength = _tokensToAdd.length;
+
+        address[] memory newTokens = new address[](oldLength + addLength);
+
+        uint256 i = 0;
+        for (i = 0; i < oldLength; ++i) {
+            address curr = _oldTokens[i];
+            for (uint256 j = 0; j < addLength; ++j) {
+                require(curr != _tokensToAdd[j].token, UseUpdateThreshold());
+            }
+            newTokens[i] = curr;
+        }
+        for (uint256 j = 0; j < addLength; ++j) {
+            newTokens[i] = _tokensToAdd[j].token;
+            ++i;
+        }
+        tokensHash = keccak256(abi.encode(newTokens));
+        emit WhitelistUpdated(newTokens);
+        emit TokenThresholdsChanged(_tokensToAdd);
+    }
+
+    function _deposit(address _token, uint256 _amount) internal {
+        require(tokenThresholds[_token] > 0, InvalidToken());
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
+    }
+
+    function _addToWithdrawalQueue(
+        address _token,
+        address _withdrawer,
+        uint80 _amount
+    ) internal {
+        uint16 index;
+        WithdrawalQueueInfo memory queueInfo = queueInfos[_token];
+        if (queueInfo.lowest == 0) {
+            index = queueInfo.highest;
+            queueInfo.highest++;
+        } else {
+            index = queueInfo.lowest;
+            queueInfo.lowest--;
+        }
+        WithdrawalQueueEntry memory entry = WithdrawalQueueEntry(
+            _withdrawer,
+            _amount,
+            0 //sentinel value
+        );
+        withdrawalQueues[keccak256(abi.encodePacked(_token, queueInfo.tail))]
+            .next = index;
+        queueInfo.tail = index;
+
+        withdrawalQueues[keccak256(abi.encodePacked(_token, index))] = entry;
+
+        queueInfos[_token] = queueInfo;
+
+        emit AddedToWithdrawalQueue(_token, entry);
     }
 }

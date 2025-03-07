@@ -4,11 +4,6 @@ pragma solidity ^0.8.20;
 import {Route, TokenAmount} from "../types/Intent.sol";
 
 interface IStablePool {
-    // struct WithdrawalQueueEntry {
-    //     address user;
-    //     uint96 amount;
-    // }
-
     struct WithdrawalQueueEntry {
         address user;
         uint80 amount;
@@ -16,6 +11,7 @@ interface IStablePool {
     }
 
     struct WithdrawalQueueInfo {
+        // same size as WithdrawalQueueEntry.next
         uint16 head;
         uint16 tail;
         uint16 highest;
@@ -55,14 +51,37 @@ interface IStablePool {
     );
     error TransferFailed();
 
+    error UseAddToken();
+    error UseDelistToken();
+    error UseUpdateThreshold();
+
     error InvalidCaller(address _caller, address _expectedCaller);
     error LitPaused();
     error InvalidSignature(bytes32 _hash, bytes _signature);
     error InvalidTokensHash(bytes32 _expectedHash);
 
-    // function updateThreshold(address token, uint256 allowed) external;
+    // privileged functions
+    function addTokens(
+        address[] calldata _oldTokens,
+        TokenAmount[] calldata _whitelistChanges
+    ) external;
+
+    function delistTokens(
+        address[] calldata _oldTokens,
+        address[] calldata _toDelist
+    ) external;
+
+    function updateThresholds(
+        address[] memory _oldTokens,
+        TokenAmount[] memory _thresholdChanges
+    ) external;
+    function broadcastYieldInfo(address[] calldata _tokens) external;
+    function unpauseLit() external;
+    function pauseLit() external;
+
+    //public functions
     function deposit(address token, uint256 amount) external;
-    function withdraw(address token, uint256 amount) external;
+    function withdraw(address token, uint80 amount) external;
     function getBalance(address user) external view returns (uint256);
     function accessLiquidity(
         Route calldata _route,
@@ -71,4 +90,5 @@ interface IStablePool {
         address _prover,
         bytes calldata _signature
     ) external payable;
+    function processWithdrawalQueue(address _token) external;
 }
