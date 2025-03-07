@@ -309,6 +309,7 @@ describe('Inbox Test', (): void => {
       ).to.be.revertedWithCustomError(inbox, 'CallToMailbox')
     })
     it('should revert if one of the targets is an EOA', async () => {
+<<<<<<< HEAD
         await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
   
         const _route = {
@@ -329,6 +330,29 @@ describe('Inbox Test', (): void => {
         ).to.be.revertedWithCustomError(inbox, 'CallToEOA')
         .withArgs(solver.address)
       })
+=======
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      const _route = {
+        ...route,
+        calls: [
+          {
+            target: solver.address,
+            data: await encodeTransfer(dstAddr.address, mintAmount * 100),
+            value: 0,
+          },
+        ],
+      }
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
+      )
+        .to.be.revertedWithCustomError(inbox, 'CallToEOA')
+        .withArgs(solver.address)
+    })
+>>>>>>> main
     it('should not revert when called by a whitelisted solver', async () => {
       expect(await inbox.solverWhitelist(solver)).to.be.true
 

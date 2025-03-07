@@ -450,7 +450,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             (bool success, bytes memory result) = call.target.call{
                 value: call.value
             }(call.data);
-            if (!success) {
+            if (!success) {π
                 revert IntentCallFailed(
                     call.target,
                     call.data,
