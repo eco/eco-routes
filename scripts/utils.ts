@@ -9,12 +9,17 @@ import {
   optimismSepolia,
   arbitrum,
   base,
-  polygon,
   arbitrumSepolia,
   baseSepolia,
-  polygonAmoy,
 } from '@alchemy/aa-core'
-import { mantle, mantleSepoliaTestnet } from 'viem/chains'
+import {
+  mantle,
+  mantleSepoliaTestnet,
+  polygon,
+  abstract,
+  polygonAmoy,
+  abstractTestnet,
+} from 'viem/chains'
 import { ContractNames } from './viem_deploy/contracts/mainnet'
 export function isZeroAddress(address: Hex): boolean {
   return address === zeroAddress
@@ -186,6 +191,8 @@ export function getDeployNetwork(
       return mainnetNetworks.mantle
     case 'polygon':
       return mainnetNetworks.polygon
+    case 'abstract':
+      return mainnetNetworks.abstract
   }
 
   // sepolia
@@ -204,6 +211,8 @@ export function getDeployNetwork(
       return sepoliaNetworks.mantleSepolia
     case 'polygonSepolia':
       return sepoliaNetworks.polygonSepolia
+    case 'abstractTestnet':
+      return sepoliaNetworks.abstractTestnet
   }
   throw new Error('Network not found')
 }
@@ -223,6 +232,8 @@ export function getDeployChainConfig(chain: Chain): DeployDisputeNetworkConfig {
       return mainnetNetworks.mantle
     case polygon:
       return mainnetNetworks.polygon
+    case abstract:
+      return mainnetNetworks.abstract
   }
 
   // sepolia
@@ -239,6 +250,8 @@ export function getDeployChainConfig(chain: Chain): DeployDisputeNetworkConfig {
       return sepoliaNetworks.mantleSepolia
     case polygonAmoy:
       return sepoliaNetworks.polygonSepolia
+    case abstractTestnet:
+      return sepoliaNetworks.abstractTestnet
   }
   throw new Error('Network not found')
 }

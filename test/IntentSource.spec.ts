@@ -388,7 +388,7 @@ describe('Intent Source Test', (): void => {
             .withdrawRewards(routeHash, reward),
         )
           .to.emit(intentSource, 'Withdrawal')
-          .withArgs(intentHash, reward.creator)
+          .withArgs(intentHash, await claimant.getAddress())
 
         await expect(
           intentSource.connect(otherPerson).refund(routeHash, reward),

@@ -1,4 +1,3 @@
-import { SepoliaChainConfigs } from '../../configs/chain.config'
 import MainnetContracts, {
   ContractDeployConfigs,
   ContractNames,
@@ -6,17 +5,17 @@ import MainnetContracts, {
 
 const SepoliaContracts: Record<ContractNames, ContractDeployConfigs> = {
   ...MainnetContracts,
-  Prover: {
-    ...MainnetContracts.Prover,
-    args: [
-      5,
-      [
-        SepoliaChainConfigs.baseSepoliaChainConfiguration,
-        SepoliaChainConfigs.optimismSepoliaChainConfiguration,
-        SepoliaChainConfigs.arbitrumSepoliaChainConfiguration,
-        SepoliaChainConfigs.mantleSepoliaChainConfiguration,
-      ],
-    ],
-  },
+  // Prover: {
+  //   ...MainnetContracts.Prover,
+  //   args: [
+  //     5,
+  //     [
+  //       SepoliaChainConfigs.baseSepoliaChainConfiguration,
+  //       SepoliaChainConfigs.optimismSepoliaChainConfiguration,
+  //       SepoliaChainConfigs.arbitrumSepoliaChainConfiguration,
+  //       SepoliaChainConfigs.mantleSepoliaChainConfiguration,
+  //     ],
+  //   ],
+  // },
 }
 export default SepoliaContracts
