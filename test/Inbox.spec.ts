@@ -42,6 +42,8 @@ describe('Inbox Test', (): void => {
   const timeDelta = 1000
   const mintAmount = 1000
   const sourceChainID = 123
+  const minBatcherReward = 12345
+  let fee: BigInt
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
@@ -56,9 +58,12 @@ describe('Inbox Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(owner.address, false, [
-      solver.address,
-    ])
+    const inbox = await inboxFactory.deploy(
+      owner.address,
+      false,
+      minBatcherReward,
+      [solver.address],
+    )
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -173,6 +178,9 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox.connect(solver).setMailbox(await mailbox.getAddress()),
       ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
+      await expect(
+        inbox.connect(solver).setMinBatcherReward(54321),
+      ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
     })
     it('lets owner make solving public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
@@ -196,6 +204,13 @@ describe('Inbox Test', (): void => {
       expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
       await inbox.connect(owner).setMailbox(solver.address)
       expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
+    })
+    it('lets owner set minBatchReward', async () => {
+      expect(await inbox.minBatcherReward()).to.eq(minBatcherReward)
+      await expect(inbox.connect(owner).setMinBatcherReward(54321))
+        .to.emit(inbox, 'MinBatcherRewardSet')
+        .withArgs(54321)
+      expect(await inbox.minBatcherReward()).to.eq(54321)
     })
   })
 
@@ -236,7 +251,7 @@ describe('Inbox Test', (): void => {
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
       const anotherInbox = await (
         await ethers.getContractFactory('Inbox')
-      ).deploy(owner.address, false, [owner.address])
+      ).deploy(owner.address, false, minBatcherReward, [owner.address])
 
       const _route = {
         ...route,
@@ -356,7 +371,9 @@ describe('Inbox Test', (): void => {
     })
 
     it('should succeed with non-hyper proving', async () => {
-      expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+      let fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+
       expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
 
@@ -374,7 +391,8 @@ describe('Inbox Test', (): void => {
         .to.emit(inbox, 'ToBeProven')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
       // should update the fulfilled hash
-      expect(await inbox.fulfilled(intentHash)).to.equal(dstAddr.address)
+      fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(dstAddr.address)
 
       // check balances
       expect(await erc20.balanceOf(solver.address)).to.equal(0)
@@ -410,6 +428,13 @@ describe('Inbox Test', (): void => {
       expect(await mailbox.dispatched()).to.be.false
 
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+      fee = await inbox.fetchFee(
+        sourceChainID,
+        ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
+        calls[0].data,
+        calls[0].data,
+        ethers.ZeroAddress,
+      )
     })
     it('fetches the fee', async () => {
       expect(
@@ -447,6 +472,26 @@ describe('Inbox Test', (): void => {
             },
           ),
       ).to.be.revertedWithCustomError(inbox, 'InsufficientFee')
+      expect(await mailbox.dispatched()).to.be.false
+    })
+    it('fails to fulfill hyper batched if msg.value is less than the minimum', async () => {
+      expect(await mailbox.dispatched()).to.be.false
+      const fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillHyperBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockHyperProver.getAddress(),
+            {
+              value: (await inbox.minBatcherReward()) - BigInt(1),
+            },
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'InsufficientBatcherReward')
       expect(await mailbox.dispatched()).to.be.false
     })
     it('fulfills hyper instant', async () => {
@@ -509,17 +554,7 @@ describe('Inbox Test', (): void => {
             await mockHyperProver.getAddress(),
             calls[0].data,
             relayerAddress,
-            {
-              value: Number(
-                await inbox.fetchFee(
-                  sourceChainID,
-                  ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
-                  calls[0].data,
-                  calls[0].data,
-                  relayerAddress,
-                ),
-              ),
-            },
+            { value: Number(fee) },
           ),
       )
         .to.emit(inbox, 'Fulfillment')
@@ -542,7 +577,15 @@ describe('Inbox Test', (): void => {
       expect(await mailbox.dispatchedWithRelayer()).to.be.true
     })
 
-    it('fulfills hyper batch', async () => {
+    it('fulfills hyper batched', async () => {
+      let fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+      expect(fulfillment.reward).to.equal(0)
+
+      const initBalance = await ethers.provider.getBalance(
+        await inbox.getAddress(),
+      )
+
       await expect(
         inbox
           .connect(solver)
@@ -552,6 +595,7 @@ describe('Inbox Test', (): void => {
             dstAddr.address,
             intentHash,
             await mockHyperProver.getAddress(),
+            { value: minBatcherReward * 2 },
           ),
       )
         .to.emit(inbox, 'Fulfillment')
@@ -563,8 +607,15 @@ describe('Inbox Test', (): void => {
           dstAddr.address,
           await mockHyperProver.getAddress(),
         )
-
       expect(await mailbox.dispatched()).to.be.false
+
+      fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(dstAddr.address)
+      expect(fulfillment.reward).to.equal(2 * minBatcherReward)
+
+      expect(await ethers.provider.getBalance(await inbox.getAddress())).to.eq(
+        initBalance + BigInt(2 * minBatcherReward),
+      )
     })
     it('refunds solver when too much fee is sent', async () => {
       const fee = await inbox.fetchFee(
@@ -624,6 +675,7 @@ describe('Inbox Test', (): void => {
             dstAddr.address,
             intentHash,
             await mockHyperProver.getAddress(),
+            { value: minBatcherReward },
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -634,19 +686,7 @@ describe('Inbox Test', (): void => {
               await mockHyperProver.getAddress(),
               [intentHash],
               {
-                value:
-                  Number(
-                    await inbox.fetchFee(
-                      sourceChainID,
-                      ethers.zeroPadBytes(
-                        await mockHyperProver.getAddress(),
-                        32,
-                      ),
-                      calls[0].data,
-                      calls[0].data,
-                      ethers.ZeroAddress,
-                    ),
-                  ) - 1,
+                value: Number(fee) - 1,
               },
             ),
         ).to.be.revertedWithCustomError(inbox, 'InsufficientFee')
@@ -663,19 +703,7 @@ describe('Inbox Test', (): void => {
               await mockHyperProver.getAddress(),
               [intentHash],
               {
-                value:
-                  Number(
-                    await inbox.fetchFee(
-                      sourceChainID,
-                      ethers.zeroPadBytes(
-                        await mockHyperProver.getAddress(),
-                        32,
-                      ),
-                      calls[0].data,
-                      calls[0].data,
-                      ethers.ZeroAddress,
-                    ),
-                  ) + 1,
+                value: Number(fee) + 1,
               },
             ),
         ).to.not.be.reverted
@@ -697,7 +725,11 @@ describe('Inbox Test', (): void => {
             dstAddr.address,
             intentHash,
             await mockHyperProver.getAddress(),
+            { value: minBatcherReward },
           )
+        const initialBalance = await ethers.provider.getBalance(
+          await inbox.getAddress(),
+        )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
           inbox
@@ -707,20 +739,15 @@ describe('Inbox Test', (): void => {
               await mockHyperProver.getAddress(),
               [intentHash],
               {
-                value: Number(
-                  await inbox.fetchFee(
-                    sourceChainID,
-                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
-                    calls[0].data,
-                    calls[0].data,
-                    ethers.ZeroAddress,
-                  ),
-                ),
+                value: Number(fee),
               },
             ),
         )
           .to.emit(inbox, 'BatchSent')
           .withArgs(intentHash, sourceChainID)
+        expect(
+          await ethers.provider.getBalance(await inbox.getAddress()),
+        ).to.eq(initialBalance - BigInt(await inbox.minBatcherReward()))
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
           ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
@@ -744,6 +771,7 @@ describe('Inbox Test', (): void => {
             dstAddr.address,
             intentHash,
             await mockHyperProver.getAddress(),
+            { value: minBatcherReward },
           )
         expect(await mailbox.dispatched()).to.be.false
         await expect(
@@ -756,18 +784,10 @@ describe('Inbox Test', (): void => {
               calls[0].data,
               relayerAddress,
               {
-                value: Number(
-                  await inbox.fetchFee(
-                    sourceChainID,
-                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
-                    calls[0].data,
-                    calls[0].data,
-                    ethers.ZeroAddress,
-                  ),
-                ),
+                value: Number(fee),
               },
             ),
-        ).to.not.be.reverted
+        ).to.changeEtherBalance(solver, minBatcherReward - Number(fee))
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
           ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),
@@ -784,6 +804,9 @@ describe('Inbox Test', (): void => {
       })
       it('succeeds for multiple intents', async () => {
         expect(await mailbox.dispatched()).to.be.false
+        const initialBalance = await ethers.provider.getBalance(
+          await inbox.getAddress(),
+        )
         await inbox
           .connect(solver)
           .fulfillHyperBatched(
@@ -792,6 +815,7 @@ describe('Inbox Test', (): void => {
             dstAddr.address,
             intentHash,
             await mockHyperProver.getAddress(),
+            { value: minBatcherReward },
           )
         const newTokenAmount = 12345
         const newTimeDelta = 1123
@@ -818,8 +842,13 @@ describe('Inbox Test', (): void => {
             dstAddr.address,
             otherHash,
             await mockHyperProver.getAddress(),
+            { value: minBatcherReward },
           )
         expect(await mailbox.dispatched()).to.be.false
+
+        expect(
+          await ethers.provider.getBalance(await inbox.getAddress()),
+        ).to.eq(initialBalance + BigInt(2 * minBatcherReward))
 
         await expect(
           inbox
@@ -829,18 +858,10 @@ describe('Inbox Test', (): void => {
               await mockHyperProver.getAddress(),
               [intentHash, otherHash],
               {
-                value: Number(
-                  await inbox.fetchFee(
-                    sourceChainID,
-                    ethers.zeroPadBytes(await mockHyperProver.getAddress(), 32),
-                    otherCalls[0].data,
-                    otherCalls[0].data,
-                    ethers.ZeroAddress,
-                  ),
-                ),
+                value: Number(fee),
               },
             ),
-        ).to.not.be.reverted
+        ).to.changeEtherBalance(solver, 2 * minBatcherReward - Number(fee))
         expect(await mailbox.destinationDomain()).to.eq(sourceChainID)
         expect(await mailbox.recipientAddress()).to.eq(
           ethers.zeroPadValue(await mockHyperProver.getAddress(), 32),

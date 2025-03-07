@@ -35,6 +35,7 @@ describe('Destination Settler Test', (): void => {
   const mintAmount = 1000
   const nativeAmount = parseEther('0.1')
   const sourceChainID = 123
+  const minBatcherReward = 12345
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
@@ -49,7 +50,12 @@ describe('Destination Settler Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(owner.address, true, [])
+    const inbox = await inboxFactory.deploy(
+      owner.address,
+      true,
+      minBatcherReward,
+      [],
+    )
     await inbox.connect(owner).setMailbox(await mailbox.getAddress())
     const prover = await (
       await ethers.getContractFactory('TestProver')
@@ -154,7 +160,8 @@ describe('Destination Settler Test', (): void => {
     ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
   })
   it('successfully calls storage prover fulfill', async (): Promise<void> => {
-    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+    let fulfillment = await inbox.fulfilled(intentHash)
+    expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction
@@ -179,7 +186,8 @@ describe('Destination Settler Test', (): void => {
   })
 
   it('successfully calls hyper instant fulfill', async (): Promise<void> => {
-    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+    let fulfillment = await inbox.fulfilled(intentHash)
+    expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // transfer the tokens to the settler so it can process the transaction

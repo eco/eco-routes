@@ -43,6 +43,7 @@ describe('Origin Settler Test', (): void => {
   let creator: SignerWithAddress
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
+  const minBatcherReward = 12345
 
   let salt: BytesLike
   let nonce: number
@@ -90,7 +91,7 @@ describe('Origin Settler Test', (): void => {
     const intentSource = await intentSourceFactory.deploy()
     inbox = await (
       await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, false, [owner.address])
+    ).deploy(owner.address, false, minBatcherReward, [owner.address])
 
     const originSettlerFactory = await ethers.getContractFactory(
       'Eco7683OriginSettler',

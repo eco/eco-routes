@@ -18,6 +18,7 @@ describe('HyperProver Test', (): void => {
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
   const amount: number = 1234567890
+  const minBatcherReward = 12345
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
   async function deployHyperproverFixture(): Promise<{
@@ -34,7 +35,7 @@ describe('HyperProver Test', (): void => {
 
     const inbox = await (
       await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, true, [])
+    ).deploy(owner.address, true, minBatcherReward, [])
 
     const token = await (
       await ethers.getContractFactory('TestERC20')
@@ -299,6 +300,7 @@ describe('HyperProver Test', (): void => {
         await claimant.getAddress(),
         intentHash0,
         await hyperProver.getAddress(),
+        { value: minBatcherReward },
       ]
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
@@ -350,6 +352,7 @@ describe('HyperProver Test', (): void => {
         await claimant.getAddress(),
         intentHash1,
         await hyperProver.getAddress(),
+        { value: minBatcherReward },
       ]
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
