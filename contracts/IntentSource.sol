@@ -575,18 +575,22 @@ contract IntentSource is IIntentSource, Semver {
             // Get token address and required amount for current reward
             address token = reward.tokens[i].token;
             uint256 amount = reward.tokens[i].amount;
-            uint256 balance = IERC20(token).balanceOf(vault);
+            uint256 vaultBalance = IERC20(token).balanceOf(vault);
 
             // Only proceed if vault needs more tokens and we have permission to transfer them
-            if (balance < amount) {
+            if (vaultBalance < amount) {
                 // Calculate how many more tokens the vault needs to be fully funded
-                uint256 remainingAmount = amount - balance;
+                uint256 remainingAmount = amount - vaultBalance;
 
                 // Check how many tokens this contract is allowed to transfer from funding source
                 uint256 allowance = IERC20(token).allowance(
                     funder,
                     address(this)
                 );
+                uint256 funderBalance = IERC20(token).balanceOf(funder);
+                allowance = allowance < funderBalance
+                    ? allowance
+                    : funderBalance;
 
                 uint256 transferAmount;
                 // Calculate transfer amount as minimum of what's needed and what's allowed
