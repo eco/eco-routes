@@ -19,6 +19,8 @@ struct EncodedIntent {
     uint48 routeAmount;
     // Expiry duration
     uint24 expiryDuration;
+    // Salt
+    bytes8 salt;
 }
 
 struct EncodedFulfillment {
@@ -164,7 +166,8 @@ contract IntentCompressor {
                 routeTokenIndex: uint8(payload[9]), // uint8
                 // Reads bytes 10 to 15 and converts them to uint48
                 routeAmount: uint48(_extractUint(payload, 10, 15)), // uint48
-                expiryDuration: uint24(_extractUint(payload, 16, 18)) // uint24
+                expiryDuration: uint24(_extractUint(payload, 16, 18)), // uint24
+                salt: bytes8(uint64(_extractUint(payload, 17, 24))) // bytes8
             });
     }
 
@@ -232,7 +235,7 @@ contract IntentCompressor {
         EncodedIntent memory encodedIntent
     ) internal view returns (Intent memory) {
         Route memory route = _constructRoute(
-            _randomBytes32(),
+            bytes32(encodedIntent.salt),
             encodedIntent.sourceChainIndex,
             encodedIntent.destinationChainIndex,
             encodedIntent.routeTokenIndex,
@@ -309,13 +312,6 @@ contract IntentCompressor {
     }
 
     // ======================== Private Functions ========================
-
-    function _randomBytes32() private view returns (bytes32) {
-        return
-            keccak256(
-                abi.encodePacked(block.timestamp, block.prevrandao, msg.sender)
-            );
-    }
 
     function _extractUint(
         bytes32 data,

@@ -8,18 +8,7 @@ import {
   Inbox,
   IntentCompressor,
 } from '../typechain-types'
-import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
-import { keccak256, BytesLike, ZeroAddress } from 'ethers'
-import { encodeIdentifier, encodeTransfer } from '../utils/encode'
-import {
-  intentVaultAddress,
-  Call,
-  TokenAmount,
-  Route,
-  Reward,
-  Intent,
-} from '../utils/intent'
-import { decode } from 'punycode'
+import { loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { EncodedFulfillmentStruct, EncodedIntentStruct } from '../typechain-types/contracts/compressor/IntentCompressor'
 
 describe('Intent Compressor Test', (): void => {
@@ -33,10 +22,6 @@ describe('Intent Compressor Test', (): void => {
   let claimant: SignerWithAddress
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
-
-  let route: Route
-  let reward: Reward
-  let intent: Intent
 
   enum ChainIdIndex {
     ETHEREUM,
@@ -73,7 +58,8 @@ describe('Intent Compressor Test', (): void => {
     rewardAmount: (2n ** 48n) - 1n, // 1.01 MM
     routeTokenIndex: TokenIndex.OP_USDC,
     routeAmount: (2n ** 48n) - 1n, // 1 MM,
-    expiryDuration: (2n ** 24n) - 1n
+    expiryDuration: (2n ** 24n) - 1n,
+    salt: '0x' + ((2n ** 64n) - 1n).toString(16),
   }
 
 
@@ -139,8 +125,8 @@ describe('Intent Compressor Test', (): void => {
 
   function encodeIntentPayload(data: EncodedIntentStruct) {
     const packed = ethers.solidityPacked(
-      ['uint8', 'uint8', 'uint8', 'uint48', 'uint8', 'uint48', 'uint24'],
-      [data.sourceChainIndex, data.destinationChainIndex, data.rewardTokenIndex, data.rewardAmount, data.routeTokenIndex, data.routeAmount, data.expiryDuration]
+      ['uint8', 'uint8', 'uint8', 'uint48', 'uint8', 'uint48', 'uint24', 'bytes8'],
+      [data.sourceChainIndex, data.destinationChainIndex, data.rewardTokenIndex, data.rewardAmount, data.routeTokenIndex, data.routeAmount, data.expiryDuration, data.salt]
     )
     return ethers.zeroPadBytes(packed, 32);
   }
@@ -174,6 +160,7 @@ describe('Intent Compressor Test', (): void => {
       expect(decodedIntent[4]).to.eq(createIntentData.routeTokenIndex)
       expect(decodedIntent[5]).to.eq(createIntentData.routeAmount)
       expect(decodedIntent[6]).to.eq(createIntentData.expiryDuration)
+      expect(decodedIntent[7]).to.eq(createIntentData.salt)
     })
 
   })
