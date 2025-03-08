@@ -167,7 +167,7 @@ contract IntentCompressor {
                 // Reads bytes 10 to 15 and converts them to uint48
                 routeAmount: uint48(_extractUint(payload, 10, 15)), // uint48
                 expiryDuration: uint24(_extractUint(payload, 16, 18)), // uint24
-                salt: bytes8(uint64(_extractUint(payload, 17, 24))) // bytes8
+                salt: bytes8(uint64(_extractUint(payload, 19, 26))) // bytes8
             });
     }
 
@@ -261,7 +261,7 @@ contract IntentCompressor {
             amount: rewardAmount
         });
 
-        TokenAmount[] memory rewardTokens;
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
         rewardTokens[0] = rewardToken;
 
         return
@@ -294,24 +294,29 @@ contract IntentCompressor {
             amount: routeAmount
         });
 
-        TokenAmount[] memory routeTokens;
+        TokenAmount[] memory routeTokens = new TokenAmount[](1);
         routeTokens[0] = routeToken;
 
-        Call[] memory routeCalls;
+        Call[] memory routeCalls = new Call[](1);
         routeCalls[0] = routeCallTransfer;
 
         return
             Route({
                 inbox: address(INBOX),
                 salt: salt,
-                source: getChainIds()[sourceChainIndex],
-                destination: getChainIds()[destinationChainIndex],
+                source: _getChainId(sourceChainIndex),
+                destination: _getChainId(destinationChainIndex),
                 calls: routeCalls,
                 tokens: routeTokens
             });
     }
 
     // ======================== Private Functions ========================
+
+    function _getChainId(uint256 index) private pure returns (uint256) {
+        require(index <= 5, "Chain id index out-of-bounds");
+        return getChainIds()[index];
+    }
 
     function _extractUint(
         bytes32 data,
