@@ -12,3 +12,4 @@ optimize = true
 via-ir = true
 runs = 1000
 ffi = true
+fs_permissions = [{ access = "read-write", path = "./out"}]

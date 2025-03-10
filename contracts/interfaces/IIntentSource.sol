@@ -46,6 +46,15 @@ interface IIntentSource is ISemver, IVaultStorage {
     error InsufficientNativeReward(bytes32 intentHash);
 
     /**
+     * @notice Thrown when the vault has insufficient token allowance for reward funding
+     */
+    error InsufficientTokenAllowance(
+        address token,
+        address spender,
+        uint256 amount
+    );
+
+    /**
      * @notice Indicates an invalid attempt to fund with native tokens
      * @param intentHash The hash of the intent that cannot accept native tokens
      */
@@ -86,14 +95,14 @@ interface IIntentSource is ISemver, IVaultStorage {
     error ArrayLengthMismatch();
 
     /**
-     * @notice Signals partial funding of an intent with native tokens
+     * @notice Signals partial funding of an intent
      * @param intentHash The hash of the partially funded intent
      * @param fundingSource The address providing the partial funding
      */
     event IntentPartiallyFunded(bytes32 intentHash, address fundingSource);
 
     /**
-     * @notice Signals complete funding of an intent with native tokens
+     * @notice Signals complete funding of an intent
      * @param intentHash The hash of the fully funded intent
      * @param fundingSource The address providing the complete funding
      */
@@ -103,13 +112,13 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @notice Signals the creation of a new cross-chain intent
      * @param hash Unique identifier of the intent
      * @param salt Creator-provided uniqueness factor
-     * @param source Origin chain identifier
-     * @param destination Target chain identifier
+     * @param source Source chain identifier
+     * @param destination Destination chain identifier
      * @param inbox Address of the receiving contract on the destination chain
      * @param routeTokens Required tokens for executing destination chain calls
      * @param calls Instructions to execute on the destination chain
      * @param creator Intent originator address
-     * @param prover Verification contract address
+     * @param prover Prover contract address
      * @param deadline Timestamp for reward claim eligibility
      * @param nativeValue Native token reward amount
      * @param rewardTokens ERC20 token rewards with amounts
@@ -145,7 +154,7 @@ interface IIntentSource is ISemver, IVaultStorage {
 
     /**
      * @notice Retrieves the current reward claim status for an intent
-     * @param intentHash The hash of the queried intent
+     * @param intentHash The hash of the intent
      * @return status Current reward status
      */
     function getRewardStatus(
@@ -209,7 +218,8 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @return intentHash Unique identifier of the created and funded intent
      */
     function publishAndFund(
-        Intent calldata intent
+        Intent calldata intent,
+        bool allowPartial
     ) external payable returns (bytes32 intentHash);
 
     /**
@@ -220,7 +230,8 @@ interface IIntentSource is ISemver, IVaultStorage {
      */
     function fund(
         bytes32 routeHash,
-        Reward calldata reward
+        Reward calldata reward,
+        bool allowPartial
     ) external payable returns (bytes32 intentHash);
 
     /**
@@ -265,7 +276,7 @@ interface IIntentSource is ISemver, IVaultStorage {
     ) external view returns (bool);
 
     /**
-     * @notice Claims rewards for a successfully fulfilled intent
+     * @notice Claims rewards for a successfully fulfilled and proven intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
@@ -275,7 +286,7 @@ interface IIntentSource is ISemver, IVaultStorage {
     ) external;
 
     /**
-     * @notice Claims rewards for multiple fulfilled intents
+     * @notice Claims rewards for multiple fulfilled and proven intents
      * @param routeHashes Array of route component hashes
      * @param rewards Array of corresponding reward specifications
      */

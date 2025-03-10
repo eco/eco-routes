@@ -20,8 +20,8 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
      * @dev _originData is of type OnchainCrossChainOrder
      * @dev _fillerData is encoded bytes consisting of the uint256 prover type and the address claimant if the prover type is Storage (0)
      * and the address claimant, the address postDispatchHook, and the bytes metadata if the prover type is Hyperlane (1)
-     * @param _orderId Unique order identifier for this order
-     * @param _originData Data emitted on the origin to parameterize the fill: an encoded Intent struct, or the originData from the fillInstruction of the ResolvedCrossChainOrder
+     * @param _orderId Unique identifier for the order being filled
+     * @param _originData Data emitted on the origin chain to parameterize the fill, equivalent to the originData field from the fillInstruction of the ResolvedCrossChainOrder. An encoded Intent struct.
      * @param _fillerData Data provided by the filler to inform the fill or express their preferences
      */
     function fill(

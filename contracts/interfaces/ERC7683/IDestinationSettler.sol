@@ -10,7 +10,7 @@ interface IDestinationSettler {
     /**
      * @notice Emitted when an intent is fulfilled
      * @param _orderId Hash of the fulfilled intent
-     * @param _solver Address that fulfilled intent
+     * @param _solver Address that fulfilled the intent
      */
     event OrderFilled(bytes32 _orderId, address _solver);
 
