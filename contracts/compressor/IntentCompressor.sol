@@ -18,7 +18,7 @@ struct EncodedIntent {
     uint8 routeTokenIndex;
     uint48 routeAmount;
     // Expiry duration
-    uint24 expiryDuration;
+    uint24 expiresIn;
     // Salt
     bytes8 salt;
 }
@@ -31,8 +31,8 @@ struct EncodedFulfillment {
     uint48 routeAmount;
     // Prove type (INSTANT = 0, BATCH = 1)
     uint8 proveType;
-    // Claimant
-    address claimant;
+    // Recipient
+    address recipient;
 }
 
 contract IntentCompressor {
@@ -65,12 +65,15 @@ contract IntentCompressor {
         bytes32 rewardHash,
         bytes32 routeSalt
     ) external returns (bytes[] memory) {
+        // TODO: Validate it can only be called using DELEGATECALL
+
         EncodedFulfillment memory encodedFulfillment = decodeFulfillPayload(
             payload
         );
 
         Route memory route = _constructRoute(
             routeSalt,
+            encodedFulfillment.recipient,
             encodedFulfillment.sourceChainIndex,
             encodedFulfillment.destinationChainIndex,
             encodedFulfillment.routeTokenIndex,
@@ -94,7 +97,7 @@ contract IntentCompressor {
                 INBOX.fulfillHyperBatched(
                     route,
                     rewardHash,
-                    encodedFulfillment.claimant,
+                    address(this),
                     intentHash,
                     PROVER
                 );
@@ -103,7 +106,7 @@ contract IntentCompressor {
                 INBOX.fulfillHyperInstant(
                     route,
                     rewardHash,
-                    encodedFulfillment.claimant,
+                    address(this),
                     intentHash,
                     PROVER
                 );
@@ -127,8 +130,9 @@ contract IntentCompressor {
         return [1, 10, 137, 8453, 5000, 42161];
     }
 
-    function getTokens() public pure returns (address[15] memory) {
+    function getTokens() public pure returns (address[16] memory) {
         return [
+            0x0000000000000000000000000000000000000000, // Native Token
             // Ethereum
             0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, // USDC
             0xdAC17F958D2ee523a2206206994597C13D831ec7, // USDT
@@ -166,7 +170,7 @@ contract IntentCompressor {
                 routeTokenIndex: uint8(payload[9]), // uint8
                 // Reads bytes 10 to 15 and converts them to uint48
                 routeAmount: uint48(_extractUint(payload, 10, 15)), // uint48
-                expiryDuration: uint24(_extractUint(payload, 16, 18)), // uint24
+                expiresIn: uint24(_extractUint(payload, 16, 18)), // uint24
                 salt: bytes8(uint64(_extractUint(payload, 19, 26))) // bytes8
             });
     }
@@ -236,6 +240,7 @@ contract IntentCompressor {
     ) internal view returns (Intent memory) {
         Route memory route = _constructRoute(
             bytes32(encodedIntent.salt),
+            msg.sender,
             encodedIntent.sourceChainIndex,
             encodedIntent.destinationChainIndex,
             encodedIntent.routeTokenIndex,
@@ -245,7 +250,7 @@ contract IntentCompressor {
         Reward memory reward = _constructReward(
             encodedIntent.rewardTokenIndex,
             encodedIntent.rewardAmount,
-            encodedIntent.expiryDuration
+            encodedIntent.expiresIn
         );
 
         return Intent({route: route, reward: reward});
@@ -254,51 +259,78 @@ contract IntentCompressor {
     function _constructReward(
         uint8 rewardTokenIndex,
         uint48 rewardAmount,
-        uint24 expiryDuration
+        uint24 expiresIn
     ) internal view returns (Reward memory) {
-        TokenAmount memory rewardToken = TokenAmount({
-            token: getTokens()[rewardTokenIndex],
-            amount: rewardAmount
-        });
+        TokenAmount[] memory rewardTokens;
 
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = rewardToken;
+        if (rewardTokenIndex != 0) {
+            TokenAmount memory rewardToken = TokenAmount({
+                token: _getToken(rewardTokenIndex),
+                amount: rewardAmount
+            });
+
+            rewardTokens = new TokenAmount[](1);
+            rewardTokens[0] = rewardToken;
+        }
 
         return
             Reward({
-                nativeValue: 0,
                 prover: PROVER,
+                nativeValue: msg.value,
                 creator: msg.sender,
                 tokens: rewardTokens,
-                deadline: block.timestamp + expiryDuration
+                deadline: block.timestamp + expiresIn
             });
     }
 
     function _constructRoute(
         bytes32 salt,
+        address recipient,
         uint8 sourceChainIndex,
         uint8 destinationChainIndex,
         uint8 routeTokenIndex,
         uint256 routeAmount
     ) internal view returns (Route memory) {
-        address routeTokenTarget = getTokens()[routeTokenIndex];
+        Call[] memory routeCalls;
+        TokenAmount[] memory routeTokens;
 
-        Call memory routeCallTransfer = Call({
-            target: routeTokenTarget,
-            value: 0,
-            data: abi.encodeCall(IERC20.transfer, (msg.sender, routeAmount))
-        });
+        bool isNativeTransfer = routeTokenIndex == 0;
+        bool hasEthTransfer = msg.value > 0;
 
-        TokenAmount memory routeToken = TokenAmount({
-            token: routeTokenTarget,
-            amount: routeAmount
-        });
+        if (!isNativeTransfer) {
+            address routeTokenTarget = _getToken(routeTokenIndex);
 
-        TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = routeToken;
+            // Create the ERC20 transfer call
+            Call memory routeCallTransfer = Call({
+                target: routeTokenTarget,
+                value: 0,
+                data: abi.encodeCall(IERC20.transfer, (recipient, routeAmount))
+            });
 
-        Call[] memory routeCalls = new Call[](1);
-        routeCalls[0] = routeCallTransfer;
+            // Set token transfer details
+            routeTokens = new TokenAmount[](1);
+            routeTokens[0] = TokenAmount({
+                token: routeTokenTarget,
+                amount: routeAmount
+            });
+
+            // Allocate call array with proper size
+            uint8 callsCount = hasEthTransfer ? 2 : 1;
+            routeCalls = new Call[](callsCount);
+            routeCalls[0] = routeCallTransfer;
+        } else {
+            routeTokens = new TokenAmount[](0); // declare an empty array
+            routeCalls = new Call[](hasEthTransfer ? 1 : 0); // Allocate if ETH is sent
+        }
+
+        // Handle native token transfer if applicable
+        if (hasEthTransfer) {
+            routeCalls[routeCalls.length - 1] = Call({
+                target: msg.sender,
+                value: msg.value,
+                data: new bytes(0)
+            });
+        }
 
         return
             Route({
@@ -316,6 +348,11 @@ contract IntentCompressor {
     function _getChainId(uint256 index) private pure returns (uint256) {
         require(index <= 5, "Chain id index out-of-bounds");
         return getChainIds()[index];
+    }
+
+    function _getToken(uint256 index) private pure returns (address) {
+        require(index <= 15, "Token index out-of-bounds");
+        return getTokens()[index];
     }
 
     function _extractUint(
