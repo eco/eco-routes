@@ -382,10 +382,8 @@ describe('Intent Source Test', (): void => {
         ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
-        expect(
-          await intentSource
-            .connect(otherPerson)
-            .withdrawRewards(routeHash, reward),
+        await expect(
+          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
         )
           .to.emit(intentSource, 'Withdrawal')
           .withArgs(intentHash, await claimant.getAddress())

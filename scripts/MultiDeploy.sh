@@ -27,17 +27,28 @@ fi
 
 touch "$DEPLOY_FILE"
 
+# Ensure chain.json exists
+CHAIN_JSON="./scripts/assets/chain.json"
+if [ ! -f "$CHAIN_JSON" ]; then
+    echo "❌ Error: Missing chain.json file!"
+    exit 1
+fi
+
+
 # Convert comma-separated CHAIN_IDS into an array
 IFS=',' read -r -a CHAINS <<< "$CHAIN_IDS"
 
+# Read chain.json into a variable
+CHAIN_DATA=$(cat "$CHAIN_JSON")
+
 # Loop through each chain and deploy contracts
 for CHAIN_ID in "${CHAINS[@]}"; do
-    RPC_URL_VAR="RPC_URL_$CHAIN_ID"
-    MAILBOX_VAR="MAILBOX_$CHAIN_ID"
-    GAS_MULTIPLIER_VAR="GAS_MULTIPLIER_$CHAIN_ID"
+    RPC_URL=$(echo "$CHAIN_DATA" | jq -r --arg CHAIN_ID "$CHAIN_ID" '.[$CHAIN_ID].url')
+    MAILBOX_CONTRACT=$(echo "$CHAIN_DATA" | jq -r --arg CHAIN_ID "$CHAIN_ID" '.[$CHAIN_ID].mailbox')
+    # Replace environment variable placeholders if necessary
+    RPC_URL=$(eval echo "$RPC_URL")
 
-    RPC_URL="${!RPC_URL_VAR}"
-    MAILBOX_CONTRACT="${!MAILBOX_VAR}"
+    GAS_MULTIPLIER_VAR="GAS_MULTIPLIER_$CHAIN_ID"
     GAS_MULTIPLIER="${!GAS_MULTIPLIER_VAR}"
 
     echo "🔄 Deploying contracts for Chain ID: $CHAIN_ID"
