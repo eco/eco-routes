@@ -7,36 +7,11 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IInbox} from "../interfaces/IInbox.sol";
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
 import {Intent, Call, TokenAmount, Route, Reward} from "../types/Intent.sol";
-
-struct EncodedIntent {
-    uint8 sourceChainIndex;
-    uint8 destinationChainIndex;
-    // Reward token
-    uint8 rewardTokenIndex;
-    uint48 rewardAmount;
-    // Route token
-    uint8 routeTokenIndex;
-    uint48 routeAmount;
-    // Expiry duration
-    uint24 expiresIn;
-    // Salt
-    bytes8 salt;
-}
-
-struct EncodedFulfillment {
-    uint8 sourceChainIndex;
-    uint8 destinationChainIndex;
-    // Reward token
-    uint8 routeTokenIndex;
-    uint48 routeAmount;
-    // Prove type (INSTANT = 0, BATCH = 1)
-    uint8 proveType;
-    // Recipient
-    address recipient;
-}
+import {EncodedIntent, EncodedFulfillment, IntentPacking} from "./IntentEncoderLib.sol";
 
 contract IntentCompressor {
     using SafeERC20 for IERC20;
+    using IntentPacking for bytes32;
 
     /**
      * @notice Thrown when the vault has insufficient token allowance for reward funding
@@ -67,9 +42,8 @@ contract IntentCompressor {
     ) external returns (bytes[] memory) {
         // TODO: Validate it can only be called using DELEGATECALL
 
-        EncodedFulfillment memory encodedFulfillment = decodeFulfillPayload(
-            payload
-        );
+        EncodedFulfillment memory encodedFulfillment = payload
+            .decodeFulfillPayload();
 
         Route memory route = _constructRoute(
             routeSalt,
@@ -116,7 +90,7 @@ contract IntentCompressor {
     function publishTransferIntentAndFund(
         bytes32 payload
     ) external returns (bytes32 intentHash) {
-        EncodedIntent memory encodedIntent = decodePublishPayload(payload);
+        EncodedIntent memory encodedIntent = payload.decodePublishPayload();
         Intent memory intent = _constructIntent(encodedIntent);
 
         _fundIntent(intent);
@@ -155,39 +129,6 @@ contract IntentCompressor {
             0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8, // USDC.e
             0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9 // USDT
         ];
-    }
-
-    function decodePublishPayload(
-        bytes32 payload
-    ) public pure returns (EncodedIntent memory) {
-        return
-            EncodedIntent({
-                sourceChainIndex: uint8(payload[0]), // uint8
-                destinationChainIndex: uint8(payload[1]), // uint8
-                rewardTokenIndex: uint8(payload[2]), // uint8
-                // Reads bytes 3 to 8 and converts them to uint48
-                rewardAmount: uint48(_extractUint(payload, 3, 8)), // uint48
-                routeTokenIndex: uint8(payload[9]), // uint8
-                // Reads bytes 10 to 15 and converts them to uint48
-                routeAmount: uint48(_extractUint(payload, 10, 15)), // uint48
-                expiresIn: uint24(_extractUint(payload, 16, 18)), // uint24
-                salt: bytes8(uint64(_extractUint(payload, 19, 26))) // bytes8
-            });
-    }
-
-    function decodeFulfillPayload(
-        bytes32 payload
-    ) public pure returns (EncodedFulfillment memory) {
-        return
-            EncodedFulfillment({
-                sourceChainIndex: uint8(payload[0]), // uint8
-                destinationChainIndex: uint8(payload[1]), // uint8
-                routeTokenIndex: uint8(payload[2]), // uint8
-                // Reads bytes 10 to 15 and converts them to uint48
-                routeAmount: uint48(_extractUint(payload, 3, 8)), // uint48
-                proveType: uint8(payload[9]),
-                claimant: address(uint160(_extractUint(payload, 10, 29))) // uint48
-            });
     }
 
     // ======================== Internal Functions ========================
@@ -353,21 +294,5 @@ contract IntentCompressor {
     function _getToken(uint256 index) private pure returns (address) {
         require(index <= 15, "Token index out-of-bounds");
         return getTokens()[index];
-    }
-
-    function _extractUint(
-        bytes32 data,
-        uint8 start,
-        uint8 end
-    ) private pure returns (uint256) {
-        require(start < end, "range has to be greater than zero");
-        require(end <= 32, "Out of bounds");
-
-        uint256 length = end - start + 1;
-        uint256 result;
-        for (uint8 i = 0; i < length; i++) {
-            result |= uint256(uint8(data[start + i])) << ((length - 1 - i) * 8);
-        }
-        return result;
     }
 }
