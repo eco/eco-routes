@@ -1,16 +1,14 @@
 import {
+  Abi,
+  ContractFunctionArgs,
+  decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
   Hex,
   keccak256,
-  getContractAddress,
-  Abi,
-  ContractFunctionArgs,
-  encodeFunctionData,
-  decodeAbiParameters,
 } from 'viem'
 import { extractAbiStruct } from './utils'
-import { IntentSourceAbi, IntentVaultBytecode, InboxAbi } from '../abi'
+import { IntentSourceAbi } from '../abi'
 
 /**
  * Extracts the functions from an ABI
@@ -206,24 +204,4 @@ export function hashIntent(intent: IntentType): {
     rewardHash,
     intentHash,
   }
-}
-
-/**
- * Generates the intent vault address using CREATE2
- * @param intentSourceAddress the intent source address
- * @param intent the intent
- * @returns
- */
-export function intentVaultAddress(
-  intentSourceAddress: Hex,
-  intent: IntentType,
-): Hex {
-  const { routeHash } = hashIntent(intent)
-
-  return getContractAddress({
-    opcode: 'CREATE2',
-    from: intentSourceAddress,
-    salt: routeHash,
-    bytecode: IntentVaultBytecode,
-  })
 }

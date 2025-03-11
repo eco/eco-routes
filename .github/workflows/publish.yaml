@@ -84,6 +84,16 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "yarn"
+      - name: ⚡ Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: 🔍 Verify Installation
+        run: forge --version
+      - name: 🔧 Install Forge Dependencies
+        run: forge install
+      - name: 🔧 Grant Execute Permission to MultiDeploy.sh
+        run: chmod +x scripts/MultiDeploy.sh
+      - name: 🔧 Grant Execute Permission to Verify.sh
+        run: chmod +x scripts/Verify.sh
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
@@ -91,19 +101,54 @@ jobs:
       - name: Deploy Contracts
         uses: borales/actions-yarn@v5
         with:
-          cmd: deployCI
+          cmd: deployForgeCI
         env:
-          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
-          OPTIMISM_SCAN_API_KEY: ${{ secrets.OPTIMISM_SCAN_API_KEY }}
-          OPTIMISM_BLOCKSCOUT_API_KEY: ${{ secrets.OPTIMISM_BLOCKSCOUT_API_KEY }}
-          BASE_SCAN_API_KEY: ${{ secrets.BASE_SCAN_API_KEY }}
-          ARBSCAN_API_KEY: ${{ secrets.ARBSCAN_API_KEY }}
-          CALDERA_SCAN_API_KEY: ${{ secrets.CALDERA_SCAN_API_KEY }}
-          MANTLE_SCAN_API_KEY: ${{ secrets.MANTLE_SCAN_API_KEY }}
-          POLYGON_SCAN_API_KEY: ${{ secrets.POLYGON_SCAN_API_KEY }}
-          #verification
-          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          CHAIN_IDS: "1,10,137,5000,8453,42161,84532,11155111,11155420"
+
+          # RPC URLs
+          RPC_URL_1: "https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_10: "https://opt-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_137: "https://polygon-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_8453: "https://base-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_5000: "https://mantle-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_42161: "https://arb-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          # Testnets
+          RPC_URL_84532: "https://base-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_11155111: "https://eth-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_11155420: "https://opt-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+
+          # Etherscan API Keys
+          ETHERSCAN_API_KEY_1: ${{ secrets.ETHERSCAN_API_KEY }}
+          ETHERSCAN_API_KEY_10: ${{ secrets.OPTIMISM_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_137: ${{ secrets.POLYGON_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_5000: ${{ secrets.MANTLE_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_8453: ${{ secrets.BASE_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_42161: ${{ secrets.ARBSCAN_API_KEY }}
+          # Testnets
+          ETHERSCAN_API_KEY_84532: ${{ secrets.BASE_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_11155111: ${{ secrets.ETHERSCAN_API_KEY }}
+          ETHERSCAN_API_KEY_11155420: ${{ secrets.OPTIMISM_SCAN_API_KEY }}
+
+          # Hyperlane Mailbox addresses
+          MAILBOX_1: "0xc005dc82818d67AF737725bD4bf75435d065D239"
+          MAILBOX_10: "0xd4C1905BB1D26BC93DAC913e13CaCC278CdCC80D"
+          MAILBOX_137: "0x5d934f4e2f797775e53561bB72aca21ba36B96BB"
+          MAILBOX_5000: "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
+          MAILBOX_8453: "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
+          MAILBOX_42161: "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+          # Testnets
+          MAILBOX_84532: "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+          MAILBOX_11155111: "0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766"
+          MAILBOX_11155420: "0x6966b0E55883d49BFB24539356a2f8A673E02039"
+
+          # Gas Multipliers
+          GAS_MULTIPLIER_5000: "600"
+
+      - name: Build project
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: build
       - name: Publish prepack build directory
         uses: borales/actions-yarn@v5
         with:

@@ -216,6 +216,8 @@ contract Vault is IVault {
     ) internal {
         // Check how many tokens this contract is allowed to transfer from funding source
         uint256 allowance = IERC20(token).allowance(funder, address(this));
+        uint256 funderBalance = IERC20(token).balanceOf(funder);
+        allowance = allowance < funderBalance ? allowance : funderBalance;
 
         uint256 transferAmount;
         // Calculate transfer amount as minimum of what's needed and what's allowed
@@ -257,6 +259,10 @@ contract Vault is IVault {
             token,
             address(this)
         );
+        uint256 funderBalance = IERC20(token).balanceOf(funder);
+        allowance = allowance < funderBalance
+            ? allowance
+            : uint160(funderBalance);
 
         uint256 transferAmount;
         // Calculate transfer amount as minimum of what's needed and what's allowed

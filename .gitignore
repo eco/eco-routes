@@ -80,7 +80,6 @@ executeInstructions.ts
 
 #Publish artifacts
 package
-lib
 libTest
 
 # docs
@@ -101,3 +100,7 @@ output/proofGenerationOutput.json
 # OpenZeppelin
 .openzeppelin/dev-*.json
 .openzeppelin/.session
+
+.idea/
+
+broadcast/
