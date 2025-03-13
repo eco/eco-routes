@@ -65,7 +65,12 @@ contract Deploy is Script {
 
         // constructor(address _owner, bool _isSolvingPublic, address[] memory _solvers)
         address[] memory solvers;
-        bytes memory inboxConstructorArgs = abi.encode(deployer, true, solvers);
+        bytes memory inboxConstructorArgs = abi.encode(
+            deployer,
+            mailbox,
+            true,
+            solvers
+        );
         bytes memory inboxBytecode = abi.encodePacked(
             type(Inbox).creationCode,
             inboxConstructorArgs
@@ -77,11 +82,6 @@ contract Deploy is Script {
         );
 
         console.log("Inbox :", inbox);
-
-        if (!wasInboxDeployed) {
-            // Set Hyperlane Mailbox contract address
-            Inbox(payable(inbox)).setMailbox(mailbox);
-        }
 
         // HyperProver
 

@@ -19,7 +19,7 @@ import {
   TokenAmount,
 } from '../utils/intent'
 
-describe.only('Inbox Test', (): void => {
+describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
   let erc20: TestERC20
@@ -226,7 +226,9 @@ describe.only('Inbox Test', (): void => {
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
       const anotherInbox = await (
         await ethers.getContractFactory('Inbox')
-      ).deploy(owner.address, false, [owner.address])
+      ).deploy(owner.address, await mailbox.getAddress(), false, [
+        owner.address,
+      ])
 
       const _route = {
         ...route,

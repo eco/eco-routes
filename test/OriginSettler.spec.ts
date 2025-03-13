@@ -90,7 +90,7 @@ describe('Origin Settler Test', (): void => {
     const intentSource = await intentSourceFactory.deploy()
     inbox = await (
       await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, false, [owner.address])
+    ).deploy(owner.address, otherPerson.address, false, [owner.address])
 
     const originSettlerFactory = await ethers.getContractFactory(
       'Eco7683OriginSettler',

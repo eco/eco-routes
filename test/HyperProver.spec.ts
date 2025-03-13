@@ -34,7 +34,7 @@ describe('HyperProver Test', (): void => {
 
     const inbox = await (
       await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, true, [])
+    ).deploy(owner.address, await dispatcher.getAddress(), true, [])
 
     const token = await (
       await ethers.getContractFactory('TestERC20')
@@ -113,7 +113,6 @@ describe('HyperProver Test', (): void => {
       expect(await hyperProver.provenIntents(intentHash)).to.eq(claimantAddress)
     })
     it('works end to end', async () => {
-      await inbox.connect(owner).setMailbox(await dispatcher.getAddress())
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(await dispatcher.getAddress(), await inbox.getAddress())
@@ -252,7 +251,6 @@ describe('HyperProver Test', (): void => {
         .withArgs(otherHash, otherAddress)
     })
     it('should work end to end', async () => {
-      await inbox.connect(owner).setMailbox(await dispatcher.getAddress())
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(await dispatcher.getAddress(), await inbox.getAddress())
