@@ -49,8 +49,12 @@ describe('Destination Settler Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(owner.address, true, [])
-    await inbox.connect(owner).setMailbox(await mailbox.getAddress())
+    const inbox = await inboxFactory.deploy(
+      owner.address,
+      await mailbox.getAddress(),
+      true,
+      [],
+    )
     const prover = await (
       await ethers.getContractFactory('TestProver')
     ).deploy()
