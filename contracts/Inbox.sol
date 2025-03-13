@@ -29,7 +29,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     mapping(address => bool) public solverWhitelist;
 
     // address of local hyperlane mailbox
-    address public immutable MAILBOX;
+    IMailbox public immutable MAILBOX;
 
     // Is solving public
     bool public isSolvingPublic;
@@ -46,7 +46,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bool _isSolvingPublic,
         address[] memory _solvers
     ) Ownable(_owner) {
-        MAILBOX = _mailbox;
+        MAILBOX = IMailbox(_mailbox);
         isSolvingPublic = _isSolvingPublic;
         for (uint256 i = 0; i < _solvers.length; ++i) {
             solverWhitelist[_solvers[i]] = true;
@@ -177,13 +177,13 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             }
         }
         if (_postDispatchHook == address(0)) {
-            IMailbox(MAILBOX).dispatch{value: fee}(
+            MAILBOX.dispatch{value: fee}(
                 uint32(_route.source),
                 _prover32,
                 messageBody
             );
         } else {
-            IMailbox(MAILBOX).dispatch{value: fee}(
+            MAILBOX.dispatch{value: fee}(
                 uint32(_route.source),
                 _prover32,
                 messageBody,
@@ -293,13 +293,13 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             }
         }
         if (_postDispatchHook == address(0)) {
-            IMailbox(MAILBOX).dispatch{value: fee}(
+            MAILBOX.dispatch{value: fee}(
                 uint32(_sourceChainID),
                 _prover32,
                 messageBody
             );
         } else {
-            IMailbox(MAILBOX).dispatch{value: fee}(
+            MAILBOX.dispatch{value: fee}(
                 uint32(_sourceChainID),
                 _prover32,
                 messageBody,
@@ -328,12 +328,12 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     ) public view returns (uint256 fee) {
         return (
             _postDispatchHook == address(0)
-                ? IMailbox(MAILBOX).quoteDispatch(
+                ? MAILBOX.quoteDispatch(
                     uint32(_sourceChainID),
                     _prover,
                     _messageBody
                 )
-                : IMailbox(MAILBOX).quoteDispatch(
+                : MAILBOX.quoteDispatch(
                     uint32(_sourceChainID),
                     _prover,
                     _messageBody,
@@ -432,7 +432,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                 // no code at this address
                 revert CallToEOA(call.target);
             }
-            if (call.target == MAILBOX) {
+            if (call.target == address(MAILBOX)) {
                 // no executing calls on the mailbox
                 revert CallToMailbox();
             }
