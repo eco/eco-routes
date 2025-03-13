@@ -19,7 +19,7 @@ import {
   TokenAmount,
 } from '../utils/intent'
 
-describe('Inbox Test', (): void => {
+describe.only('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
   let erc20: TestERC20
@@ -56,9 +56,12 @@ describe('Inbox Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(owner.address, false, [
-      solver.address,
-    ])
+    const inbox = await inboxFactory.deploy(
+      owner.address,
+      await mailbox.getAddress(),
+      false,
+      [solver.address],
+    )
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -170,9 +173,6 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox.connect(solver).changeSolverWhitelist(owner.address, true),
       ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
-      await expect(
-        inbox.connect(solver).setMailbox(await mailbox.getAddress()),
-      ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
     })
     it('lets owner make solving public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
@@ -186,16 +186,6 @@ describe('Inbox Test', (): void => {
       await inbox.connect(owner).changeSolverWhitelist(owner.address, true)
       expect(await inbox.solverWhitelist(solver)).to.be.false
       expect(await inbox.solverWhitelist(owner)).to.be.true
-    })
-
-    it('lets owner set mailbox, but only when it is the zero addreses', async () => {
-      expect(await inbox.mailbox()).to.eq(ethers.ZeroAddress)
-      expect(await inbox.connect(owner).setMailbox(await mailbox.getAddress()))
-        .to.emit(inbox, 'MailboxSet')
-        .withArgs(await mailbox.getAddress())
-      expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
-      await inbox.connect(owner).setMailbox(solver.address)
-      expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
     })
   })
 
@@ -289,7 +279,6 @@ describe('Inbox Test', (): void => {
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
     it('should revert if any of the targets is the mailbox', async () => {
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       const _route = {
         ...route,
         calls: [
@@ -406,7 +395,6 @@ describe('Inbox Test', (): void => {
       mockHyperProver = await (
         await ethers.getContractFactory('TestProver')
       ).deploy()
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       expect(await mailbox.dispatched()).to.be.false
 
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)

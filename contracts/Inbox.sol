@@ -29,7 +29,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     mapping(address => bool) public solverWhitelist;
 
     // address of local hyperlane mailbox
-    address public mailbox;
+    address public immutable MAILBOX;
 
     // Is solving public
     bool public isSolvingPublic;
@@ -42,9 +42,11 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
      */
     constructor(
         address _owner,
+        address _mailbox,
         bool _isSolvingPublic,
         address[] memory _solvers
     ) Ownable(_owner) {
+        mailbox = _mailbox;
         isSolvingPublic = _isSolvingPublic;
         for (uint256 i = 0; i < _solvers.length; ++i) {
             solverWhitelist[_solvers[i]] = true;
@@ -340,19 +342,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                 )
         );
     }
-
-    /**
-     * @notice Sets the mailbox address
-     * @dev Can only be called when mailbox is not set
-     * @param _mailbox Address of the Hyperlane mailbox
-     */
-    function setMailbox(address _mailbox) public onlyOwner {
-        if (mailbox == address(0)) {
-            mailbox = _mailbox;
-            emit MailboxSet(_mailbox);
-        }
-    }
-
     /**
      * @notice Makes solving public if currently restricted
      * @dev Cannot be reversed once made public
