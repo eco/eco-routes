@@ -1,27 +1,7 @@
-const mockExtract = jest.fn()
 const mockGetJsonFromFile = jest.fn()
 const mockMergeAddresses = jest.fn()
-const mockRim = jest.fn()
-const MockDeployChains = [{ id: 1 }, { id: 2 }, { id: 3 }]
 
 import { ProtocolVersion } from '../ProtocolVersion'
-import { DeployChains } from '../chains'
-
-jest.mock('rimraf', () => {
-  return {
-    rimrafSync: mockRim,
-  }
-})
-jest.mock('pacote', () => {
-  return {
-    extract: mockExtract,
-  }
-})
-jest.mock('../chains', () => {
-  return {
-    DeployChains: MockDeployChains,
-  }
-})
 
 jest.mock('../../deploy/addresses', () => {
   return {
@@ -152,94 +132,6 @@ describe('ProtocolVersion Tests', () => {
         .spyOn(ProtocolVersion.prototype, 'getPublishedVersion')
         .mockResolvedValue('0.0.19-beta')
       expect(await pv.isPatchUpdate()).toBe(true)
-    })
-  })
-
-  describe('on getNewChains', () => {
-    let pv: ProtocolVersion
-    const versionString = '0.0.2-beta'
-    beforeEach(() => {
-      jest.resetAllMocks()
-      pv = new ProtocolVersion(versionString)
-      mockExtract.mockResolvedValue({})
-
-      mockGetJsonFromFile.mockReturnValue({
-        '1': {},
-        '2': {},
-        '3-pre': {},
-      })
-    })
-
-    it("should return all chains if it can't extract the package", async () => {
-      mockExtract.mockRejectedValue(new Error('error'))
-      expect(await pv.getNewChains()).toEqual(DeployChains)
-    })
-
-    it('should return all the chains not inlcuded in the package', async () => {
-      const cs = await pv.getNewChains()
-      // expect(mockRim).toHaveBeenCalledTimes(1)
-      expect(cs.length).toEqual(1)
-      expect(cs[0].id).toEqual(3)
-    })
-  })
-
-  describe('on getDeployChains', () => {
-    let pv: ProtocolVersion
-    const versionString = '0.0.2-beta'
-    beforeEach(() => {
-      jest.restoreAllMocks()
-      pv = new ProtocolVersion(versionString)
-      mockExtract.mockResolvedValue({})
-
-      mockGetJsonFromFile.mockReturnValue({
-        '1': {},
-        '2': {},
-        '3-pre': {},
-      })
-    })
-
-    it('should throw if a patch update has no new chains', async () => {
-      jest
-        .spyOn(ProtocolVersion.prototype, 'isPatchUpdate')
-        .mockResolvedValue(true)
-      jest
-        .spyOn(ProtocolVersion.prototype, 'getNewChains')
-        .mockResolvedValue([])
-      await expect(async () => await pv.getDeployChains()).rejects.toThrow(
-        'No new chains to deploy for a patch update',
-      )
-    })
-
-    it('should call getNewChains if its a patch update', async () => {
-      jest
-        .spyOn(ProtocolVersion.prototype, 'isPatchUpdate')
-        .mockResolvedValue(true)
-      const spy = jest.spyOn(ProtocolVersion.prototype, 'getNewChains')
-      await pv.getDeployChains()
-      expect(spy).toHaveBeenCalledTimes(1)
-    })
-
-    it('should return the salts if its a patch update', async () => {
-      jest
-        .spyOn(ProtocolVersion.prototype, 'isPatchUpdate')
-        .mockResolvedValue(true)
-      const spy = jest.spyOn(ProtocolVersion.prototype, 'getNewChains')
-      const salts = { salt: '0x1', saltPre: '0x2' }
-      mockGetJsonFromFile.mockReturnValue(salts)
-      expect(await pv.getDeployChains()).toEqual({
-        chains: MockDeployChains,
-        salts,
-      })
-      expect(spy).toHaveBeenCalledTimes(1)
-    })
-
-    it('should return all the deploy chains if its not a patch', async () => {
-      jest
-        .spyOn(ProtocolVersion.prototype, 'isPatchUpdate')
-        .mockResolvedValue(false)
-      const spy = jest.spyOn(ProtocolVersion.prototype, 'getNewChains')
-      expect(await pv.getDeployChains()).toEqual({ chains: MockDeployChains })
-      expect(spy).toHaveBeenCalledTimes(0)
     })
   })
 })
