@@ -12,6 +12,7 @@ import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IntentSource} from "../contracts/IntentSource.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
+import {MetaProver} from "../Contracts/prover/MetaProver.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -40,6 +41,7 @@ contract Deploy is Script {
         bytes32 INTENT_SOURCE_SALT = getContractSalt(salt, "INTENT_SOURCE");
         bytes32 INBOX_SALT = getContractSalt(salt, "INBOX");
         bytes32 HYPER_PROVER_SALT = getContractSalt(salt, "HYPER_PROVER");
+        bytes32 META_PROVER_SALT = getContractSalt(salt, "META_PROVER");
 
         vm.startBroadcast();
 
@@ -98,6 +100,21 @@ contract Deploy is Script {
         );
         console.log("HyperProver :", address(hyperProver));
 
+        // MetaProver
+
+        // constructor(address _mailbox, address _inbox)
+        bytes memory metaProverConstructorArgs = abi.encode(mailbox, inbox);
+        bytes memory metaProverBytecode = abi.encodePacked(
+            type(MetaProver).creationCode,
+            metaProverConstructorArgs
+        );
+        (address metaProver, ) = deployWithCreate3(
+            metaProverBytecode,
+            deployer,
+            META_PROVER_SALT
+        );
+        console.log("MetaProver :", address(metaProver));
+
         VerificationData[3] memory contracts = [
             VerificationData({
                 contractAddress: intentSource,
@@ -116,6 +133,12 @@ contract Deploy is Script {
                 contractPath: "contracts/prover/HyperProver.sol:HyperProver",
                 constructorArgs: hyperProverConstructorArgs,
                 chainId: block.chainid
+            }),
+            VerificationData({
+                contractAddress: metaProver,
+                contractPath: "contracts/prover/MetaProver.sol:MetaProver",
+                constructorArgs: metaProverConstructorArgs,
+                chainId: block.chainid,
             })
         ];
 

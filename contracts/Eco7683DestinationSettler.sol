@@ -66,6 +66,23 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
                 metadata,
                 postDispatchHook
             );
+        } else if (proofType == IProver.ProofType.Metalayer) {
+            (
+                ,
+                address claimant,
+                ,
+                
+            ) = abi.decode(
+                    _fillerData,
+                    (IProver.ProofType, address, address, bytes)
+                );
+            fulfillMetaInstant(
+                intent.route,
+                rewardHash,
+                claimant,
+                _orderId,
+                intent.reward.prover
+            );
         }
     }
 
@@ -84,5 +101,13 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         address _prover,
         bytes memory _metadata,
         address _postDispatchHook
+    ) public payable virtual returns (bytes[] memory);
+
+    function fulfillMetaInstant(
+        Route memory _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover
     ) public payable virtual returns (bytes[] memory);
 }

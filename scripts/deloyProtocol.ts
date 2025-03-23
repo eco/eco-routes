@@ -47,6 +47,7 @@ export type ProtocolDeploy = {
   intentSourceAddress: Hex
   inboxAddress: Hex
   hyperProverAddress: Hex
+  metaProverAddress: Hex
   initialSalt: string
 }
 
@@ -56,6 +57,7 @@ export function getEmptyProtocolDeploy(): ProtocolDeploy {
     intentSourceAddress: zeroAddress,
     inboxAddress: zeroAddress,
     hyperProverAddress: zeroAddress,
+    metaProverAddress: zeroAddress,
     initialSalt: getGitHash(), // + Math.random().toString(), // randomize the salt for development as singletonDeployer.deploy(..) will fail if salt is already used
   }
 }
@@ -127,6 +129,19 @@ export async function deployProtocol(
       singletonDeployer,
     )) as Hex
   }
+
+  if (
+    isZeroAddress(protocolDeploy.metaProverAddress) &&
+    !isZeroAddress(protocolDeploy.inboxAddress)
+  ) {
+    protocolDeploy.metaProverAddress = (await deployMetaProver(
+      deployNetwork,
+      protocolDeploy.inboxAddress,
+      salt,
+      singletonDeployer,
+    )) as Hex
+  }
+
   // deploy preproduction contracts
   if (options.deployPre) {
     deployNetwork.pre = true
@@ -287,3 +302,35 @@ export async function deployHyperProver(
   verifyContract(ethers.provider, contractName, hyperProverAddress, args)
   return hyperProverAddress
 }
+
+export async function deployMetaProver(
+  deployNetwork: DeployNetwork,
+  inboxAddress: Hex,
+  deploySalt: string,
+  singletonDeployer: Deployer,
+) {
+  const contractName = 'MetaProver'
+  const metaProverFactory = await ethers.getContractFactory(contractName)
+  const args = [deployNetwork.metalayerRouterAddress, inboxAddress]
+  const metaProverTx = (await retryFunction(async () => {
+    return await metaProverFactory.getDeployTransaction(args[0], args[1])
+  }, ethers.provider)) as any as ContractTransactionResponse
+
+  await retryFunction(async () => {
+    return await singletonDeployer.deploy(metaProverTx.data, deploySalt, {
+      gasLimit: deployNetwork.gasLimit,
+    })
+  }, ethers.provider)
+  // wait to verify contract
+  const metaProverAddress = ethers.getCreate2Address(
+    singletonFactoryAddress,
+    deploySalt,
+    ethers.keccak256(metaProverTx.data),
+  ) as Hex
+
+  console.log(`${contractName} deployed to: ${metaProverAddress}`)
+  addJsonAddress(deployNetwork, `${contractName}`, metaProverAddress)
+  verifyContract(ethers.provider, contractName, metaProverAddress, args)
+  return metaProverAddress
+}
+

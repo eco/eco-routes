@@ -170,6 +170,7 @@
     "@axelar-network/axelar-gmp-sdk-solidity": "^6.0.4",
     "@hyperlane-xyz/registry": "^4.2.0",
     "@hyperlane-xyz/sdk": "^5.1.0",
+    "@metalayer/contracts": "^0.0.6",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "viem": "^2.22.21"

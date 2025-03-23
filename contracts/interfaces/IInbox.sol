@@ -53,6 +53,12 @@ interface IInbox is ISemver {
         address indexed _claimant
     );
 
+    event MetaInstantFufillment(
+        bytes32 indexed _hash,
+        uint256 indexed _sourceChainID,
+        address indexed _claimant
+    );
+
     /**
      * @notice Emitted when an intent is added to a Hyperlane batch
      * @param _hash Hash of the batched intent
@@ -84,6 +90,12 @@ interface IInbox is ISemver {
      * @param _mailbox Address of the mailbox contract
      */
     event MailboxSet(address indexed _mailbox);
+
+    /**
+     * @notice Emitted when Metalayer router address is set
+     * @param _router Address of the mailbox contract
+     */
+    event RouterSet(address indexed _router);
 
     /**
      * @notice Emitted when minimum batcher reward is set
@@ -297,4 +309,23 @@ interface IInbox is ISemver {
         bytes memory _metadata,
         address _postDispatchHook
     ) external payable;
+
+
+    /**
+     * @notice Fulfills an intent to be proven immediately via Metalayer's router
+     * @dev More expensive but faster than metabatched. Requires fee for Metalayer infrastructure
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
+     * @param _claimant The address that will receive the reward on the source chain
+     * @param _expectedHash The hash of the intent as created on the source chain
+     * @param _prover The address of the Metaprover on the source chain
+     * @return Array of execution results from each call
+     */
+    function fulfillMetaInstant(
+        Route memory _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover
+    ) external payable returns (bytes[] memory);
 }

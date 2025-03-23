@@ -17,7 +17,8 @@ interface IProver is ISemver {
      */
     enum ProofType {
         Storage,
-        Hyperlane
+        Hyperlane,
+        Metalayer
     }
 
     /**
