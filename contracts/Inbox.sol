@@ -4,6 +4,10 @@ pragma solidity ^0.8.26;
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+
+import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
+import {IMetalayerRecipient, ReadOperation} from  "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
+import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -31,6 +35,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     // address of local hyperlane mailbox
     address public mailbox;
 
+    // address of the local metalayer router
+    address public router;
+
     // Is solving public
     bool public isSolvingPublic;
 
@@ -56,6 +63,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             emit SolverWhitelistChanged(_solvers[i], true);
         }
     }
+
+    /**
+    STORAGE PROOFS
+     */
 
     /**
      * @notice Fulfills an intent to be proven via storage proofs
@@ -92,6 +103,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
         return result;
     }
+
+    /**
+    HYPERLANE PROOFS
+    */
 
     /**
      * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox
@@ -376,6 +391,211 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             emit MailboxSet(_mailbox);
         }
     }
+
+    /**
+    METALAYER PROVING
+    */
+
+    /**
+     * @notice Fulfills an intent to be proven immediately via Metalayer's router
+     * @dev More expensive but faster than metabatched. Requires fee for Metalayer infrastructure
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
+     * @param _claimant The address that will receive the reward on the source chain
+     * @param _expectedHash The hash of the intent as created on the source chain
+     * @param _prover The address of the Metaprover on the source chain
+     * @return Array of execution results from each call
+     */
+    function fulfillMetaInstant(
+        Route memory _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover
+    )
+        public
+        payable
+        override(IInbox, Eco7683DestinationSettler)
+        returns (bytes[] memory)
+    {
+        bytes32[] memory hashes = new bytes32[](1);
+        address[] memory claimants = new address[](1);
+        hashes[0] = _expectedHash;
+        claimants[0] = _claimant;
+
+        bytes memory messageBody = abi.encode(hashes, claimants);
+
+        emit MetaInstantFufillment(_expectedHash, _route.source, _claimant);
+
+        uint256 fee = fetchMetalayerFee(
+            _route.source,
+            _prover.addressToBytes32(),
+            messageBody
+        );
+
+        (bytes[] memory results, uint256 currentBalance) = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(0)
+        );
+
+        if (currentBalance < fee) {
+            revert InsufficientFee(fee);
+        }
+        if (currentBalance > fee) {
+            (bool success, ) = payable(msg.sender).call{
+                value: currentBalance - fee
+            }("");
+            if (!success) {
+                revert NativeTransferFailed();
+            }
+        }
+    
+        IMetalayerRouter(router).dispatch{value: fee}(
+            uint32(_route.source),
+            _prover,
+            new ReadOperation[](0),
+            messageBody,
+            FinalityState.INSTANT,
+            200_000
+        );
+        return results;
+    }
+
+    /**
+     * @notice Fulfills an intent to be proven in a batch via Metalayer's mailbox
+     * @dev Cheaper but slower than metainstant. Batch dispatched when sendBatch is called.
+     * @param _route The route of the intent
+     * @param _rewardHash The hash of the reward
+     * @param _claimant The address that will receive the reward on the source chain
+     * @param _expectedHash The hash of the intent as created on the source chain
+     * @param _prover The address of the MetaProver on the source chain
+     * @return Array of execution results from each call
+     */
+    function fulfillMetaBatched(
+        Route calldata _route,
+        bytes32 _rewardHash,
+        address _claimant,
+        bytes32 _expectedHash,
+        address _prover
+    ) external payable returns (bytes[] memory) {
+        // Shared AddToBatch function can be used because the prover determines
+        // the success of the call.
+        emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
+
+        (bytes[] memory results, uint256 remainingValue) = _fulfill(
+            _route,
+            _rewardHash,
+            _claimant,
+            _expectedHash
+        );
+        
+        require(
+            remainingValue >= minBatcherReward,
+            InsufficientBatcherReward(minBatcherReward)
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(remainingValue)
+        );
+
+        return results;
+    }
+
+    /**
+     * @notice Sends a batch of fulfilled intents to the Metalayer Router with relayer support
+     * @dev Intent hashes must correspond to fulfilled intents from specified source chain
+     * @param _sourceChainID Chain ID of the source chain
+     * @param _prover Address of the hyperprover on the source chain
+     * @param _intentHashes Hashes of the intents to be proven
+     */
+    function sendMetaBatch(
+        uint256 _sourceChainID,
+        address _prover,
+        bytes32[] calldata _intentHashes
+    ) public payable {
+        uint256 size = _intentHashes.length;
+        address[] memory claimants = new address[](size);
+        uint256 reward = 0;
+        for (uint256 i = 0; i < size; ++i) {
+            address claimant = fulfilled[_intentHashes[i]].claimant;
+            reward += fulfilled[_intentHashes[i]].reward;
+            if (claimant == address(0)) {
+                revert IntentNotFulfilled(_intentHashes[i]);
+            }
+            claimants[i] = claimant;
+        }
+
+        emit BatchSent(_intentHashes, _sourceChainID);
+
+        bytes memory messageBody = abi.encode(_intentHashes, claimants);
+        bytes32 _prover32 = _prover.addressToBytes32();
+        uint256 fee = fetchMetalayerFee(
+            _sourceChainID,
+            _prover32,
+            messageBody
+        );
+        if (msg.value < fee) {
+            revert InsufficientFee(fee);
+        }
+        (bool success, ) = payable(msg.sender).call{
+            value: msg.value + reward - fee
+        }("");
+        if (!success) {
+            revert NativeTransferFailed();
+        }
+
+        IMetalayerRouter(router).dispatch{value: fee}(
+            uint32(_sourceChainID),
+            _prover,
+            new ReadOperation[](0),
+            messageBody,
+            FinalityState.INSTANT,
+            200_000
+        );
+    }
+
+    /**
+     * @notice Quotes the fee required for message dispatch
+     * @dev Used to determine fees for fulfillMetaInstant or sendMetaBatch
+     * @param _sourceChainID Chain ID of the source chain
+     * @param _prover Address of the MetaProver on the source chain
+     * @param _messageBody Message being sent over the bridge
+     * @return fee The required fee amount
+     */
+    function fetchMetalayerFee(
+        uint256 _sourceChainID,
+        bytes32 _prover,
+        bytes memory _messageBody
+    ) public view returns (uint256 fee) {
+        return (
+            IMetalayerRouter(mailbox).quoteDispatch(
+                    uint32(_sourceChainID),
+                    _prover,
+                    _messageBody
+                )
+        );
+    }
+
+    /**
+     * @notice Sets the Metalayer router address
+     * @dev Can only be called when mailbox is not set
+     * @param _router Address of the Metalayer router
+     */
+    function setRouter(address _router) public onlyOwner {
+        if (router == address(0)) {
+            router = _router;
+            emit RouterSet(_router);
+        }
+    }
+
 
     /**
      * @notice Makes solving public if currently restricted
