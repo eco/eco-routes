@@ -62,15 +62,15 @@ interface IIntentSource is ISemver, IVaultStorage {
 
     /**
      * @notice Indicates an unauthorized reward withdrawal attempt
-     * @param _hash The hash of the intent with protected rewards
+     * @param hash The hash of the intent with protected rewards
      */
-    error UnauthorizedWithdrawal(bytes32 _hash);
+    error UnauthorizedWithdrawal(bytes32 hash);
 
     /**
      * @notice Indicates an attempt to withdraw already claimed rewards
-     * @param _hash The hash of the intent with depleted rewards
+     * @param hash The hash of the intent with depleted rewards
      */
-    error RewardsAlreadyWithdrawn(bytes32 _hash);
+    error RewardsAlreadyWithdrawn(bytes32 hash);
 
     /**
      * @notice Indicates a premature withdrawal attempt before intent expiration
@@ -97,16 +97,16 @@ interface IIntentSource is ISemver, IVaultStorage {
     /**
      * @notice Signals partial funding of an intent
      * @param intentHash The hash of the partially funded intent
-     * @param fundingSource The address providing the partial funding
+     * @param funder The address providing the partial funding
      */
-    event IntentPartiallyFunded(bytes32 intentHash, address fundingSource);
+    event IntentPartiallyFunded(bytes32 intentHash, address funder);
 
     /**
      * @notice Signals complete funding of an intent
      * @param intentHash The hash of the fully funded intent
-     * @param fundingSource The address providing the complete funding
+     * @param funder The address providing the complete funding
      */
-    event IntentFunded(bytes32 intentHash, address fundingSource);
+    event IntentFunded(bytes32 intentHash, address funder);
 
     /**
      * @notice Signals the creation of a new cross-chain intent
@@ -140,17 +140,17 @@ interface IIntentSource is ISemver, IVaultStorage {
 
     /**
      * @notice Signals successful reward withdrawal
-     * @param _hash The hash of the claimed intent
-     * @param _recipient The address receiving the rewards
+     * @param hash The hash of the claimed intent
+     * @param recipient The address receiving the rewards
      */
-    event Withdrawal(bytes32 _hash, address indexed _recipient);
+    event Withdrawal(bytes32 hash, address indexed recipient);
 
     /**
      * @notice Signals successful reward refund
-     * @param _hash The hash of the refunded intent
-     * @param _recipient The address receiving the refund
+     * @param hash The hash of the refunded intent
+     * @param recipient The address receiving the refund
      */
-    event Refund(bytes32 _hash, address indexed _recipient);
+    event Refund(bytes32 hash, address indexed recipient);
 
     /**
      * @notice Retrieves the current reward claim status for an intent

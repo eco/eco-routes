@@ -23,7 +23,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     using SafeERC20 for IERC20;
 
     // Mapping of intent hash on the src chain to its fulfillment
-    mapping(bytes32 => address) public fulfilled;
+    mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
 
     // Mapping of solvers to if they are whitelisted
     mapping(address => bool) public solverWhitelist;
@@ -34,6 +34,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     // Is solving public
     bool public isSolvingPublic;
 
+    // minimum reward to be included in a fulfillHyperBatched tx, to be paid out to the sender of the batch
+    uint96 public minBatcherReward;
+
     /**
      * @notice Initializes the Inbox contract
      * @param _owner Address with access to privileged functions
@@ -43,9 +46,11 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     constructor(
         address _owner,
         bool _isSolvingPublic,
+        uint96 _minBatcherReward,
         address[] memory _solvers
     ) Ownable(_owner) {
         isSolvingPublic = _isSolvingPublic;
+        minBatcherReward = _minBatcherReward;
         for (uint256 i = 0; i < _solvers.length; ++i) {
             solverWhitelist[_solvers[i]] = true;
             emit SolverWhitelistChanged(_solvers[i], true);
@@ -71,11 +76,16 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         override(IInbox, Eco7683DestinationSettler)
         returns (bytes[] memory)
     {
-        bytes[] memory result = _fulfill(
+        (bytes[] memory result, ) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(0)
         );
 
         emit ToBeProven(_expectedHash, _route.source, _claimant);
@@ -155,14 +165,18 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _metadata,
             _postDispatchHook
         );
-        bytes[] memory results = _fulfill(
+        (bytes[] memory results, uint256 currentBalance) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
         );
 
-        uint256 currentBalance = address(this).balance;
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(0)
+        );
+
         if (currentBalance < fee) {
             revert InsufficientFee(fee);
         }
@@ -211,11 +225,21 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     ) external payable returns (bytes[] memory) {
         emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
 
-        bytes[] memory results = _fulfill(
+        (bytes[] memory results, uint256 remainingValue) = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
+        );
+        
+        require(
+            remainingValue >= minBatcherReward,
+            InsufficientBatcherReward(minBatcherReward)
+        );
+
+        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+            _claimant,
+            uint96(remainingValue)
         );
 
         return results;
@@ -260,8 +284,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     ) public payable {
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
+        uint256 reward = 0;
         for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]];
+            address claimant = fulfilled[_intentHashes[i]].claimant;
+            reward += fulfilled[_intentHashes[i]].reward;
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
@@ -282,13 +308,11 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
-        if (msg.value > fee) {
-            (bool success, ) = payable(msg.sender).call{value: msg.value - fee}(
-                ""
-            );
-            if (!success) {
-                revert NativeTransferFailed();
-            }
+        (bool success, ) = payable(msg.sender).call{
+            value: msg.value + reward - fee
+        }("");
+        if (!success) {
+            revert NativeTransferFailed();
         }
         if (_postDispatchHook == address(0)) {
             IMailbox(mailbox).dispatch{value: fee}(
@@ -365,6 +389,15 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     }
 
     /**
+     * @notice Changes minimum reward for batcher
+     * @param _minBatcherReward New minimum reward
+     */
+    function setMinBatcherReward(uint96 _minBatcherReward) public onlyOwner {
+        minBatcherReward = _minBatcherReward;
+        emit MinBatcherRewardSet(_minBatcherReward);
+    }
+
+    /**
      * @notice Updates the solver whitelist
      * @dev Whitelist is ignored if solving is public
      * @param _solver Address of the solver
@@ -392,7 +425,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) internal returns (bytes[] memory) {
+    ) internal returns (bytes[] memory, uint256) {
         if (_route.destination != block.chainid) {
             revert WrongChain(_route.destination);
         }
@@ -406,21 +439,14 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             abi.encodePacked(routeHash, _rewardHash)
         );
 
-        if (_route.inbox != address(this)) {
-            revert InvalidInbox(_route.inbox);
-        }
+        require(_route.inbox == address(this), InvalidInbox(_route.inbox));
+        require(intentHash == _expectedHash, InvalidHash(_expectedHash));
+        require(
+            fulfilled[intentHash].claimant == address(0),
+            IntentAlreadyFulfilled(intentHash)
+        );
+        require(_claimant != address(0), ZeroClaimant());
 
-        if (intentHash != _expectedHash) {
-            revert InvalidHash(_expectedHash);
-        }
-        if (fulfilled[intentHash] != address(0)) {
-            revert IntentAlreadyFulfilled(intentHash);
-        }
-        if (_claimant == address(0)) {
-            revert ZeroClaimant();
-        }
-
-        fulfilled[intentHash] = _claimant;
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
         uint256 routeTokenCount = _route.tokens.length;
@@ -436,6 +462,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
         // Store the results of the calls
         bytes[] memory results = new bytes[](_route.calls.length);
+
+        // Remaining value after executing calls
+        uint256 remainingValue = msg.value;
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
@@ -458,9 +487,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                     result
                 );
             }
+            remainingValue -= call.value;
             results[i] = result;
         }
-        return results;
+        return (results, remainingValue);
     }
 
     receive() external payable {}

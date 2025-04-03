@@ -52,7 +52,7 @@ contract Vault is IVault {
         Reward memory reward
     ) internal {
         // Get the address that is providing the tokens for funding
-        address fundingSource = state.target;
+        address funder = state.target;
         uint256 rewardsLength = reward.tokens.length;
         address permitContract;
 
@@ -68,14 +68,14 @@ contract Vault is IVault {
             uint256 balance = IERC20(token).balanceOf(address(this));
 
             // Only proceed if vault needs more tokens and we have permission to transfer them
-            if (amount > balance) {
+            if (balance < amount) {
                 // Calculate how many more tokens the vault needs to be fully funded
                 uint256 remainingAmount = amount - balance;
 
                 if (permitContract != address(0)) {
                     remainingAmount = _transferFromPermit(
                         IPermit(permitContract),
-                        fundingSource,
+                        funder,
                         token,
                         remainingAmount
                     );
@@ -83,7 +83,7 @@ contract Vault is IVault {
 
                 if (remainingAmount > 0) {
                     _transferFrom(
-                        fundingSource,
+                        funder,
                         token,
                         remainingAmount,
                         state.allowPartialFunding
@@ -203,22 +203,21 @@ contract Vault is IVault {
 
     /**
      * @notice Transfers tokens from funding source to vault
-     * @param fundingSource Address that is providing the tokens for funding
+     * @param funder Address that is providing the tokens for funding
      * @param token Address of the token being transferred
      * @param amount Amount of tokens to transfer
      * @param allowPartialFunding Whether to allow partial funding
      */
     function _transferFrom(
-        address fundingSource,
+        address funder,
         address token,
         uint256 amount,
         uint8 allowPartialFunding
     ) internal {
         // Check how many tokens this contract is allowed to transfer from funding source
-        uint256 allowance = IERC20(token).allowance(
-            fundingSource,
-            address(this)
-        );
+        uint256 allowance = IERC20(token).allowance(funder, address(this));
+        uint256 funderBalance = IERC20(token).balanceOf(funder);
+        allowance = allowance < funderBalance ? allowance : funderBalance;
 
         uint256 transferAmount;
         // Calculate transfer amount as minimum of what's needed and what's allowed
@@ -227,13 +226,13 @@ contract Vault is IVault {
         } else if (allowPartialFunding == 1) {
             transferAmount = allowance;
         } else {
-            revert InsufficientTokenAllowance(token, fundingSource, amount);
+            revert InsufficientTokenAllowance(token, funder, amount);
         }
 
         if (transferAmount > 0) {
             // Transfer tokens from funding source to vault using safe transfer
             IERC20(token).safeTransferFrom(
-                fundingSource,
+                funder,
                 address(this),
                 transferAmount
             );
@@ -243,23 +242,27 @@ contract Vault is IVault {
     /**
      * @notice Transfers tokens from funding source to vault using external Permit contract
      * @param permit Permit2 like contract to use for token transfer
-     * @param fundingSource Address that is providing the tokens for funding
+     * @param funder Address that is providing the tokens for funding
      * @param token Address of the token being transferred
      * @param amount Amount of tokens to transfer
      * @return remainingAmount Amount of tokens that still need to be transferred
      */
     function _transferFromPermit(
         IPermit permit,
-        address fundingSource,
+        address funder,
         address token,
         uint256 amount
     ) internal returns (uint256 remainingAmount) {
         // Check how many tokens this contract is allowed to transfer from funding source
         (uint160 allowance, , ) = permit.allowance(
-            fundingSource,
+            funder,
             token,
             address(this)
         );
+        uint256 funderBalance = IERC20(token).balanceOf(funder);
+        allowance = allowance < funderBalance
+            ? allowance
+            : uint160(funderBalance);
 
         uint256 transferAmount;
         // Calculate transfer amount as minimum of what's needed and what's allowed
@@ -274,7 +277,7 @@ contract Vault is IVault {
         if (transferAmount > 0) {
             // Transfer tokens from funding source to vault using Permit.transferFrom
             permit.transferFrom(
-                fundingSource,
+                funder,
                 address(this),
                 uint160(transferAmount),
                 token
