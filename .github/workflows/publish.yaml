@@ -124,7 +124,7 @@ jobs:
           # Etherscan API Keys
           ETHERSCAN_API_KEY_1: ${{ secrets.ETHERSCAN_API_KEY }}
           ETHERSCAN_API_KEY_10: ${{ secrets.OPTIMISM_SCAN_API_KEY }}
-          ETHERSCAN_API_KEY_130: ${{ secrets.UNISCAN_API_KEY }}"
+          ETHERSCAN_API_KEY_130: ${{ secrets.UNISCAN_API_KEY }}
           ETHERSCAN_API_KEY_137: ${{ secrets.POLYGON_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_5000: ${{ secrets.MANTLE_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_8453: ${{ secrets.BASE_SCAN_API_KEY }}
