@@ -231,7 +231,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _claimant,
             _expectedHash
         );
-        
+
         require(
             remainingValue >= minBatcherReward,
             InsufficientBatcherReward(minBatcherReward)
