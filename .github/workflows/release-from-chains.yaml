@@ -1,0 +1,55 @@
+name: Trigger Release from eco-chains
+
+on:
+  repository_dispatch:
+    types: [eco-chains-tag-pushed]
+
+jobs:
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for github release
+      issues: write    # Needed for issue comments
+      pull-requests: write  # Needed for PR comments
+      id-token: write  # Needed for npm publishing with provenance
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "yarn"
+      
+      - name: Install dependencies
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: install
+      
+      - name: Build Project
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: build
+      
+      - name: Run Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ECO_CHAINS_TAG: ${{ github.event.client_payload.tag }}
+        run: |
+          echo "Processing tag from eco-chains: $ECO_CHAINS_TAG"
+          npx semantic-release
+          
+      - name: Trigger Deployment Pipeline
+        if: success()
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: eco-routes-release-created
+          client-payload: '{"tag": "${{ steps.semantic-release.outputs.new_release_version }}"}'
+

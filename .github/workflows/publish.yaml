@@ -3,8 +3,8 @@ name: Eco Publish
 on:
   push:
     tags:
-      - "v[0-9].[0-9]+.[0-9]+-[a-z]+"
-      # matches v0.12.123-alpha
+      - "v[0-9].[0-9].[0-9]+(-[a-z]+)?"
+      # matches v0.12.123-alpha, v1.2.3
 
 jobs:
   buildAndTest:
