@@ -1,0 +1,28 @@
+name: Trigger Release from eco-chains
+
+on:
+  repository_dispatch:
+    types: [eco-chains-tag-pushed]
+
+jobs:
+  semantic-release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for github release
+      issues: write    # Needed for issue comments
+      pull-requests: write  # Needed for PR comments
+      id-token: write  # Needed for npm publishing with provenance
+    env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        ECO_CHAINS_TAG: ${{ github.event.client_payload.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      - run: |
+          echo "Processing tag from eco-chains: $ECO_CHAINS_TAG"   
+
+
