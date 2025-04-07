@@ -1,6 +1,6 @@
 {
   "branches": ["main"],
-  "repositoryUrl": "https://github.com/eco/eco-routes.git",
+  "repositoryUrl": "https://github.com/StoyanD/eco-routes.git",
   "plugins": [
     [
       "@semantic-release/commit-analyzer",
