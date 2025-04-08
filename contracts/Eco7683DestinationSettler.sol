@@ -67,15 +67,10 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
                 postDispatchHook
             );
         } else if (proofType == IProver.ProofType.Metalayer) {
-            (
-                ,
-                address claimant,
-                ,
-                
-            ) = abi.decode(
-                    _fillerData,
-                    (IProver.ProofType, address, address, bytes)
-                );
+            (, address claimant, , ) = abi.decode(
+                _fillerData,
+                (IProver.ProofType, address, address, bytes)
+            );
             fulfillMetaInstant(
                 intent.route,
                 rewardHash,

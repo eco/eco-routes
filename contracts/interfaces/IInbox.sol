@@ -310,7 +310,6 @@ interface IInbox is ISemver {
         address _postDispatchHook
     ) external payable;
 
-
     /**
      * @notice Fulfills an intent to be proven immediately via Metalayer's router
      * @dev More expensive but faster than metabatched. Requires fee for Metalayer infrastructure

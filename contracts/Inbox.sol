@@ -6,7 +6,7 @@ import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
-import {IMetalayerRecipient, ReadOperation} from  "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
+import {IMetalayerRecipient, ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -246,7 +246,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _claimant,
             _expectedHash
         );
-        
+
         require(
             remainingValue >= minBatcherReward,
             InsufficientBatcherReward(minBatcherReward)
@@ -456,7 +456,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                 revert NativeTransferFailed();
             }
         }
-    
+
         IMetalayerRouter(router).dispatch{value: fee}(
             uint32(_route.source),
             _prover,
@@ -495,7 +495,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _claimant,
             _expectedHash
         );
-        
+
         require(
             remainingValue >= minBatcherReward,
             InsufficientBatcherReward(minBatcherReward)
@@ -537,11 +537,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
 
         bytes memory messageBody = abi.encode(_intentHashes, claimants);
         bytes32 _prover32 = _prover.addressToBytes32();
-        uint256 fee = fetchMetalayerFee(
-            _sourceChainID,
-            _prover32,
-            messageBody
-        );
+        uint256 fee = fetchMetalayerFee(_sourceChainID, _prover32, messageBody);
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
@@ -576,11 +572,11 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         bytes memory _messageBody
     ) public view returns (uint256 fee) {
         return (
-            IMetalayerRouter(mailbox).quoteDispatch(
-                    uint32(_sourceChainID),
-                    _prover,
-                    _messageBody
-                )
+            IMetalayerRouter(router).quoteDispatch(
+                uint32(_sourceChainID),
+                _prover,
+                _messageBody
+            )
         );
     }
 
@@ -595,7 +591,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             emit RouterSet(_router);
         }
     }
-
 
     /**
      * @notice Makes solving public if currently restricted

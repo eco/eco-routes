@@ -138,7 +138,7 @@ contract Deploy is Script {
                 contractAddress: metaProver,
                 contractPath: "contracts/prover/MetaProver.sol:MetaProver",
                 constructorArgs: metaProverConstructorArgs,
-                chainId: block.chainid,
+                chainId: block.chainid
             })
         ];
 

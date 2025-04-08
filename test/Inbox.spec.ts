@@ -1,7 +1,13 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestMailbox, TestProver } from '../typechain-types'
+import {
+  TestERC20,
+  Inbox,
+  TestMailbox,
+  TestProver,
+  TestMetaRouter,
+} from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -22,6 +28,7 @@ import {
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
+  let router: TestMetaRouter
   let erc20: TestERC20
   let owner: SignerWithAddress
   let solver: SignerWithAddress
@@ -37,6 +44,7 @@ describe('Inbox Test', (): void => {
   let calls: Call[]
   let otherCalls: Call[]
   let mockHyperProver: TestProver
+  let mockMetaProver: TestProver
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
@@ -48,14 +56,20 @@ describe('Inbox Test', (): void => {
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
     mailbox: TestMailbox
+    router: TestMetaRouter
     erc20: TestERC20
     owner: SignerWithAddress
     solver: SignerWithAddress
     dstAddr: SignerWithAddress
+    mockHyperProver: TestProver
+    mockMetaProver: TestProver
   }> {
-    const mailbox = await (
+    const mailbox = (await (
       await ethers.getContractFactory('TestMailbox')
-    ).deploy(ethers.ZeroAddress)
+    ).deploy(ethers.ZeroAddress)) as unknown as TestMailbox
+    const router = (await (
+      await ethers.getContractFactory('TestMetaRouter')
+    ).deploy(ethers.ZeroAddress)) as unknown as TestMetaRouter
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
     const inbox = await inboxFactory.deploy(
@@ -70,13 +84,24 @@ describe('Inbox Test', (): void => {
     await erc20.mint(solver.address, mintAmount)
     await erc20.mint(owner.address, mintAmount)
 
+    // Deploy test provers
+    const mockHyperProver = (await (
+      await ethers.getContractFactory('TestProver')
+    ).deploy()) as unknown as TestProver
+    const mockMetaProver = (await (
+      await ethers.getContractFactory('TestProver')
+    ).deploy()) as unknown as TestProver
+
     return {
       inbox,
       mailbox,
+      router,
       erc20,
       owner,
       solver,
       dstAddr,
+      mockHyperProver,
+      mockMetaProver,
     }
   }
 
@@ -148,8 +173,17 @@ describe('Inbox Test', (): void => {
     }
   }
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, mailbox, erc20, owner, solver, dstAddr } =
-      await loadFixture(deployInboxFixture))
+    ;({
+      inbox,
+      mailbox,
+      router,
+      erc20,
+      owner,
+      solver,
+      dstAddr,
+      mockHyperProver,
+      mockMetaProver,
+    } = await loadFixture(deployInboxFixture))
     ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
       await createIntentData(mintAmount, timeDelta))
   })
@@ -876,6 +910,385 @@ describe('Inbox Test', (): void => {
           ),
         )
         expect(await mailbox.dispatched()).to.be.true
+      })
+    })
+  })
+
+  describe('meta proving', () => {
+    beforeEach(async () => {
+      await inbox.connect(owner).setRouter(await router.getAddress())
+      expect(await router.dispatched()).to.be.false
+
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+      fee = await inbox.fetchMetalayerFee(
+        sourceChainID,
+        ethers.zeroPadBytes(await mockMetaProver.getAddress(), 32),
+        calls[0].data,
+      )
+    })
+
+    it('fetches the fee', async () => {
+      expect(
+        await inbox.fetchMetalayerFee(
+          sourceChainID,
+          ethers.zeroPadBytes(await mockMetaProver.getAddress(), 32),
+          calls[0].data,
+        ),
+      ).to.eq(toBeHex(`100000`, 32))
+    })
+
+    it('fails to fulfill meta instant if the fee is too low', async () => {
+      expect(await router.dispatched()).to.be.false
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillMetaInstant(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            {
+              value:
+                Number(
+                  await inbox.fetchMetalayerFee(
+                    sourceChainID,
+                    ethers.zeroPadBytes(await mockMetaProver.getAddress(), 32),
+                    calls[0].data,
+                  ),
+                ) - 1,
+            },
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'InsufficientFee')
+      expect(await router.dispatched()).to.be.false
+    })
+
+    it('fails to fulfill meta batched if msg.value is less than the minimum', async () => {
+      expect(await router.dispatched()).to.be.false
+      const fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillMetaBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            {
+              value: (await inbox.minBatcherReward()) - BigInt(1),
+            },
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'InsufficientBatcherReward')
+      expect(await router.dispatched()).to.be.false
+    })
+
+    it('fulfills meta instant', async () => {
+      const initialBalance = await ethers.provider.getBalance(solver.address)
+
+      const feeAmount = await inbox.fetchMetalayerFee(
+        sourceChainID,
+        ethers.zeroPadBytes(await mockMetaProver.getAddress(), 32),
+        calls[0].data,
+      )
+      //send too much fee
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillMetaInstant(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            {
+              value: feeAmount + ethers.parseEther('.1'),
+            },
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+        .to.emit(inbox, 'MetaInstantFufillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+      //does extra fee come back?
+      expect(
+        (await ethers.provider.getBalance(solver.address)) >
+          initialBalance - feeAmount - ethers.parseEther('.1'),
+      ).to.be.true
+
+      expect(await router.destinationDomain()).to.eq(sourceChainID)
+      expect(await router.recipientAddress()).to.eq(
+        await mockMetaProver.getAddress(),
+      )
+      expect(await router.messageBody()).to.eq(
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ['bytes32[]', 'address[]'],
+          [[intentHash], [dstAddr.address]],
+        ),
+      )
+      expect(await router.dispatched()).to.be.true
+    })
+
+    it('fulfills meta batched', async () => {
+      let fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+      expect(fulfillment.reward).to.equal(0)
+
+      const initBalance = await ethers.provider.getBalance(
+        await inbox.getAddress(),
+      )
+
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillMetaBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            { value: minBatcherReward * 2 },
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(intentHash, sourceChainID, dstAddr.address)
+        .to.emit(inbox, 'AddToBatch')
+        .withArgs(
+          intentHash,
+          sourceChainID,
+          dstAddr.address,
+          await mockMetaProver.getAddress(),
+        )
+      expect(await router.dispatched()).to.be.false
+
+      fulfillment = await inbox.fulfilled(intentHash)
+      expect(fulfillment.claimant).to.equal(dstAddr.address)
+      expect(fulfillment.reward).to.equal(2 * minBatcherReward)
+
+      expect(await ethers.provider.getBalance(await inbox.getAddress())).to.eq(
+        initBalance + BigInt(2 * minBatcherReward),
+      )
+    })
+
+    it('refunds solver when too much fee is sent', async () => {
+      const fee = await inbox.fetchMetalayerFee(
+        sourceChainID,
+        ethers.zeroPadBytes(await mockMetaProver.getAddress(), 32),
+        calls[0].data,
+      )
+      const initialSolverbalance = await ethers.provider.getBalance(
+        solver.address,
+      )
+      const excess = ethers.parseEther('.123')
+      await inbox
+        .connect(solver)
+        .fulfillMetaInstant(
+          route,
+          rewardHash,
+          dstAddr.address,
+          intentHash,
+          await mockMetaProver.getAddress(),
+          {
+            value: fee + excess,
+          },
+        )
+      expect(await ethers.provider.getBalance(await inbox.getAddress())).to.eq(
+        0,
+      )
+      expect(await ethers.provider.getBalance(solver.address)).to.greaterThan(
+        initialSolverbalance - excess,
+      )
+    })
+
+    context('sendMetaBatch', async () => {
+      it('should revert if sending a batch containing an intent that has not been fulfilled', async () => {
+        const hashes: string[] = [intentHash]
+        await expect(
+          inbox
+            .connect(solver)
+            .sendMetaBatch(
+              sourceChainID,
+              await mockMetaProver.getAddress(),
+              hashes,
+            ),
+        )
+          .to.be.revertedWithCustomError(inbox, 'IntentNotFulfilled')
+          .withArgs(hashes[0])
+        expect(await router.dispatched()).to.be.false
+      })
+
+      it('should revert if sending a batch with too low a fee, and refund some if the msg value is greater than the fee', async () => {
+        expect(await router.dispatched()).to.be.false
+        await inbox
+          .connect(solver)
+          .fulfillMetaBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            { value: minBatcherReward },
+          )
+        expect(await router.dispatched()).to.be.false
+        await expect(
+          inbox
+            .connect(solver)
+            .sendMetaBatch(
+              sourceChainID,
+              await mockMetaProver.getAddress(),
+              [intentHash],
+              {
+                value: Number(fee) - 1,
+              },
+            ),
+        ).to.be.revertedWithCustomError(inbox, 'InsufficientFee')
+
+        const excess = ethers.parseEther('.123')
+        const initialSolverbalance = await ethers.provider.getBalance(
+          solver.address,
+        )
+        await expect(
+          inbox
+            .connect(solver)
+            .sendMetaBatch(
+              sourceChainID,
+              await mockMetaProver.getAddress(),
+              [intentHash],
+              {
+                value: Number(fee) + 1,
+              },
+            ),
+        ).to.not.be.reverted
+        expect(
+          await ethers.provider.getBalance(await inbox.getAddress()),
+        ).to.eq(0)
+        expect(await ethers.provider.getBalance(solver.address)).to.greaterThan(
+          initialSolverbalance - excess,
+        )
+        expect(await router.dispatched()).to.be.true
+      })
+
+      it('succeeds for a single intent', async () => {
+        expect(await router.dispatched()).to.be.false
+        await inbox
+          .connect(solver)
+          .fulfillMetaBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            { value: minBatcherReward },
+          )
+        const initialBalance = await ethers.provider.getBalance(
+          await inbox.getAddress(),
+        )
+        expect(await router.dispatched()).to.be.false
+        await expect(
+          inbox
+            .connect(solver)
+            .sendMetaBatch(
+              sourceChainID,
+              await mockMetaProver.getAddress(),
+              [intentHash],
+              {
+                value: Number(fee),
+              },
+            ),
+        )
+          .to.emit(inbox, 'BatchSent')
+          .withArgs(intentHash, sourceChainID)
+        expect(
+          await ethers.provider.getBalance(await inbox.getAddress()),
+        ).to.eq(initialBalance - BigInt(await inbox.minBatcherReward()))
+        expect(await router.destinationDomain()).to.eq(sourceChainID)
+        expect(await router.recipientAddress()).to.eq(
+          await mockMetaProver.getAddress(),
+        )
+        expect(await router.messageBody()).to.eq(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ['bytes32[]', 'address[]'],
+            [[intentHash], [dstAddr.address]],
+          ),
+        )
+        expect(await router.dispatched()).to.be.true
+      })
+
+      it('succeeds for multiple intents', async () => {
+        expect(await router.dispatched()).to.be.false
+        const initialBalance = await ethers.provider.getBalance(
+          await inbox.getAddress(),
+        )
+        await inbox
+          .connect(solver)
+          .fulfillMetaBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            intentHash,
+            await mockMetaProver.getAddress(),
+            { value: minBatcherReward },
+          )
+        const newTokenAmount = 12345
+        const newTimeDelta = 1123
+
+        ;({
+          calls: otherCalls,
+          route,
+          reward,
+          intent,
+          routeHash,
+          rewardHash,
+          intentHash: otherHash,
+        } = await createIntentData(newTokenAmount, newTimeDelta))
+        await erc20.mint(solver.address, newTokenAmount)
+        await erc20
+          .connect(solver)
+          .approve(await inbox.getAddress(), newTokenAmount)
+
+        await inbox
+          .connect(solver)
+          .fulfillMetaBatched(
+            route,
+            rewardHash,
+            dstAddr.address,
+            otherHash,
+            await mockMetaProver.getAddress(),
+            { value: minBatcherReward },
+          )
+        expect(await router.dispatched()).to.be.false
+
+        expect(
+          await ethers.provider.getBalance(await inbox.getAddress()),
+        ).to.eq(initialBalance + BigInt(2 * minBatcherReward))
+
+        await expect(
+          inbox
+            .connect(solver)
+            .sendMetaBatch(
+              sourceChainID,
+              await mockMetaProver.getAddress(),
+              [intentHash, otherHash],
+              {
+                value: Number(fee),
+              },
+            ),
+        ).to.changeEtherBalance(solver, 2 * minBatcherReward - Number(fee))
+        expect(await router.destinationDomain()).to.eq(sourceChainID)
+        expect(await router.recipientAddress()).to.eq(
+          await mockMetaProver.getAddress(),
+        )
+        expect(await router.messageBody()).to.eq(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ['bytes32[]', 'address[]'],
+            [
+              [intentHash, otherHash],
+              [dstAddr.address, dstAddr.address],
+            ],
+          ),
+        )
+        expect(await router.dispatched()).to.be.true
       })
     })
   })

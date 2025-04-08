@@ -333,4 +333,3 @@ export async function deployMetaProver(
   verifyContract(ethers.provider, contractName, metaProverAddress, args)
   return metaProverAddress
 }
-
