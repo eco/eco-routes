@@ -4,8 +4,8 @@ import { csvFilePath, jsonFilePath } from './addresses'
 // Function to append data to the CSV
 function appendToCSV(filePath: string, data: Record<string, any>) {
   const rows = Object.entries(data).map(([key, values]) => {
-    const { Prover, IntentSource, Inbox, HyperProver } = values
-    return `${key},${Prover},${IntentSource},${Inbox},${HyperProver}`
+    const { Prover, IntentSource, Inbox, HyperProver, MetaProver } = values
+    return `${key},${Prover},${IntentSource},${Inbox},${HyperProver},${MetaProver}`
   })
   if (!fs.existsSync(filePath)) {
     fs.writeFileSync(
