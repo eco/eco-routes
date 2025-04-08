@@ -66,7 +66,7 @@ contract MetaProver is IMetalayerRecipient, BaseProver, Semver {
      */
     function handle(
         uint32,
-        address _sender,
+        bytes32 _sender,
         bytes calldata _message,
         ReadOperation[] calldata,
         bytes[] calldata
@@ -76,8 +76,8 @@ contract MetaProver is IMetalayerRecipient, BaseProver, Semver {
             revert UnauthorizedHandle(msg.sender);
         }
 
-        if (INBOX != _sender) {
-            revert UnauthorizedDispatch(_sender);
+        if (INBOX != _sender.bytes32ToAddress()) {
+            revert UnauthorizedDispatch(_sender.bytes32ToAddress());
         }
 
         // Decode message containing intent hashes and claimants

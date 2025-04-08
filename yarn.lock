@@ -2659,10 +2659,10 @@
     sinon "^18.0.0"
     sinon-chai "^3.7.0"
 
-"@metalayer/contracts@^0.0.6":
-  version "0.0.6"
-  resolved "https://registry.yarnpkg.com/@metalayer/contracts/-/contracts-0.0.6.tgz#d43ad7d71efd5a05a3bffc833c96cbadc3008652"
-  integrity sha512-HeQ1tXyTC9NTyQyJ4xhtH95cIXEd9mpC0nRtHSiNMr2gV+TtuwYH8h9fq/NDYmGTjtuKS6ekKbw8kH73CyGPFA==
+"@metalayer/contracts@0.0.7":
+  version "0.0.7"
+  resolved "https://registry.yarnpkg.com/@metalayer/contracts/-/contracts-0.0.7.tgz#52278d793358c3f464e03124808719297d8f823c"
+  integrity sha512-tNqTbKwkfYoMrPcXzlPzRHS5N/OB1sCedgkWkutmUsUffj1Ygemn1qVE5R+UiiPrxQ4JSqVwcV/PpJ/B9XYINg==
   dependencies:
     "@hyperlane-xyz/core" "^5.8.0"
     "@openzeppelin/contracts" "^4.9.6"
