@@ -45,11 +45,11 @@ jobs:
           echo "Processing tag from eco-chains: $ECO_CHAINS_TAG"
           npx semantic-release
           
-      - name: Trigger Deployment Pipeline
-        if: success()
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: eco-routes-release-created
-          client-payload: '{"tag": "${{ steps.semantic-release.outputs.new_release_version }}"}'
+      # - name: Trigger Deployment Pipeline
+      #   if: success()
+      #   uses: peter-evans/repository-dispatch@v3
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     event-type: eco-routes-release-created
+      #     client-payload: '{"tag": "${{ steps.semantic-release.outputs.new_release_version }}"}'
 

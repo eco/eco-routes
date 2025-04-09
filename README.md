@@ -92,7 +92,7 @@ To get a local copy up and running follow these simple steps.
 
 Running this project locally requires the following:
 
-- [NodeJS v18.20.3](https://nodejs.org/en/blog/release/v18.20.3) - using nvm (instructions below)
+- [NodeJS v22.10.0](https://nodejs.org/) - using nvm (instructions below)
 - [Yarn v1.22.19](https://www.npmjs.com/package/yarn/v/1.22.19)
 
 It is recommended to use `nvm` to install Node. This is a Node version manager so your computer can easily handle multiple versions of Node:
@@ -103,32 +103,16 @@ It is recommended to use `nvm` to install Node. This is a Node version manager s
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
 ```
 
-2. If you're not on an M1 Mac, skip to step 3. For Node < v15, `nvm` will need to be run in a Rosetta terminal since those versions are not supported by the M1 chip for installation. To do that, in the terminal simply run either:
-
-If running bash:
+2. Install our Node version using the following command:
 
 ```sh
-arch -x86_64 bash
+nvm install v22.10.0
 ```
 
-If running zsh:
-
-```sh
-arch -x86_64 zsh
-```
-
-More information about this can be found in [this thread](https://github.com/nvm-sh/nvm/issues/2350).
-
-3. Install our Node version using the following command:
-
-```sh
-nvm install v18.20.3
-```
-
-4. Once the installation is complete you can use it by running:
+3. Once the installation is complete you can use it by running:
 
 ```bash
-nvm use v18.20.3
+nvm use v22.10.0
 ```
 
 You should see it as the active Node version by running:
@@ -165,7 +149,7 @@ yarn lint
 
 ```bash
 # tests
-$ yarn  test
+$ yarn test
 
 # test coverage
 $ yarn coverage

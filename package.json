@@ -6,7 +6,8 @@
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "src"
+    "src",
+    "build/deployAddresses.json"
   ],
   "engines": {
     "node": ">=v22.10.0"
@@ -47,11 +48,14 @@
     "prepack": "rimraf build && rimraf buildTs && yarn run versionPackage && bash scripts/publish/prepack.sh",
     "deployCI": "npx tsx scripts/deploy/deployCI.ts",
     "deployForgeCI": "npx tsx scripts/deploy/deployForgeCI.ts",
+    "cc": "npx tsx scripts/semantic-release/deploy-contracts.ts",
     "pub:clean": "rimraf build/dist",
     "pub:build": "cd build && tsc",
     "pub:prepack": "yarn pub:clean && yarn pub:build",
     "pub:tag": "npx tsx scripts/publish/tag.ts",
-    "pub:publish": "npx tsx scripts/publish/publish.ts"
+    "pub:publish": "npx tsx scripts/publish/publish.ts",
+    "deploy:plugin": "npx tsx scripts/semantic-release/deploy-contracts.ts",
+    "release": "semantic-release"
   },
   "devDependencies": {
     "@actions/core": "^1.11.1",
@@ -72,6 +76,7 @@
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "@openzeppelin/hardhat-upgrades": "^3.2.0",
     "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^11.0.1",
     "@semantic-release/npm": "^12.0.1",
@@ -89,6 +94,7 @@
     "@wagmi/cli": "^2.0.0-rc.3",
     "chai": "^4.3.10",
     "concurrently": "^8.2.2",
+    "csv-parse": "^5.6.0",
     "depcheck": "^1.4.7",
     "dotenv": "^16.3.1",
     "eslint": "^8.55.0",
@@ -108,8 +114,11 @@
     "jest": "^29.7.0",
     "lodash": "^4.17.21",
     "p-queue": "^8.0.1",
+    "pacote": "^17.0.5",
     "prettier": "^3.1.1",
     "prettier-plugin-solidity": "^1.4.1",
+    "rimraf": "^5.0.5",
+    "semantic-release": "^23.0.0",
     "semver-utils": "^1.1.4",
     "solhint": "^4.0.0",
     "solhint-plugin-eco": "^0.1.0",

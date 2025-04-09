@@ -1,4 +1,4 @@
-name: Trigger Release from eco-chains
+name: Simple Trigger Release from eco-chains
 
 on:
   repository_dispatch:

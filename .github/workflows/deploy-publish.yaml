@@ -1,0 +1,66 @@
+name: Deploy and Publish
+
+on:
+  repository_dispatch:
+    types: [eco-chains-tag-pushed]
+
+jobs:
+  semantic-release:
+    name: Deploy and Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for github release
+      issues: write    # Needed for issue comments
+      pull-requests: write  # Needed for PR comments
+      id-token: write  # Needed for npm publishing with provenance
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "yarn"
+      
+      - name: Install dependencies
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: install
+      
+      - name: Build Project
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: build
+      
+      - name: Setup environment variables
+        run: |
+          echo "ECO_CHAINS_TAG=${{ github.event.client_payload.tag }}" >> $GITHUB_ENV
+          echo "Processing tag from eco-chains: ${{ github.event.client_payload.tag }}"
+          
+          # Extract version from tag and set as GITHUB_REF
+          # This is for the ProtocolVersion class to pick up correctly
+          if [[ "${{ github.event.client_payload.tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "GITHUB_REF=refs/tags/${{ github.event.client_payload.tag }}" >> $GITHUB_ENV
+          else
+            echo "Invalid tag format. Expected vX.Y.Z, got ${{ github.event.client_payload.tag }}"
+            exit 1
+          fi
+      
+      - name: Compile TypeScript
+        run: |
+          npx tsc --project tsconfig.json
+          npx tsc scripts/semantic-release/deploy-contracts.ts --outDir dist
+          npx tsc scripts/semantic-release/index.ts --outDir dist
+          npx tsc scripts/utils/extract-salt.ts --outDir dist
+      
+      - name: Run Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          CHAIN_IDS: ${{ secrets.CHAIN_IDS }}
+        run: npx semantic-release
