@@ -31,98 +31,134 @@ contract Deploy is Script {
     ICreate3Deployer constant create3Deployer =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
-    function run() external {
-        bytes32 salt = vm.envBytes32("SALT");
-        address mailbox = vm.envAddress("MAILBOX");
-        string memory deployFilePath = vm.envString("DEPLOY_FILE");
-        address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
+    // Define a struct to consolidate deployment data and avoid stack too deep errors
+struct DeploymentContext {
+    bytes32 salt;
+    address mailbox;
+    string deployFilePath;
+    address deployer;
+    bytes32 intentSourceSalt;
+    bytes32 inboxSalt;
+    bytes32 hyperProverSalt;
+    address intentSource;
+    address inbox;
+    address hyperProver;
+    bytes inboxConstructorArgs;
+    bytes hyperProverConstructorArgs;
+}
 
-        bytes32 INTENT_SOURCE_SALT = getContractSalt(salt, "INTENT_SOURCE");
-        bytes32 INBOX_SALT = getContractSalt(salt, "INBOX");
-        bytes32 HYPER_PROVER_SALT = getContractSalt(salt, "HYPER_PROVER");
+function run() external {
+    // Initialize the deployment context struct with environment variables
+    DeploymentContext memory ctx;
+    ctx.salt = vm.envBytes32("SALT");
+    ctx.mailbox = vm.envAddress("MAILBOX");
+    ctx.deployFilePath = vm.envString("DEPLOY_FILE");
+    ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
 
-        vm.startBroadcast();
+    // Compute salts for each contract
+    ctx.intentSourceSalt = getContractSalt(ctx.salt, "INTENT_SOURCE");
+    ctx.inboxSalt = getContractSalt(ctx.salt, "INBOX");
+    ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
 
-        // Deploy deployer if hasn't been deployed
-        if (!isDeployed(address(create3Deployer))) {
-            deployCreate3Deployer();
-            console.log(
-                "Deployed Create3Deployer : ",
-                address(create3Deployer)
-            );
-        }
+    vm.startBroadcast();
 
-        // Intent Source
-        (address intentSource, ) = deployWithCreate3(
-            type(IntentSource).creationCode,
-            deployer,
-            INTENT_SOURCE_SALT
+    // Deploy deployer if it hasn't been deployed
+    if (!isDeployed(address(create3Deployer))) {
+        deployCreate3Deployer();
+        console.log(
+            "Deployed Create3Deployer : ",
+            address(create3Deployer)
         );
+    }
 
-        console.log("IntentSource :", address(intentSource));
+    // Deploy IntentSource - using a code block to manage variable lifetimes
+    {
+        bool deployed;
+        (ctx.intentSource, deployed) = deployWithCreate3(
+            type(IntentSource).creationCode,
+            ctx.deployer,
+            ctx.intentSourceSalt
+        );
+        console.log("IntentSource :", ctx.intentSource);
+    }
 
-        // Inbox
-
-        // constructor(address _owner, bool _isSolvingPublic, address[] memory _solvers)
-        address[] memory solvers;
-        bytes memory inboxConstructorArgs = abi.encode(deployer, true, solvers);
+    // Deploy Inbox - using a code block to manage variable lifetimes
+    {
+        // Initialize solvers array properly with a defined length
+        address[] memory solvers = new address[](0);
+        uint96 minBatcherReward = 0;
+        ctx.inboxConstructorArgs = abi.encode(ctx.deployer, true, minBatcherReward, solvers);
+        
         bytes memory inboxBytecode = abi.encodePacked(
             type(Inbox).creationCode,
-            inboxConstructorArgs
+            ctx.inboxConstructorArgs
         );
-        (address inbox, bool wasInboxDeployed) = deployWithCreate3(
+        
+        bool wasInboxDeployed;
+        (ctx.inbox, wasInboxDeployed) = deployWithCreate3(
             inboxBytecode,
-            deployer,
-            INBOX_SALT
+            ctx.deployer,
+            ctx.inboxSalt
         );
-
-        console.log("Inbox :", inbox);
+        
+        console.log("Inbox :", ctx.inbox);
 
         if (!wasInboxDeployed) {
             // Set Hyperlane Mailbox contract address
-            Inbox(payable(inbox)).setMailbox(mailbox);
+            Inbox(payable(ctx.inbox)).setMailbox(ctx.mailbox);
         }
+    }
 
-        // HyperProver
-
-        // constructor(address _mailbox, address _inbox)
-        bytes memory hyperProverConstructorArgs = abi.encode(mailbox, inbox);
+    // Deploy HyperProver - using a code block to manage variable lifetimes
+    {
+        ctx.hyperProverConstructorArgs = abi.encode(ctx.mailbox, ctx.inbox);
+        
         bytes memory hyperProverBytecode = abi.encodePacked(
             type(HyperProver).creationCode,
-            hyperProverConstructorArgs
+            ctx.hyperProverConstructorArgs
         );
-        (address hyperProver, ) = deployWithCreate3(
+        
+        bool deployed;
+        (ctx.hyperProver, deployed) = deployWithCreate3(
             hyperProverBytecode,
-            deployer,
-            HYPER_PROVER_SALT
+            ctx.deployer,
+            ctx.hyperProverSalt
         );
-        console.log("HyperProver :", address(hyperProver));
-
-        VerificationData[3] memory contracts = [
-            VerificationData({
-                contractAddress: intentSource,
-                contractPath: "contracts/IntentSource.sol:IntentSource",
-                constructorArgs: new bytes(0),
-                chainId: block.chainid
-            }),
-            VerificationData({
-                contractAddress: inbox,
-                contractPath: "contracts/Inbox.sol:Inbox",
-                constructorArgs: inboxConstructorArgs,
-                chainId: block.chainid
-            }),
-            VerificationData({
-                contractAddress: hyperProver,
-                contractPath: "contracts/prover/HyperProver.sol:HyperProver",
-                constructorArgs: hyperProverConstructorArgs,
-                chainId: block.chainid
-            })
-        ];
-
-        vm.stopBroadcast();
-
-        writeDeployFile(deployFilePath, contracts);
+        
+        console.log("HyperProver :", ctx.hyperProver);
     }
+
+    vm.stopBroadcast();
+
+    // Write deployment results to file - using a separate function to reduce stack variables
+    writeDeploymentData(ctx);
+}
+
+// Separate function to handle writing deployment data to file
+function writeDeploymentData(DeploymentContext memory ctx) internal {
+    VerificationData[3] memory contracts = [
+        VerificationData({
+            contractAddress: ctx.intentSource,
+            contractPath: "contracts/IntentSource.sol:IntentSource",
+            constructorArgs: new bytes(0),
+            chainId: block.chainid
+        }),
+        VerificationData({
+            contractAddress: ctx.inbox,
+            contractPath: "contracts/Inbox.sol:Inbox",
+            constructorArgs: ctx.inboxConstructorArgs,
+            chainId: block.chainid
+        }),
+        VerificationData({
+            contractAddress: ctx.hyperProver,
+            contractPath: "contracts/prover/HyperProver.sol:HyperProver",
+            constructorArgs: ctx.hyperProverConstructorArgs,
+            chainId: block.chainid
+        })
+    ];
+
+    writeDeployFile(ctx.deployFilePath, contracts);
+}
 
     function isDeployed(address _addr) internal view returns (bool) {
         return _addr.code.length > 0;
