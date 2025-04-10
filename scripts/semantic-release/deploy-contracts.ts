@@ -5,6 +5,7 @@ import { parse as parseCSV } from 'csv-parse/sync'
 import { determineSalts, Logger } from '../utils/extract-salt'
 import { transformAddresses } from '../deploy/addresses'
 import { addressesToCVS } from '../deploy/csv'
+import { getAddress } from 'viem'
 
 // Define types for semantic-release context
 interface NextRelease {
@@ -191,7 +192,7 @@ export function processContractsForJson(contracts: Contract[]): Record<string, R
 
       const contractMap: Record<string, string> = {}
       for (let i = 0; i < names.length; i++) {
-        contractMap[names[i]] = addresses[i]
+        contractMap[names[i]] = getAddress(addresses[i])
       }
 
       return [key, contractMap]
@@ -210,7 +211,7 @@ export async function deployContracts(
   return new Promise((resolve, reject) => {
     // Path to the deployment script
     const deployScriptPath = path.join(cwd, 'scripts', 'MultiDeploy.sh')
-    const outputDir = path.join(cwd, 'build')
+    const outputDir = path.join(cwd, 'out')
     const resultsFile = path.join(outputDir, 'deployment-results.txt')
 
     if (!fs.existsSync(deployScriptPath)) {

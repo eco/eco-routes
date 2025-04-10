@@ -11,7 +11,9 @@ interface AddressBook {
 export const PRE_SUFFIX = '-pre'
 export const jsonFileName = 'deployAddresses.json'
 export const jsonFilePath = path.join(__dirname, `../../build/${jsonFileName}`)
-export const tsFilePath = path.join(__dirname, '../../build/src/index.ts')
+export const buildDir = path.join(__dirname, '../../build')
+export const buildSrcDir = path.join(buildDir, '/src')
+export const tsFilePath = path.join(buildSrcDir, '/index.ts')
 export const csvFilePath = path.join(
   __dirname,
   '../../build/deployAddresses.csv',
@@ -83,6 +85,9 @@ export function saveDeploySalts(salts: SaltsType) {
 export function transformAddresses() {
   console.log('Transforming addresses into typescript index.ts file')
   const name = 'EcoProtocolAddresses'
+  // Create output directory if it doesn't exist
+  fs.mkdirSync(buildSrcDir, { recursive: true })
+  
   const addresses = JSON.parse(fs.readFileSync(jsonFilePath, 'utf-8'))
   const importsExports = `export * from './abi'\nexport * from './utils'\n`
   const types = `
