@@ -1,24 +1,82 @@
 name: Trigger Release from eco-chains
 
+# This workflow is triggered in two ways:
+# 1. Automatically when a tag is pushed to eco-chains repository
+# 2. Manually via the GitHub UI with environment selection
 on:
   repository_dispatch:
     types: [eco-chains-tag-pushed]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - mainnet
 
 jobs:
+  # First job: Fetch secrets from AWS Secrets Manager
+  fetch-aws-secrets:
+    name: Fetch AWS Secrets
+    runs-on: ubuntu-latest
+    # Use environment from manual trigger or default to 'testnet'
+    environment: ${{ github.event.inputs.environment || 'testnet' }}
+    outputs:
+      secrets-ready: ${{ steps.fetch-secrets.outputs.success }}
+    permissions:
+      id-token: write  # Needed for AWS OIDC authentication
+      contents: read
+    
+    steps:
+      # Set up AWS credentials using OIDC for secure authentication
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      # Fetch secrets from AWS Secrets Manager as a JSON string
+      # The secret will be available as an environment variable: CONTRACT_VERIFICATION_KEYS
+      - name: Get secrets from AWS Secrets Manager
+        id: fetch-secrets
+        uses: aws-actions/aws-secretsmanager-get-secrets@v1
+        with:
+          secret-ids: |
+            CONTRACT_VERIFICATION_KEYS, ${{ secrets.AWS_SECRET_NAME }}
+          parse-json-secrets: false  # Keep as raw JSON string
+      
+      # Verify that secrets were loaded successfully
+      - name: Verify secrets were loaded
+        id: check-secrets
+        run: |
+          # Check if the secret was loaded properly
+          if [ -z "$CONTRACT_VERIFICATION_KEYS" ]; then
+            echo "Error: CONTRACT_VERIFICATION_KEYS environment variable is empty"
+            exit 1
+          fi
+          echo "AWS Secrets loaded successfully"
+          echo "success=true" >> $GITHUB_OUTPUT
+
+  # Second job: Run semantic-release to publish new version
   semantic-release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    # This job depends on successful completion of fetch-aws-secrets
+    needs: fetch-aws-secrets
     permissions:
-      contents: write  # Needed for github release
-      issues: write    # Needed for issue comments
+      contents: write    # Needed for github release
+      issues: write      # Needed for issue comments
       pull-requests: write  # Needed for PR comments
-      id-token: write  # Needed for npm publishing with provenance
+      id-token: write    # Needed for npm publishing with provenance
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Needed for semantic-release to generate changelogs
       
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
@@ -36,20 +94,17 @@ jobs:
         with:
           cmd: build
       
+      # Run semantic-release with access to the AWS secrets
       - name: Run Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           ECO_CHAINS_TAG: ${{ github.event.client_payload.tag }}
+          # Access the entire secret JSON string
+          CONTRACT_VERIFICATION_KEYS: ${{ env.CONTRACT_VERIFICATION_KEYS }}
         run: |
           echo "Processing tag from eco-chains: $ECO_CHAINS_TAG"
+          # Write the JSON to a file for use by build scripts
+          echo "$CONTRACT_VERIFICATION_KEYS" > contract_verification_keys.json
+          # Run semantic-release to create a new release based on commits
           npx semantic-release
-          
-      # - name: Trigger Deployment Pipeline
-      #   if: success()
-      #   uses: peter-evans/repository-dispatch@v3
-      #   with:
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-      #     event-type: eco-routes-release-created
-      #     client-payload: '{"tag": "${{ steps.semantic-release.outputs.new_release_version }}"}'
-
