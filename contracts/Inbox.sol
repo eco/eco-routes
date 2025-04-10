@@ -188,21 +188,15 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                 revert NativeTransferFailed();
             }
         }
-        if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_route.source),
-                _prover32,
-                messageBody
-            );
-        } else {
-            IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_route.source),
-                _prover32,
-                messageBody,
-                _metadata,
-                IPostDispatchHook(_postDispatchHook)
-            );
-        }
+        // Use a helper function to handle the dispatch logic and reduce stack depth
+        _dispatchMessage(
+            uint32(_route.source),
+            _prover32,
+            messageBody,
+            _metadata,
+            _postDispatchHook,
+            fee
+        );
         return results;
     }
 
@@ -232,10 +226,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             _expectedHash
         );
 
-        require(
-            remainingValue >= minBatcherReward,
-            InsufficientBatcherReward(minBatcherReward)
-        );
+        if (remainingValue < minBatcherReward) {
+            revert InsufficientBatcherReward(minBatcherReward);
+        }
 
         fulfilled[_expectedHash] = ClaimantAndBatcherReward(
             _claimant,
@@ -314,21 +307,15 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         if (!success) {
             revert NativeTransferFailed();
         }
-        if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID),
-                _prover32,
-                messageBody
-            );
-        } else {
-            IMailbox(mailbox).dispatch{value: fee}(
-                uint32(_sourceChainID),
-                _prover32,
-                messageBody,
-                _metadata,
-                IPostDispatchHook(_postDispatchHook)
-            );
-        }
+        // Use the same helper function to handle dispatch logic and reduce stack depth
+        _dispatchMessage(
+            uint32(_sourceChainID),
+            _prover32,
+            messageBody,
+            _metadata,
+            _postDispatchHook,
+            fee
+        );
     }
 
     /**
@@ -439,13 +426,18 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             abi.encodePacked(routeHash, _rewardHash)
         );
 
-        require(_route.inbox == address(this), InvalidInbox(_route.inbox));
-        require(intentHash == _expectedHash, InvalidHash(_expectedHash));
-        require(
-            fulfilled[intentHash].claimant == address(0),
-            IntentAlreadyFulfilled(intentHash)
-        );
-        require(_claimant != address(0), ZeroClaimant());
+        if (_route.inbox != address(this)) {
+            revert InvalidInbox(_route.inbox);
+        }
+        if (intentHash != _expectedHash) {
+            revert InvalidHash(_expectedHash);
+        }
+        if (fulfilled[intentHash].claimant != address(0)) {
+            revert IntentAlreadyFulfilled(intentHash);
+        }
+        if (_claimant == address(0)) {
+            revert ZeroClaimant();
+        }
 
         emit Fulfillment(_expectedHash, _route.source, _claimant);
 
@@ -491,6 +483,41 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             results[i] = result;
         }
         return (results, remainingValue);
+    }
+    
+    /**
+     * @notice Helper function to dispatch messages to the mailbox
+     * @dev Extracts the dispatch logic to reduce stack depth in calling functions
+     * @param _sourceChainId Chain ID of the source chain
+     * @param _prover32 Prover address as bytes32
+     * @param _messageBody Message body to dispatch
+     * @param _metadata Metadata for postDispatchHook
+     * @param _postDispatchHook Address of postDispatchHook
+     * @param _fee Fee to be paid for the dispatch
+     */
+    function _dispatchMessage(
+        uint32 _sourceChainId,
+        bytes32 _prover32,
+        bytes memory _messageBody,
+        bytes memory _metadata,
+        address _postDispatchHook,
+        uint256 _fee
+    ) internal {
+        if (_postDispatchHook == address(0)) {
+            IMailbox(mailbox).dispatch{value: _fee}(
+                _sourceChainId,
+                _prover32,
+                _messageBody
+            );
+        } else {
+            IMailbox(mailbox).dispatch{value: _fee}(
+                _sourceChainId,
+                _prover32,
+                _messageBody,
+                _metadata,
+                IPostDispatchHook(_postDispatchHook)
+            );
+        }
     }
 
     receive() external payable {}
