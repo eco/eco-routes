@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy to"
+        description: 'Environment to deploy to'
         required: true
-        default: "testnet"
+        default: 'testnet'
         type: choice
         options:
           - testnet
@@ -27,9 +27,9 @@ jobs:
     outputs:
       secrets-ready: ${{ steps.fetch-secrets.outputs.success }}
     permissions:
-      id-token: write # Needed for AWS OIDC authentication
+      id-token: write  # Needed for AWS OIDC authentication
       contents: read
-
+    
     steps:
       # Set up AWS credentials using OIDC for secure authentication
       - name: Configure AWS credentials
@@ -37,7 +37,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}
-
+      
       # Fetch secrets from AWS Secrets Manager as a JSON string
       # The secret will be available as an environment variable: CONTRACT_VERIFICATION_KEYS
       - name: Get secrets from AWS Secrets Manager
@@ -46,8 +46,8 @@ jobs:
         with:
           secret-ids: |
             CONTRACT_VERIFICATION_KEYS, ${{ secrets.AWS_SECRET_NAME }}
-          parse-json-secrets: false # Keep as raw JSON string
-
+          parse-json-secrets: false  # Keep as raw JSON string
+      
       # Verify that secrets were loaded successfully
       - name: Verify secrets were loaded
         id: check-secrets
@@ -67,33 +67,33 @@ jobs:
     # This job depends on successful completion of fetch-aws-secrets
     needs: fetch-aws-secrets
     permissions:
-      contents: write # Needed for github release
-      issues: write # Needed for issue comments
-      pull-requests: write # Needed for PR comments
-      id-token: write # Needed for npm publishing with provenance
-
+      contents: write    # Needed for github release
+      issues: write      # Needed for issue comments
+      pull-requests: write  # Needed for PR comments
+      id-token: write    # Needed for npm publishing with provenance
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
         with:
-          fetch-depth: 0 # Needed for semantic-release to generate changelogs
-
+          fetch-depth: 0  # Needed for semantic-release to generate changelogs
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
         with:
           node-version-file: ".nvmrc"
           cache: "yarn"
-
+      
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
           cmd: install
-
+      
       - name: Build Project
         uses: borales/actions-yarn@v5
         with:
           cmd: build
-
+      
       # Run semantic-release with access to the AWS secrets
       - name: Run Semantic Release
         env:

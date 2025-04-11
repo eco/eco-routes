@@ -73,7 +73,6 @@ out/
 typechain/
 .DS_Store
 tmp/
-lib/ 
 
 # Nishaad's poke script
 executeInstructions.ts

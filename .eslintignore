@@ -8,4 +8,3 @@ templates
 *.spec.ts
 scripts/viem_deploy/assets/utils
 build
-lib

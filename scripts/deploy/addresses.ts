@@ -87,7 +87,7 @@ export function transformAddresses() {
   const name = 'EcoProtocolAddresses'
   // Create output directory if it doesn't exist
   fs.mkdirSync(buildSrcDir, { recursive: true })
-
+  
   const addresses = JSON.parse(fs.readFileSync(jsonFilePath, 'utf-8'))
   const importsExports = `export * from './abi'\nexport * from './utils'\n`
   const types = `

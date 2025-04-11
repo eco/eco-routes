@@ -482,7 +482,7 @@ contract IntentSource is IIntentSource, Semver {
         // Break up the stack depth by using a separate function for the event emission
         _emitIntentCreated(intent, intentHash);
     }
-
+    
     // Use separate events for route and reward data to prevent stack too deep errors
     event IntentRouteCreated(
         bytes32 intentHash,
@@ -493,7 +493,7 @@ contract IntentSource is IIntentSource, Semver {
         TokenAmount[] tokens,
         Call[] calls
     );
-
+    
     event IntentRewardCreated(
         bytes32 intentHash,
         address creator,
@@ -502,10 +502,10 @@ contract IntentSource is IIntentSource, Semver {
         uint256 nativeValue,
         TokenAmount[] tokens
     );
-
+    
     /**
      * @notice Helper function to emit split events to avoid stack depth issues
-     * @dev We replace the single IntentCreated event with two separate events that
+     * @dev We replace the single IntentCreated event with two separate events that 
      * @dev together contain all the same information, avoiding stack depth issues
      * @param intent The intent being created
      * @param intentHash Hash of the intent
@@ -526,7 +526,7 @@ contract IntentSource is IIntentSource, Semver {
                 intent.route.calls
             );
         }
-
+        
         // Then emit the reward data
         {
             emit IntentRewardCreated(
@@ -538,7 +538,7 @@ contract IntentSource is IIntentSource, Semver {
                 intent.reward.tokens
             );
         }
-
+        
         // We've removed the original IntentCreated event emission to avoid stack too deep errors
         // The two events above contain the same information as the original event
     }

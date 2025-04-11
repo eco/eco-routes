@@ -1,7 +1,25 @@
 import { run } from 'hardhat'
 import { ethers } from 'ethers'
-import { BlockTag, Hex, PublicClient, zeroAddress } from 'viem'
-
+import { BlockTag, Chain, Hex, PublicClient, zeroAddress } from 'viem'
+import { DeployDisputeNetworkConfig } from './deloyProtocol'
+import { networks as mainnetNetworks } from '../config/mainnet/config'
+import { networks as sepoliaNetworks } from '../config/testnet/config'
+import {
+  optimism,
+  optimismSepolia,
+  arbitrum,
+  base,
+  arbitrumSepolia,
+  baseSepolia,
+} from '@alchemy/aa-core'
+import {
+  mantle,
+  mantleSepoliaTestnet,
+  polygon,
+  abstract,
+  polygonAmoy,
+  abstractTestnet,
+} from 'viem/chains'
 export function isZeroAddress(address: Hex): boolean {
   return address === zeroAddress
 }
@@ -126,6 +144,88 @@ export async function waitSeconds(seconds: number) {
       resolve()
     }, seconds * 1000)
   })
+}
+
+export function getDeployNetwork(
+  networkName: string,
+): DeployDisputeNetworkConfig {
+  // mainnet
+  switch (networkName) {
+    case 'base':
+      return mainnetNetworks.base
+    case 'optimism':
+      return mainnetNetworks.optimism
+    case 'helix':
+      return mainnetNetworks.helix
+    case 'arbitrum':
+      return mainnetNetworks.arbitrum
+    case 'mantle':
+      return mainnetNetworks.mantle
+    case 'polygon':
+      return mainnetNetworks.polygon
+    case 'abstract':
+      return mainnetNetworks.abstract
+  }
+
+  // sepolia
+  switch (networkName) {
+    case 'baseSepolia':
+      return sepoliaNetworks.baseSepolia
+    case 'optimismSepolia':
+      return sepoliaNetworks.optimismSepolia
+    case 'optimismSepoliaBlockscout':
+      return sepoliaNetworks.optimismSepolia
+    case 'ecoTestnet':
+      return sepoliaNetworks.ecoTestnet
+    case 'arbitrumSepolia':
+      return sepoliaNetworks.arbitrumSepolia
+    case 'mantleSepolia':
+      return sepoliaNetworks.mantleSepolia
+    case 'polygonSepolia':
+      return sepoliaNetworks.polygonSepolia
+    case 'abstractTestnet':
+      return sepoliaNetworks.abstractTestnet
+  }
+  throw new Error('Network not found')
+}
+
+export function getDeployChainConfig(chain: Chain): DeployDisputeNetworkConfig {
+  // mainnet
+  switch (chain) {
+    case base:
+      return mainnetNetworks.base
+    case optimism:
+      return mainnetNetworks.optimism
+    // case 'helix':
+    //   return mainnetNetworks.helix
+    case arbitrum:
+      return mainnetNetworks.arbitrum
+    case mantle:
+      return mainnetNetworks.mantle
+    case polygon:
+      return mainnetNetworks.polygon
+    case abstract:
+      return mainnetNetworks.abstract
+  }
+
+  // sepolia
+  switch (chain) {
+    case baseSepolia:
+      return sepoliaNetworks.baseSepolia
+    case optimismSepolia:
+      return sepoliaNetworks.optimismSepolia
+    // case 'ecoTestnet':
+    //   return sepoliaNetworks.ecoTestnet
+    case arbitrumSepolia:
+      return sepoliaNetworks.arbitrumSepolia
+    case mantleSepoliaTestnet:
+      return sepoliaNetworks.mantleSepolia
+    case polygonAmoy:
+      return sepoliaNetworks.polygonSepolia
+    case abstractTestnet:
+      return sepoliaNetworks.abstractTestnet
+  }
+  throw new Error('Network not found')
 }
 
 export async function execCMD(
