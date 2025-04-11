@@ -4,6 +4,7 @@ module.exports = {
     es2021: true,
     mocha: true,
     node: true,
+    jest: true,
   },
   extends: [
     'standard',

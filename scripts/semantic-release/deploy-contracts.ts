@@ -36,7 +36,7 @@ interface DeploymentRecord {
   chainId: string
   address: string
   contractPath: string
-  [key: string]: string  // Allow additional properties
+  [key: string]: string // Allow additional properties
 }
 
 interface DeploymentResult {
@@ -47,13 +47,17 @@ async function main() {
   // Example usage of the preparePlugin function
   const pluginConfig: PluginConfig = {}
   const context: Context = {
-    nextRelease: { version: '1.0.0', gitTag: 'v1.0.0', notes: 'Initial release' },
+    nextRelease: {
+      version: '1.0.0',
+      gitTag: 'v1.0.0',
+      notes: 'Initial release',
+    },
     logger: {
       log: console.log,
       error: console.error,
-      warn: console.warn
+      warn: console.warn,
     },
-    cwd: process.cwd()
+    cwd: process.cwd(),
   }
 
   await preparePlugin(pluginConfig, context)
@@ -62,12 +66,14 @@ main().catch((err) => {
   console.error('Error:', err)
 })
 
-
 /**
  * Plugin to handle contract deployment during semantic-release process
  * Will deploy contracts with deterministic addresses by reusing salt for patch versions
  */
-export async function preparePlugin(pluginConfig: PluginConfig, context: Context): Promise<void> {
+export async function preparePlugin(
+  pluginConfig: PluginConfig,
+  context: Context,
+): Promise<void> {
   const { nextRelease, logger, cwd } = context
 
   if (!nextRelease) {
@@ -78,7 +84,9 @@ export async function preparePlugin(pluginConfig: PluginConfig, context: Context
   logger.log(`Preparing to deploy contracts for version ${nextRelease.version}`)
 
   // Extract version components
-  const packageJson = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'))
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+  )
   const packageName = packageJson.name
 
   try {
@@ -86,17 +94,17 @@ export async function preparePlugin(pluginConfig: PluginConfig, context: Context
     const { rootSalt, preprodRootSalt } = await determineSalts(
       nextRelease.version,
       packageName,
-      logger
+      logger,
     )
 
     // Set up environment for deployment
     await setupEnvAndDeploy(
       [
         { salt: rootSalt, environment: 'production' },
-        { salt: preprodRootSalt, environment: 'preprod' }
+        { salt: preprodRootSalt, environment: 'preprod' },
       ],
       logger,
-      cwd
+      cwd,
     )
 
     logger.log('✅ Contract deployment completed successfully')
@@ -113,7 +121,7 @@ export async function preparePlugin(pluginConfig: PluginConfig, context: Context
 async function setupEnvAndDeploy(
   configs: { salt: string; environment: string }[],
   logger: Logger,
-  cwd: string
+  cwd: string,
 ): Promise<void> {
   // Check for required environment variables
   const requiredEnvVars = ['PRIVATE_KEY', 'CHAIN_IDS']
@@ -125,7 +133,11 @@ async function setupEnvAndDeploy(
 
   // Define output directory and ensure it exists
   const outputDir = path.join(cwd, 'out')
-  const deployedContractFilePath = path.join(cwd, 'build', 'deployAddresses.json')
+  const deployedContractFilePath = path.join(
+    cwd,
+    'build',
+    'deployAddresses.json',
+  )
 
   fs.mkdirSync(outputDir, { recursive: true })
   fs.mkdirSync(path.dirname(deployedContractFilePath), { recursive: true })
@@ -145,9 +157,9 @@ async function setupEnvAndDeploy(
     }
 
     // Add environment info to contracts
-    const contractsWithEnv = result.contracts.map(contract => ({
+    const contractsWithEnv = result.contracts.map((contract) => ({
       ...contract,
-      environment: config.environment
+      environment: config.environment,
     }))
 
     allContracts = [...allContracts, ...contractsWithEnv]
@@ -155,7 +167,10 @@ async function setupEnvAndDeploy(
 
   // Save all contracts to JSON
   const contractsJson = processContractsForJson(allContracts)
-  fs.writeFileSync(deployedContractFilePath, JSON.stringify(contractsJson, null, 2))
+  fs.writeFileSync(
+    deployedContractFilePath,
+    JSON.stringify(contractsJson, null, 2),
+  )
 
   logger.log(`Contract addresses saved to ${deployedContractFilePath}`)
 
@@ -172,7 +187,9 @@ async function setupEnvAndDeploy(
 /**
  * Process contracts array into the required JSON format
  */
-export function processContractsForJson(contracts: Contract[]): Record<string, Record<string, string>> {
+export function processContractsForJson(
+  contracts: Contract[],
+): Record<string, Record<string, string>> {
   // Group by chain ID and environment
   const groupedContracts: Record<string, Contract[]> = {}
 
@@ -187,8 +204,8 @@ export function processContractsForJson(contracts: Contract[]): Record<string, R
   // Convert to desired format
   return Object.fromEntries(
     Object.entries(groupedContracts).map(([key, contracts]) => {
-      const names = contracts.map(c => c.name)
-      const addresses = contracts.map(c => c.address)
+      const names = contracts.map((c) => c.name)
+      const addresses = contracts.map((c) => c.address)
 
       const contractMap: Record<string, string> = {}
       for (let i = 0; i < names.length; i++) {
@@ -196,7 +213,7 @@ export function processContractsForJson(contracts: Contract[]): Record<string, R
       }
 
       return [key, contractMap]
-    })
+    }),
   )
 }
 
@@ -206,7 +223,7 @@ export function processContractsForJson(contracts: Contract[]): Record<string, R
 export async function deployContracts(
   salt: string,
   logger: Logger,
-  cwd: string
+  cwd: string,
 ): Promise<DeploymentResult> {
   return new Promise((resolve, reject) => {
     // Path to the deployment script
@@ -215,7 +232,9 @@ export async function deployContracts(
     const resultsFile = path.join(outputDir, 'deployment-results.txt')
 
     if (!fs.existsSync(deployScriptPath)) {
-      return reject(new Error(`Deployment script not found at ${deployScriptPath}`))
+      return reject(
+        new Error(`Deployment script not found at ${deployScriptPath}`),
+      )
     }
 
     logger.log(`Running deployment with salt: ${salt}`)
@@ -224,7 +243,7 @@ export async function deployContracts(
     if (fs.existsSync(resultsFile)) {
       fs.unlinkSync(resultsFile)
     }
-    
+
     // Create output directory if it doesn't exist
     fs.mkdirSync(outputDir, { recursive: true })
 
@@ -232,11 +251,11 @@ export async function deployContracts(
       env: {
         ...process.env,
         SALT: salt,
-        RESULTS_FILE: resultsFile
+        RESULTS_FILE: resultsFile,
       },
       stdio: 'inherit',
       shell: true,
-      cwd: cwd
+      cwd,
     })
 
     deployProcess.on('close', (code) => {
@@ -264,12 +283,15 @@ export async function deployContracts(
 
 /**
  * Parse deployment results from the results file using CSV library
- * 
+ *
  * @param filePath - Path to the CSV file containing deployment results
  * @param logger - Logger instance for output messages
  * @returns Array of Contract objects parsed from the file
  */
-export function parseDeploymentResults(filePath: string, logger?: Logger): Contract[] {
+export function parseDeploymentResults(
+  filePath: string,
+  logger?: Logger,
+): Contract[] {
   if (!fs.existsSync(filePath)) {
     logger?.log(`Deployment results file not found: ${filePath}`)
     return []
@@ -277,21 +299,21 @@ export function parseDeploymentResults(filePath: string, logger?: Logger): Contr
 
   try {
     const fileContent = fs.readFileSync(filePath, 'utf-8')
-    
+
     // Skip empty file
     if (!fileContent.trim()) {
       logger?.log(`Deployment results file is empty: ${filePath}`)
       return []
     }
-    
+
     // CSV parse options
     const parseOptions = {
       columns: ['chainId', 'address', 'contractPath'],
       skip_empty_lines: true,
       trim: true,
       relax_column_count: true, // Handle rows with missing fields
-      from_line: 1,             // Start from the first line
-      delimiter: ',',           // Specify delimiter explicitly
+      from_line: 1, // Start from the first line
+      delimiter: ',', // Specify delimiter explicitly
       // Handle any comment lines in the file
       comment: '#',
       // Specify type casting
@@ -301,43 +323,53 @@ export function parseDeploymentResults(filePath: string, logger?: Logger): Contr
           return isNaN(parsedValue) ? value : parsedValue
         }
         return value
-      }
+      },
     }
-    
+
     // Parse CSV content
     const records = parseCSV(fileContent, parseOptions) as DeploymentRecord[]
-    
+
     // Process each record to extract contract name
     return records
-      .filter(record => {
-        const isValid = record.chainId && record.address && record.contractPath && 
-                        record.contractPath.includes(':')
-        
+      .filter((record) => {
+        const isValid =
+          record.chainId &&
+          record.address &&
+          record.contractPath &&
+          record.contractPath.includes(':')
+
         if (!isValid && logger) {
-          logger.log(`Skipping invalid deployment record: ${JSON.stringify(record)}`)
+          logger.log(
+            `Skipping invalid deployment record: ${JSON.stringify(record)}`,
+          )
         }
-        
+
         return isValid
       })
-      .map(record => {
+      .map((record) => {
         // Extract contract name from the path
         const [, contractName] = record.contractPath.split(':')
-        
+
         return {
           address: record.address,
           name: contractName,
           // Ensure chainId is a number
-          chainId: typeof record.chainId === 'number' 
-            ? record.chainId 
-            : parseInt(record.chainId, 10)
+          chainId:
+            typeof record.chainId === 'number'
+              ? record.chainId
+              : parseInt(record.chainId, 10),
         }
       })
   } catch (error) {
     // Log error but don't crash the process
     if (logger) {
-      logger.error(`Error parsing deployment results from ${filePath}: ${(error as Error).message}`)
+      logger.error(
+        `Error parsing deployment results from ${filePath}: ${(error as Error).message}`,
+      )
     } else {
-      console.error(`Error parsing deployment results: ${(error as Error).message}`)
+      console.error(
+        `Error parsing deployment results: ${(error as Error).message}`,
+      )
     }
     return []
   }

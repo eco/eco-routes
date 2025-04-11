@@ -484,7 +484,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         }
         return (results, remainingValue);
     }
-    
+
     /**
      * @notice Helper function to dispatch messages to the mailbox
      * @dev Extracts the dispatch logic to reduce stack depth in calling functions
