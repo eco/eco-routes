@@ -7,7 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {BaseProver} from "./prover/BaseProver.sol";
-import {Intent, Route, Reward, Call, TokenAmount} from "./types/Intent.sol";
+import {Intent, Route, Reward, Call} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 import {Vault} from "./Vault.sol";
@@ -479,7 +479,6 @@ contract IntentSource is IIntentSource, Semver {
             revert IntentAlreadyExists(intentHash);
         }
 
-            // Emit the original event as defined in the interface
         emit IntentCreated(
             intentHash,
             intent.route.salt,
