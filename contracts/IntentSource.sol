@@ -479,68 +479,21 @@ contract IntentSource is IIntentSource, Semver {
             revert IntentAlreadyExists(intentHash);
         }
 
-        // Break up the stack depth by using a separate function for the event emission
-        _emitIntentCreated(intent, intentHash);
-    }
-    
-    // Use separate events for route and reward data to prevent stack too deep errors
-    event IntentRouteCreated(
-        bytes32 intentHash,
-        bytes32 salt,
-        uint256 source,
-        uint256 destination,
-        address inbox,
-        TokenAmount[] tokens,
-        Call[] calls
-    );
-    
-    event IntentRewardCreated(
-        bytes32 intentHash,
-        address creator,
-        address prover,
-        uint256 deadline,
-        uint256 nativeValue,
-        TokenAmount[] tokens
-    );
-    
-    /**
-     * @notice Helper function to emit split events to avoid stack depth issues
-     * @dev We replace the single IntentCreated event with two separate events that 
-     * @dev together contain all the same information, avoiding stack depth issues
-     * @param intent The intent being created
-     * @param intentHash Hash of the intent
-     */
-    function _emitIntentCreated(
-        Intent calldata intent,
-        bytes32 intentHash
-    ) internal {
-        // First emit the route data
-        {
-            emit IntentRouteCreated(
-                intentHash,
-                intent.route.salt,
-                intent.route.source,
-                intent.route.destination,
-                intent.route.inbox,
-                intent.route.tokens,
-                intent.route.calls
-            );
-        }
-        
-        // Then emit the reward data
-        {
-            emit IntentRewardCreated(
-                intentHash,
-                intent.reward.creator,
-                intent.reward.prover,
-                intent.reward.deadline,
-                intent.reward.nativeValue,
-                intent.reward.tokens
-            );
-        }
-        
-        // We've removed the original IntentCreated event emission to avoid stack too deep errors
-        // The two events above contain the same information as the original event
+            // Emit the original event as defined in the interface
+        emit IntentCreated(
+            intentHash,
+            intent.route.salt,
+            intent.route.source,
+            intent.route.destination,
+            intent.route.inbox,
+            intent.route.tokens,
+            intent.route.calls,
+            intent.reward.creator,
+            intent.reward.prover,
+            intent.reward.deadline,
+            intent.reward.nativeValue,
+            intent.reward.tokens
+        );
     }
 
     /**
