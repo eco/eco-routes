@@ -479,6 +479,20 @@ contract IntentSource is IIntentSource, Semver {
             revert IntentAlreadyExists(intentHash);
         }
 
+        // Use a separate function to emit event to avoid stack-too-deep errors
+        _emitIntentCreated(intent, intentHash);
+    }
+
+    /**
+     * @notice Separate function to emit the IntentCreated event
+     * @dev This helps avoid stack-too-deep errors in the calling function
+     * @param intent The intent being created
+     * @param intentHash Hash of the intent
+     */
+    function _emitIntentCreated(
+        Intent calldata intent,
+        bytes32 intentHash
+    ) internal {
         emit IntentCreated(
             intentHash,
             intent.route.salt,
