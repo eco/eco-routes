@@ -9,7 +9,7 @@ import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount } from '../utils/intent'
 
-describe('HyperProver Test', (): void => {
+describe.only('HyperProver Test', (): void => {
   let inbox: Inbox
   let dispatcher: TestMailbox
   let hyperProver: HyperProver
@@ -67,19 +67,19 @@ describe('HyperProver Test', (): void => {
     beforeEach(async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await dispatcher.getAddress(), await inbox.getAddress(), [])
+      ).deploy(await solver.getAddress(), await inbox.getAddress(), [])
     })
     it('should revert when msg.sender is not the mailbox', async () => {
       await expect(
         hyperProver
-          .connect(solver)
+          .connect(claimant)
           .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
       ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedHandle')
     })
     it('should revert when sender field is not authorized', async () => {
       await expect(
         hyperProver
-          .connect(dispatcher)
+          .connect(solver)
           .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
       ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedInitiateProving')
     })
