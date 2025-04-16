@@ -13,7 +13,7 @@ contract TestProver is BaseProver {
         provenIntents[_hash] = _claimant;
     }
 
-    function getProofType() external pure override returns (ProofType) {
-        return ProofType.Storage;
+    function getProofType() external pure override returns (string memory) {
+        return "storage";
     }
 }

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
-import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -71,12 +70,7 @@ contract Inbox is IInbox, Ownable, Semver {
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    )
-        public
-        payable
-        override
-        returns (bytes[] memory)
-    {
+    ) public payable override returns (bytes[] memory) {
         (bytes[] memory result, ) = _fulfill(
             _route,
             _rewardHash,

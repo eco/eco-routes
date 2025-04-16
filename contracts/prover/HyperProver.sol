@@ -18,7 +18,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Constant indicating this contract uses Hyperlane for proving
      */
-    ProofType public constant PROOF_TYPE = ProofType.Hyperlane;
+    string public constant PROOF_TYPE = "Hyperlane";
 
     /**
      * @notice Emitted when attempting to prove an already-proven intent
@@ -183,7 +183,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Returns the proof type used by this prover
      * @return ProofType indicating Hyperlane proving mechanism
      */
-    function getProofType() external pure override returns (ProofType) {
+    function getProofType() external pure override returns (string memory) {
         return PROOF_TYPE;
     }
 
