@@ -60,7 +60,7 @@ describe('HyperProver Test', (): void => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(await dispatcher.getAddress(), await inbox.getAddress(), [])
-      expect(await hyperProver.getProofType()).to.equal(1)
+      expect(await hyperProver.getProofType()).to.equal("Hyperlane")
     })
   })
   describe('invalid', async () => {
