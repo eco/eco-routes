@@ -6,6 +6,7 @@ import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {MessageBridgeProver} from "./prover/MessageBridgeProver.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IInbox} from "./interfaces/IInbox.sol";
@@ -18,7 +19,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity and executes calldata. Enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
+contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 
@@ -73,7 +74,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     )
         public
         payable
-        override(IInbox, Eco7683DestinationSettler)
+        override
         returns (bytes[] memory)
     {
         (bytes[] memory result, ) = _fulfill(
@@ -94,77 +95,23 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     }
 
     /**
-     * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox
-     * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
+     * @notice Fulfills an intent and initiates proving via message bridge
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _prover The address of the hyperprover on the source chain
-     * @return Array of execution results from each call
+     * @param _localProver Address of prover on the destination chain
+     * @param _sourceChainProver Address of prover on the source chain
      */
-    function fulfillHyperInstant(
+    function fulfillMessageBridge(
         Route memory _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
-        address _prover
-    ) external payable returns (bytes[] memory) {
-        return
-            fulfillHyperInstantWithRelayer(
-                _route,
-                _rewardHash,
-                _claimant,
-                _expectedHash,
-                _prover,
-                bytes(""),
-                address(0)
-            );
-    }
-
-    /**
-     * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox with relayer support
-     * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward
-     * @param _claimant The address that will receive the reward on the source chain
-     * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _prover The address of the hyperprover on the source chain
-     * @param _metadata Metadata for postDispatchHook (empty bytes if not applicable)
-     * @param _postDispatchHook Address of postDispatchHook (zero address if not applicable)
-     * @return Array of execution results from each call
-     */
-    function fulfillHyperInstantWithRelayer(
-        Route memory _route,
-        bytes32 _rewardHash,
-        address _claimant,
-        bytes32 _expectedHash,
-        address _prover,
-        bytes memory _metadata,
-        address _postDispatchHook
-    )
-        public
-        payable
-        override(IInbox, Eco7683DestinationSettler)
-        returns (bytes[] memory)
-    {
-        bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
-        hashes[0] = _expectedHash;
-        claimants[0] = _claimant;
-
-        bytes memory messageBody = abi.encode(hashes, claimants);
-        bytes32 _prover32 = _prover.addressToBytes32();
-
-        emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
-
-        uint256 fee = fetchFee(
-            _route.source,
-            _prover32,
-            messageBody,
-            _metadata,
-            _postDispatchHook
-        );
+        address _localProver,
+        address _sourceChainProver,
+        bytes calldata _data
+    ) public payable returns (bytes[] memory) {
         (bytes[] memory results, uint256 currentBalance) = _fulfill(
             _route,
             _rewardHash,
@@ -177,6 +124,18 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
             uint96(0)
         );
 
+        bytes32[] memory hashes = new bytes32[](1);
+        address[] memory claimants = new address[](1);
+        hashes[0] = _expectedHash;
+        claimants[0] = _claimant;
+
+        uint256 fee = MessageBridgeProver(_localProver).fetchFee(
+            _route.source,
+            hashes,
+            claimants,
+            _sourceChainProver,
+            _data
+        );
         if (currentBalance < fee) {
             revert InsufficientFee(fee);
         }
@@ -188,36 +147,42 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
                 revert NativeTransferFailed();
             }
         }
-        // Use a helper function to handle the dispatch logic and reduce stack depth
-        _dispatchMessage(
-            uint32(_route.source),
-            _prover32,
-            messageBody,
-            _metadata,
-            _postDispatchHook,
-            fee
+        MessageBridgeProver(_localProver).initiateProving{value: fee}(
+            _route.source,
+            hashes,
+            claimants,
+            _sourceChainProver,
+            _data
         );
+
         return results;
     }
 
     /**
-     * @notice Fulfills an intent to be proven in a batch via Hyperlane's mailbox
-     * @dev Less expensive but slower than hyperinstant. Batch dispatched when sendBatch is called.
+     * @notice Fulfills an intent to be proven in a batch via a meessage bridge
+     * @dev Less expensive but slower fulfillMessageBridge. Batch dispatched when sendBatch is called.
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant The address that will receive the reward on the source chain
      * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _prover The address of the hyperprover on the source chain
-     * @return Array of execution results from each call
+     * @param _localProver Address of prover on the destination chain
+     * @param _sourceChainProver Address of prover on the source chain
      */
-    function fulfillHyperBatched(
+    function fulfillMessageBridgeBatched(
         Route calldata _route,
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash,
-        address _prover
+        address _localProver,
+        address _sourceChainProver
     ) external payable returns (bytes[] memory) {
-        emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
+        emit AddToBatch(
+            _expectedHash,
+            _route.source,
+            _claimant,
+            _localProver,
+            _sourceChainProver
+        );
 
         (bytes[] memory results, uint256 remainingValue) = _fulfill(
             _route,
@@ -239,64 +204,45 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
     }
 
     /**
-     * @notice Sends a batch of fulfilled intents to the mailbox
+     * @notice initiates proving of a batch of fulfilled intents
      * @dev Intent hashes must correspond to fulfilled intents from specified source chain
      * @param _sourceChainID Chain ID of the source chain
      * @param _prover Address of the hyperprover on the source chain
      * @param _intentHashes Hashes of the intents to be proven
+     * @param _localProver Address of prover on the destination chain
+     * @param _sourceChainProver Address of prover on the source chain
      */
-    function sendBatch(
-        uint256 _sourceChainID,
-        address _prover,
-        bytes32[] calldata _intentHashes
-    ) external payable {
-        sendBatchWithRelayer(
-            _sourceChainID,
-            _prover,
-            _intentHashes,
-            bytes(""),
-            address(0)
-        );
-    }
-
-    /**
-     * @notice Sends a batch of fulfilled intents to the mailbox with relayer support
-     * @dev Intent hashes must correspond to fulfilled intents from specified source chain
-     * @param _sourceChainID Chain ID of the source chain
-     * @param _prover Address of the hyperprover on the source chain
-     * @param _intentHashes Hashes of the intents to be proven
-     * @param _metadata Metadata for postDispatchHook
-     * @param _postDispatchHook Address of postDispatchHook
-     */
-    function sendBatchWithRelayer(
+    function messageBridgeSendBatch(
         uint256 _sourceChainID,
         address _prover,
         bytes32[] calldata _intentHashes,
-        bytes memory _metadata,
-        address _postDispatchHook
+        address _localProver,
+        address _sourceChainProver,
+        bytes calldata _data
     ) public payable {
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
         uint256 reward = 0;
         for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]].claimant;
-            reward += fulfilled[_intentHashes[i]].reward;
+            ClaimantAndBatcherReward storage fulfillment = fulfilled[
+                _intentHashes[i]
+            ];
+            address claimant = fulfillment.claimant;
+            reward += fulfillment.reward;
+            fulfillment.reward = 0;
+
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
             claimants[i] = claimant;
         }
 
-        emit BatchSent(_intentHashes, _sourceChainID);
-
-        bytes memory messageBody = abi.encode(_intentHashes, claimants);
-        bytes32 _prover32 = _prover.addressToBytes32();
-        uint256 fee = fetchFee(
+        uint256 fee = MessageBridgeProver(_localProver).fetchFee(
             _sourceChainID,
-            _prover32,
-            messageBody,
-            _metadata,
-            _postDispatchHook
+            _intentHashes,
+            claimants,
+            _sourceChainProver,
+            _data
         );
         if (msg.value < fee) {
             revert InsufficientFee(fee);
@@ -307,50 +253,279 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         if (!success) {
             revert NativeTransferFailed();
         }
-        // Use the same helper function to handle dispatch logic and reduce stack depth
-        _dispatchMessage(
-            uint32(_sourceChainID),
-            _prover32,
-            messageBody,
-            _metadata,
-            _postDispatchHook,
-            fee
+
+        MessageBridgeProver(_localProver).initiateProving{value: fee}(
+            _sourceChainID,
+            _intentHashes,
+            claimants,
+            _sourceChainProver,
+            _data
         );
     }
 
-    /**
-     * @notice Quotes the fee required for message dispatch
-     * @dev Used to determine fees for fulfillHyperInstant or sendBatch
-     * @param _sourceChainID Chain ID of the source chain
-     * @param _prover Address of the hyperprover on the source chain
-     * @param _messageBody Message being sent over the bridge
-     * @param _metadata Metadata for postDispatchHook
-     * @param _postDispatchHook Address of postDispatchHook
-     * @return fee The required fee amount
-     */
-    function fetchFee(
-        uint256 _sourceChainID,
-        bytes32 _prover,
-        bytes memory _messageBody,
-        bytes memory _metadata,
-        address _postDispatchHook
-    ) public view returns (uint256 fee) {
-        return (
-            _postDispatchHook == address(0)
-                ? IMailbox(mailbox).quoteDispatch(
-                    uint32(_sourceChainID),
-                    _prover,
-                    _messageBody
-                )
-                : IMailbox(mailbox).quoteDispatch(
-                    uint32(_sourceChainID),
-                    _prover,
-                    _messageBody,
-                    _metadata,
-                    IPostDispatchHook(_postDispatchHook)
-                )
-        );
-    }
+    // /**
+    //  * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox
+    //  * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
+    //  * @param _route The route of the intent
+    //  * @param _rewardHash The hash of the reward
+    //  * @param _claimant The address that will receive the reward on the source chain
+    //  * @param _expectedHash The hash of the intent as created on the source chain
+    //  * @param _prover The address of the hyperprover on the source chain
+    //  * @return Array of execution results from each call
+    //  */
+    // function fulfillHyperInstant(
+    //     Route memory _route,
+    //     bytes32 _rewardHash,
+    //     address _claimant,
+    //     bytes32 _expectedHash,
+    //     address _prover
+    // ) external payable returns (bytes[] memory) {
+    //     return
+    //         fulfillHyperInstantWithRelayer(
+    //             _route,
+    //             _rewardHash,
+    //             _claimant,
+    //             _expectedHash,
+    //             _prover,
+    //             bytes(""),
+    //             address(0)
+    //         );
+    // }
+
+    // /**
+    //  * @notice Fulfills an intent to be proven immediately via Hyperlane's mailbox with relayer support
+    //  * @dev More expensive but faster than hyperbatched. Requires fee for Hyperlane infrastructure
+    //  * @param _route The route of the intent
+    //  * @param _rewardHash The hash of the reward
+    //  * @param _claimant The address that will receive the reward on the source chain
+    //  * @param _expectedHash The hash of the intent as created on the source chain
+    //  * @param _prover The address of the hyperprover on the source chain
+    //  * @param _metadata Metadata for postDispatchHook (empty bytes if not applicable)
+    //  * @param _postDispatchHook Address of postDispatchHook (zero address if not applicable)
+    //  * @return Array of execution results from each call
+    //  */
+    // function fulfillHyperInstantWithRelayer(
+    //     Route memory _route,
+    //     bytes32 _rewardHash,
+    //     address _claimant,
+    //     bytes32 _expectedHash,
+    //     address _prover,
+    //     bytes memory _metadata,
+    //     address _postDispatchHook
+    // )
+    //     public
+    //     payable
+    //     override(IInbox, Eco7683DestinationSettler)
+    //     returns (bytes[] memory)
+    // {
+    //     bytes32[] memory hashes = new bytes32[](1);
+    //     address[] memory claimants = new address[](1);
+    //     hashes[0] = _expectedHash;
+    //     claimants[0] = _claimant;
+
+    //     bytes memory messageBody = abi.encode(hashes, claimants);
+    //     bytes32 _prover32 = _prover.addressToBytes32();
+
+    //     emit HyperInstantFulfillment(_expectedHash, _route.source, _claimant);
+
+    //     uint256 fee = fetchFee(
+    //         _route.source,
+    //         _prover32,
+    //         messageBody,
+    //         _metadata,
+    //         _postDispatchHook
+    //     );
+    //     (bytes[] memory results, uint256 currentBalance) = _fulfill(
+    //         _route,
+    //         _rewardHash,
+    //         _claimant,
+    //         _expectedHash
+    //     );
+
+    //     fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+    //         _claimant,
+    //         uint96(0)
+    //     );
+
+    //     if (currentBalance < fee) {
+    //         revert InsufficientFee(fee);
+    //     }
+    //     if (currentBalance > fee) {
+    //         (bool success, ) = payable(msg.sender).call{
+    //             value: currentBalance - fee
+    //         }("");
+    //         if (!success) {
+    //             revert NativeTransferFailed();
+    //         }
+    //     }
+    //     // Use a helper function to handle the dispatch logic and reduce stack depth
+    //     _dispatchMessage(
+    //         uint32(_route.source),
+    //         _prover32,
+    //         messageBody,
+    //         _metadata,
+    //         _postDispatchHook,
+    //         fee
+    //     );
+    //     return results;
+    // }
+
+    // /**
+    //  * @notice Fulfills an intent to be proven in a batch via Hyperlane's mailbox
+    //  * @dev Less expensive but slower than hyperinstant. Batch dispatched when sendBatch is called.
+    //  * @param _route The route of the intent
+    //  * @param _rewardHash The hash of the reward
+    //  * @param _claimant The address that will receive the reward on the source chain
+    //  * @param _expectedHash The hash of the intent as created on the source chain
+    //  * @param _prover The address of the hyperprover on the source chain
+    //  * @return Array of execution results from each call
+    //  */
+    // function fulfillHyperBatched(
+    //     Route calldata _route,
+    //     bytes32 _rewardHash,
+    //     address _claimant,
+    //     bytes32 _expectedHash,
+    //     address _prover
+    // ) external payable returns (bytes[] memory) {
+    //     emit AddToBatch(_expectedHash, _route.source, _claimant, _prover);
+
+    //     (bytes[] memory results, uint256 remainingValue) = _fulfill(
+    //         _route,
+    //         _rewardHash,
+    //         _claimant,
+    //         _expectedHash
+    //     );
+
+    //     if (remainingValue < minBatcherReward) {
+    //         revert InsufficientBatcherReward(minBatcherReward);
+    //     }
+
+    //     fulfilled[_expectedHash] = ClaimantAndBatcherReward(
+    //         _claimant,
+    //         uint96(remainingValue)
+    //     );
+
+    //     return results;
+    // }
+
+    // /**
+    //  * @notice Sends a batch of fulfilled intents to the mailbox
+    //  * @dev Intent hashes must correspond to fulfilled intents from specified source chain
+    //  * @param _sourceChainID Chain ID of the source chain
+    //  * @param _prover Address of the hyperprover on the source chain
+    //  * @param _intentHashes Hashes of the intents to be proven
+    //  */
+    // function sendBatch(
+    //     uint256 _sourceChainID,
+    //     address _prover,
+    //     bytes32[] calldata _intentHashes
+    // ) external payable {
+    //     sendBatchWithRelayer(
+    //         _sourceChainID,
+    //         _prover,
+    //         _intentHashes,
+    //         bytes(""),
+    //         address(0)
+    //     );
+    // }
+
+    // /**
+    //  * @notice Sends a batch of fulfilled intents to the mailbox with relayer support
+    //  * @dev Intent hashes must correspond to fulfilled intents from specified source chain
+    //  * @param _sourceChainID Chain ID of the source chain
+    //  * @param _prover Address of the hyperprover on the source chain
+    //  * @param _intentHashes Hashes of the intents to be proven
+    //  * @param _metadata Metadata for postDispatchHook
+    //  * @param _postDispatchHook Address of postDispatchHook
+    //  */
+    // function sendBatchWithRelayer(
+    //     uint256 _sourceChainID,
+    //     address _prover,
+    //     bytes32[] calldata _intentHashes,
+    //     bytes memory _metadata,
+    //     address _postDispatchHook
+    // ) public payable {
+    //     uint256 size = _intentHashes.length;
+    //     address[] memory claimants = new address[](size);
+    //     uint256 reward = 0;
+    //     for (uint256 i = 0; i < size; ++i) {
+    //         ClaimantAndBatcherReward storage fulfillment = fulfilled[
+    //             _intentHashes[i]
+    //         ];
+    //         address claimant = fulfillment.claimant;
+    //         reward += fulfillment.reward;
+    //         fulfillment.reward = 0;
+
+    //         if (claimant == address(0)) {
+    //             revert IntentNotFulfilled(_intentHashes[i]);
+    //         }
+    //         claimants[i] = claimant;
+    //     }
+
+    //     emit BatchSent(_intentHashes, _sourceChainID);
+
+    //     bytes memory messageBody = abi.encode(_intentHashes, claimants);
+    //     bytes32 _prover32 = _prover.addressToBytes32();
+    //     uint256 fee = fetchFee(
+    //         _sourceChainID,
+    //         _prover32,
+    //         messageBody,
+    //         _metadata,
+    //         _postDispatchHook
+    //     );
+    //     if (msg.value < fee) {
+    //         revert InsufficientFee(fee);
+    //     }
+    //     (bool success, ) = payable(msg.sender).call{
+    //         value: msg.value + reward - fee
+    //     }("");
+    //     if (!success) {
+    //         revert NativeTransferFailed();
+    //     }
+    //     // Use the same helper function to handle dispatch logic and reduce stack depth
+    //     _dispatchMessage(
+    //         uint32(_sourceChainID),
+    //         _prover32,
+    //         messageBody,
+    //         _metadata,
+    //         _postDispatchHook,
+    //         fee
+    //     );
+    // }
+
+    // /**
+    //  * @notice Quotes the fee required for message dispatch
+    //  * @dev Used to determine fees for fulfillHyperInstant or sendBatch
+    //  * @param _sourceChainID Chain ID of the source chain
+    //  * @param _prover Address of the hyperprover on the source chain
+    //  * @param _messageBody Message being sent over the bridge
+    //  * @param _metadata Metadata for postDispatchHook
+    //  * @param _postDispatchHook Address of postDispatchHook
+    //  * @return fee The required fee amount
+    //  */
+    // function fetchFee(
+    //     uint256 _sourceChainID,
+    //     bytes32 _prover,
+    //     bytes memory _messageBody,
+    //     bytes memory _metadata,
+    //     address _postDispatchHook
+    // ) public view returns (uint256 fee) {
+    //     return (
+    //         _postDispatchHook == address(0)
+    //             ? IMailbox(mailbox).quoteDispatch(
+    //                 uint32(_sourceChainID),
+    //                 _prover,
+    //                 _messageBody
+    //             )
+    //             : IMailbox(mailbox).quoteDispatch(
+    //                 uint32(_sourceChainID),
+    //                 _prover,
+    //                 _messageBody,
+    //                 _metadata,
+    //                 IPostDispatchHook(_postDispatchHook)
+    //             )
+    //     );
+    // }
 
     /**
      * @notice Sets the mailbox address
@@ -484,41 +659,41 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Ownable, Semver {
         }
         return (results, remainingValue);
     }
-    
-    /**
-     * @notice Helper function to dispatch messages to the mailbox
-     * @dev Extracts the dispatch logic to reduce stack depth in calling functions
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _prover32 Prover address as bytes32
-     * @param _messageBody Message body to dispatch
-     * @param _metadata Metadata for postDispatchHook
-     * @param _postDispatchHook Address of postDispatchHook
-     * @param _fee Fee to be paid for the dispatch
-     */
-    function _dispatchMessage(
-        uint32 _sourceChainId,
-        bytes32 _prover32,
-        bytes memory _messageBody,
-        bytes memory _metadata,
-        address _postDispatchHook,
-        uint256 _fee
-    ) internal {
-        if (_postDispatchHook == address(0)) {
-            IMailbox(mailbox).dispatch{value: _fee}(
-                _sourceChainId,
-                _prover32,
-                _messageBody
-            );
-        } else {
-            IMailbox(mailbox).dispatch{value: _fee}(
-                _sourceChainId,
-                _prover32,
-                _messageBody,
-                _metadata,
-                IPostDispatchHook(_postDispatchHook)
-            );
-        }
-    }
+
+    // /**
+    //  * @notice Helper function to dispatch messages to the mailbox
+    //  * @dev Extracts the dispatch logic to reduce stack depth in calling functions
+    //  * @param _sourceChainId Chain ID of the source chain
+    //  * @param _prover32 Prover address as bytes32
+    //  * @param _messageBody Message body to dispatch
+    //  * @param _metadata Metadata for postDispatchHook
+    //  * @param _postDispatchHook Address of postDispatchHook
+    //  * @param _fee Fee to be paid for the dispatch
+    //  */
+    // function _dispatchMessage(
+    //     uint32 _sourceChainId,
+    //     bytes32 _prover32,
+    //     bytes memory _messageBody,
+    //     bytes memory _metadata,
+    //     address _postDispatchHook,
+    //     uint256 _fee
+    // ) internal {
+    //     if (_postDispatchHook == address(0)) {
+    //         IMailbox(mailbox).dispatch{value: _fee}(
+    //             _sourceChainId,
+    //             _prover32,
+    //             _messageBody
+    //         );
+    //     } else {
+    //         IMailbox(mailbox).dispatch{value: _fee}(
+    //             _sourceChainId,
+    //             _prover32,
+    //             _messageBody,
+    //             _metadata,
+    //             IPostDispatchHook(_postDispatchHook)
+    //         );
+    //     }
+    // }
 
     receive() external payable {}
 }
