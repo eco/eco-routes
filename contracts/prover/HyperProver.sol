@@ -60,6 +60,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Initializes the HyperProver contract
      * @param _mailbox Address of local Hyperlane mailbox
      * @param _inbox Address of Inbox contract
+     * @param _provers Array of trusted provers to whitelist
      */
     constructor(address _mailbox, address _inbox, address[] memory _provers) {
         MAILBOX = _mailbox;
@@ -204,15 +205,16 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
             IPostDispatchHook hook
         )
     {
-        uint32 domain = uint32(_sourceChainId);
-        bytes32 recipient = TypeCasts.addressToBytes32(_sourceChainProver);
-        bytes memory message = abi.encode(hashes, claimants);
+        domain = uint32(_sourceChainId);
+        recipient = TypeCasts.addressToBytes32(_sourceChainProver);
+        message = abi.encode(hashes, claimants);
 
-        (bytes memory metadata, address hookAddr) = abi.decode(
+        (bytes memory metadataDecoded, address hookAddr) = abi.decode(
             _data,
             (bytes, address)
         );
-        IPostDispatchHook hook = (hookAddr == address(0))
+        metadata = metadataDecoded;
+        hook = (hookAddr == address(0))
             ? IMailbox(MAILBOX).defaultHook()
             : IPostDispatchHook(hookAddr);
     }

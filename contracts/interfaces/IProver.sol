@@ -10,7 +10,6 @@ import {ISemver} from "./ISemver.sol";
  * proof mechanisms (storage or Hyperlane)
  */
 interface IProver is ISemver {
-
     /**
      * @notice Emitted when an intent is successfully proven
      * @param _hash Hash of the proven intent
