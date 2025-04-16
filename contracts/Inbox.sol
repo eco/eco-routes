@@ -248,6 +248,8 @@ contract Inbox is IInbox, Ownable, Semver {
             revert NativeTransferFailed();
         }
 
+        emit BatchSent(_intentHashes, _sourceChainID);
+
         MessageBridgeProver(_localProver).initiateProving{value: fee}(
             _sourceChainID,
             _intentHashes,

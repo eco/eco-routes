@@ -24,7 +24,7 @@ import {
   TokenAmount,
 } from '../utils/intent'
 
-describe.only('Inbox Test', (): void => {
+describe('Inbox Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
   let erc20: TestERC20
@@ -189,7 +189,10 @@ describe.only('Inbox Test', (): void => {
     })
     it('lets owner make solving public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
-      await inbox.connect(owner).makeSolvingPublic()
+      await expect(inbox.connect(owner).makeSolvingPublic()).to.emit(
+        inbox,
+        'SolvingIsPublic',
+      )
       expect(await inbox.isSolvingPublic()).to.be.true
     })
     it('lets owner change the solver whitelist', async () => {
@@ -722,17 +725,19 @@ describe.only('Inbox Test', (): void => {
               await mockProver.getAddress(),
               data,
               {
-                value: Number(fee) + 1,
+                value: fee + excess,
               },
             ),
-        ).to.not.be.reverted
+        )
+          .to.emit(inbox, 'BatchSent')
+          .withArgs(intentHash, sourceChainID)
         expect(
           await ethers.provider.getBalance(await inbox.getAddress()),
         ).to.eq(0)
 
         // Verify solver got a refund (not checking exact amount due to gas costs)
         expect(await ethers.provider.getBalance(solver.address)).to.greaterThan(
-          initialSolverbalance - fee,
+          initialSolverbalance - fee - excess,
         )
         expect(await mockProver.dispatched()).to.be.true
       })
@@ -770,27 +775,22 @@ describe.only('Inbox Test', (): void => {
           data,
         )
 
-        await expect(
-          inbox
-            .connect(solver)
-            .messageBridgeSendBatch(
-              sourceChainID,
-              await mockProver.getAddress(),
-              [intentHash],
-              await mockProver.getAddress(),
-              await mockProver.getAddress(),
-              data,
-              {
-                value: Number(fee),
-              },
-            ),
-        )
-          .to.emit(inbox, 'BatchSent')
-          .withArgs(intentHash, sourceChainID)
-
-        expect(
-          await ethers.provider.getBalance(await inbox.getAddress()),
-        ).to.eq(initialBalance - BigInt(await inbox.minBatcherReward()))
+        await inbox
+          .connect(solver)
+          .messageBridgeSendBatch(
+            sourceChainID,
+            await mockProver.getAddress(),
+            [intentHash],
+            await mockProver.getAddress(),
+            await mockProver.getAddress(),
+            data,
+            {
+              value: Number(fee),
+            },
+          ),
+          expect(
+            await ethers.provider.getBalance(await inbox.getAddress()),
+          ).to.eq(initialBalance - BigInt(await inbox.minBatcherReward()))
 
         expect(await mockProver.lastSourceChainId()).to.eq(sourceChainID)
 

@@ -116,11 +116,6 @@ interface IInbox is ISemver {
     error WrongChain(uint256 _chainID);
 
     /**
-     * @notice Intent has expired and can no longer be fulfilled
-     */
-    error IntentExpired();
-
-    /**
      * @notice Intent has already been fulfilled
      * @param _hash Hash of the fulfilled intent
      */
@@ -167,11 +162,6 @@ interface IInbox is ISemver {
      * @param _EOA EOA address to which call was attempted
      */
     error CallToEOA(address _EOA);
-
-    /**
-     * @notice Unauthorized attempt to transfer native tokens
-     */
-    error UnauthorizedTransferNative();
 
     /**
      * @notice Attempted to batch an unfulfilled intent
