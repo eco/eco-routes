@@ -123,6 +123,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
             revert UnauthorizedInitiateProving(msg.sender);
         }
 
+        emit BatchSent(_intentHashes, _sourceChainId);
+
         (
             uint32 destinationDomain,
             bytes32 recipientAddress,
