@@ -375,16 +375,6 @@ Parameters:
 
 <ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
 
-<h4><ins>setMailbox</ins></h4>
-
-<h5>Sets the HyperLane Mailbox address to be used for all HyperProving fulfills.</h5>
-
-Parameters:
-
-- `_mailbox` (address) the address of the mailbox.
-
-<ins>Security:</ins> This method can only be called by the owner of the Inbox, and can only be called if the current mailbox address is the zero address. It is intended to be called at time of construction.
-
 <h4><ins>makeSolvingPublic</ins></h4>
 
 <h5>Opens up solving functionality to all addresses if it is currently restricted to a whitelist.</h5>

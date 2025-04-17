@@ -181,9 +181,6 @@ describe('Inbox Test', (): void => {
         inbox.connect(solver).changeSolverWhitelist(owner.address, true),
       ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
       await expect(
-        inbox.connect(solver).setMailbox(await mailbox.getAddress()),
-      ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
-      await expect(
         inbox.connect(solver).setMinBatcherReward(54321),
       ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
     })
@@ -202,16 +199,6 @@ describe('Inbox Test', (): void => {
       await inbox.connect(owner).changeSolverWhitelist(owner.address, true)
       expect(await inbox.solverWhitelist(solver)).to.be.false
       expect(await inbox.solverWhitelist(owner)).to.be.true
-    })
-
-    it('lets owner set mailbox, but only when it is the zero address', async () => {
-      expect(await inbox.mailbox()).to.eq(ethers.ZeroAddress)
-      expect(await inbox.connect(owner).setMailbox(await mailbox.getAddress()))
-        .to.emit(inbox, 'MailboxSet')
-        .withArgs(await mailbox.getAddress())
-      expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
-      await inbox.connect(owner).setMailbox(solver.address)
-      expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
     })
     it('lets owner set minBatchReward', async () => {
       expect(await inbox.minBatcherReward()).to.eq(minBatcherReward)
@@ -311,13 +298,12 @@ describe('Inbox Test', (): void => {
           .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
-    it('should revert if any of the targets is the mailbox', async () => {
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
+    it('should revert if any of the targets is a prover', async () => {
       const _route = {
         ...route,
         calls: [
           {
-            target: await mailbox.getAddress(),
+            target: await mockProver.getAddress(),
             data: '0x',
             value: 0,
           },
@@ -329,7 +315,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillStorage(_route, rewardHash, dstAddr.address, _intentHash),
-      ).to.be.revertedWithCustomError(inbox, 'CallToMailbox')
+      ).to.be.revertedWithCustomError(inbox, 'CallToProver')
     })
     it('should revert if one of the targets is an EOA', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
@@ -433,7 +419,6 @@ describe('Inbox Test', (): void => {
       mockProver = await (
         await ethers.getContractFactory('TestMessageBridgeProver')
       ).deploy([])
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       expect(await mockProver.dispatched()).to.be.false
 
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
@@ -653,7 +638,6 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .messageBridgeSendBatch(
               sourceChainID,
-              await mockProver.getAddress(),
               hashes,
               await mockProver.getAddress(),
               await mockProver.getAddress(),
@@ -699,7 +683,6 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .messageBridgeSendBatch(
               sourceChainID,
-              await mockProver.getAddress(),
               [intentHash],
               await mockProver.getAddress(),
               await mockProver.getAddress(),
@@ -719,7 +702,6 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .messageBridgeSendBatch(
               sourceChainID,
-              await mockProver.getAddress(),
               [intentHash],
               await mockProver.getAddress(),
               await mockProver.getAddress(),
@@ -779,7 +761,6 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .messageBridgeSendBatch(
             sourceChainID,
-            await mockProver.getAddress(),
             [intentHash],
             await mockProver.getAddress(),
             await mockProver.getAddress(),
@@ -872,7 +853,6 @@ describe('Inbox Test', (): void => {
             .connect(solver)
             .messageBridgeSendBatch(
               sourceChainID,
-              await mockProver.getAddress(),
               [intentHash, otherHash],
               await mockProver.getAddress(),
               await mockProver.getAddress(),

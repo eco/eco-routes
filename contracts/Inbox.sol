@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {MessageBridgeProver} from "./prover/MessageBridgeProver.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -22,14 +22,13 @@ contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 
+    bytes4 public constant IPROVER_INTERFACE_ID = 0xd8e1f34f; //type(IProver).interfaceId
+
     // Mapping of intent hash on the src chain to its fulfillment
     mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
 
     // Mapping of solvers to if they are whitelisted
     mapping(address => bool) public solverWhitelist;
-
-    // address of local hyperlane mailbox
-    address public mailbox;
 
     // Is solving public
     bool public isSolvingPublic;
@@ -201,14 +200,13 @@ contract Inbox is IInbox, Ownable, Semver {
      * @notice initiates proving of a batch of fulfilled intents
      * @dev Intent hashes must correspond to fulfilled intents from specified source chain
      * @param _sourceChainID Chain ID of the source chain
-     * @param _prover Address of the hyperprover on the source chain
+
      * @param _intentHashes Hashes of the intents to be proven
      * @param _localProver Address of prover on the destination chain
      * @param _sourceChainProver Address of prover on the source chain
      */
     function messageBridgeSendBatch(
         uint256 _sourceChainID,
-        address _prover,
         bytes32[] calldata _intentHashes,
         address _localProver,
         address _sourceChainProver,
@@ -257,18 +255,6 @@ contract Inbox is IInbox, Ownable, Semver {
             _sourceChainProver,
             _data
         );
-    }
-
-    /**
-     * @notice Sets the mailbox address
-     * @dev Can only be called when mailbox is not set
-     * @param _mailbox Address of the Hyperlane mailbox
-     */
-    function setMailbox(address _mailbox) public onlyOwner {
-        if (mailbox == address(0)) {
-            mailbox = _mailbox;
-            emit MailboxSet(_mailbox);
-        }
     }
 
     /**
@@ -371,9 +357,9 @@ contract Inbox is IInbox, Ownable, Semver {
                 // no code at this address
                 revert CallToEOA(call.target);
             }
-            if (call.target == mailbox) {
-                // no executing calls on the mailbox
-                revert CallToMailbox();
+            if (IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)) {
+                // no executing calls on the prover
+                revert CallToProver();
             }
             (bool success, bytes memory result) = call.target.call{
                 value: call.value

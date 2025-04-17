@@ -243,14 +243,6 @@ export async function deployInbox(
     )
   }, ethers.provider)) as any as Inbox
 
-  await retryFunction(async () => {
-    return await inbox
-      .connect(inboxOwnerSigner)
-      .setMailbox(deployNetwork.hyperlaneMailboxAddress, {
-        gasLimit: deployNetwork.gasLimit,
-      })
-  }, ethers.provider)
-
   console.log(`${contractName} implementation deployed to: `, inboxAddress)
   addJsonAddress(deployNetwork, `${contractName}`, inboxAddress)
   verifyContract(ethers.provider, contractName, inboxAddress, args)
