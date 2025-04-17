@@ -148,9 +148,9 @@ interface IInbox is ISemver {
     );
 
     /**
-     * @notice Attempted call to Hyperlane mailbox
+     * @notice Attempted call to a destination-chain prover
      */
-    error CallToMailbox();
+    error CallToProver();
 
     /**
      * @notice Attempted call to an EOA
@@ -233,14 +233,12 @@ interface IInbox is ISemver {
      * @notice initiates proving of a batch of fulfilled intents
      * @dev Intent hashes must correspond to fulfilled intents from specified source chain
      * @param _sourceChainID Chain ID of the source chain
-     * @param _prover Address of the hyperprover on the source chain
      * @param _intentHashes Hashes of the intents to be proven
      * @param _localProver Address of prover on the destination chain
      * @param _sourceChainProver Address of prover on the source chain
      */
     function messageBridgeSendBatch(
         uint256 _sourceChainID,
-        address _prover,
         bytes32[] calldata _intentHashes,
         address _localProver,
         address _sourceChainProver,

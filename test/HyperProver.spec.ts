@@ -219,7 +219,6 @@ describe('HyperProver Test', (): void => {
       ).deploy(await mailbox.getAddress(), owner.address, [
         await inbox.getAddress(),
       ])
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
     })
 
     it('should reject initiateProving from unauthorized source', async () => {
@@ -319,7 +318,6 @@ describe('HyperProver Test', (): void => {
 
   describe('4. End-to-End', () => {
     it('works end to end with message bridge', async () => {
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
@@ -435,7 +433,6 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
-      await inbox.connect(owner).setMailbox(await mailbox.getAddress())
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
@@ -591,7 +588,6 @@ describe('HyperProver Test', (): void => {
           .connect(solver)
           .messageBridgeSendBatch(
             sourceChainID,
-            await hyperProver.getAddress(),
             [intentHash0, intentHash1],
             await hyperProver.getAddress(),
             await hyperProver.getAddress(),

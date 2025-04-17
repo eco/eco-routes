@@ -107,11 +107,6 @@ contract Deploy is Script {
             );
 
             console.log("Inbox :", ctx.inbox);
-
-            if (!wasInboxDeployed) {
-                // Set Hyperlane Mailbox contract address
-                Inbox(payable(ctx.inbox)).setMailbox(ctx.mailbox);
-            }
         }
 
         // Deploy HyperProver - using a code block to manage variable lifetimes
