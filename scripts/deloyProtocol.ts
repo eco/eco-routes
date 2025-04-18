@@ -61,6 +61,7 @@ export function getEmptyProtocolDeploy(): ProtocolDeploy {
 }
 export type DeployProtocolOptions = {
   isSolvingPublic: boolean
+  minBatcherReward?: number
   deployPre?: boolean
 }
 
@@ -110,6 +111,7 @@ export async function deployProtocol(
       deployNetwork,
       deployer,
       options.isSolvingPublic,
+      options.minBatcherReward ? options.minBatcherReward : 0,
       [solver],
       salt,
       singletonDeployer,
@@ -206,13 +208,19 @@ export async function deployInbox(
   deployNetwork: DeployNetwork,
   inboxOwnerSigner: Signer,
   isSolvingPublic: boolean,
+  minBatcherReward: number,
   solvers: Hex[],
   deploySalt: string,
   singletonDeployer: Deployer,
 ) {
   const contractName = 'Inbox'
   const inboxFactory = await ethers.getContractFactory(contractName)
-  const args = [await inboxOwnerSigner.getAddress(), isSolvingPublic, solvers]
+  const args = [
+    await inboxOwnerSigner.getAddress(),
+    isSolvingPublic,
+    minBatcherReward,
+    solvers,
+  ]
   // on testnet inboxOwner is the deployer, just to make things easier
   const inboxTx = (await retryFunction(async () => {
     return await inboxFactory.getDeployTransaction(
@@ -242,14 +250,6 @@ export async function deployInbox(
       inboxOwnerSigner,
     )
   }, ethers.provider)) as any as Inbox
-
-  await retryFunction(async () => {
-    return await inbox
-      .connect(inboxOwnerSigner)
-      .setMailbox(deployNetwork.hyperlaneMailboxAddress, {
-        gasLimit: deployNetwork.gasLimit,
-      })
-  }, ethers.provider)
 
   console.log(`${contractName} implementation deployed to: `, inboxAddress)
   addJsonAddress(deployNetwork, `${contractName}`, inboxAddress)

@@ -2,6 +2,9 @@
 pragma solidity ^0.8.13;
 
 import {IProver} from "../interfaces/IProver.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
+import {console} from "hardhat/console.sol";
 
 /**
  * @title BaseProver
@@ -9,7 +12,7 @@ import {IProver} from "../interfaces/IProver.sol";
  * @dev Provides core storage and functionality for tracking proven intents
  * and their claimants
  */
-abstract contract BaseProver is IProver {
+abstract contract BaseProver is IProver, ERC165 {
     /**
      * @notice Mapping from intent hash to address eligible to claim rewards
      * @dev Zero address indicates intent hasn't been proven
@@ -25,5 +28,17 @@ abstract contract BaseProver is IProver {
         bytes32 intentHash
     ) external view override returns (address) {
         return provenIntents[intentHash];
+    }
+
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override returns (bool) {
+        return
+            interfaceId == type(IProver).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
+    function oy() public pure {
+        console.logBytes4(type(IProver).interfaceId);
     }
 }
