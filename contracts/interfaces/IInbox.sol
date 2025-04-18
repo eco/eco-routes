@@ -237,7 +237,7 @@ interface IInbox is ISemver {
      * @param _localProver Address of prover on the destination chain
      * @param _sourceChainProver Address of prover on the source chain
      */
-    function messageBridgeSendBatch(
+    function sendFulfilled(
         uint256 _sourceChainID,
         bytes32[] calldata _intentHashes,
         address _localProver,

@@ -586,7 +586,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .messageBridgeSendBatch(
+          .sendFulfilled(
             sourceChainID,
             [intentHash0, intentHash1],
             await hyperProver.getAddress(),

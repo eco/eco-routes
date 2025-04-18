@@ -570,7 +570,7 @@ describe('Inbox Test', (): void => {
       expect(claimant).to.equal(dstAddr.address)
     })
 
-    context('messageBridgeSendBatch', async () => {
+    context('sendFulfilled', async () => {
       it('should revert if sending a batch containing an intent that has not been fulfilled', async () => {
         const hashes: string[] = [intentHash]
         const metadata = '0x1234'
@@ -582,7 +582,7 @@ describe('Inbox Test', (): void => {
         await expect(
           inbox
             .connect(solver)
-            .messageBridgeSendBatch(
+            .sendFulfilled(
               sourceChainID,
               hashes,
               await mockProver.getAddress(),
@@ -626,7 +626,7 @@ describe('Inbox Test', (): void => {
         await expect(
           inbox
             .connect(solver)
-            .messageBridgeSendBatch(
+            .sendFulfilled(
               sourceChainID,
               [intentHash],
               await mockProver.getAddress(),
@@ -645,7 +645,7 @@ describe('Inbox Test', (): void => {
         await expect(
           inbox
             .connect(solver)
-            .messageBridgeSendBatch(
+            .sendFulfilled(
               sourceChainID,
               [intentHash],
               await mockProver.getAddress(),
@@ -703,7 +703,7 @@ describe('Inbox Test', (): void => {
 
         await inbox
           .connect(solver)
-          .messageBridgeSendBatch(
+          .sendFulfilled(
             sourceChainID,
             [intentHash],
             await mockProver.getAddress(),
@@ -783,7 +783,7 @@ describe('Inbox Test', (): void => {
         await expect(
           inbox
             .connect(solver)
-            .messageBridgeSendBatch(
+            .sendFulfilled(
               sourceChainID,
               [intentHash, otherHash],
               await mockProver.getAddress(),
