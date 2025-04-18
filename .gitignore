@@ -81,6 +81,7 @@ executeInstructions.ts
 #Publish artifacts
 package
 libTest
+verification-keys.json
 
 # docs
 docs
@@ -104,3 +105,6 @@ output/proofGenerationOutput.json
 .idea/
 
 broadcast/
+
+# Local configs
+CLAUDE.md
