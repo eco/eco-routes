@@ -104,15 +104,18 @@ jobs:
           cmd: deployForgeCI
         env:
           PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-          CHAIN_IDS: "1,10,137,5000,8453,42161,84532,11155111,11155420"
+          CHAIN_IDS: "1,10,130,137,5000,8453,42161,42220,57073,84532,11155111,11155420"
 
           # RPC URLs
           RPC_URL_1: "https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_10: "https://opt-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_130: "https://unichain-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_137: "https://polygon-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_8453: "https://base-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_5000: "https://mantle-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_42161: "https://arb-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_42220: "https://ancient-quaint-layer.celo-mainnet.quiknode.pro/${{ secrets.QUICKNODE_API_KEY }}"
+          RPC_URL_57073: "https://ink-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           # Testnets
           RPC_URL_84532: "https://base-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_11155111: "https://eth-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
@@ -121,10 +124,13 @@ jobs:
           # Etherscan API Keys
           ETHERSCAN_API_KEY_1: ${{ secrets.ETHERSCAN_API_KEY }}
           ETHERSCAN_API_KEY_10: ${{ secrets.OPTIMISM_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_130: ${{ secrets.UNISCAN_API_KEY }}"
           ETHERSCAN_API_KEY_137: ${{ secrets.POLYGON_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_5000: ${{ secrets.MANTLE_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_8453: ${{ secrets.BASE_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_42161: ${{ secrets.ARBSCAN_API_KEY }}
+          ETHERSCAN_API_KEY_42220: ${{ secrets.CELO_SCAN_API_KEY }}
+          ETHERSCAN_API_KEY_57073: "Dummy" # API Key is not needed
           # Testnets
           ETHERSCAN_API_KEY_84532: ${{ secrets.BASE_SCAN_API_KEY }}
           ETHERSCAN_API_KEY_11155111: ${{ secrets.ETHERSCAN_API_KEY }}
@@ -133,10 +139,13 @@ jobs:
           # Hyperlane Mailbox addresses
           MAILBOX_1: "0xc005dc82818d67AF737725bD4bf75435d065D239"
           MAILBOX_10: "0xd4C1905BB1D26BC93DAC913e13CaCC278CdCC80D"
+          MAILBOX_130: "0x3a464f746D23Ab22155710f44dB16dcA53e0775E"
           MAILBOX_137: "0x5d934f4e2f797775e53561bB72aca21ba36B96BB"
           MAILBOX_5000: "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
           MAILBOX_8453: "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
           MAILBOX_42161: "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
+          MAILBOX_42220: "0x50da3B3907A08a24fe4999F4Dcf337E8dC7954bb"
+          MAILBOX_57073: "0x7f50C5776722630a0024fAE05fDe8b47571D7B39"
           # Testnets
           MAILBOX_84532: "0x6966b0E55883d49BFB24539356a2f8A673E02039"
           MAILBOX_11155111: "0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766"
