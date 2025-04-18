@@ -12,11 +12,6 @@ import {Route} from "../types/Intent.sol";
  * Hyperlane instant/batched)
  */
 interface IInbox is ISemver {
-    struct ClaimantAndBatcherReward {
-        address claimant;
-        uint96 reward;
-    }
-
     /**
      * @notice Emitted when an intent is successfully fulfilled
      * @param _hash Hash of the fulfilled intent
@@ -174,12 +169,6 @@ interface IInbox is ISemver {
      * @param _requiredFee Amount of fee required
      */
     error InsufficientFee(uint256 _requiredFee);
-
-    /**
-     * @notice Insufficient batcher reward provided for batch fulfillment
-     * @param _minReward minimum reward required
-     */
-    error InsufficientBatcherReward(uint96 _minReward);
 
     /**
      * @notice Native token transfer failed

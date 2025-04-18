@@ -22,8 +22,8 @@ contract Inbox is IInbox, Ownable, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 
-    // Mapping of intent hash on the src chain to its fulfillment
-    mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
+    // Mapping of intent hash on the src chain to its claimant
+    mapping(bytes32 => address) public fulfilled;
 
     // Mapping of solvers to if they are whitelisted
     mapping(address => bool) public solverWhitelist;
@@ -71,17 +71,14 @@ contract Inbox is IInbox, Ownable, Semver {
         address _claimant,
         bytes32 _expectedHash
     ) public payable override returns (bytes[] memory) {
-        (bytes[] memory result, ) = _fulfill(
+        bytes[] memory result = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
         );
 
-        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
-            _claimant,
-            uint96(0)
-        );
+        fulfilled[_expectedHash] = _claimant;
 
         emit ToBeProven(_expectedHash, _route.source, _claimant);
 
@@ -106,17 +103,14 @@ contract Inbox is IInbox, Ownable, Semver {
         address _sourceChainProver,
         bytes calldata _data
     ) public payable returns (bytes[] memory) {
-        (bytes[] memory results, uint256 currentBalance) = _fulfill(
+        bytes[] memory results = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
         );
 
-        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
-            _claimant,
-            uint96(0)
-        );
+        fulfilled[_expectedHash] = _claimant;
 
         bytes32[] memory hashes = new bytes32[](1);
         address[] memory claimants = new address[](1);
@@ -130,6 +124,7 @@ contract Inbox is IInbox, Ownable, Semver {
             _sourceChainProver,
             _data
         );
+        uint256 currentBalance = address(this).balance;
         if (currentBalance < fee) {
             revert InsufficientFee(fee);
         }
@@ -178,21 +173,14 @@ contract Inbox is IInbox, Ownable, Semver {
             _sourceChainProver
         );
 
-        (bytes[] memory results, uint256 remainingValue) = _fulfill(
+        bytes[] memory results = _fulfill(
             _route,
             _rewardHash,
             _claimant,
             _expectedHash
         );
 
-        if (remainingValue < minBatcherReward) {
-            revert InsufficientBatcherReward(minBatcherReward);
-        }
-
-        fulfilled[_expectedHash] = ClaimantAndBatcherReward(
-            _claimant,
-            uint96(remainingValue)
-        );
+        fulfilled[_expectedHash] = _claimant;
 
         return results;
     }
@@ -216,14 +204,8 @@ contract Inbox is IInbox, Ownable, Semver {
     ) public payable {
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
-        uint256 reward = 0;
         for (uint256 i = 0; i < size; ++i) {
-            ClaimantAndBatcherReward storage fulfillment = fulfilled[
-                _intentHashes[i]
-            ];
-            address claimant = fulfillment.claimant;
-            reward += fulfillment.reward;
-            fulfillment.reward = 0;
+            address claimant = fulfilled[_intentHashes[i]];
 
             if (claimant == address(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
@@ -241,9 +223,7 @@ contract Inbox is IInbox, Ownable, Semver {
         if (msg.value < fee) {
             revert InsufficientFee(fee);
         }
-        (bool success, ) = payable(msg.sender).call{
-            value: msg.value + reward - fee
-        }("");
+        (bool success, ) = payable(msg.sender).call{value: msg.value - fee}("");
         if (!success) {
             revert NativeTransferFailed();
         }
@@ -319,7 +299,7 @@ contract Inbox is IInbox, Ownable, Semver {
         bytes32 _rewardHash,
         address _claimant,
         bytes32 _expectedHash
-    ) internal returns (bytes[] memory, uint256) {
+    ) internal returns (bytes[] memory) {
         if (_route.destination != block.chainid) {
             revert WrongChain(_route.destination);
         }
@@ -339,7 +319,7 @@ contract Inbox is IInbox, Ownable, Semver {
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
         }
-        if (fulfilled[intentHash].claimant != address(0)) {
+        if (fulfilled[intentHash] != address(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
         if (_claimant == address(0)) {
@@ -362,9 +342,6 @@ contract Inbox is IInbox, Ownable, Semver {
         // Store the results of the calls
         bytes[] memory results = new bytes[](_route.calls.length);
 
-        // Remaining value after executing calls
-        uint256 remainingValue = msg.value;
-
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
             if (call.target.code.length == 0 && call.data.length > 0) {
@@ -386,10 +363,9 @@ contract Inbox is IInbox, Ownable, Semver {
                     result
                 );
             }
-            remainingValue -= call.value;
             results[i] = result;
         }
-        return (results, remainingValue);
+        return (results);
     }
 
     receive() external payable {}
