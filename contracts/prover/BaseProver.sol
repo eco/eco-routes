@@ -37,8 +37,4 @@ abstract contract BaseProver is IProver, ERC165 {
             interfaceId == type(IProver).interfaceId ||
             super.supportsInterface(interfaceId);
     }
-
-    function oy() public pure {
-        console.logBytes4(type(IProver).interfaceId);
-    }
 }

@@ -33,14 +33,10 @@ describe('Inbox Test', (): void => {
   let dstAddr: SignerWithAddress
   let route: Route
   let reward: Reward
-  let intent: Intent
-  let routeHash: string
   let rewardHash: string
   let intentHash: string
   let otherHash: string
   let routeTokens: TokenAmount[]
-  let calls: Call[]
-  let otherCalls: Call[]
   let mockProver: TestMessageBridgeProver
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
