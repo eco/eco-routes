@@ -47,7 +47,6 @@ describe('Inbox Test', (): void => {
   const timeDelta = 1000
   const mintAmount = 1000
   const sourceChainID = 123
-  const minBatcherReward = 12345
   let fee: BigInt
 
   async function deployInboxFixture(): Promise<{
@@ -63,12 +62,9 @@ describe('Inbox Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(
-      owner.address,
-      false,
-      minBatcherReward,
-      [solver.address],
-    )
+    const inbox = await inboxFactory.deploy(owner.address, false, [
+      solver.address,
+    ])
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -183,9 +179,6 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox.connect(solver).setMailbox(await mailbox.getAddress()),
       ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
-      await expect(
-        inbox.connect(solver).setMinBatcherReward(54321),
-      ).to.be.revertedWithCustomError(inbox, 'OwnableUnauthorizedAccount')
     })
     it('lets owner make solving public', async () => {
       expect(await inbox.isSolvingPublic()).to.be.false
@@ -212,13 +205,6 @@ describe('Inbox Test', (): void => {
       expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
       await inbox.connect(owner).setMailbox(solver.address)
       expect(await inbox.mailbox()).to.eq(await mailbox.getAddress())
-    })
-    it('lets owner set minBatchReward', async () => {
-      expect(await inbox.minBatcherReward()).to.eq(minBatcherReward)
-      await expect(inbox.connect(owner).setMinBatcherReward(54321))
-        .to.emit(inbox, 'MinBatcherRewardSet')
-        .withArgs(54321)
-      expect(await inbox.minBatcherReward()).to.eq(54321)
     })
   })
 
@@ -259,7 +245,7 @@ describe('Inbox Test', (): void => {
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
       const anotherInbox = await (
         await ethers.getContractFactory('Inbox')
-      ).deploy(owner.address, false, minBatcherReward, [owner.address])
+      ).deploy(owner.address, false, [owner.address])
 
       const _route = {
         ...route,
@@ -379,8 +365,8 @@ describe('Inbox Test', (): void => {
     })
 
     it('should succeed with storage proving', async () => {
-      let fulfillment = await inbox.fulfilled(intentHash)
-      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+      let claimant = await inbox.fulfilled(intentHash)
+      expect(claimant).to.equal(ethers.ZeroAddress)
 
       expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
@@ -399,8 +385,8 @@ describe('Inbox Test', (): void => {
         .to.emit(inbox, 'ToBeProven')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
       // should update the fulfilled hash
-      fulfillment = await inbox.fulfilled(intentHash)
-      expect(fulfillment.claimant).to.equal(dstAddr.address)
+      claimant = await inbox.fulfilled(intentHash)
+      expect(claimant).to.equal(dstAddr.address)
 
       // check balances
       expect(await erc20.balanceOf(solver.address)).to.equal(0)
@@ -472,35 +458,6 @@ describe('Inbox Test', (): void => {
             },
           ),
       ).to.be.revertedWithCustomError(inbox, 'InsufficientFee')
-      expect(await mockProver.dispatched()).to.be.false
-    })
-
-    it('should fail to fulfill message bridge batched if msg.value is less than the minimum', async () => {
-      const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes', 'address'],
-        [metadata, ethers.ZeroAddress],
-      )
-
-      expect(await mockProver.dispatched()).to.be.false
-      const fulfillment = await inbox.fulfilled(intentHash)
-      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
-
-      await expect(
-        inbox
-          .connect(solver)
-          .fulfillMessageBridgeBatched(
-            route,
-            rewardHash,
-            dstAddr.address,
-            intentHash,
-            await mockProver.getAddress(),
-            await mockProver.getAddress(),
-            {
-              value: (await inbox.minBatcherReward()) - BigInt(1),
-            },
-          ),
-      ).to.be.revertedWithCustomError(inbox, 'InsufficientBatcherReward')
       expect(await mockProver.dispatched()).to.be.false
     })
 
@@ -597,13 +554,8 @@ describe('Inbox Test', (): void => {
     })
 
     it('should work with message bridge batched', async () => {
-      let fulfillment = await inbox.fulfilled(intentHash)
-      expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
-      expect(fulfillment.reward).to.equal(0)
-
-      const initBalance = await ethers.provider.getBalance(
-        await inbox.getAddress(),
-      )
+      let claimant = await inbox.fulfilled(intentHash)
+      expect(claimant).to.equal(ethers.ZeroAddress)
 
       await expect(
         inbox
@@ -615,7 +567,6 @@ describe('Inbox Test', (): void => {
             intentHash,
             await mockProver.getAddress(),
             await mockProver.getAddress(),
-            { value: minBatcherReward * 2 },
           ),
       )
         .to.emit(inbox, 'Fulfillment')
@@ -630,13 +581,8 @@ describe('Inbox Test', (): void => {
         )
       expect(await mockProver.dispatched()).to.be.false
 
-      fulfillment = await inbox.fulfilled(intentHash)
-      expect(fulfillment.claimant).to.equal(dstAddr.address)
-      expect(fulfillment.reward).to.equal(2 * minBatcherReward)
-
-      expect(await ethers.provider.getBalance(await inbox.getAddress())).to.eq(
-        initBalance + BigInt(2 * minBatcherReward),
-      )
+      claimant = await inbox.fulfilled(intentHash)
+      expect(claimant).to.equal(dstAddr.address)
     })
 
     context('messageBridgeSendBatch', async () => {
@@ -682,7 +628,6 @@ describe('Inbox Test', (): void => {
             intentHash,
             await mockProver.getAddress(),
             await mockProver.getAddress(),
-            { value: minBatcherReward },
           )
         expect(await mockProver.dispatched()).to.be.false
 
@@ -759,7 +704,6 @@ describe('Inbox Test', (): void => {
             intentHash,
             await mockProver.getAddress(),
             await mockProver.getAddress(),
-            { value: minBatcherReward },
           )
         const initialBalance = await ethers.provider.getBalance(
           await inbox.getAddress(),
@@ -787,10 +731,7 @@ describe('Inbox Test', (): void => {
             {
               value: Number(fee),
             },
-          ),
-          expect(
-            await ethers.provider.getBalance(await inbox.getAddress()),
-          ).to.eq(initialBalance - BigInt(await inbox.minBatcherReward()))
+          )
 
         expect(await mockProver.lastSourceChainId()).to.eq(sourceChainID)
 
@@ -808,9 +749,6 @@ describe('Inbox Test', (): void => {
         )
 
         expect(await mockProver.dispatched()).to.be.false
-        const initialBalance = await ethers.provider.getBalance(
-          await inbox.getAddress(),
-        )
 
         await inbox
           .connect(solver)
@@ -821,7 +759,6 @@ describe('Inbox Test', (): void => {
             intentHash,
             await mockProver.getAddress(),
             await mockProver.getAddress(),
-            { value: minBatcherReward },
           )
 
         const newTokenAmount = 12345
@@ -851,13 +788,8 @@ describe('Inbox Test', (): void => {
             otherHash,
             await mockProver.getAddress(),
             await mockProver.getAddress(),
-            { value: minBatcherReward },
           )
         expect(await mockProver.dispatched()).to.be.false
-
-        expect(
-          await ethers.provider.getBalance(await inbox.getAddress()),
-        ).to.eq(initialBalance + BigInt(2 * minBatcherReward))
 
         fee = await mockProver.fetchFee(
           sourceChainID,
@@ -881,7 +813,7 @@ describe('Inbox Test', (): void => {
                 value: Number(fee),
               },
             ),
-        ).to.changeEtherBalance(solver, 2 * minBatcherReward - Number(fee))
+        ).to.changeEtherBalance(solver, -Number(fee))
 
         expect(await mockProver.lastSourceChainId()).to.eq(sourceChainID)
 

@@ -33,7 +33,6 @@ describe('Intent Source Test', (): void => {
   let claimant: SignerWithAddress
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
-  const minBatcherReward = 12345
 
   let salt: BytesLike
   let chainId: number
@@ -66,7 +65,7 @@ describe('Intent Source Test', (): void => {
     const intentSource = await intentSourceFactory.deploy()
     inbox = await (
       await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, false, minBatcherReward, [owner.address])
+    ).deploy(owner.address, false, [owner.address])
 
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')

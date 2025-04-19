@@ -18,7 +18,6 @@ describe('HyperProver Test', (): void => {
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
   const amount: number = 1234567890
-  const minBatcherReward = 12345
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
   async function deployHyperproverFixture(): Promise<{
@@ -36,7 +35,7 @@ describe('HyperProver Test', (): void => {
 
     const inbox = await (
       await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, true, minBatcherReward, [])
+    ).deploy(owner.address, true, [])
 
     const token = await (
       await ethers.getContractFactory('TestERC20')
@@ -507,7 +506,6 @@ describe('HyperProver Test', (): void => {
             intentHash0,
             await hyperProver.getAddress(),
             await hyperProver.getAddress(),
-            { value: minBatcherReward },
           ),
       )
         .to.emit(inbox, 'AddToBatch')
@@ -561,7 +559,6 @@ describe('HyperProver Test', (): void => {
             intentHash1,
             await hyperProver.getAddress(),
             await hyperProver.getAddress(),
-            { value: minBatcherReward },
           ),
       ).to.emit(inbox, 'AddToBatch')
 
@@ -601,7 +598,7 @@ describe('HyperProver Test', (): void => {
             data,
             { value: fee },
           ),
-      ).to.changeEtherBalance(solver, 2 * minBatcherReward - Number(fee))
+      ).to.changeEtherBalance(solver, -Number(fee))
 
       //the testMailbox's dispatch method directly calls the hyperProver's handle method
       expect(await hyperProver.provenIntents(intentHash0)).to.eq(
