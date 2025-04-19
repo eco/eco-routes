@@ -77,13 +77,6 @@ async function main() {
     )[0].args.addr
 
     console.log(`inbox deployed to: ${inboxAddress}`)
-
-    const inbox = await ethers.getContractAt('Inbox', inboxAddress)
-
-    receipt = await inbox.setMailbox(deployNetwork.hyperlaneMailboxAddress)
-    await receipt.wait()
-
-    console.log(`Mailbox set to ${deployNetwork.hyperlaneMailboxAddress}`)
   }
 
   if (hyperProverAddress === '' && inboxAddress !== '') {
