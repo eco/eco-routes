@@ -34,9 +34,6 @@ contract Inbox is IInbox, Ownable, Semver {
     // Is solving public
     bool public isSolvingPublic;
 
-    // minimum reward to be included in a fulfillHyperBatched tx, to be paid out to the sender of the batch
-    uint96 public minBatcherReward;
-
     /**
      * @notice Initializes the Inbox contract
      * @param _owner Address with access to privileged functions
@@ -46,11 +43,9 @@ contract Inbox is IInbox, Ownable, Semver {
     constructor(
         address _owner,
         bool _isSolvingPublic,
-        uint96 _minBatcherReward,
         address[] memory _solvers
     ) Ownable(_owner) {
         isSolvingPublic = _isSolvingPublic;
-        minBatcherReward = _minBatcherReward;
         for (uint256 i = 0; i < _solvers.length; ++i) {
             solverWhitelist[_solvers[i]] = true;
             emit SolverWhitelistChanged(_solvers[i], true);
@@ -260,15 +255,6 @@ contract Inbox is IInbox, Ownable, Semver {
             isSolvingPublic = true;
             emit SolvingIsPublic();
         }
-    }
-
-    /**
-     * @notice Changes minimum reward for batcher
-     * @param _minBatcherReward New minimum reward
-     */
-    function setMinBatcherReward(uint96 _minBatcherReward) public onlyOwner {
-        minBatcherReward = _minBatcherReward;
-        emit MinBatcherRewardSet(_minBatcherReward);
     }
 
     /**
