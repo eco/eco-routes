@@ -14,7 +14,7 @@ contract TestMetaRouter {
 
     uint32 public destinationDomain;
 
-    address public recipientAddress;
+    bytes32 public recipientAddress;
 
     bytes public messageBody;
 
@@ -39,7 +39,7 @@ contract TestMetaRouter {
 
     function dispatch(
         uint32 _destinationDomain,
-        address _recipientAddress,
+        bytes32 _recipientAddress,
         ReadOperation[] memory _reads,
         bytes memory _writeCallData,
         FinalityState _finalityState,
@@ -65,7 +65,7 @@ contract TestMetaRouter {
         ReadOperation[] memory readOps;
         bytes[] memory readResponses;
 
-        IMetalayerRecipient(recipientAddress).handle(
+        IMetalayerRecipient(recipientAddress.bytes32ToAddress()).handle(
             uint32(block.chainid),
             msg.sender.addressToBytes32(),
             _msg,
