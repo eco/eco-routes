@@ -320,10 +320,18 @@ contract Inbox is IInbox, Ownable, Semver {
                 // no code at this address
                 revert CallToEOA(call.target);
             }
-            if (IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)) {
-                // no executing calls on the prover
+            (bool isProverCall, ) = (call.target).call(
+                abi.encodeWithSignature(
+                    "supportsInterface(bytes4)",
+                    IPROVER_INTERFACE_ID
+                )
+            );
+
+            if (isProverCall) {
+                // call to prover
                 revert CallToProver();
             }
+
             (bool success, bytes memory result) = call.target.call{
                 value: call.value
             }(call.data);

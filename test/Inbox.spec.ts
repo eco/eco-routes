@@ -153,6 +153,9 @@ describe('Inbox Test', (): void => {
       await loadFixture(deployInboxFixture))
     ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
       await createIntentData(mintAmount, timeDelta))
+    mockProver = await (
+      await ethers.getContractFactory('TestMessageBridgeProver')
+    ).deploy([])
   })
   it('initializes correctly', async () => {
     expect(await inbox.owner()).to.eq(owner.address)
@@ -277,6 +280,7 @@ describe('Inbox Test', (): void => {
           },
         ],
       }
+
       const _intentHash = hashIntent({ route: _route, reward }).intentHash
       await expect(
         inbox
@@ -402,9 +406,6 @@ describe('Inbox Test', (): void => {
 
   describe('message bridge proving', () => {
     beforeEach(async () => {
-      mockProver = await (
-        await ethers.getContractFactory('TestMessageBridgeProver')
-      ).deploy([])
       expect(await mockProver.dispatched()).to.be.false
 
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
