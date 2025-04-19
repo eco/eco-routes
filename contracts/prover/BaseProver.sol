@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import {IProver} from "../interfaces/IProver.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
-import {console} from "hardhat/console.sol";
+
 
 /**
  * @title BaseProver
