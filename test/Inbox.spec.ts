@@ -15,7 +15,6 @@ import {
   Call,
   Route,
   Reward,
-  Intent,
   TokenAmount,
 } from '../utils/intent'
 
@@ -70,11 +69,8 @@ describe('Inbox Test', (): void => {
     amount: number,
     timeDelta: number,
   ): Promise<{
-    calls: Call[]
     route: Route
     reward: Reward
-    intent: Intent
-    routeHash: string
     rewardHash: string
     intentHash: string
   }> {
@@ -114,21 +110,13 @@ describe('Inbox Test', (): void => {
 
     const _rewardHash = keccak256(encodeReward(_reward))
 
-    const _intent = {
-      route: _route,
-      reward: _reward,
-    }
-
     const _intentHash = keccak256(
       ethers.solidityPacked(['bytes32', 'bytes32'], [_routeHash, _rewardHash]),
     )
 
     return {
-      calls: _calls,
       route: _route,
       reward: _reward,
-      intent: _intent,
-      routeHash: _routeHash,
       rewardHash: _rewardHash,
       intentHash: _intentHash,
     }
@@ -136,8 +124,10 @@ describe('Inbox Test', (): void => {
   beforeEach(async (): Promise<void> => {
     ;({ inbox, erc20, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
-    ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
-      await createIntentData(mintAmount, timeDelta))
+    ;({ route, reward, rewardHash, intentHash } = await createIntentData(
+      mintAmount,
+      timeDelta,
+    ))
     mockProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
     ).deploy([])
@@ -469,7 +459,7 @@ describe('Inbox Test', (): void => {
         .to.emit(inbox, 'Fulfillment')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
 
-      // Verify prover was called with correct parameters
+      // Verify mailbox was called with correct parameters
       expect(await mockProver.dispatched()).to.be.true
       expect(await mockProver.lastSourceChainId()).to.eq(sourceChainID)
 
@@ -732,11 +722,8 @@ describe('Inbox Test', (): void => {
         const newTimeDelta = 1123
 
         ;({
-          calls: otherCalls,
           route,
           reward,
-          intent,
-          routeHash,
           rewardHash,
           intentHash: otherHash,
         } = await createIntentData(newTokenAmount, newTimeDelta))
