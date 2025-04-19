@@ -1,18 +1,13 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import {
-  TestERC20,
-  Inbox,
-  TestMailbox,
-  TestMessageBridgeProver,
-} from '../typechain-types'
+import { TestERC20, Inbox, TestMessageBridgeProver } from '../typechain-types'
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer } from '../utils/encode'
-import { keccak256, toBeHex } from 'ethers'
+import { keccak256 } from 'ethers'
 import {
   encodeReward,
   encodeRoute,
@@ -26,7 +21,6 @@ import {
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
-  let mailbox: TestMailbox
   let erc20: TestERC20
   let owner: SignerWithAddress
   let solver: SignerWithAddress
@@ -47,15 +41,11 @@ describe('Inbox Test', (): void => {
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
-    mailbox: TestMailbox
     erc20: TestERC20
     owner: SignerWithAddress
     solver: SignerWithAddress
     dstAddr: SignerWithAddress
   }> {
-    const mailbox = await (
-      await ethers.getContractFactory('TestMailbox')
-    ).deploy(ethers.ZeroAddress)
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
     const inbox = await inboxFactory.deploy(owner.address, false, [
@@ -69,7 +59,6 @@ describe('Inbox Test', (): void => {
 
     return {
       inbox,
-      mailbox,
       erc20,
       owner,
       solver,
@@ -145,7 +134,7 @@ describe('Inbox Test', (): void => {
     }
   }
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, mailbox, erc20, owner, solver, dstAddr } =
+    ;({ inbox, erc20, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
     ;({ calls, route, reward, intent, routeHash, rewardHash, intentHash } =
       await createIntentData(mintAmount, timeDelta))
@@ -480,7 +469,7 @@ describe('Inbox Test', (): void => {
         .to.emit(inbox, 'Fulfillment')
         .withArgs(intentHash, sourceChainID, dstAddr.address)
 
-      // Verify mailbox was called with correct parameters
+      // Verify prover was called with correct parameters
       expect(await mockProver.dispatched()).to.be.true
       expect(await mockProver.lastSourceChainId()).to.eq(sourceChainID)
 
