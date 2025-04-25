@@ -89,6 +89,9 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         address[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
+        // Ensure array lengths match
+        require(_intentHashes.length == _claimants.length, "Array length mismatch");
+        
         // Validate the request is from Inbox
         _validateProvingRequest(msg.sender);
 
@@ -175,6 +178,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         pure
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
+        // Array length validation is done in the destinationProve function for consistency
+        
         domain = uint32(_sourceChainId);
         recipient = abi.decode(_data, (bytes32));
         message = abi.encode(hashes, claimants);

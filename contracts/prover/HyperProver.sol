@@ -188,6 +188,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
             IPostDispatchHook hook
         )
     {
+        // Ensure arrays have matching lengths
+        require(hashes.length == claimants.length, "Array length mismatch");
+        
         domain = uint32(_sourceChainId);
         (
             bytes32 _sourceChainProver,

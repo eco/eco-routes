@@ -82,9 +82,15 @@ async function main() {
   if (hyperProverAddress === '' && inboxAddress !== '') {
     const hyperProverFactory = await ethers.getContractFactory('HyperProver')
 
+    // IMPORTANT: The mailbox address is passed directly to the HyperProver constructor
+    // This is the new configuration approach - we no longer need to separately set the mailbox
+    // The HyperProver will use this mailbox for all cross-chain communication
+    console.log(`Using Hyperlane mailbox at: ${deployNetwork.hyperlaneMailboxAddress}`)
+    
     const hyperProverTx = await hyperProverFactory.getDeployTransaction(
       deployNetwork.hyperlaneMailboxAddress,
       inboxAddress,
+      [] // Initialize with an empty trusted provers array - can be configured later
     )
 
     receipt = await singletonDeployer.deploy(hyperProverTx.data, salt, {
@@ -121,12 +127,29 @@ async function main() {
       constructorArguments: [
         deployNetwork.hyperlaneMailboxAddress,
         inboxAddress,
+        [] // Empty trusted provers array used in constructor
       ],
     })
     console.log('hyperProver verified at:', hyperProverAddress)
   } catch (e) {
     console.log(`Error verifying hyperProver`, e)
   }
+  
+  console.log(`
+  -----------------------------------------------
+  IMPORTANT NEXT STEPS AFTER DEPLOYMENT:
+  -----------------------------------------------
+  1. Configure the Inbox with provers:
+     - inbox.setProvers([hyperProverAddress])
+  
+  2. If deploying MetaProver, use this command:
+     - Deploy: npx hardhat run scripts/deployMetaProver.ts --network <network>
+     - Configure: inbox.setProvers([hyperProverAddress, metaProverAddress])
+  
+  3. For production systems, configure trusted provers:
+     - hyperProver.addTrustedProvers([trusted_addresses])
+  -----------------------------------------------
+  `)
 }
 
 main().catch((error) => {

@@ -1,84 +1,130 @@
-/* -*- c-basic-offset: 4 -*- */
-/* solhint-disable gas-custom-errors */
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
-import {IMetalayerRecipient, ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
 
+import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
+import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
+import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+
+/**
+ * @title TestMetaRouter
+ * @notice A mock implementation of the Metalayer Router for testing purposes
+ * @dev Simplifies testing of MetaProver without requiring a real Metalayer instance
+ */
 contract TestMetaRouter {
     using TypeCasts for bytes32;
     using TypeCasts for address;
 
-    address public processor;
+    // Immutable domain ID for this chain
+    uint32 public immutable LOCAL_DOMAIN;
 
-    uint32 public destinationDomain;
+    // Mapping to track messages sent and enable verification in tests
+    mapping(bytes32 => bool) public sentMessages;
 
-    bytes32 public recipientAddress;
+    // Event emitted when a message is dispatched
+    event MessageDispatched(
+        uint32 destinationDomain,
+        bytes32 recipient,
+        bytes message
+    );
 
-    bytes public messageBody;
-
-    bytes public metadata;
-
-    address public relayer;
-
-    bool public dispatched;
-
-    bool public dispatchedWithRelayer;
-
-    uint256 public constant FEE = 100000;
-
-    enum FinalityState {
-        INSTANT,
-        FINAL
+    constructor() {
+        LOCAL_DOMAIN = 31337; // Hardhat local chain ID
     }
 
-    constructor(address _processor) {
-        processor = _processor;
-    }
-
+    /**
+     * @notice Mock implementation of the dispatch function
+     * @dev Records message details for test verification
+     * @param _destinationDomain Target chain domain ID
+     * @param _recipient Address that will receive the message on the destination
+     * @param _operations Array of read operations (not used in this mock)
+     * @param _message Message body to deliver
+     * @param _finality Desired finality level for the message
+     * @param _gasLimit Gas limit for message execution
+     * @return messageId A unique identifier for the dispatched message
+     */
     function dispatch(
         uint32 _destinationDomain,
-        bytes32 _recipientAddress,
-        ReadOperation[] memory _reads,
-        bytes memory _writeCallData,
-        FinalityState _finalityState,
+        bytes32 _recipient,
+        ReadOperation[] calldata _operations,
+        bytes calldata _message,
+        FinalityState _finality,
         uint256 _gasLimit
-    ) external payable returns (uint256) {
-        destinationDomain = _destinationDomain;
-        recipientAddress = _recipientAddress;
-        messageBody = _writeCallData;
-        dispatched = true;
+    ) external payable returns (bytes32 messageId) {
+        // Generate a fake message ID for testing
+        messageId = keccak256(
+            abi.encode(
+                _destinationDomain,
+                _recipient,
+                _message,
+                block.timestamp
+            )
+        );
 
-        if (processor != address(0)) {
-            process(_writeCallData);
-        }
+        // Record that this message was sent
+        sentMessages[messageId] = true;
 
-        if (msg.value < FEE) {
-            revert("no");
-        }
+        // Emit event for test verification
+        emit MessageDispatched(_destinationDomain, _recipient, _message);
 
-        return (msg.value);
+        return messageId;
     }
 
-    function process(bytes memory _msg) public {
-        ReadOperation[] memory readOps;
-        bytes[] memory readResponses;
+    /**
+     * @notice Mock implementation of the fee quotation function
+     * @dev Always returns a fixed fee amount for testing
+     * @param _destinationDomain Target chain domain ID
+     * @param _recipient Address that will receive the message
+     * @param _message Message body to deliver
+     * @return Fixed fee amount for testing
+     */
+    function quoteDispatch(
+        uint32 _destinationDomain,
+        bytes32 _recipient,
+        bytes calldata _message
+    ) external view returns (uint256) {
+        // Return a fixed fee for testing purposes
+        return 0.001 ether;
+    }
 
-        IMetalayerRecipient(recipientAddress.bytes32ToAddress()).handle(
-            uint32(block.chainid),
-            msg.sender.addressToBytes32(),
-            _msg,
-            readOps,
-            readResponses
+    /**
+     * @notice Simulate message receipt for testing purposes
+     * @dev Allows tests to trigger a message receipt simulation
+     * @param _origin Origin domain (chain ID)
+     * @param _sender Address that sent the message
+     * @param _recipient Address that should receive the message
+     * @param _message Message body
+     */
+    function simulateMessageReceived(
+        uint32 _origin,
+        address _sender,
+        address _recipient,
+        bytes calldata _message
+    ) external {
+        // Convert the sender address to bytes32 for the recipient's handle function
+        bytes32 sender = _sender.addressToBytes32();
+        
+        // Call the recipient's handle function with empty read operations
+        IMetalayerRecipientMock(_recipient).handle(
+            _origin,
+            sender,
+            _message,
+            new ReadOperation[](0),
+            new bytes[](0)
         );
     }
+}
 
-    function quoteDispatch(
-        uint32,
-        bytes32,
-        bytes memory
-    ) public pure returns (uint256) {
-        return FEE;
-    }
+/**
+ * @title IMetalayerRecipientMock
+ * @notice A simplified interface for MetalayerRecipient for testing purposes
+ */
+interface IMetalayerRecipientMock {
+    function handle(
+        uint32 origin,
+        bytes32 sender,
+        bytes calldata message,
+        ReadOperation[] calldata operations,
+        bytes[] calldata operationsData
+    ) external payable;
 }
