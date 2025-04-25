@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { Contract, ContractFactory, Signer } from 'ethers'
-import { parseEther } from 'ethers/lib/utils'
+import { parseEther } from 'ethers'
 import { hashIntent, TokenAmount } from '../utils/intent'
 import { Intent, Route, Reward, Call } from '../utils/EcoERC7683'
 import { testData, getTestData, generateRandomAddress } from './testData'

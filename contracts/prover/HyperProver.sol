@@ -262,7 +262,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
-        require(hashes.length == claimants.length, "Array length mismatch");
+        if (hashes.length != claimants.length) {
+            revert ArrayLengthMismatch();
+        }
 
         // Convert chain ID to Hyperlane domain ID format
         domain = uint32(_sourceChainId);

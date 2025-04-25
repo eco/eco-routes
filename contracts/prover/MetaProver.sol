@@ -215,7 +215,9 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
         // Centralized validation ensures arrays match exactly once in the call flow
-        require(hashes.length == claimants.length, "Array length mismatch");
+        if (hashes.length != claimants.length) {
+            revert ArrayLengthMismatch();
+        }
 
         // Convert chain ID to Metalayer domain format
         domain = uint32(_sourceChainId);

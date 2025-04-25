@@ -54,36 +54,6 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
         }
     }
 
-    /**
-     * @notice Process intent proofs from a cross-chain message
-     * @param _hashes Array of intent hashes
-     * @param _claimants Array of claimant addresses
-     */
-    function _processIntentProofs(
-        bytes32[] memory _hashes,
-        address[] memory _claimants
-    ) internal {
-        // If arrays are empty, just return early
-        if (_hashes.length == 0) return;
-
-        // Require matching array lengths for security
-        require(_hashes.length == _claimants.length, "Array length mismatch");
-
-        for (uint256 i = 0; i < _hashes.length; i++) {
-            (bytes32 intentHash, address claimant) = (
-                _hashes[i],
-                _claimants[i]
-            );
-
-            // Skip rather than revert for already proven intents
-            if (provenIntents[intentHash] != address(0)) {
-                emit IntentAlreadyProven(intentHash);
-            } else {
-                provenIntents[intentHash] = claimant;
-                emit IntentProven(intentHash, claimant);
-            }
-        }
-    }
 
     /**
      * @notice Process payment and refund excess fees

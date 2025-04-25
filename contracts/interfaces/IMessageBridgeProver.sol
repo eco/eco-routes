@@ -31,14 +31,7 @@ interface IMessageBridgeProver is IProver {
      * @param _sender Address that initiated
      */
     error UnauthorizedDestinationProve(address _sender);
-
-    /**
-     * @notice Emitted when attempting to prove an already-proven intent
-     * @dev Event instead of error to allow batch processing to continue
-     * @param _intentHash Hash of the already proven intent
-     */
-    event IntentAlreadyProven(bytes32 _intentHash);
-
+    
     /**
      * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
      * @param _hashes Intent hashes sent in the batch
