@@ -15,7 +15,7 @@ if (
 }
 
 // Configure these parameters before running this script
-let inboxAddress = '' // Set this to your deployed Inbox address
+const inboxAddress = '' // Set this to your deployed Inbox address
 let metaProverAddress = ''
 
 console.log('Deploying to Network: ', network.name)
@@ -51,13 +51,15 @@ async function main() {
     'Deployer',
     '0xfc91Ac2e87Cc661B674DAcF0fB443a5bA5bcD0a3',
   )
-  
+
   let receipt
   console.log('Deploying contracts with the account:', deployer.address)
   console.log(`**************************************************`)
 
   if (inboxAddress === '') {
-    console.error('ERROR: You must set the inboxAddress before running this script')
+    console.error(
+      'ERROR: You must set the inboxAddress before running this script',
+    )
     process.exit(1)
   }
 
@@ -66,17 +68,21 @@ async function main() {
 
     // IMPORTANT: You need to configure the Metalayer router address in your network config
     if (!deployNetwork.metalayerRouterAddress) {
-      console.error('ERROR: No Metalayer router address configured for this network')
+      console.error(
+        'ERROR: No Metalayer router address configured for this network',
+      )
       console.log('Add metalayerRouterAddress to your network configuration')
       process.exit(1)
     }
 
-    console.log(`Using Metalayer router at: ${deployNetwork.metalayerRouterAddress}`)
-    
+    console.log(
+      `Using Metalayer router at: ${deployNetwork.metalayerRouterAddress}`,
+    )
+
     const metaProverTx = await metaProverFactory.getDeployTransaction(
       deployNetwork.metalayerRouterAddress,
       inboxAddress,
-      [] // Initialize with an empty trusted provers array - can be configured later
+      [], // Initialize with an empty trusted provers array - can be configured later
     )
 
     receipt = await singletonDeployer.deploy(metaProverTx.data, salt, {
@@ -103,14 +109,14 @@ async function main() {
       constructorArguments: [
         deployNetwork.metalayerRouterAddress,
         inboxAddress,
-        [] // Empty trusted provers array used in constructor
+        [], // Empty trusted provers array used in constructor
       ],
     })
     console.log('MetaProver verified at:', metaProverAddress)
   } catch (e) {
     console.log(`Error verifying MetaProver`, e)
   }
-  
+
   console.log(`
   -----------------------------------------------
   IMPORTANT NEXT STEPS AFTER DEPLOYMENT:

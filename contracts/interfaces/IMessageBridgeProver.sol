@@ -10,20 +10,6 @@ import {IProver} from "./IProver.sol";
  */
 interface IMessageBridgeProver is IProver {
     /**
-     * @notice Emitted when attempting to prove an already-proven intent
-     * @dev Event instead of error to allow batch processing to continue
-     * @param _intentHash Hash of the already proven intent
-     */
-    event IntentAlreadyProven(bytes32 _intentHash);
-
-    /**
-     * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
-     * @param _hashes Intent hashes sent in the batch
-     * @param _sourceChainID ID of the source chain
-     */
-    event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
-
-    /**
      * @notice Insufficient fee provided for cross-chain message dispatch
      * @param _requiredFee Amount of fee required
      */
@@ -47,20 +33,18 @@ interface IMessageBridgeProver is IProver {
     error UnauthorizedDestinationProve(address _sender);
 
     /**
-     * @notice Initiates proving of intents via the message bridge
-     * @param _sender Address that initiated the proving request
-     * @param _sourceChainId Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @notice Emitted when attempting to prove an already-proven intent
+     * @dev Event instead of error to allow batch processing to continue
+     * @param _intentHash Hash of the already proven intent
      */
-    function destinationProve(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) external payable;
+    event IntentAlreadyProven(bytes32 _intentHash);
+
+    /**
+     * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
+     * @param _hashes Intent hashes sent in the batch
+     * @param _sourceChainID ID of the source chain
+     */
+    event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
 
     /**
      * @notice Calculates the fee required for message dispatch

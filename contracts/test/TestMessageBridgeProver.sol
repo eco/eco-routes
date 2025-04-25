@@ -35,7 +35,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Records arguments and marks dispatched = true
      */
     function destinationProve(
-        address _sender,
+        address /* _sender */,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
@@ -65,10 +65,10 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
+        uint256 /* _sourceChainId */,
+        bytes32[] calldata /* _intentHashes */,
+        address[] calldata /* _claimants */,
+        bytes calldata /* _data */
     ) public view override returns (uint256) {
         return feeAmount;
     }

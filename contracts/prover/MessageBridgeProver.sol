@@ -38,7 +38,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
     function _validateMessageSender(
         address _messageSender,
         address _expectedSender
-    ) internal view {
+    ) internal pure {
         if (_expectedSender != _messageSender) {
             revert UnauthorizedHandle(_messageSender);
         }
@@ -74,7 +74,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
                 _hashes[i],
                 _claimants[i]
             );
-            
+
             // Skip rather than revert for already proven intents
             if (provenIntents[intentHash] != address(0)) {
                 emit IntentAlreadyProven(intentHash);
@@ -103,44 +103,4 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
             }
         }
     }
-
-    /**
-     * @notice Initiates proving of intents via the message bridge
-     * @dev Abstract method to be implemented by specific message bridge provers
-     * @param _sender Address that initiated the proving request
-     * @param _sourceChainId Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
-     */
-    function destinationProve(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) external payable virtual override;
-
-    /**
-     * @notice Calculates the fee required for cross-chain message dispatch
-     * @dev Abstract method to be implemented by specific message bridge provers
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
-     * @return Fee amount in native tokens
-     */
-    function fetchFee(
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) public view virtual override returns (uint256);
-
-    /**
-     * @notice Returns the proof type used by this prover
-     * @dev Abstract method to be implemented by specific message bridge provers
-     * @return String indicating the proving mechanism
-     */
-    function getProofType() external pure virtual override returns (string memory);
 }

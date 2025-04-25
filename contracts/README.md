@@ -527,6 +527,7 @@ To use a message bridge prover with the Eco Protocol:
 The HyperProver uses Hyperlane's IMessageRecipient interface to receive and process cross-chain messages. It interacts with the Hyperlane Mailbox contract to send and receive messages.
 
 Configuration parameters:
+
 - Mailbox address: Address of the Hyperlane Mailbox on the current chain
 - Trusted provers: List of addresses authorized to send proof messages
 
@@ -535,6 +536,7 @@ Configuration parameters:
 The MetaProver uses Caldera Metalayer's IMetalayerRecipient interface to receive and process cross-chain messages. It interacts with the Metalayer Router contract to send and receive messages.
 
 Configuration parameters:
+
 - Router address: Address of the Metalayer Router on the current chain
 - Trusted provers: List of addresses authorized to send proof messages
 
@@ -543,6 +545,7 @@ Configuration parameters:
 The previous standalone ERC-7683 implementation has been refactored into the core protocol. Instead of separate settler contracts, ERC-7683 compatibility is now integrated within the Inbox contract using the message bridge provers for cross-chain communication.
 
 This refactoring offers several benefits:
+
 - More consistent codebase with less duplication
 - Better security through shared validation logic
 - More flexible proving mechanisms

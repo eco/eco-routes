@@ -89,29 +89,34 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         address[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
-        // Ensure array lengths match
-        require(_intentHashes.length == _claimants.length, "Array length mismatch");
-        
         // Validate the request is from Inbox
         _validateProvingRequest(msg.sender);
 
-        // Calculate and process payment
-        uint256 fee = fetchFee(
+        // Decode source chain prover address only once
+        bytes32 sourceChainProver = abi.decode(_data, (bytes32));
+
+        // Calculate and process payment with pre-decoded value
+        uint256 fee = _fetchFee(
             _sourceChainId,
             _intentHashes,
             _claimants,
-            _data
+            sourceChainProver
         );
         _processPayment(fee, _sender);
 
-        // Format message for dispatch
+        emit BatchSent(_intentHashes, _sourceChainId);
+
+        // Format message for dispatch using pre-decoded value
         (
             uint32 domain,
             bytes32 recipient,
             bytes memory message
-        ) = processAndFormat(_sourceChainId, _intentHashes, _claimants, _data);
-
-        emit BatchSent(_intentHashes, _sourceChainId);
+        ) = _formatMetalayerMessage(
+                _sourceChainId,
+                _intentHashes,
+                _claimants,
+                sourceChainProver
+            );
 
         // Call Metalayer router's send message function
         IMetalayerRouter(ROUTER).dispatch{value: address(this).balance}(
@@ -139,11 +144,43 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         address[] calldata _claimants,
         bytes calldata _data
     ) public view override returns (uint256) {
+        // Decode source chain prover once at the entry point
+        bytes32 sourceChainProver = abi.decode(_data, (bytes32));
+
+        // Delegate to internal function with pre-decoded value
+        return
+            _fetchFee(
+                _sourceChainId,
+                _intentHashes,
+                _claimants,
+                sourceChainProver
+            );
+    }
+
+    /**
+     * @notice Internal function to calculate fee with pre-decoded data
+     * @param _sourceChainId Chain ID of source chain
+     * @param _intentHashes Array of intent hashes to prove
+     * @param _claimants Array of claimant addresses
+     * @param _sourceChainProver Pre-decoded prover address on source chain
+     * @return Fee amount required for message dispatch
+     */
+    function _fetchFee(
+        uint256 _sourceChainId,
+        bytes32[] calldata _intentHashes,
+        address[] calldata _claimants,
+        bytes32 _sourceChainProver
+    ) internal view returns (uint256) {
         (
             uint32 domain,
             bytes32 recipient,
             bytes memory message
-        ) = processAndFormat(_sourceChainId, _intentHashes, _claimants, _data);
+        ) = _formatMetalayerMessage(
+                _sourceChainId,
+                _intentHashes,
+                _claimants,
+                _sourceChainProver
+            );
 
         return
             IMetalayerRouter(ROUTER).quoteDispatch(domain, recipient, message);
@@ -158,30 +195,35 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Processes and formats data for Metalayer message dispatch
-     * @dev Prepares all parameters needed for the Router dispatch call
+     * @notice Formats data for Metalayer message dispatch with pre-decoded values
      * @param _sourceChainId Chain ID of the source chain
      * @param hashes Array of intent hashes to prove
      * @param claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @param _sourceChainProver Pre-decoded prover address on source chain
      * @return domain Metalayer domain ID
      * @return recipient Recipient address encoded as bytes32
      * @return message Encoded message body with intent hashes and claimants
      */
-    function processAndFormat(
+    function _formatMetalayerMessage(
         uint256 _sourceChainId,
         bytes32[] calldata hashes,
         address[] calldata claimants,
-        bytes calldata _data
+        bytes32 _sourceChainProver
     )
         internal
         pure
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
-        // Array length validation is done in the destinationProve function for consistency
-        
+        // Centralized validation ensures arrays match exactly once in the call flow
+        require(hashes.length == claimants.length, "Array length mismatch");
+
+        // Convert chain ID to Metalayer domain format
         domain = uint32(_sourceChainId);
-        recipient = abi.decode(_data, (bytes32));
+
+        // Use pre-decoded source chain prover address as recipient
+        recipient = _sourceChainProver;
+
+        // Pack intent hashes and claimant addresses together as message payload
         message = abi.encode(hashes, claimants);
     }
 }

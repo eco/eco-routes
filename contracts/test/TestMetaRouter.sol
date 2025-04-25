@@ -37,19 +37,19 @@ contract TestMetaRouter {
      * @dev Records message details for test verification
      * @param _destinationDomain Target chain domain ID
      * @param _recipient Address that will receive the message on the destination
-     * @param _operations Array of read operations (not used in this mock)
+     * param _operations Array of read operations (not used in this mock)
      * @param _message Message body to deliver
-     * @param _finality Desired finality level for the message
-     * @param _gasLimit Gas limit for message execution
+     * param _finality Desired finality level for the message
+     * param _gasLimit Gas limit for message execution
      * @return messageId A unique identifier for the dispatched message
      */
     function dispatch(
         uint32 _destinationDomain,
         bytes32 _recipient,
-        ReadOperation[] calldata _operations,
+        ReadOperation[] calldata /* _operations */,
         bytes calldata _message,
-        FinalityState _finality,
-        uint256 _gasLimit
+        FinalityState /* _finality */,
+        uint256 /* _gasLimit */
     ) external payable returns (bytes32 messageId) {
         // Generate a fake message ID for testing
         messageId = keccak256(
@@ -73,16 +73,16 @@ contract TestMetaRouter {
     /**
      * @notice Mock implementation of the fee quotation function
      * @dev Always returns a fixed fee amount for testing
-     * @param _destinationDomain Target chain domain ID
-     * @param _recipient Address that will receive the message
-     * @param _message Message body to deliver
+     * param _destinationDomain Target chain domain ID
+     * param _recipient Address that will receive the message
+     * param _message Message body to deliver
      * @return Fixed fee amount for testing
      */
     function quoteDispatch(
-        uint32 _destinationDomain,
-        bytes32 _recipient,
-        bytes calldata _message
-    ) external view returns (uint256) {
+        uint32 /* _destinationDomain */,
+        bytes32 /* _recipient */,
+        bytes calldata /* _message */
+    ) external pure returns (uint256) {
         // Return a fixed fee for testing purposes
         return 0.001 ether;
     }
@@ -103,7 +103,7 @@ contract TestMetaRouter {
     ) external {
         // Convert the sender address to bytes32 for the recipient's handle function
         bytes32 sender = _sender.addressToBytes32();
-        
+
         // Call the recipient's handle function with empty read operations
         IMetalayerRecipientMock(_recipient).handle(
             _origin,
