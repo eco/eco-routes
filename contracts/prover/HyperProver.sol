@@ -158,7 +158,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Send the message through Hyperlane mailbox using local variables
         // Note: Some Hyperlane versions have different dispatch signatures.
         // This matches the expected signature for testing.
-        IMailbox(MAILBOX).dispatch{value: msg.value - _refundAmount}(
+        IMailbox(MAILBOX).dispatch{value: fee}(
             destinationDomain,
             recipientAddress,
             messageBody,

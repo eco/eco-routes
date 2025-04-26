@@ -141,7 +141,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             );
 
         // Call Metalayer router's send message function
-        IMetalayerRouter(ROUTER).dispatch{value: msg.value - _refundAmount}(
+        IMetalayerRouter(ROUTER).dispatch{value: fee}(
             domain,
             recipient,
             new ReadOperation[](0),
