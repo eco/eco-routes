@@ -123,11 +123,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // For Metalayer, we expect data to include sourceChainProver(32 bytes)
         // If data is long enough, the gas limit is packed at position 32-64
         if (_data.length >= 64) {
-            uint256 customGasLimit;
-            // Use direct casting instead of abi.decode for gas efficiency
-            assembly {
-                customGasLimit := mload(add(_data.offset, 64))
-            }
+            uint256 customGasLimit = uint256(bytes32(_data[32:64]));
             if (customGasLimit > 0) {
                 gasLimit = customGasLimit;
             }

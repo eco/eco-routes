@@ -129,11 +129,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // If data is long enough, the gas limit is packed at position 32-64
         if (_data.length >= 96) {
             // At least enough bytes for all required fields plus gas limit
-            uint256 customGasLimit;
-            // Use direct casting instead of abi.decode for gas efficiency
-            assembly {
-                customGasLimit := mload(add(_data.offset, 64))
-            }
+            uint256 customGasLimit = uint256(bytes32(_data[64:96]));
             if (customGasLimit > 0) {
                 gasLimit = customGasLimit;
             }
