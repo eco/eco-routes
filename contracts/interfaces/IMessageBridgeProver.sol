@@ -45,9 +45,8 @@ interface IMessageBridgeProver is IProver {
     /**
      * @notice Unauthorized call to initiate proving
      * @param _sender Address that initiated
-     * @param _context Additional context for debugging (e.g., "inbox", "whitelist")
      */
-    error UnauthorizedSendProof(address _sender, string _context);
+    error UnauthorizedSendProof(address _sender);
 
     /**
      * @notice Unauthorized incoming proof from source chain
@@ -67,7 +66,10 @@ interface IMessageBridgeProver is IProver {
      * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @param _data Additional data for message formatting. 
+     *        Specific format varies by implementation:
+     *        - HyperProver: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
+     *        - MetaProver: (bytes32 sourceChainProver, [uint256 gasLimitOverride])
      * @return Fee amount required for message dispatch
      */
     function fetchFee(

@@ -49,10 +49,13 @@ abstract contract BaseProver is IProver, ERC165 {
         }
 
         for (uint256 i = 0; i < _hashes.length; i++) {
-            (bytes32 intentHash, address claimant) = (
-                _hashes[i],
-                _claimants[i]
-            );
+            bytes32 intentHash = _hashes[i];
+            address claimant = _claimants[i];
+            
+            // Validate claimant is not zero address
+            if (claimant == address(0)) {
+                continue; // Skip invalid claimants
+            }
 
             // Skip rather than revert for already proven intents
             if (provenIntents[intentHash] != address(0)) {

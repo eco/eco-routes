@@ -53,13 +53,6 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     }
 
     /**
-     * @notice Event emitted when a prover is added to the whitelist
-     * @param _chainId Chain ID where the prover is authorized
-     * @param _prover Address of the prover added to whitelist
-     */
-    event ProverWhitelisted(uint256 indexed _chainId, address indexed _prover);
-
-    /**
      * @notice Event emitted when a prover is removed from the whitelist
      * @param _chainId Chain ID where the prover was authorized
      * @param _prover Address of the prover removed from whitelist

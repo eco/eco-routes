@@ -43,6 +43,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         TrustedProver[] memory _provers,
         uint256 _defaultGasLimit
     ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+        require(_router != address(0), "Router cannot be zero address");
         ROUTER = _router;
     }
 
@@ -63,8 +64,13 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Verify message is from authorized router
         _validateMessageSender(msg.sender, ROUTER);
 
+        // Verify _origin and _sender are valid
+        require(_origin > 0, "Invalid origin chain ID");
+        
         // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
+        require(sender != address(0), "Sender cannot be zero address");
+        
         _handleCrossChainMessage(_origin, sender, _message);
     }
 
@@ -114,10 +120,14 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Decode any additional gas limit data from the _data parameter
         uint256 gasLimit = DEFAULT_GAS_LIMIT;
 
-        // If the data is longer than just the sourceChainProver (32 bytes),
-        // assume the next 32 bytes contain a gas limit override
+        // For Metalayer, we expect data to include sourceChainProver(32 bytes)
+        // If data is long enough, the gas limit is packed at position 32-64
         if (_data.length >= 64) {
-            uint256 customGasLimit = abi.decode(_data[32:64], (uint256));
+            uint256 customGasLimit;
+            // Use direct casting instead of abi.decode for gas efficiency
+            assembly {
+                customGasLimit := mload(add(_data.offset, 64))
+            }
             if (customGasLimit > 0) {
                 gasLimit = customGasLimit;
             }
@@ -217,8 +227,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Formats data for Metalayer message dispatch with pre-decoded values
      * @param _sourceChainId Chain ID of the source chain
-     * @param hashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param _hashes Array of intent hashes to prove
+     * @param _claimants Array of claimant addresses
      * @param _sourceChainProver Pre-decoded prover address on source chain
      * @return domain Metalayer domain ID
      * @return recipient Recipient address encoded as bytes32
@@ -226,8 +236,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     function _formatMetalayerMessage(
         uint256 _sourceChainId,
-        bytes32[] calldata hashes,
-        address[] calldata claimants,
+        bytes32[] calldata _hashes,
+        address[] calldata _claimants,
         bytes32 _sourceChainProver
     )
         internal
@@ -235,7 +245,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
         // Centralized validation ensures arrays match exactly once in the call flow
-        if (hashes.length != claimants.length) {
+        if (_hashes.length != _claimants.length) {
             revert ArrayLengthMismatch();
         }
 
@@ -250,6 +260,6 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         recipient = _sourceChainProver;
 
         // Pack intent hashes and claimant addresses together as message payload
-        message = abi.encode(hashes, claimants);
+        message = abi.encode(_hashes, _claimants);
     }
 }

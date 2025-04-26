@@ -29,18 +29,30 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
      * @param _provers Array of trusted provers to whitelist
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
+    /**
+     * @notice Event emitted when a prover is added to the whitelist
+     * @param _chainId The chain ID where the prover is authorized
+     * @param _prover The address that was whitelisted
+     */
+    event ProverWhitelisted(uint256 indexed _chainId, address indexed _prover);
+
     constructor(
         address _inbox,
         TrustedProver[] memory _provers,
         uint256 _defaultGasLimit
     ) BaseProver(_inbox) {
+        require(_inbox != address(0), "Inbox cannot be zero address");
+        
         DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
         // Add this contract to the whitelist on the current chain
         proverWhitelist[block.chainid][address(this)] = true;
+        emit ProverWhitelisted(block.chainid, address(this));
 
         // Add all provided trusted provers to their respective chains
         for (uint256 i = 0; i < _provers.length; i++) {
+            require(_provers[i].prover != address(0), "Prover cannot be zero address");
             proverWhitelist[_provers[i].chainId][_provers[i].prover] = true;
+            emit ProverWhitelisted(_provers[i].chainId, _provers[i].prover);
         }
     }
 
@@ -65,7 +77,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
      */
     function _validateProvingRequest(address _sender) internal view {
         if (_sender != INBOX) {
-            revert UnauthorizedSendProof(_sender, "not-inbox");
+            revert UnauthorizedSendProof(_sender);
         }
     }
 
@@ -75,8 +87,8 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
      * @param _amount Amount to refund
      */
     function _sendRefund(address _recipient, uint256 _amount) internal {
-        if (_amount > 0) {
-            (bool success, ) = payable(_recipient).call{value: _amount}("");
+        if (_amount > 0 && _recipient != address(0)) {
+            (bool success, ) = payable(_recipient).call{value: _amount, gas: 3000}("");
             if (!success) {
                 revert NativeTransferFailed();
             }
@@ -93,7 +105,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
     function _handleCrossChainMessage(
         uint256 _sourceChainId,
         address _messageSender,
-        bytes memory _message
+        bytes calldata _message
     ) internal {
         // Verify dispatch originated from a valid prover on the specific source chain
         if (!proverWhitelist[_sourceChainId][_messageSender]) {
@@ -106,12 +118,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
             (bytes32[], address[])
         );
 
-        // Validate that array lengths match
-        if (hashes.length != claimants.length) {
-            revert ArrayLengthMismatch();
-        }
-
-        // Process the intent proofs using shared implementation
+        // Process the intent proofs using shared implementation - array validation happens there
         _processIntentProofs(hashes, claimants);
     }
 }

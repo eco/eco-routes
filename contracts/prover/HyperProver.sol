@@ -50,6 +50,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         IMessageBridgeProver.TrustedProver[] memory _provers,
         uint256 _defaultGasLimit
     ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+        require(_mailbox != address(0), "Mailbox cannot be zero address");
         MAILBOX = _mailbox;
     }
 
@@ -68,8 +69,13 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Verify message is from authorized mailbox
         _validateMessageSender(msg.sender, MAILBOX);
 
+        // Verify _origin and _sender are valid
+        require(_origin > 0, "Invalid origin chain ID");
+        
         // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
+        require(sender != address(0), "Sender cannot be zero address");
+        
         _handleCrossChainMessage(_origin, sender, _messageBody);
     }
 
@@ -119,10 +125,14 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Decode any additional gas limit data from the _data parameter
         uint256 gasLimit = DEFAULT_GAS_LIMIT;
 
-        // If the data is longer than just the sourceChainProver (32 bytes),
-        // assume the next 32 bytes contain a gas limit override
-        if (_data.length >= 64) {
-            uint256 customGasLimit = abi.decode(_data[32:64], (uint256));
+        // For Hyperlane, we expect data to include sourceChainProver(32) + metadata(var) + hookAddr(20)
+        // If data is long enough, the gas limit is packed at position 32-64
+        if (_data.length >= 96) { // At least enough bytes for all required fields plus gas limit
+            uint256 customGasLimit;
+            // Use direct casting instead of abi.decode for gas efficiency
+            assembly {
+                customGasLimit := mload(add(_data.offset, 64))
+            }
             if (customGasLimit > 0) {
                 gasLimit = customGasLimit;
             }
@@ -253,9 +263,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Formats data for Hyperlane message dispatch with pre-decoded values
      * @dev Prepares all parameters needed for the Mailbox dispatch call
      * @param _sourceChainId Chain ID of the source chain
-     * @param hashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
-     * @param unpacked Struct containing decoded data from _data parameter
+     * @param _hashes Array of intent hashes to prove
+     * @param _claimants Array of claimant addresses
+     * @param _unpacked Struct containing decoded data from _data parameter
      * @return domain Hyperlane domain ID
      * @return recipient Recipient address encoded as bytes32
      * @return message Encoded message body with intent hashes and claimants
@@ -264,9 +274,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function _formatHyperlaneMessage(
         uint256 _sourceChainId,
-        bytes32[] calldata hashes,
-        address[] calldata claimants,
-        UnpackedData memory unpacked
+        bytes32[] calldata _hashes,
+        address[] calldata _claimants,
+        UnpackedData memory _unpacked
     )
         internal
         view
@@ -280,7 +290,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
-        if (hashes.length != claimants.length) {
+        if (_hashes.length != _claimants.length) {
             revert ArrayLengthMismatch();
         }
 
@@ -292,17 +302,17 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         domain = uint32(_sourceChainId);
 
         // Use the source chain prover address as the message recipient
-        recipient = unpacked.sourceChainProver;
+        recipient = _unpacked.sourceChainProver;
 
         // Pack intent hashes and claimant addresses together as the message payload
-        message = abi.encode(hashes, claimants);
+        message = abi.encode(_hashes, _claimants);
 
         // Pass through metadata as provided
-        metadata = unpacked.metadata;
+        metadata = _unpacked.metadata;
 
         // Default to mailbox's hook if none provided, following Hyperlane best practices
-        hook = (unpacked.hookAddr == address(0))
+        hook = (_unpacked.hookAddr == address(0))
             ? IMailbox(MAILBOX).defaultHook()
-            : IPostDispatchHook(unpacked.hookAddr);
+            : IPostDispatchHook(_unpacked.hookAddr);
     }
 }
