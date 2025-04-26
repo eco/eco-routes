@@ -5,7 +5,7 @@ import {IMetalayerRecipient, ReadOperation} from "@metalayer/contracts/src/inter
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
+// Import Semver for versioning support
 import {Semver} from "../libs/Semver.sol";
 import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
 

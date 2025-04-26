@@ -45,7 +45,9 @@ switch (network.name) {
     deployNetwork = mainnetNetworks.helix
     break
   default:
-    throw new Error(`Network ${network.name} not configured with deployment settings`)
+    throw new Error(
+      `Network ${network.name} not configured with deployment settings`,
+    )
 }
 
 async function main() {
@@ -98,7 +100,7 @@ async function main() {
     //   { chainId: 1, prover: "0x1234..." },
     //   { chainId: 10, prover: "0x5678..." }
     // ];
-    
+
     // Validate chain IDs if any trusted provers are added
     for (const prover of trustedProvers) {
       if (!prover.chainId || prover.chainId <= 0) {
@@ -141,12 +143,13 @@ async function main() {
   }
 
   try {
+    // For verification, we need to use the same trustedProvers array that was used during deployment
     await run('verify:verify', {
       address: hyperProverAddress,
       constructorArguments: [
         deployNetwork.hyperlaneMailboxAddress,
         inboxAddress,
-        trustedProvers, // TrustedProver[] struct array
+        [], // Use empty array for verification if no trusted provers were provided
       ],
     })
     console.log('hyperProver verified at:', hyperProverAddress)

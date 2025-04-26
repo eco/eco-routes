@@ -348,7 +348,9 @@ describe('MetaProver Test', (): void => {
         metaProver
           .connect(solver)
           .sendProof(owner.address, 123, intentHashes, claimants, data),
-      ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedSendProof').withArgs(await solver.getAddress(), "not-inbox")
+      )
+        .to.be.revertedWithCustomError(metaProver, 'UnauthorizedSendProof')
+        .withArgs(await solver.getAddress(), 'not-inbox')
     })
 
     it('should correctly get fee via fetchFee', async () => {
@@ -627,25 +629,25 @@ describe('MetaProver Test', (): void => {
       // Verify the dispatch was called (event should be emitted)
       expect(await testRouter.dispatched()).to.be.true
     })
-    
+
     it('should handle large arrays without gas issues', async () => {
       // Create large arrays (100 elements - which is reasonably large for gas testing)
       const sourceChainId = 123
       const intentHashes: string[] = []
       const claimants: string[] = []
-      
+
       // Generate 100 random intent hashes and corresponding claimant addresses
       for (let i = 0; i < 100; i++) {
         intentHashes.push(ethers.keccak256(ethers.toUtf8Bytes(`intent-${i}`)))
         claimants.push(await solver.getAddress()) // Use solver as claimant for all
       }
-      
+
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
         ['bytes32'],
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
-      
+
       // Get fee for this large batch
       const fee = await metaProver.fetchFee(
         sourceChainId,
@@ -653,7 +655,7 @@ describe('MetaProver Test', (): void => {
         claimants,
         data,
       )
-      
+
       // Large arrays should still process without gas errors
       // Note: In real networks, this might actually hit gas limits
       // This test is more to verify the code logic handles large arrays
@@ -669,7 +671,7 @@ describe('MetaProver Test', (): void => {
             { value: fee },
           ),
       ).to.not.be.reverted
-      
+
       // Verify dispatch was called
       expect(await testRouter.dispatched()).to.be.true
     })
