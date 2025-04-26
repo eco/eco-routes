@@ -71,11 +71,11 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Verify _origin and _sender are valid
         require(_origin > 0, "Invalid origin chain ID");
-        
+
         // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
         require(sender != address(0), "Sender cannot be zero address");
-        
+
         _handleCrossChainMessage(_origin, sender, _messageBody);
     }
 
@@ -127,7 +127,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // For Hyperlane, we expect data to include sourceChainProver(32) + metadata(var) + hookAddr(20)
         // If data is long enough, the gas limit is packed at position 32-64
-        if (_data.length >= 96) { // At least enough bytes for all required fields plus gas limit
+        if (_data.length >= 96) {
+            // At least enough bytes for all required fields plus gas limit
             uint256 customGasLimit;
             // Use direct casting instead of abi.decode for gas efficiency
             assembly {

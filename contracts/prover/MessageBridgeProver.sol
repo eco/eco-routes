@@ -42,7 +42,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
         uint256 _defaultGasLimit
     ) BaseProver(_inbox) {
         require(_inbox != address(0), "Inbox cannot be zero address");
-        
+
         DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
         // Add this contract to the whitelist on the current chain
         proverWhitelist[block.chainid][address(this)] = true;
@@ -50,7 +50,10 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
 
         // Add all provided trusted provers to their respective chains
         for (uint256 i = 0; i < _provers.length; i++) {
-            require(_provers[i].prover != address(0), "Prover cannot be zero address");
+            require(
+                _provers[i].prover != address(0),
+                "Prover cannot be zero address"
+            );
             proverWhitelist[_provers[i].chainId][_provers[i].prover] = true;
             emit ProverWhitelisted(_provers[i].chainId, _provers[i].prover);
         }
@@ -88,7 +91,10 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
      */
     function _sendRefund(address _recipient, uint256 _amount) internal {
         if (_amount > 0 && _recipient != address(0)) {
-            (bool success, ) = payable(_recipient).call{value: _amount, gas: 3000}("");
+            (bool success, ) = payable(_recipient).call{
+                value: _amount,
+                gas: 3000
+            }("");
             if (!success) {
                 revert NativeTransferFailed();
             }

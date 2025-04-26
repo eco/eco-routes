@@ -200,17 +200,15 @@ describe('MetaProver Test', (): void => {
     })
 
     it('should revert when sender field is not authorized', async () => {
-      const validAddress = await solver.getAddress();
+      const validAddress = await solver.getAddress()
       await expect(
-        metaProver
-          .connect(owner)
-          .handle(
-            12345,
-            ethers.zeroPadValue(validAddress, 32), // Use a valid but unauthorized address
-            ethers.zeroPadValue('0x', 32),
-            [],
-            [],
-          ),
+        metaProver.connect(owner).handle(
+          12345,
+          ethers.zeroPadValue(validAddress, 32), // Use a valid but unauthorized address
+          ethers.zeroPadValue('0x', 32),
+          [],
+          [],
+        ),
       ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedIncomingProof')
     })
 

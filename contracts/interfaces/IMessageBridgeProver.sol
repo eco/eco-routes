@@ -66,7 +66,7 @@ interface IMessageBridgeProver is IProver {
      * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting. 
+     * @param _data Additional data for message formatting.
      *        Specific format varies by implementation:
      *        - HyperProver: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
      *        - MetaProver: (bytes32 sourceChainProver, [uint256 gasLimitOverride])

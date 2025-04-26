@@ -66,11 +66,11 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
         // Verify _origin and _sender are valid
         require(_origin > 0, "Invalid origin chain ID");
-        
+
         // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
         require(sender != address(0), "Sender cannot be zero address");
-        
+
         _handleCrossChainMessage(_origin, sender, _message);
     }
 
