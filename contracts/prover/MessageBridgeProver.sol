@@ -18,14 +18,23 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
     mapping(uint256 => mapping(address => bool)) public proverWhitelist;
 
     /**
+     * @notice Default gas limit for cross-chain message dispatch
+     * @dev Set at deployment and cannot be changed afterward
+     */
+    uint256 public immutable DEFAULT_GAS_LIMIT;
+
+    /**
      * @notice Initializes the MessageBridgeProver contract
      * @param _inbox Address of the Inbox contract
      * @param _provers Array of trusted provers to whitelist
+     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _inbox,
-        TrustedProver[] memory _provers
+        TrustedProver[] memory _provers,
+        uint256 _defaultGasLimit
     ) BaseProver(_inbox) {
+        DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
         // Add this contract to the whitelist on the current chain
         proverWhitelist[block.chainid][address(this)] = true;
 
@@ -61,18 +70,13 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
     }
 
     /**
-     * @notice Process payment and refund excess fees
-     * @param _fee Required fee amount
-     * @param _sender Address to refund excess fee to
+     * @notice Send refund to the user if they've overpaid
+     * @param _recipient Address to send the refund to
+     * @param _amount Amount to refund
      */
-    function _processPayment(uint256 _fee, address _sender) internal {
-        if (msg.value < _fee) {
-            revert InsufficientFee(_fee);
-        }
-        if (msg.value > _fee) {
-            (bool success, ) = payable(_sender).call{value: msg.value - _fee}(
-                ""
-            );
+    function _sendRefund(address _recipient, uint256 _amount) internal {
+        if (_amount > 0) {
+            (bool success, ) = payable(_recipient).call{value: _amount}("");
             if (!success) {
                 revert NativeTransferFailed();
             }

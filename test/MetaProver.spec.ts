@@ -14,6 +14,43 @@ import {
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount } from '../utils/intent'
 
+/**
+ * TEST SCENARIOS:
+ *
+ * 1. Constructor
+ *   - Test initialization with correct router and inbox addresses
+ *   - Test whitelisting of constructor-provided provers
+ *   - Verify correct proof type reporting
+ *   - Verify default gas limit setting
+ *
+ * 2. Message Handling (handle())
+ *   - Test authorization checks for message senders
+ *   - Test handling of single intent proof
+ *   - Test handling of duplicate intent proofs
+ *   - Test batch proving of multiple intents
+ *   - Test validation of message data format
+ *
+ * 3. Proof Sending (sendProof())
+ *   - Test authorization checks for proof initiators
+ *   - Test fee calculation and handling
+ *   - Test underpayment rejection
+ *   - Test overpayment refund
+ *   - Test exact payment processing
+ *   - Test gas limit specification through data parameter
+ *   - Verify proper message encoding and router interaction
+ *
+ * 4. Edge Cases
+ *   - Test handling of empty arrays
+ *   - Test handling of large arrays without gas issues
+ *   - Test handling of large chain IDs
+ *   - Test with mismatched array lengths
+ *
+ * 5. End-to-End Integration
+ *   - Test complete flow with TestMessageBridgeProver
+ *   - Test batch proving across multiple contracts
+ *   - Verify correct token handling in complete intent execution
+ */
+
 describe('MetaProver Test', (): void => {
   let inbox: Inbox
   let metaProver: MetaProver
@@ -52,7 +89,12 @@ describe('MetaProver Test', (): void => {
     // Deploy MetaProver with required dependencies
     const metaProver = await (
       await ethers.getContractFactory('MetaProver')
-    ).deploy(await testRouter.getAddress(), await inbox.getAddress(), [])
+    ).deploy(
+      await testRouter.getAddress(),
+      await inbox.getAddress(),
+      [],
+      200000,
+    ) // 200k gas limit
 
     return {
       inbox,
@@ -82,9 +124,12 @@ describe('MetaProver Test', (): void => {
       const additionalProver = await owner.getAddress()
       const newMetaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await testRouter.getAddress(), await inbox.getAddress(), [
-        { chainId: 1, prover: additionalProver },
-      ])
+      ).deploy(
+        await testRouter.getAddress(),
+        await inbox.getAddress(),
+        [{ chainId: 1, prover: additionalProver }],
+        200000,
+      ) // 200k gas limit
 
       // MetaProver whitelists itself on current chainId
       const currentChainId = await ethers.provider
@@ -101,6 +146,27 @@ describe('MetaProver Test', (): void => {
         .true
     })
 
+    it('should have the correct default gas limit', async () => {
+      // Verify the default gas limit was set correctly
+      expect(await metaProver.DEFAULT_GAS_LIMIT()).to.equal(200000)
+
+      // Deploy a prover with custom gas limit
+      const customGasLimit = 300000 // 300k
+      const customMetaProver = await (
+        await ethers.getContractFactory('MetaProver')
+      ).deploy(
+        await testRouter.getAddress(),
+        await inbox.getAddress(),
+        [],
+        customGasLimit,
+      )
+
+      // Verify custom gas limit was set
+      expect(await customMetaProver.DEFAULT_GAS_LIMIT()).to.equal(
+        customGasLimit,
+      )
+    })
+
     it('should return the correct proof type', async () => {
       expect(await metaProver.getProofType()).to.equal('Metalayer')
     })
@@ -111,9 +177,12 @@ describe('MetaProver Test', (): void => {
       // Set up a new MetaProver with owner as router for direct testing
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
-        { chainId: 12345, prover: await inbox.getAddress() },
-      ])
+      ).deploy(
+        owner.address,
+        await inbox.getAddress(),
+        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        200000,
+      )
     })
 
     it('should revert when msg.sender is not the router', async () => {
@@ -248,9 +317,12 @@ describe('MetaProver Test', (): void => {
       // Use owner as inbox so we can test SendProof
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await testRouter.getAddress(), owner.address, [
-        { chainId: 12345, prover: await inbox.getAddress() },
-      ])
+      ).deploy(
+        await testRouter.getAddress(),
+        owner.address,
+        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        200000,
+      )
     })
 
     it('should revert on underpayment', async () => {
@@ -544,9 +616,12 @@ describe('MetaProver Test', (): void => {
       // Set up a new MetaProver with owner as router for direct testing
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
-        { chainId: 12345, prover: await inbox.getAddress() },
-      ])
+      ).deploy(
+        owner.address,
+        await inbox.getAddress(),
+        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        200000,
+      )
 
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
@@ -676,7 +751,7 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.dispatched()).to.be.true
     })
 
-    it('should handle large chain IDs correctly', async () => {
+    it('should reject excessively large chain IDs', async () => {
       // Test with a very large chain ID (near uint256 max)
       const veryLargeChainId = ethers.MaxUint256 - 1n
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -687,7 +762,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Should not revert with overflow
+      // Should revert with ChainIdTooLarge error
       await expect(
         metaProver
           .connect(owner)
@@ -699,10 +774,9 @@ describe('MetaProver Test', (): void => {
             data,
             { value: await testRouter.FEE() },
           ),
-      ).to.not.be.reverted
-
-      // Domain must be uint32, so make sure the message was dispatched
-      expect(await testRouter.dispatched()).to.be.true
+      )
+        .to.be.revertedWithCustomError(metaProver, 'ChainIdTooLarge')
+        .withArgs(veryLargeChainId)
     })
   })
 
@@ -712,9 +786,11 @@ describe('MetaProver Test', (): void => {
     // Deploy a TestMessageBridgeProver for use with the inbox
     const testMsgProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
-    ).deploy(await inbox.getAddress(), [
-      { chainId: 12345, prover: await inbox.getAddress() },
-    ])
+    ).deploy(
+      await inbox.getAddress(),
+      [{ chainId: 12345, prover: await inbox.getAddress() }],
+      200000,
+    ) // Add default gas limit
 
     // Update whitelist to allow our MetaProver
     await testMsgProver.addWhitelistedProver(
@@ -741,9 +817,12 @@ describe('MetaProver Test', (): void => {
       // Update metaProver to use the new router
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await metaTestRouter.getAddress(), await inbox.getAddress(), [
-        { chainId: 12345, prover: await inbox.getAddress() },
-      ])
+      ).deploy(
+        await metaTestRouter.getAddress(),
+        await inbox.getAddress(),
+        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        200000,
+      ) // Add default gas limit
 
       // Update the router reference
       testRouter = metaTestRouter
@@ -839,9 +918,12 @@ describe('MetaProver Test', (): void => {
       // Reset the metaProver's proven intents for testing
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
-        { chainId: 12345, prover: await inbox.getAddress() },
-      ])
+      ).deploy(
+        owner.address,
+        await inbox.getAddress(),
+        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        200000,
+      )
 
       // Call handle directly to verify that MetaProver's intent proving works
       await metaProver

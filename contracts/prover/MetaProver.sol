@@ -23,6 +23,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     string public constant PROOF_TYPE = "Metalayer";
 
+    // Default gas limit is defined in MessageBridgeProver base class
+
     /**
      * @notice Address of local Metalayer router
      */
@@ -33,12 +35,14 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param _router Address of local Metalayer router
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted provers to whitelist
+     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _router,
         address _inbox,
-        TrustedProver[] memory _provers
-    ) MessageBridgeProver(_inbox, _provers) {
+        TrustedProver[] memory _provers,
+        uint256 _defaultGasLimit
+    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
         ROUTER = _router;
     }
 
@@ -86,16 +90,38 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Decode source chain prover address only once
         bytes32 sourceChainProver = abi.decode(_data, (bytes32));
 
-        // Calculate and process payment with pre-decoded value
+        // Calculate fee with pre-decoded value
         uint256 fee = _fetchFee(
             _sourceChainId,
             _intentHashes,
             _claimants,
             sourceChainProver
         );
-        _processPayment(fee, _sender);
+
+        // Check if enough fee was provided
+        if (msg.value < fee) {
+            revert InsufficientFee(fee);
+        }
+
+        // Calculate refund amount if overpaid
+        uint256 _refundAmount = 0;
+        if (msg.value > fee) {
+            _refundAmount = msg.value - fee;
+        }
 
         emit BatchSent(_intentHashes, _sourceChainId);
+
+        // Decode any additional gas limit data from the _data parameter
+        uint256 gasLimit = DEFAULT_GAS_LIMIT;
+
+        // If the data is longer than just the sourceChainProver (32 bytes),
+        // assume the next 32 bytes contain a gas limit override
+        if (_data.length >= 64) {
+            uint256 customGasLimit = abi.decode(_data[32:64], (uint256));
+            if (customGasLimit > 0) {
+                gasLimit = customGasLimit;
+            }
+        }
 
         // Format message for dispatch using pre-decoded value
         (
@@ -110,14 +136,17 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             );
 
         // Call Metalayer router's send message function
-        IMetalayerRouter(ROUTER).dispatch{value: address(this).balance}(
+        IMetalayerRouter(ROUTER).dispatch{value: msg.value - _refundAmount}(
             domain,
             recipient,
             new ReadOperation[](0),
             message,
             FinalityState.INSTANT,
-            200_000
+            gasLimit
         );
+
+        // Send refund if needed
+        _sendRefund(_sender, _refundAmount);
     }
 
     /**
@@ -211,6 +240,10 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         }
 
         // Convert chain ID to Metalayer domain format
+        // Validate the chain ID can fit in uint32 to prevent truncation issues
+        if (_sourceChainId > type(uint32).max) {
+            revert ChainIdTooLarge(_sourceChainId);
+        }
         domain = uint32(_sourceChainId);
 
         // Use pre-decoded source chain prover address as recipient

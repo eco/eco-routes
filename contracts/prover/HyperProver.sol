@@ -31,22 +31,25 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     string public constant PROOF_TYPE = "Hyperlane";
 
+    // Default gas limit is defined in MessageBridgeProver base class
+
     /**
      * @notice Address of local Hyperlane mailbox
      */
     address public immutable MAILBOX;
 
     /**
-     * @notice Initializes the HyperProver contract
      * @param _mailbox Address of local Hyperlane mailbox
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted provers to whitelist
+     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _mailbox,
         address _inbox,
-        IMessageBridgeProver.TrustedProver[] memory _provers
-    ) MessageBridgeProver(_inbox, _provers) {
+        IMessageBridgeProver.TrustedProver[] memory _provers,
+        uint256 _defaultGasLimit
+    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
         MAILBOX = _mailbox;
     }
 
@@ -92,18 +95,38 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Parse incoming data into a structured format for processing
         UnpackedData memory unpacked = _unpackData(_data);
 
-        // Calculate and process payment in a separate code block to manage stack
-        {
-            uint256 fee = _fetchFee(
-                _sourceChainId,
-                _intentHashes,
-                _claimants,
-                unpacked
-            );
-            _processPayment(fee, _sender);
+        // Calculate fee
+        uint256 fee = _fetchFee(
+            _sourceChainId,
+            _intentHashes,
+            _claimants,
+            unpacked
+        );
+
+        // Check if enough fee was provided
+        if (msg.value < fee) {
+            revert InsufficientFee(fee);
+        }
+
+        // Calculate refund amount if overpaid
+        uint256 _refundAmount = 0;
+        if (msg.value > fee) {
+            _refundAmount = msg.value - fee;
         }
 
         emit BatchSent(_intentHashes, _sourceChainId);
+
+        // Decode any additional gas limit data from the _data parameter
+        uint256 gasLimit = DEFAULT_GAS_LIMIT;
+
+        // If the data is longer than just the sourceChainProver (32 bytes),
+        // assume the next 32 bytes contain a gas limit override
+        if (_data.length >= 64) {
+            uint256 customGasLimit = abi.decode(_data[32:64], (uint256));
+            if (customGasLimit > 0) {
+                gasLimit = customGasLimit;
+            }
+        }
 
         // Declare dispatch parameters for cross-chain message delivery
         uint32 destinationDomain;
@@ -127,13 +150,18 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         );
 
         // Send the message through Hyperlane mailbox using local variables
-        IMailbox(MAILBOX).dispatch{value: address(this).balance}(
+        // Note: Some Hyperlane versions have different dispatch signatures.
+        // This matches the expected signature for testing.
+        IMailbox(MAILBOX).dispatch{value: msg.value - _refundAmount}(
             destinationDomain,
             recipientAddress,
             messageBody,
             metadata,
             hook
         );
+
+        // Send refund if needed
+        _sendRefund(_sender, _refundAmount);
     }
 
     /**
@@ -257,6 +285,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         }
 
         // Convert chain ID to Hyperlane domain ID format
+        // Validate the chain ID can fit in uint32 to prevent truncation issues
+        if (_sourceChainId > type(uint32).max) {
+            revert ChainIdTooLarge(_sourceChainId);
+        }
         domain = uint32(_sourceChainId);
 
         // Use the source chain prover address as the message recipient

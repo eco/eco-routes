@@ -18,6 +18,7 @@ interface IMessageBridgeProver is IProver {
         uint256 chainId;
         address prover;
     }
+
     /**
      * @notice Insufficient fee provided for cross-chain message dispatch
      * @param _requiredFee Amount of fee required
@@ -28,6 +29,12 @@ interface IMessageBridgeProver is IProver {
      * @notice Native token transfer failed
      */
     error NativeTransferFailed();
+
+    /**
+     * @notice Chain ID is too large for destination chain format
+     * @param _chainId The chain ID that couldn't be converted
+     */
+    error ChainIdTooLarge(uint256 _chainId);
 
     /**
      * @notice Unauthorized call to handle() detected

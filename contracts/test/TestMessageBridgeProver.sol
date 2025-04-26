@@ -25,12 +25,49 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     constructor(
         address _inbox,
-        IMessageBridgeProver.TrustedProver[] memory _provers
-    ) MessageBridgeProver(_inbox, _provers) {}
+        IMessageBridgeProver.TrustedProver[] memory _provers,
+        uint256 _gasLimit
+    ) MessageBridgeProver(_inbox, _provers, _gasLimit) {}
 
+    /**
+     * @notice Add a prover to the whitelist for a specific chain
+     * @param _chainId Chain ID where the prover is authorized
+     * @param _prover Address of the prover to whitelist
+     */
     function addWhitelistedProver(uint256 _chainId, address _prover) external {
         proverWhitelist[_chainId][_prover] = true;
+        emit ProverWhitelisted(_chainId, _prover);
     }
+
+    /**
+     * @notice Remove a prover from the whitelist for a specific chain
+     * @param _chainId Chain ID where the prover is authorized
+     * @param _prover Address of the prover to remove from whitelist
+     */
+    function removeWhitelistedProver(
+        uint256 _chainId,
+        address _prover
+    ) external {
+        proverWhitelist[_chainId][_prover] = false;
+        emit ProverWhitelistRemoved(_chainId, _prover);
+    }
+
+    /**
+     * @notice Event emitted when a prover is added to the whitelist
+     * @param _chainId Chain ID where the prover is authorized
+     * @param _prover Address of the prover added to whitelist
+     */
+    event ProverWhitelisted(uint256 indexed _chainId, address indexed _prover);
+
+    /**
+     * @notice Event emitted when a prover is removed from the whitelist
+     * @param _chainId Chain ID where the prover was authorized
+     * @param _prover Address of the prover removed from whitelist
+     */
+    event ProverWhitelistRemoved(
+        uint256 indexed _chainId,
+        address indexed _prover
+    );
 
     /**
      * @notice Mock implementation of initiateProving
