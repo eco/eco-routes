@@ -23,7 +23,6 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     string public constant PROOF_TYPE = "Metalayer";
 
-
     /**
      * @notice Address of local Metalayer router
      */

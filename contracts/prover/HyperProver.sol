@@ -31,7 +31,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     string public constant PROOF_TYPE = "Hyperlane";
 
-
     /**
      * @notice Address of local Hyperlane mailbox
      */
