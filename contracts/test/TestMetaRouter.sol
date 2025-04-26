@@ -18,8 +18,17 @@ contract TestMetaRouter {
     // Immutable domain ID for this chain
     uint32 public immutable LOCAL_DOMAIN;
 
+    // Fee for metadata used in tests
+    uint256 public constant FEE = 0.001 ether;
+
     // Mapping to track messages sent and enable verification in tests
     mapping(bytes32 => bool) public sentMessages;
+
+    // Variables to store latest dispatch info for tests
+    bool public dispatched;
+    uint32 public destinationDomain;
+    bytes32 public recipientAddress;
+    bytes public messageBody;
 
     // Event emitted when a message is dispatched
     event MessageDispatched(
@@ -28,7 +37,7 @@ contract TestMetaRouter {
         bytes message
     );
 
-    constructor() {
+    constructor(address /* _ignored */) {
         LOCAL_DOMAIN = 31337; // Hardhat local chain ID
     }
 
@@ -51,6 +60,12 @@ contract TestMetaRouter {
         FinalityState /* _finality */,
         uint256 /* _gasLimit */
     ) external payable returns (bytes32 messageId) {
+        // Store the message details for test verification
+        dispatched = true;
+        destinationDomain = _destinationDomain;
+        recipientAddress = _recipient;
+        messageBody = _message;
+
         // Generate a fake message ID for testing
         messageId = keccak256(
             abi.encode(
@@ -84,7 +99,7 @@ contract TestMetaRouter {
         bytes calldata /* _message */
     ) external pure returns (uint256) {
         // Return a fixed fee for testing purposes
-        return 0.001 ether;
+        return FEE;
     }
 
     /**

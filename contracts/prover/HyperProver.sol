@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 
@@ -44,7 +45,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     constructor(
         address _mailbox,
         address _inbox,
-        address[] memory _provers
+        IMessageBridgeProver.TrustedProver[] memory _provers
     ) MessageBridgeProver(_inbox, _provers) {
         MAILBOX = _mailbox;
     }
@@ -52,32 +53,21 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Handles incoming Hyperlane messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
-     * param _origin Origin chain ID (unused but required by interface)
+     * @param _origin Origin chain ID from the source chain
      * @param _sender Address that dispatched the message on source chain
      * @param _messageBody Encoded array of intent hashes and claimants
      */
     function handle(
-        uint32,
+        uint32 _origin,
         bytes32 _sender,
         bytes calldata _messageBody
     ) public payable {
         // Verify message is from authorized mailbox
         _validateMessageSender(msg.sender, MAILBOX);
 
-        // Verify dispatch originated from valid destinationChain prover
+        // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
-        if (!proverWhitelist[sender]) {
-            revert UnauthorizedDestinationProve(sender);
-        }
-
-        // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
-            _messageBody,
-            (bytes32[], address[])
-        );
-
-        // Process intent proofs using shared implementation
-        _processIntentProofs(hashes, claimants);
+        _handleCrossChainMessage(_origin, sender, _messageBody);
     }
 
     /**
@@ -89,7 +79,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      */
-    function destinationProve(
+    function sendProof(
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,

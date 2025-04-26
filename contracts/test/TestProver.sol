@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
 
 contract TestProver is BaseProver {
     struct ArgsCheck {
@@ -30,7 +31,7 @@ contract TestProver is BaseProver {
         return "storage";
     }
 
-    function destinationProve(
+    function sendProof(
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,

@@ -30,7 +30,7 @@ abstract contract BaseProver is IProver, ERC165 {
     constructor(address _inbox) {
         INBOX = _inbox;
     }
-    
+
     /**
      * @notice Process intent proofs from a cross-chain message
      * @param _hashes Array of intent hashes
@@ -63,23 +63,6 @@ abstract contract BaseProver is IProver, ERC165 {
             }
         }
     }
-
-    /**
-     * @notice Initiates the proving process for intents from the destination chain
-     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
-     * @param _sender Address of the original transaction sender
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data specific to the proving implementation
-     */
-    function destinationProve(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) external payable virtual;
 
     /**
      * @notice Checks if this contract supports a given interface

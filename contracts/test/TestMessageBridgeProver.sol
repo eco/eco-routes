@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
 import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 
 /**
  * @title TestMessageBridgeProver
@@ -23,18 +25,18 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     constructor(
         address _inbox,
-        address[] memory _provers
+        IMessageBridgeProver.TrustedProver[] memory _provers
     ) MessageBridgeProver(_inbox, _provers) {}
 
-    function addWhitelistedProver(address _prover) external {
-        proverWhitelist[_prover] = true;
+    function addWhitelistedProver(uint256 _chainId, address _prover) external {
+        proverWhitelist[_chainId][_prover] = true;
     }
 
     /**
      * @notice Mock implementation of initiateProving
      * @dev Records arguments and marks dispatched = true
      */
-    function destinationProve(
+    function sendProof(
         address /* _sender */,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,

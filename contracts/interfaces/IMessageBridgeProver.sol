@@ -10,6 +10,15 @@ import {IProver} from "./IProver.sol";
  */
 interface IMessageBridgeProver is IProver {
     /**
+     * @notice Struct representing a trusted prover on a specific chain
+     * @param chainId The chain ID where the prover is authorized
+     * @param prover The address of the authorized prover
+     */
+    struct TrustedProver {
+        uint256 chainId;
+        address prover;
+    }
+    /**
      * @notice Insufficient fee provided for cross-chain message dispatch
      * @param _requiredFee Amount of fee required
      */
@@ -30,8 +39,8 @@ interface IMessageBridgeProver is IProver {
      * @notice Unauthorized call to initiate proving
      * @param _sender Address that initiated
      */
-    error UnauthorizedDestinationProve(address _sender);
-    
+    error UnauthorizedSendProof(address _sender);
+
     /**
      * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
      * @param _hashes Intent hashes sent in the batch

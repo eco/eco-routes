@@ -5,6 +5,7 @@ import {IMetalayerRecipient, ReadOperation} from "@metalayer/contracts/src/inter
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
 
@@ -36,7 +37,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     constructor(
         address _router,
         address _inbox,
-        address[] memory _provers
+        TrustedProver[] memory _provers
     ) MessageBridgeProver(_inbox, _provers) {
         ROUTER = _router;
     }
@@ -44,33 +45,25 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Handles incoming Metalayer messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
+     * @param _origin Origin chain ID from the source chain
      * @param _sender Address that dispatched the message on source chain
      * @param _message Encoded array of intent hashes and claimants
+     * @param _operations Read operations (unused but required by interface)
+     * @param _operationsData Operations data (unused but required by interface)
      */
     function handle(
-        uint32,
+        uint32 _origin,
         bytes32 _sender,
         bytes calldata _message,
-        ReadOperation[] calldata,
-        bytes[] calldata
+        ReadOperation[] calldata _operations,
+        bytes[] calldata _operationsData
     ) external payable {
         // Verify message is from authorized router
         _validateMessageSender(msg.sender, ROUTER);
 
-        // Verify dispatch originated from valid destinationChain prover
+        // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
-        if (!proverWhitelist[sender]) {
-            revert UnauthorizedDestinationProve(sender);
-        }
-
-        // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
-            _message,
-            (bytes32[], address[])
-        );
-
-        // Process intent proofs using shared implementation
-        _processIntentProofs(hashes, claimants);
+        _handleCrossChainMessage(_origin, sender, _message);
     }
 
     /**
@@ -82,7 +75,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      */
-    function destinationProve(
+    function sendProof(
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,

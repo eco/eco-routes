@@ -12,20 +12,26 @@ import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
  */
 abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
     /**
-     * @notice Mapping of addresses to their prover whitelist status
-     * @dev Used to authorize cross-chain message senders
+     * @notice Mapping of chain IDs to addresses to their prover whitelist status
+     * @dev Used to authorize cross-chain message senders from specific chains
      */
-    mapping(address => bool) public proverWhitelist;
+    mapping(uint256 => mapping(address => bool)) public proverWhitelist;
 
     /**
      * @notice Initializes the MessageBridgeProver contract
      * @param _inbox Address of the Inbox contract
-     * @param _provers Array of trusted prover addresses to whitelist
+     * @param _provers Array of trusted provers to whitelist
      */
-    constructor(address _inbox, address[] memory _provers) BaseProver(_inbox) {
-        proverWhitelist[address(this)] = true;
+    constructor(
+        address _inbox,
+        TrustedProver[] memory _provers
+    ) BaseProver(_inbox) {
+        // Add this contract to the whitelist on the current chain
+        proverWhitelist[block.chainid][address(this)] = true;
+
+        // Add all provided trusted provers to their respective chains
         for (uint256 i = 0; i < _provers.length; i++) {
-            proverWhitelist[_provers[i]] = true;
+            proverWhitelist[_provers[i].chainId][_provers[i].prover] = true;
         }
     }
 
@@ -50,10 +56,9 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
      */
     function _validateProvingRequest(address _sender) internal view {
         if (_sender != INBOX) {
-            revert UnauthorizedDestinationProve(_sender);
+            revert UnauthorizedSendProof(_sender);
         }
     }
-
 
     /**
      * @notice Process payment and refund excess fees
@@ -72,5 +77,32 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
                 revert NativeTransferFailed();
             }
         }
+    }
+
+    /**
+     * @notice Handles cross-chain messages containing proof data
+     * @dev Common implementation to validate and process cross-chain messages
+     * @param _sourceChainId Chain ID of the source chain
+     * @param _messageSender Address that dispatched the message on source chain
+     * @param _message Encoded array of intent hashes and claimants
+     */
+    function _handleCrossChainMessage(
+        uint256 _sourceChainId,
+        address _messageSender,
+        bytes memory _message
+    ) internal {
+        // Verify dispatch originated from a valid prover on the specific source chain
+        if (!proverWhitelist[_sourceChainId][_messageSender]) {
+            revert UnauthorizedSendProof(_messageSender);
+        }
+
+        // Decode message containing intent hashes and claimants
+        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
+            _message,
+            (bytes32[], address[])
+        );
+
+        // Process the intent proofs using shared implementation
+        _processIntentProofs(hashes, claimants);
     }
 }
