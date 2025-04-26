@@ -56,7 +56,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
      */
     function _validateProvingRequest(address _sender) internal view {
         if (_sender != INBOX) {
-            revert UnauthorizedSendProof(_sender);
+            revert UnauthorizedSendProof(_sender, "not-inbox");
         }
     }
 
@@ -93,7 +93,7 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
     ) internal {
         // Verify dispatch originated from a valid prover on the specific source chain
         if (!proverWhitelist[_sourceChainId][_messageSender]) {
-            revert UnauthorizedSendProof(_messageSender);
+            revert UnauthorizedIncomingProof(_messageSender);
         }
 
         // Decode message containing intent hashes and claimants
@@ -101,6 +101,11 @@ abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver {
             _message,
             (bytes32[], address[])
         );
+
+        // Validate that array lengths match
+        if (hashes.length != claimants.length) {
+            revert ArrayLengthMismatch();
+        }
 
         // Process the intent proofs using shared implementation
         _processIntentProofs(hashes, claimants);

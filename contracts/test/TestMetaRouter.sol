@@ -46,10 +46,7 @@ contract TestMetaRouter {
      * @dev Records message details for test verification
      * @param _destinationDomain Target chain domain ID
      * @param _recipient Address that will receive the message on the destination
-     * param _operations Array of read operations (not used in this mock)
      * @param _message Message body to deliver
-     * param _finality Desired finality level for the message
-     * param _gasLimit Gas limit for message execution
      * @return messageId A unique identifier for the dispatched message
      */
     function dispatch(
@@ -88,9 +85,6 @@ contract TestMetaRouter {
     /**
      * @notice Mock implementation of the fee quotation function
      * @dev Always returns a fixed fee amount for testing
-     * param _destinationDomain Target chain domain ID
-     * param _recipient Address that will receive the message
-     * param _message Message body to deliver
      * @return Fixed fee amount for testing
      */
     function quoteDispatch(

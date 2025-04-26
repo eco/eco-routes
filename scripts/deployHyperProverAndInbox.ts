@@ -44,6 +44,8 @@ switch (network.name) {
   case 'helix':
     deployNetwork = mainnetNetworks.helix
     break
+  default:
+    throw new Error(`Network ${network.name} not configured with deployment settings`)
 }
 
 async function main() {
@@ -65,7 +67,7 @@ async function main() {
       [],
     )
     receipt = await singletonDeployer.deploy(inboxTx.data, salt, {
-      gaslimit: 1000000,
+      gasLimit: 1000000,
     })
     console.log('inbox deployed')
 
@@ -89,10 +91,25 @@ async function main() {
       `Using Hyperlane mailbox at: ${deployNetwork.hyperlaneMailboxAddress}`,
     )
 
+    // Create trusted provers array with properly structured objects
+    const trustedProvers = [] // Empty initially, will be configured later
+    // Example of how to add trusted provers if needed:
+    // const trustedProvers = [
+    //   { chainId: 1, prover: "0x1234..." },
+    //   { chainId: 10, prover: "0x5678..." }
+    // ];
+    
+    // Validate chain IDs if any trusted provers are added
+    for (const prover of trustedProvers) {
+      if (!prover.chainId || prover.chainId <= 0) {
+        throw new Error(`Invalid chain ID in trusted prover: ${prover.chainId}`)
+      }
+    }
+
     const hyperProverTx = await hyperProverFactory.getDeployTransaction(
       deployNetwork.hyperlaneMailboxAddress,
       inboxAddress,
-      [], // Initialize with an empty trusted provers array - can be configured later
+      trustedProvers, // TrustedProver[] struct array
     )
 
     receipt = await singletonDeployer.deploy(hyperProverTx.data, salt, {
@@ -129,7 +146,7 @@ async function main() {
       constructorArguments: [
         deployNetwork.hyperlaneMailboxAddress,
         inboxAddress,
-        [], // Empty trusted provers array used in constructor
+        trustedProvers, // TrustedProver[] struct array
       ],
     })
     console.log('hyperProver verified at:', hyperProverAddress)
@@ -148,13 +165,17 @@ async function main() {
      - Deploy: npx hardhat run scripts/deployMetaProver.ts --network <network>
      - Configure: inbox.setProvers([hyperProverAddress, metaProverAddress])
   
-  3. For production systems, configure trusted provers:
-     - hyperProver.addTrustedProvers([trusted_addresses])
+  3. For production systems, configure trusted provers with chain IDs:
+     - hyperProver.addTrustedProvers([
+         { chainId: 1, prover: "0x1234..." },
+         { chainId: 10, prover: "0x5678..." }
+       ])
   -----------------------------------------------
   `)
 }
 
 main().catch((error) => {
-  console.error(error)
+  console.error('Error during deployment:', error.message)
   process.exitCode = 1
+  // Don't use process.exit() directly, set exitCode instead
 })

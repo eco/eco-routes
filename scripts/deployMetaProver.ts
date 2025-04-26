@@ -60,7 +60,8 @@ async function main() {
     console.error(
       'ERROR: You must set the inboxAddress before running this script',
     )
-    process.exit(1)
+    // Don't use process.exit directly
+    throw new Error('Missing inboxAddress configuration')
   }
 
   if (metaProverAddress === '') {
@@ -72,17 +73,33 @@ async function main() {
         'ERROR: No Metalayer router address configured for this network',
       )
       console.log('Add metalayerRouterAddress to your network configuration')
-      process.exit(1)
+      // Don't use process.exit directly
+      throw new Error('Missing metalayerRouterAddress configuration')
     }
 
     console.log(
       `Using Metalayer router at: ${deployNetwork.metalayerRouterAddress}`,
     )
 
+    // Create trusted provers array with properly structured objects
+    const trustedProvers = [] // Empty initially, will be configured later
+    // Example of how to add trusted provers if needed:
+    // const trustedProvers = [
+    //   { chainId: 1, prover: "0x1234..." },
+    //   { chainId: 10, prover: "0x5678..." }
+    // ];
+    
+    // Validate chain IDs if any trusted provers are added
+    for (const prover of trustedProvers) {
+      if (!prover.chainId || prover.chainId <= 0) {
+        throw new Error(`Invalid chain ID in trusted prover: ${prover.chainId}`);
+      }
+    }
+
     const metaProverTx = await metaProverFactory.getDeployTransaction(
       deployNetwork.metalayerRouterAddress,
       inboxAddress,
-      [], // Initialize with an empty trusted provers array - can be configured later
+      trustedProvers, // TrustedProver[] struct array
     )
 
     receipt = await singletonDeployer.deploy(metaProverTx.data, salt, {
@@ -109,7 +126,7 @@ async function main() {
       constructorArguments: [
         deployNetwork.metalayerRouterAddress,
         inboxAddress,
-        [], // Empty trusted provers array used in constructor
+        trustedProvers, // TrustedProver[] struct array
       ],
     })
     console.log('MetaProver verified at:', metaProverAddress)
@@ -124,11 +141,17 @@ async function main() {
   1. Configure the Inbox with the new MetaProver:
      - inbox.setProvers([hyperProverAddress, metaProverAddress])
   
-  2. For production systems, configure trusted provers:
-     - metaProver.addTrustedProvers([trusted_addresses])
+  2. For production systems, configure trusted provers with chain IDs:
+     - metaProver.addTrustedProvers([
+         { chainId: 1, prover: "0x1234..." },
+         { chainId: 10, prover: "0x5678..." }
+       ])
   
   3. Update your client applications to use either HyperProver or MetaProver
      based on your cross-chain messaging requirements
+  
+  4. Make sure to use proper chain ID validation for cross-chain messages
+     to improve security
   -----------------------------------------------
   `)
 }

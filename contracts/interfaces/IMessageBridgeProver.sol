@@ -38,8 +38,15 @@ interface IMessageBridgeProver is IProver {
     /**
      * @notice Unauthorized call to initiate proving
      * @param _sender Address that initiated
+     * @param _context Additional context for debugging (e.g., "inbox", "whitelist")
      */
-    error UnauthorizedSendProof(address _sender);
+    error UnauthorizedSendProof(address _sender, string _context);
+
+    /**
+     * @notice Unauthorized incoming proof from source chain
+     * @param _sender Address that initiated the proof
+     */
+    error UnauthorizedIncomingProof(address _sender);
 
     /**
      * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
