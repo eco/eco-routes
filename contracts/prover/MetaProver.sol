@@ -48,15 +48,13 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param _origin Origin chain ID from the source chain
      * @param _sender Address that dispatched the message on source chain
      * @param _message Encoded array of intent hashes and claimants
-     * @param _operations Read operations (unused but required by interface)
-     * @param _operationsData Operations data (unused but required by interface)
      */
     function handle(
         uint32 _origin,
         bytes32 _sender,
         bytes calldata _message,
-        ReadOperation[] calldata _operations,
-        bytes[] calldata _operationsData
+        ReadOperation[] calldata /* _operations */,
+        bytes[] calldata /* _operationsData */
     ) external payable {
         // Verify message is from authorized router
         _validateMessageSender(msg.sender, ROUTER);
