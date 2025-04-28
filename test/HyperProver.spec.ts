@@ -180,8 +180,12 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
-      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
+          .handle(
+            12345,
+            ethers.zeroPadValue(ethers.toBeHex(27), 32),
+            ethers.sha256('0x'),
+          ),
+        ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
     })
 
     it('should record a single proven intent when called correctly', async () => {
