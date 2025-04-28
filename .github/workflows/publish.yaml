@@ -104,7 +104,7 @@ jobs:
           cmd: deployForgeCI
         env:
           PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-          CHAIN_IDS: "1,10,137,5000,8453,42161,84532,11155111,11155420"
+          CHAIN_IDS: "1,10,137,5000,5330,8453,42161,84532,11155111,11155420"
 
           # RPC URLs
           RPC_URL_1: "https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
@@ -112,6 +112,7 @@ jobs:
           RPC_URL_137: "https://polygon-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_8453: "https://base-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_5000: "https://mantle-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
+          RPC_URL_5330: "https://superseed-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           RPC_URL_42161: "https://arb-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
           # Testnets
           RPC_URL_84532: "https://base-sepolia.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
@@ -135,6 +136,7 @@ jobs:
           MAILBOX_10: "0xd4C1905BB1D26BC93DAC913e13CaCC278CdCC80D"
           MAILBOX_137: "0x5d934f4e2f797775e53561bB72aca21ba36B96BB"
           MAILBOX_5000: "0x398633D19f4371e1DB5a8EFE90468eB70B1176AA"
+          MAILBOX_5330: "0x3a464f746D23Ab22155710f44dB16dcA53e0775E"
           MAILBOX_8453: "0xeA87ae93Fa0019a82A727bfd3eBd1cFCa8f64f1D"
           MAILBOX_42161: "0x979Ca5202784112f4738403dBec5D0F3B9daabB9"
           # Testnets
