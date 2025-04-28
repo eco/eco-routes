@@ -40,7 +40,6 @@ contract PolymerProver is BaseProver, Semver {
     // Immutable state variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
     address public immutable INBOX;
-    address public immutable INTENT_SOURCE;
     
     // State variables
     mapping(uint32 => bool) public supportedChainIds;
@@ -50,18 +49,14 @@ contract PolymerProver is BaseProver, Semver {
      * @param _crossL2ProverV2 Address of the Polymer CrossL2ProverV2 contract
      * @param _inbox Address of the Inbox contract that emits proof events
      * @param _supportedChainIds Array of chain IDs that this prover will accept proofs from
-     * @param _intentSource Address of the IntentSource contract
      */
     constructor(
         address _crossL2ProverV2,
         address _inbox,
-        uint32[] memory _supportedChainIds,
-        address _intentSource
+        uint32[] memory _supportedChainIds
     ) {
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
         INBOX = _inbox;
-        INTENT_SOURCE = _intentSource;
-        
         for (uint32 i = 0; i < _supportedChainIds.length; i++) {
             supportedChainIds[_supportedChainIds[i]] = true;
         }
@@ -79,30 +74,6 @@ contract PolymerProver is BaseProver, Semver {
     }
 
     /**
-     * @notice Validates a proof and claims the reward
-     * @param proof The proof data to validate
-     * @param routeHash The route hash component of the intent
-     * @param proverReward The reward structure for the intent
-     */
-    function validateAndClaim(
-        bytes calldata proof,
-        bytes32 routeHash,
-        ProverReward calldata proverReward
-    ) external {
-        (bytes32 intentHash, address claimant) = _validateProof(proof);
-        Reward memory reward = _toReward(proverReward);
-
-        validateIntentHash(routeHash, reward, intentHash);
-        IIntentSource(INTENT_SOURCE).pushWithdraw(
-            intentHash,
-            routeHash,
-            reward,
-            claimant
-        );
-        emit IntentProven(intentHash, claimant); //might want a new event, but I think its ok
-    }
-
-    /**
      * @notice Validates multiple proofs in a batch
      * @param proofs Array of proof data to validate
      */
@@ -111,38 +82,6 @@ contract PolymerProver is BaseProver, Semver {
             (bytes32 intentHash, address claimant) = _validateProof(proofs[i]);
             processIntent(intentHash, claimant);
         }
-    }
-
-    /**
-     * @notice Validates multiple proofs in a batch and claims rewards
-     * @param proofs Array of proof data to validate
-     * @param routeHashes Array of route hashes corresponding to each proof
-     * @param proverRewards Array of reward structures corresponding to each proof
-     */
-    function validateBatchAndClaim(
-        bytes[] calldata proofs,
-        bytes32[] calldata routeHashes,
-        ProverReward[] calldata proverRewards
-    ) external {
-        bytes32[] memory intentHashes = new bytes32[](proofs.length);
-        address[] memory claimants = new address[](proofs.length);
-        Reward[] memory rewards = new Reward[](proverRewards.length);
-
-        for (uint256 i = 0; i < proofs.length; i++) {
-            (bytes32 intentHash, address claimant) = _validateProof(proofs[i]);
-            intentHashes[i] = intentHash;
-            claimants[i] = claimant;
-            rewards[i] = _toReward(proverRewards[i]);
-            validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
-            emit IntentProven(intentHash, claimant); //might want a new event, but I think its ok
-        }
-
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(
-            intentHashes,
-            routeHashes,
-            rewards,
-            claimants
-        );
     }
 
     // ------------- PACKED PROOF VALIDATION -------------
@@ -162,43 +101,6 @@ contract PolymerProver is BaseProver, Semver {
     function validateBatchPacked(bytes[] calldata proofs) external {
         for (uint256 i = 0; i < proofs.length; i++) {
             _validatePackedProof(proofs[i]);
-        }
-    }
-
-    /**
-     * @notice Validates a packed proof and claims rewards
-     * @param proof The packed proof data to validate
-     * @param routeHashes Array of route hashes corresponding to intents in the proof
-     * @param proverRewards Array of reward structures corresponding to intents in the proof
-     */
-    function validatePackedAndClaim(
-        bytes calldata proof,
-        bytes32[] calldata routeHashes,
-        ProverReward[] calldata proverRewards
-    ) external {
-        if (routeHashes.length != proverRewards.length) revert SizeMismatch();
-        _validatePackedAndClaim(proof, routeHashes, proverRewards);
-    }
-
-    /**
-     * @notice Validates multiple packed proofs in a batch and claims rewards
-     * @param proofs Array of packed proof data to validate
-     * @param routeHashes 2D array of route hashes corresponding to intents in each proof
-     * @param proverRewards 2D array of reward structures corresponding to intents in each proof
-     */
-    function validateBatchPackedAndClaim(
-        bytes[] calldata proofs,
-        bytes32[][] calldata routeHashes,
-        ProverReward[][] calldata proverRewards
-    ) external {
-        for (uint256 i = 0; i < proofs.length; i++) {
-            if (routeHashes[i].length != proverRewards[i].length)
-                revert SizeMismatch();
-            _validatePackedAndClaim(
-                proofs[i],
-                routeHashes[i],
-                proverRewards[i]
-            );
         }
     }
 
@@ -264,49 +166,6 @@ contract PolymerProver is BaseProver, Semver {
         checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
 
         decodeMessageandStore(data);
-    }
-
-    /**
-     * @notice Internal function to validate a packed proof and prepare for claiming
-     * @param proof The packed proof data to validate
-     * @param routeHashes Array of route hashes corresponding to intents in the proof
-     * @param proverRewards Array of reward structures corresponding to intents in the proof
-     */
-    function _validatePackedAndClaim(
-        bytes calldata proof,
-        bytes32[] calldata routeHashes,
-        ProverReward[] calldata proverRewards
-    ) internal {
-        (
-            uint32 chainId,
-            address emittingContract,
-            bytes memory topics,
-            bytes memory data
-        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
-
-        checkInboxContract(emittingContract);
-        checkSupportedChainId(chainId);
-        checkTopicLength(topics, 64); //signature and chainId
-        checkTopicSignature(bytes32(topics), BATCH_PROOF_SELECTOR);
-
-        uint256 expectedSize = routeHashes.length;
-        (
-            bytes32[] memory intentHashes,
-            address[] memory claimants
-        ) = decodeMessageBeforeClaim(data, expectedSize);
-
-        Reward[] memory rewards = new Reward[](expectedSize);
-        for (uint256 i = 0; i < expectedSize; i++) {
-            rewards[i] = _toReward(proverRewards[i]);
-            validateIntentHash(routeHashes[i], rewards[i], intentHashes[i]);
-            emit IntentProven(intentHashes[i], claimants[i]); 
-        }
-        IIntentSource(INTENT_SOURCE).batchPushWithdraw(
-            intentHashes,
-            routeHashes,
-            rewards,
-            claimants
-        );
     }
 
     // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
