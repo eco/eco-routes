@@ -83,12 +83,12 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param _sourceChainId Chain ID of the source chain (not used for whitelist validation)
+     * param _sourceChainId Chain ID of the source chain (not used for whitelist validation)
      * @param _messageSender Address that dispatched the message on source chain
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 _sourceChainId, //not used but kept for interface compatibility
+        uint256 /* _sourceChainId */,
         address _messageSender,
         bytes calldata _message
     ) internal {
