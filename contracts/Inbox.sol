@@ -12,7 +12,6 @@ import {IInbox} from "./interfaces/IInbox.sol";
 
 import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
-import {console} from "hardhat/console.sol";
 
 /**
  * @title Inbox
@@ -92,7 +91,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         override(Eco7683DestinationSettler, IInbox)
         returns (bytes[] memory)
     {
-        console.log(0);
         bytes[] memory result = _fulfill(
             _route,
             _rewardHash,
