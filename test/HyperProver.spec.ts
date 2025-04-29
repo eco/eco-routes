@@ -29,22 +29,9 @@ describe('HyperProver Test', (): void => {
     claimant: SignerWithAddress
   }> {
     const [owner, solver, claimant] = await ethers.getSigners()
-
-    // Create a temporary prover to get its address for the mailbox processor
-    // In the tests, we'll use this as the value for the TestMailbox's processor
-    // which will be the "source chain prover address" in our simulated environment
-    const tempFactory = await ethers.getContractFactory('HyperProver')
-    const tempProver = await tempFactory.deploy(
-      await owner.getAddress(), // Use valid addresses to avoid constructor reverts
-      await owner.getAddress(),
-      [],
-      200000,
-    )
-
-    // Set the mailbox's processor to our source chain prover
     const mailbox = await (
       await ethers.getContractFactory('TestMailbox')
-    ).deploy(await tempProver.getAddress())
+    ).deploy(await owner.getAddress())
 
     const inbox = await (await ethers.getContractFactory('Inbox')).deploy()
 
@@ -70,16 +57,9 @@ describe('HyperProver Test', (): void => {
 
   describe('1. Constructor', () => {
     it('should initialize with the correct mailbox and inbox addresses', async () => {
-      // When creating HyperProver instance, add the mailbox processor (which simulates a source-chain prover)
-      // to the whitelist
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [await mailbox.processor()], // Whitelist the processor as the source chain prover address
-        200000,
-      )
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
 
       expect(await hyperProver.MAILBOX()).to.equal(await mailbox.getAddress())
       expect(await hyperProver.INBOX()).to.equal(await inbox.getAddress())
@@ -92,15 +72,15 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [additionalProver, await ethers.Wallet.createRandom().getAddress()],
+        [additionalProver],
         200000,
       )
 
       // Check if the prover address is in the whitelist
       expect(await hyperProver.isWhitelisted(additionalProver)).to.be.true
-      // The HyperProver itself is not automatically whitelisted unless explicitly added
+      // Check if the hyperProver itself is also whitelisted
       expect(await hyperProver.isWhitelisted(await hyperProver.getAddress())).to
-        .be.false
+        .be.true
     })
 
     it('should return the correct proof type', async () => {
@@ -114,13 +94,12 @@ describe('HyperProver Test', (): void => {
 
   describe('2. Handle', () => {
     beforeEach(async () => {
-      // For Handle tests, we'll use the owner as the mailbox
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(
-        owner.address, // Owner simulates the mailbox
+        owner.address,
         await inbox.getAddress(),
-        [await mailbox.processor()], // Use processor as source chain prover
+        [await inbox.getAddress()],
         200000,
       )
     })
@@ -134,16 +113,10 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should revert when sender field is not authorized', async () => {
-      // Using a random address as the sender that isn't whitelisted
-      const randomAddress = ethers.Wallet.createRandom().address
       await expect(
         hyperProver
           .connect(owner)
-          .handle(
-            12345,
-            ethers.zeroPadValue(randomAddress, 32),
-            ethers.sha256('0x'),
-          ),
+          .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
       ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
     })
 
@@ -159,15 +132,14 @@ describe('HyperProver Test', (): void => {
         ethers.ZeroAddress,
       )
 
-      // Get the first whitelisted address from the contract
-      const whitelist = await hyperProver.getWhitelist()
-      const whitelistedAddress = whitelist[0]
-
-      // Use the whitelisted address as the sender parameter
       await expect(
         hyperProver
           .connect(owner)
-          .handle(12345, ethers.zeroPadValue(whitelistedAddress, 32), msgBody),
+          .handle(
+            12345,
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+          ),
       )
         .to.emit(hyperProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
@@ -183,20 +155,24 @@ describe('HyperProver Test', (): void => {
         [[intentHash], [claimantAddress]],
       )
 
-      // Get the first whitelisted address from the contract
-      const whitelist = await hyperProver.getWhitelist()
-      const whitelistedAddress = whitelist[0]
-
       // First handle call proves the intent
       await hyperProver
         .connect(owner)
-        .handle(12345, ethers.zeroPadValue(whitelistedAddress, 32), msgBody)
+        .handle(
+          12345,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        )
 
       // Second handle call should emit IntentAlreadyProven
       await expect(
         hyperProver
           .connect(owner)
-          .handle(12345, ethers.zeroPadValue(whitelistedAddress, 32), msgBody),
+          .handle(
+            12345,
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+          ),
       )
         .to.emit(hyperProver, 'IntentAlreadyProven')
         .withArgs(intentHash)
@@ -216,14 +192,14 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Get the first whitelisted address from the contract
-      const whitelist = await hyperProver.getWhitelist()
-      const whitelistedAddress = whitelist[0]
-
       await expect(
         hyperProver
           .connect(owner)
-          .handle(12345, ethers.zeroPadValue(whitelistedAddress, 32), msgBody),
+          .handle(
+            12345,
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+          ),
       )
         .to.emit(hyperProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
@@ -235,38 +211,18 @@ describe('HyperProver Test', (): void => {
     })
   })
 
-  describe('3. Prove', () => {
+  describe('3. SendProof', () => {
     beforeEach(async () => {
-      // We need to modify TestMailbox to make it auto-process with the correct sender address
-      // Update TestMailbox to make it work during tests
-      // Note: The key point here is that when the HyperProver sends a message through mailbox,
-      // the TestMailbox now automatically creates a message coming from the HyperProver itself,
-      // which is the whitelisted address.
-
-      // Deploy a TestMailbox to use for our tests
-      const customMailbox = await (
-        await ethers.getContractFactory('TestMailbox')
-      ).deploy(ethers.ZeroAddress)
-
-      // Deploy the main HyperProver and whitelist itself - this simulates a cross-chain setup
-      // where the HyperProver on chain A whitelists the HyperProver on chain B with the same address
-      const factory = await ethers.getContractFactory('HyperProver')
-      hyperProver = await factory.deploy(
-        await customMailbox.getAddress(),
-        owner.address, // Owner acts as inbox for tests
-        [], // Empty whitelist for now
+      // use owner as inbox so we can test sendProof
+      const chainId = 12345 // Use test chainId
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
+        await mailbox.getAddress(),
+        owner.address,
+        [await inbox.getAddress()],
         200000,
       )
-
-      // Set the HyperProver to whitelist itself - this is a test shortcut
-      // In a real deployment, it would whitelist the address of its counterpart on the other chain
-      await hyperProver.addWhitelistForTest(await hyperProver.getAddress())
-
-      // Now set the processor in the custom mailbox to the hyperProver itself
-      await customMailbox.setProcessor(await hyperProver.getAddress())
-
-      // Use this modified mailbox for the tests
-      mailbox = customMailbox
     })
 
     it('should revert on underpayment', async () => {
@@ -286,7 +242,7 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before proving, make sure the mailbox hasn't been called
+      // Before sendProof, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
@@ -308,7 +264,7 @@ describe('HyperProver Test', (): void => {
       ).to.be.revertedWithCustomError(hyperProver, 'InsufficientFee')
     })
 
-    it('should reject prove from unauthorized source', async () => {
+    it('should reject sendProof from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
@@ -564,29 +520,14 @@ describe('HyperProver Test', (): void => {
   describe('4. End-to-End', () => {
     it('works end to end with message bridge', async () => {
       const chainId = 12345 // Use test chainId
-
-      // First deploy a HyperProver to get its address - this will represent a prover on another chain
-      const factory = await ethers.getContractFactory('HyperProver')
-      const sourceChainProver = await factory.deploy(
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [],
+        [await inbox.getAddress()],
         200000,
       )
-
-      // Deploy our main HyperProver with the first one whitelisted
-      hyperProver = await factory.deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [], // Empty initial whitelist
-        200000,
-      )
-
-      // For our test to work, manually add the source chain prover's address to the whitelist
-      await hyperProver.addWhitelistForTest(
-        await sourceChainProver.getAddress(),
-      )
-
       await token.mint(solver.address, amount)
 
       // Set up intent data
@@ -621,12 +562,12 @@ describe('HyperProver Test', (): void => {
 
       const { intentHash, rewardHash } = hashIntent({ route, reward })
 
-      // Prepare message data - use the source chain prover's address in the data
+      // Prepare message data
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes', 'address'],
         [
-          ethers.zeroPadValue(await sourceChainProver.getAddress(), 32), // Use the source chain prover address
+          ethers.zeroPadValue(await hyperProver.getAddress(), 32),
           metadata,
           ethers.ZeroAddress,
         ],
@@ -659,12 +600,10 @@ describe('HyperProver Test', (): void => {
           { value: fee },
         )
 
-      // NOTE: For this test, we're only verifying that dispatched=true, not that the intent is proven
-      // because we're actually using the test mailbox which doesn't automatically handle cross-chain messages
-      expect(await mailbox.dispatched()).to.be.true
-
-      // To properly prove the intent, we need to manually simulate the cross-chain message
-      // which we do in the next section
+      //the testMailbox's dispatch method directly calls the hyperProver's handle method
+      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+        await claimant.getAddress(),
+      )
 
       //but lets simulate it fully anyway
 
@@ -676,25 +615,27 @@ describe('HyperProver Test', (): void => {
 
       // For the end-to-end test, we need to simulate the mailbox
       // by deploying a new hyperProver with owner as the mailbox
-      const simulatedHyperProver = await factory.deploy(
+      const simulatedHyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
-        [], // Empty initial whitelist
+        [await inbox.getAddress()],
         200000,
       )
 
-      // Manually add the source chain prover to the whitelist
-      await simulatedHyperProver.addWhitelistForTest(
-        await sourceChainProver.getAddress(),
-      )
-
       // Handle the message and verify the intent is proven
-      // Use the special whitelist test method and add the intent directly
-      // We can't easily simulate this through handle() since we need to get the whitelist right
-      await simulatedHyperProver.addProvenIntent(
-        intentHash,
-        await claimant.getAddress(),
+      await expect(
+        simulatedHyperProver
+          .connect(owner) // Owner simulates the mailbox
+          .handle(
+            12345,
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+          ),
       )
+        .to.emit(simulatedHyperProver, 'IntentProven')
+        .withArgs(intentHash, await claimant.getAddress())
 
       expect(await simulatedHyperProver.provenIntents(intentHash)).to.eq(
         await claimant.getAddress(),
@@ -702,26 +643,13 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
-      // First deploy a HyperProver to get its address - this will represent a prover on another chain
-      const factory = await ethers.getContractFactory('HyperProver')
-      const sourceChainProver = await factory.deploy(
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [],
+        [await inbox.getAddress()],
         200000,
-      )
-
-      // Deploy our main HyperProver with empty whitelist first
-      hyperProver = await factory.deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [], // Empty initial whitelist
-        200000,
-      )
-
-      // For our test to work, manually add the source chain prover to the whitelist
-      await hyperProver.addWhitelistForTest(
-        await sourceChainProver.getAddress(),
       )
 
       // Set up token and mint
@@ -735,7 +663,7 @@ describe('HyperProver Test', (): void => {
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes', 'address'],
         [
-          ethers.zeroPadValue(await sourceChainProver.getAddress(), 32), // Use source chain prover's address
+          ethers.zeroPadValue(await hyperProver.getAddress(), 32),
           metadata,
           ethers.ZeroAddress,
         ],
@@ -869,18 +797,11 @@ describe('HyperProver Test', (): void => {
           ),
       ).to.changeEtherBalance(solver, -Number(fee))
 
-      // NOTE: For this test, we're only verifying that dispatched=true, not that the intent is proven
-      // because the TestMailbox doesn't actually process the cross-chain message automatically
-      expect(await mailbox.dispatched()).to.be.true
-
-      // We would need to manually simulate these cross-chain messages in a real test
-      // But for now, let's add the intents to the test prover directly
-      await hyperProver.addProvenIntent(
-        intentHash0,
+      //the testMailbox's dispatch method directly calls the hyperProver's handle method
+      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
         await claimant.getAddress(),
       )
-      await hyperProver.addProvenIntent(
-        intentHash1,
+      expect(await hyperProver.provenIntents(intentHash1)).to.eq(
         await claimant.getAddress(),
       )
 
@@ -888,10 +809,12 @@ describe('HyperProver Test', (): void => {
 
       // For the end-to-end test, we need to simulate the mailbox
       // by deploying a new hyperProver with owner as the mailbox
-      const simulatedHyperProver = await factory.deploy(
+      const simulatedHyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
-        [await sourceChainProver.getAddress()], // Whitelist the same source prover
+        [await inbox.getAddress()],
         200000,
       )
 
@@ -901,7 +824,7 @@ describe('HyperProver Test', (): void => {
           .connect(owner) // Owner simulates the mailbox
           .handle(
             12345,
-            ethers.zeroPadValue(await sourceChainProver.getAddress(), 32), // Use source chain prover address
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
             msgbody,
           ),
       )

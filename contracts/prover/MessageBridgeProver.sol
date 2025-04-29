@@ -88,17 +88,13 @@ abstract contract MessageBridgeProver is
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 /* _sourceChainId */,
+        uint256 _sourceChainId,
         address _messageSender,
         bytes calldata _message
     ) internal {
-        // FOR TESTING: If the sender is the HyperProver itself, we'll allow it without checking whitelist
-        // This is a hack specifically for our tests, where we need to whitelist dynamically
-        if (_messageSender != address(this)) {
-            // Verify dispatch originated from a whitelisted prover address
-            if (!isWhitelisted(_messageSender)) {
-                revert UnauthorizedIncomingProof(_messageSender);
-            }
+        // Verify dispatch originated from a whitelisted prover address
+        if (!isWhitelisted(_messageSender)) {
+            revert UnauthorizedIncomingProof(_messageSender);
         }
 
         // Decode message containing intent hashes and claimants

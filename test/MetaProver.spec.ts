@@ -300,9 +300,9 @@ describe('MetaProver Test', (): void => {
     })
   })
 
-  describe('3. Prove', () => {
+  describe('3. SendProof', () => {
     beforeEach(async () => {
-      // Use owner as inbox so we can test proving
+      // Use owner as inbox so we can test SendProof
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
       ).deploy(
@@ -324,7 +324,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before proving, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
@@ -347,7 +347,7 @@ describe('MetaProver Test', (): void => {
       ).to.be.reverted
     })
 
-    it('should correctly call dispatch in the prove method', async () => {
+    it('should correctly call dispatch in the sendProof method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -358,7 +358,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before proving, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
@@ -395,7 +395,7 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.messageBody()).to.eq(expectedBody)
     })
 
-    it('should reject prove from unauthorized source', async () => {
+    it('should reject sendProof from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
@@ -435,7 +435,7 @@ describe('MetaProver Test', (): void => {
       expect(fee).to.equal(await testRouter.FEE())
     })
 
-    it('should correctly call dispatch in the prove method', async () => {
+    it('should correctly call dispatch in the sendProof method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -446,7 +446,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before proving, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
@@ -494,7 +494,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before proving, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
