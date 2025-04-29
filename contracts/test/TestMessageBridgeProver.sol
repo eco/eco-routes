@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
 import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 
 /**
  * @title TestMessageBridgeProver
@@ -23,19 +25,44 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     constructor(
         address _inbox,
-        address[] memory _provers
-    ) MessageBridgeProver(_inbox, _provers) {}
+        address[] memory _provers,
+        uint256 _gasLimit
+    ) MessageBridgeProver(_inbox, _provers, _gasLimit) {}
 
-    function addWhitelistedProver(address _prover) external {
-        proverWhitelist[_prover] = true;
+    /**
+     * @notice Legacy test method for backward compatibility
+     * @dev This method exists only for test compatibility with old code
+     * In production code, always use isWhitelisted() directly instead of this method
+     * @param _prover Address of the prover to test whitelisting for
+     * @return Whether the prover is whitelisted
+     * @custom:deprecated Use isWhitelisted() instead
+     */
+    function isAddressWhitelisted(
+        address _prover
+    ) external view returns (bool) {
+        return isWhitelisted(_prover);
     }
+
+    /**
+     * @notice Test helper to access the whitelist
+     * @return Array of all addresses in the whitelist
+     */
+    function getWhitelistedAddresses()
+        external
+        view
+        returns (address[] memory)
+    {
+        return getWhitelist();
+    }
+
+    // No custom events needed for testing
 
     /**
      * @notice Mock implementation of initiateProving
      * @dev Records arguments and marks dispatched = true
      */
-    function destinationProve(
-        address _sender,
+    function prove(
+        address /* _sender */,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
@@ -65,10 +92,10 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
+        uint256 /* _sourceChainId */,
+        bytes32[] calldata /* _intentHashes */,
+        address[] calldata /* _claimants */,
+        bytes calldata /* _data */
     ) public view override returns (uint256) {
         return feeAmount;
     }

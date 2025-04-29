@@ -59,7 +59,7 @@ describe('HyperProver Test', (): void => {
     it('should initialize with the correct mailbox and inbox addresses', async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
 
       expect(await hyperProver.MAILBOX()).to.equal(await mailbox.getAddress())
       expect(await hyperProver.INBOX()).to.equal(await inbox.getAddress())
@@ -67,25 +67,27 @@ describe('HyperProver Test', (): void => {
 
     it('should add constructor-provided provers to the whitelist', async () => {
       const additionalProver = await owner.getAddress()
-
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
-        additionalProver,
-      ])
+      ).deploy(
+        await mailbox.getAddress(),
+        await inbox.getAddress(),
+        [additionalProver],
+        200000,
+      )
 
-      // HyperProver whitelists itself
-      expect(await hyperProver.proverWhitelist(await hyperProver.getAddress()))
-        .to.be.true
-      // And whitelists the provided address
-      expect(await hyperProver.proverWhitelist(additionalProver)).to.be.true
+      // Check if the prover address is in the whitelist
+      expect(await hyperProver.isWhitelisted(additionalProver)).to.be.true
+      // Check if the hyperProver itself is also whitelisted
+      expect(await hyperProver.isWhitelisted(await hyperProver.getAddress())).to
+        .be.true
     })
 
     it('should return the correct proof type', async () => {
       // use owner as mailbox so we can test handle
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
       expect(await hyperProver.getProofType()).to.equal('Hyperlane')
     })
   })
@@ -94,9 +96,12 @@ describe('HyperProver Test', (): void => {
     beforeEach(async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
+      ).deploy(
+        owner.address,
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
     })
 
     it('should revert when msg.sender is not the mailbox', async () => {
@@ -112,10 +117,7 @@ describe('HyperProver Test', (): void => {
         hyperProver
           .connect(owner)
           .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
-      ).to.be.revertedWithCustomError(
-        hyperProver,
-        'UnauthorizedDestinationProve',
-      )
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
     })
 
     it('should record a single proven intent when called correctly', async () => {
@@ -209,14 +211,18 @@ describe('HyperProver Test', (): void => {
     })
   })
 
-  describe('3. DestinationProve', () => {
+  describe('3. SendProof', () => {
     beforeEach(async () => {
-      // use owner as inbox so we can test DestinationProve
+      // use owner as inbox so we can test sendProof
+      const chainId = 12345 // Use test chainId
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), owner.address, [
-        await inbox.getAddress(),
-      ])
+      ).deploy(
+        await mailbox.getAddress(),
+        owner.address,
+        [await inbox.getAddress()],
+        200000,
+      )
     })
 
     it('should revert on underpayment', async () => {
@@ -236,7 +242,7 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before DestinationProve, make sure the mailbox hasn't been called
+      // Before sendProof, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
@@ -247,7 +253,7 @@ describe('HyperProver Test', (): void => {
       )
       const initBalance = await solver.provider.getBalance(solver.address)
       await expect(
-        hyperProver.connect(owner).destinationProve(
+        hyperProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -258,7 +264,7 @@ describe('HyperProver Test', (): void => {
       ).to.be.revertedWithCustomError(hyperProver, 'InsufficientFee')
     })
 
-    it('should reject DestinationProve from unauthorized source', async () => {
+    it('should reject sendProof from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
@@ -270,11 +276,8 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(solver)
-          .destinationProve(owner.address, 123, intentHashes, claimants, data),
-      ).to.be.revertedWithCustomError(
-        hyperProver,
-        'UnauthorizedDestinationProve',
-      )
+          .prove(owner.address, 123, intentHashes, claimants, data),
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedProve')
     })
 
     it('should handle exact fee payment with no refund needed', async () => {
@@ -306,7 +309,7 @@ describe('HyperProver Test', (): void => {
       )
 
       // Call with exact fee (no refund needed)
-      await hyperProver.connect(owner).destinationProve(
+      await hyperProver.connect(owner).prove(
         solver.address,
         sourceChainId,
         intentHashes,
@@ -352,14 +355,9 @@ describe('HyperProver Test', (): void => {
       // Call with custom hook
       await hyperProver
         .connect(owner)
-        .destinationProve(
-          solver.address,
-          sourceChainId,
-          intentHashes,
-          claimants,
-          data,
-          { value: fee },
-        )
+        .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+          value: fee,
+        })
 
       // Verify dispatch was called (we can't directly check hook address as
       // TestMailbox doesn't expose that property)
@@ -393,14 +391,9 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .destinationProve(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: fee },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: fee,
+          }),
       ).to.not.be.reverted
 
       // Should dispatch successfully
@@ -432,7 +425,7 @@ describe('HyperProver Test', (): void => {
       expect(fee).to.be.gt(0)
     })
 
-    it('should correctly call dispatch in the DestinationProve method', async () => {
+    it('should correctly call dispatch in the prove method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -449,11 +442,11 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before DestinationProve, make sure the mailbox hasn't been called
+      // Before proving, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       await expect(
-        hyperProver.connect(owner).destinationProve(
+        hyperProver.connect(owner).prove(
           owner.address,
           sourceChainId,
           intentHashes,
@@ -497,7 +490,7 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before DestinationProve, make sure the mailbox hasn't been called
+      // Before proving, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
@@ -508,7 +501,7 @@ describe('HyperProver Test', (): void => {
       )
       const initBalance = await solver.provider.getBalance(solver.address)
       await expect(
-        hyperProver.connect(owner).destinationProve(
+        hyperProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -526,11 +519,15 @@ describe('HyperProver Test', (): void => {
 
   describe('4. End-to-End', () => {
     it('works end to end with message bridge', async () => {
+      const chainId = 12345 // Use test chainId
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+      ).deploy(
+        await mailbox.getAddress(),
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
       await token.mint(solver.address, amount)
 
       // Set up intent data
@@ -620,9 +617,12 @@ describe('HyperProver Test', (): void => {
       // by deploying a new hyperProver with owner as the mailbox
       const simulatedHyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await owner.getAddress(), await inbox.getAddress(), [
+      ).deploy(
+        await owner.getAddress(),
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
 
       // Handle the message and verify the intent is proven
       await expect(
@@ -645,9 +645,12 @@ describe('HyperProver Test', (): void => {
     it('should work with batched message bridge fulfillment end-to-end', async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+      ).deploy(
+        await mailbox.getAddress(),
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
 
       // Set up token and mint
       await token.mint(solver.address, 2 * amount)
@@ -808,9 +811,12 @@ describe('HyperProver Test', (): void => {
       // by deploying a new hyperProver with owner as the mailbox
       const simulatedHyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await owner.getAddress(), await inbox.getAddress(), [
+      ).deploy(
+        await owner.getAddress(),
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
 
       // Simulate handling of the batch message
       await expect(

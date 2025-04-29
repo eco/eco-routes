@@ -1,11 +1,9 @@
 import { ethers, run, network } from 'hardhat'
 import { setTimeout } from 'timers/promises'
-// import { getAddress } from 'ethers'
-// import c from '../config/testnet/config'
-// import networks from '../config/testnet/config';
 import { networks as testnetNetworks } from '../config/testnet/config'
 import { networks as mainnetNetworks } from '../config/mainnet/config'
 
+// Use the same salt pattern as other deployments
 let salt: string
 if (
   network.name.toLowerCase().includes('sepolia') ||
@@ -13,12 +11,12 @@ if (
 ) {
   salt = 'TESTNET'
 } else {
-  //   salt = 'PROD'
   salt = 'HANDOFF0'
 }
 
-let inboxAddress = ''
-let hyperProverAddress = ''
+// Configure these parameters before running this script
+const inboxAddress = '' // Set this to your deployed Inbox address
+let metaProverAddress = ''
 
 console.log('Deploying to Network: ', network.name)
 console.log(`Deploying with salt: ethers.keccak256(ethers.toUtf8bytes(${salt})`)
@@ -44,10 +42,6 @@ switch (network.name) {
   case 'helix':
     deployNetwork = mainnetNetworks.helix
     break
-  default:
-    throw new Error(
-      `Network ${network.name} not configured with deployment settings`,
-    )
 }
 
 async function main() {
@@ -57,40 +51,34 @@ async function main() {
     'Deployer',
     '0xfc91Ac2e87Cc661B674DAcF0fB443a5bA5bcD0a3',
   )
+
   let receipt
   console.log('Deploying contracts with the account:', deployer.address)
   console.log(`**************************************************`)
+
   if (inboxAddress === '') {
-    const inboxFactory = await ethers.getContractFactory('Inbox')
-
-    const inboxTx = await inboxFactory.getDeployTransaction(
-      deployer.address,
-      true,
-      [],
+    console.error(
+      'ERROR: You must set the inboxAddress before running this script',
     )
-    receipt = await singletonDeployer.deploy(inboxTx.data, salt, {
-      gasLimit: 1000000,
-    })
-    console.log('inbox deployed')
-
-    inboxAddress = (
-      await singletonDeployer.queryFilter(
-        singletonDeployer.filters.Deployed,
-        receipt.blockNumber,
-      )
-    )[0].args.addr
-
-    console.log(`inbox deployed to: ${inboxAddress}`)
+    // Don't use process.exit directly
+    throw new Error('Missing inboxAddress configuration')
   }
 
-  if (hyperProverAddress === '' && inboxAddress !== '') {
-    const hyperProverFactory = await ethers.getContractFactory('HyperProver')
+  if (metaProverAddress === '') {
+    const metaProverFactory = await ethers.getContractFactory('MetaProver')
 
-    // IMPORTANT: The mailbox address is passed directly to the HyperProver constructor
-    // This is the new configuration approach - we no longer need to separately set the mailbox
-    // The HyperProver will use this mailbox for all cross-chain communication
+    // IMPORTANT: You need to configure the Metalayer router address in your network config
+    if (!deployNetwork.metalayerRouterAddress) {
+      console.error(
+        'ERROR: No Metalayer router address configured for this network',
+      )
+      console.log('Add metalayerRouterAddress to your network configuration')
+      // Don't use process.exit directly
+      throw new Error('Missing metalayerRouterAddress configuration')
+    }
+
     console.log(
-      `Using Hyperlane mailbox at: ${deployNetwork.hyperlaneMailboxAddress}`,
+      `Using Metalayer router at: ${deployNetwork.metalayerRouterAddress}`,
     )
 
     // Create trusted provers array with addresses
@@ -127,75 +115,66 @@ async function main() {
       `)
     }
 
-    const hyperProverTx = await hyperProverFactory.getDeployTransaction(
-      deployNetwork.hyperlaneMailboxAddress,
+    const metaProverTx = await metaProverFactory.getDeployTransaction(
+      deployNetwork.metalayerRouterAddress,
       inboxAddress,
       trustedProvers, // Array of whitelisted addresses
     )
 
-    receipt = await singletonDeployer.deploy(hyperProverTx.data, salt, {
+    receipt = await singletonDeployer.deploy(metaProverTx.data, salt, {
       gasLimit: 1000000,
     })
-    console.log('hyperProver deployed')
+    console.log('MetaProver deployed')
 
-    hyperProverAddress = (
+    metaProverAddress = (
       await singletonDeployer.queryFilter(
         singletonDeployer.filters.Deployed,
         receipt.blockNumber,
       )
     )[0].args.addr
 
-    console.log(`hyperProver deployed to: ${hyperProverAddress}`)
+    console.log(`MetaProver deployed to: ${metaProverAddress}`)
   }
 
   console.log('Waiting for 15 seconds for Bytecode to be on chain')
   await setTimeout(15000)
 
   try {
-    await run('verify:verify', {
-      address: inboxAddress,
-      constructorArguments: [deployer.address, true, []],
-    })
-    console.log('inbox verified at:', inboxAddress)
-  } catch (e) {
-    console.log(`Error verifying inbox`, e)
-  }
-
-  try {
     // For verification, we need to use the same trustedProvers array that was used during deployment
     await run('verify:verify', {
-      address: hyperProverAddress,
+      address: metaProverAddress,
       constructorArguments: [
-        deployNetwork.hyperlaneMailboxAddress,
+        deployNetwork.metalayerRouterAddress,
         inboxAddress,
         [], // Use empty array for verification if no trusted provers were provided
       ],
     })
-    console.log('hyperProver verified at:', hyperProverAddress)
+    console.log('MetaProver verified at:', metaProverAddress)
   } catch (e) {
-    console.log(`Error verifying hyperProver`, e)
+    console.log(`Error verifying MetaProver`, e)
   }
 
   console.log(`
   -----------------------------------------------
   IMPORTANT NEXT STEPS AFTER DEPLOYMENT:
   -----------------------------------------------
-  1. Configure the Inbox with provers:
-     - inbox.setProvers([hyperProverAddress])
+  1. Configure the Inbox with the new MetaProver:
+     - inbox.setProvers([hyperProverAddress, metaProverAddress])
   
-  2. If deploying MetaProver, use this command:
-     - Deploy: npx hardhat run scripts/deployMetaProver.ts --network <network>
-     - Configure: inbox.setProvers([hyperProverAddress, metaProverAddress])
-  
-  3. IMPORTANT: The whitelist is immutable and configured at deployment time.
+  2. IMPORTANT: The whitelist is immutable and configured at deployment time.
      Make sure to include all required prover addresses in the trustedProvers 
      array when deploying, as they cannot be added later.
+  
+  3. Update your client applications to use either HyperProver or MetaProver
+     based on your cross-chain messaging requirements
+  
+  4. Make sure to use proper chain ID validation for cross-chain messages
+     to improve security
   -----------------------------------------------
   `)
 }
 
 main().catch((error) => {
-  console.error('Error during deployment:', error.message)
+  console.error(error)
   process.exitCode = 1
-  // Don't use process.exit() directly, set exitCode instead
 })

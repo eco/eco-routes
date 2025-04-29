@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {BaseProver} from "./prover/BaseProver.sol";
+import {IProver} from "./interfaces/IProver.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IInbox} from "./interfaces/IInbox.sol";
@@ -130,7 +130,7 @@ contract Inbox is IInbox, Semver {
             }
             claimants[i] = claimant;
         }
-        BaseProver(_localProver).destinationProve{value: msg.value}(
+        IProver(_localProver).prove{value: msg.value}(
             msg.sender,
             _sourceChainId,
             _intentHashes,

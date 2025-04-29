@@ -3,66 +3,39 @@
 pragma solidity ^0.8.26;
 
 import {BaseProver} from "./BaseProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
+import {Whitelist} from "../tools/Whitelist.sol";
 
 /**
  * @title MessageBridgeProver
  * @notice Abstract contract for cross-chain message-based proving mechanisms
  * @dev Extends BaseProver with functionality for message bridge provers like Hyperlane and Metalayer
  */
-abstract contract MessageBridgeProver is BaseProver {
+abstract contract MessageBridgeProver is
+    BaseProver,
+    IMessageBridgeProver,
+    Whitelist
+{
     /**
-     * @notice Emitted when attempting to prove an already-proven intent
-     * @dev Event instead of error to allow batch processing to continue
-     * @param _intentHash Hash of the already proven intent
+     * @notice Default gas limit for cross-chain message dispatch
+     * @dev Set at deployment and cannot be changed afterward
      */
-    event IntentAlreadyProven(bytes32 _intentHash);
-
-    /**
-     * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
-     * @param _hashes the intent hashes sent in the batch
-     * @param _sourceChainID ID of the source chain
-     */
-    event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
-
-    /**
-     * @notice Insufficient fee provided for cross-chain message dispatch
-     * @param _requiredFee Amount of fee required
-     */
-    error InsufficientFee(uint256 _requiredFee);
-
-    /**
-     * @notice Native token transfer failed
-     */
-    error NativeTransferFailed();
-
-    /**
-     * @notice Unauthorized call to handle() detected
-     * @param _sender Address that attempted the call
-     */
-    error UnauthorizedHandle(address _sender);
-
-    /**
-     * @notice Unauthorized call to initiate proving
-     * @param _sender Address that initiated
-     */
-    error UnauthorizedDestinationProve(address _sender);
-
-    /**
-     * @notice Mapping of addresses to their prover whitelist status
-     * @dev Used to authorize cross-chain message senders
-     */
-    mapping(address => bool) public proverWhitelist;
+    uint256 public immutable DEFAULT_GAS_LIMIT;
 
     /**
      * @notice Initializes the MessageBridgeProver contract
      * @param _inbox Address of the Inbox contract
-     * @param _provers Array of trusted prover addresses to whitelist
+     * @param _provers Array of trusted prover addresses
+     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
-    constructor(address _inbox, address[] memory _provers) BaseProver(_inbox) {
-        proverWhitelist[address(this)] = true;
-        for (uint256 i = 0; i < _provers.length; i++) {
-            proverWhitelist[_provers[i]] = true;
-        }
+    constructor(
+        address _inbox,
+        address[] memory _provers,
+        uint256 _defaultGasLimit
+    ) BaseProver(_inbox) Whitelist(_provers) {
+        if (_inbox == address(0)) revert InboxCannotBeZeroAddress();
+
+        DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
     }
 
     /**
@@ -74,7 +47,7 @@ abstract contract MessageBridgeProver is BaseProver {
     function _validateMessageSender(
         address _messageSender,
         address _expectedSender
-    ) internal view {
+    ) internal pure {
         if (_expectedSender != _messageSender) {
             revert UnauthorizedHandle(_messageSender);
         }
@@ -86,52 +59,21 @@ abstract contract MessageBridgeProver is BaseProver {
      */
     function _validateProvingRequest(address _sender) internal view {
         if (_sender != INBOX) {
-            revert UnauthorizedDestinationProve(_sender);
+            revert UnauthorizedProve(_sender);
         }
     }
 
     /**
-     * @notice Process intent proofs from a cross-chain message
-     * @param _hashes Array of intent hashes
-     * @param _claimants Array of claimant addresses
+     * @notice Send refund to the user if they've overpaid
+     * @param _recipient Address to send the refund to
+     * @param _amount Amount to refund
      */
-    function _processIntentProofs(
-        bytes32[] memory _hashes,
-        address[] memory _claimants
-    ) internal {
-        // If arrays are empty, just return early
-        if (_hashes.length == 0) return;
-
-        // Note: For now we don't check array lengths match, but ideally this would
-        // include a check like: require(_hashes.length == _claimants.length, "Array length mismatch");
-
-        for (uint256 i = 0; i < _hashes.length; i++) {
-            (bytes32 intentHash, address claimant) = (
-                _hashes[i],
-                _claimants[i]
-            );
-            if (provenIntents[intentHash] != address(0)) {
-                emit IntentAlreadyProven(intentHash);
-            } else {
-                provenIntents[intentHash] = claimant;
-                emit IntentProven(intentHash, claimant);
-            }
-        }
-    }
-
-    /**
-     * @notice Process payment and refund excess fees
-     * @param _fee Required fee amount
-     * @param _sender Address to refund excess fee to
-     */
-    function _processPayment(uint256 _fee, address _sender) internal {
-        if (msg.value < _fee) {
-            revert InsufficientFee(_fee);
-        }
-        if (msg.value > _fee) {
-            (bool success, ) = payable(_sender).call{value: msg.value - _fee}(
-                ""
-            );
+    function _sendRefund(address _recipient, uint256 _amount) internal {
+        if (_amount > 0 && _recipient != address(0)) {
+            (bool success, ) = payable(_recipient).call{
+                value: _amount,
+                gas: 3000
+            }("");
             if (!success) {
                 revert NativeTransferFailed();
             }
@@ -139,23 +81,29 @@ abstract contract MessageBridgeProver is BaseProver {
     }
 
     /**
-     * @notice Calculates the fee required for cross-chain message dispatch
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
-     * @return Fee amount in native tokens
+     * @notice Handles cross-chain messages containing proof data
+     * @dev Common implementation to validate and process cross-chain messages
+     * @param _sourceChainId Chain ID of the source chain (not used for whitelist validation)
+     * @param _messageSender Address that dispatched the message on source chain
+     * @param _message Encoded array of intent hashes and claimants
      */
-    function fetchFee(
+    function _handleCrossChainMessage(
         uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) public view virtual returns (uint256);
+        address _messageSender,
+        bytes calldata _message
+    ) internal {
+        // Verify dispatch originated from a whitelisted prover address
+        if (!isWhitelisted(_messageSender)) {
+            revert UnauthorizedIncomingProof(_messageSender);
+        }
 
-    /**
-     * @notice Returns the proof type used by this prover
-     * @return String indicating the proving mechanism
-     */
-    function getProofType() external pure virtual returns (string memory);
+        // Decode message containing intent hashes and claimants
+        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
+            _message,
+            (bytes32[], address[])
+        );
+
+        // Process the intent proofs using shared implementation - array validation happens there
+        _processIntentProofs(hashes, claimants);
+    }
 }

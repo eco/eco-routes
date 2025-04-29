@@ -14,6 +14,43 @@ import {
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount } from '../utils/intent'
 
+/**
+ * TEST SCENARIOS:
+ *
+ * 1. Constructor
+ *   - Test initialization with correct router and inbox addresses
+ *   - Test whitelisting of constructor-provided provers
+ *   - Verify correct proof type reporting
+ *   - Verify default gas limit setting
+ *
+ * 2. Message Handling (handle())
+ *   - Test authorization checks for message senders
+ *   - Test handling of single intent proof
+ *   - Test handling of duplicate intent proofs
+ *   - Test batch proving of multiple intents
+ *   - Test validation of message data format
+ *
+ * 3. Proof Initiation (prove())
+ *   - Test authorization checks for proof initiators
+ *   - Test fee calculation and handling
+ *   - Test underpayment rejection
+ *   - Test overpayment refund
+ *   - Test exact payment processing
+ *   - Test gas limit specification through data parameter
+ *   - Verify proper message encoding and router interaction
+ *
+ * 4. Edge Cases
+ *   - Test handling of empty arrays
+ *   - Test handling of large arrays without gas issues
+ *   - Test handling of large chain IDs
+ *   - Test with mismatched array lengths
+ *
+ * 5. End-to-End Integration
+ *   - Test complete flow with TestMessageBridgeProver
+ *   - Test batch proving across multiple contracts
+ *   - Verify correct token handling in complete intent execution
+ */
+
 describe('MetaProver Test', (): void => {
   let inbox: Inbox
   let metaProver: MetaProver
@@ -36,7 +73,7 @@ describe('MetaProver Test', (): void => {
   }> {
     const [owner, solver, claimant] = await ethers.getSigners()
 
-    // Deploy TestMetaRouter - use address(0) initially to prevent auto-processing
+    // Deploy TestMetaRouter
     const testRouter = await (
       await ethers.getContractFactory('TestMetaRouter')
     ).deploy(ethers.ZeroAddress)
@@ -52,7 +89,12 @@ describe('MetaProver Test', (): void => {
     // Deploy MetaProver with required dependencies
     const metaProver = await (
       await ethers.getContractFactory('MetaProver')
-    ).deploy(await testRouter.getAddress(), await inbox.getAddress(), [])
+    ).deploy(
+      await testRouter.getAddress(),
+      await inbox.getAddress(),
+      [],
+      200000,
+    ) // 200k gas limit
 
     return {
       inbox,
@@ -82,16 +124,36 @@ describe('MetaProver Test', (): void => {
       const additionalProver = await owner.getAddress()
       const newMetaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await testRouter.getAddress(), await inbox.getAddress(), [
-        additionalProver,
-      ])
+      ).deploy(
+        await testRouter.getAddress(),
+        await inbox.getAddress(),
+        [additionalProver],
+        200000,
+      ) // 200k gas limit
 
-      // MetaProver whitelists itself
-      expect(
-        await newMetaProver.proverWhitelist(await newMetaProver.getAddress()),
-      ).to.be.true
-      // And whitelists the provided address
-      expect(await newMetaProver.proverWhitelist(additionalProver)).to.be.true
+      // Check if the prover address is in the whitelist
+      expect(await newMetaProver.isWhitelisted(additionalProver)).to.be.true
+    })
+
+    it('should have the correct default gas limit', async () => {
+      // Verify the default gas limit was set correctly
+      expect(await metaProver.DEFAULT_GAS_LIMIT()).to.equal(200000)
+
+      // Deploy a prover with custom gas limit
+      const customGasLimit = 300000 // 300k
+      const customMetaProver = await (
+        await ethers.getContractFactory('MetaProver')
+      ).deploy(
+        await testRouter.getAddress(),
+        await inbox.getAddress(),
+        [],
+        customGasLimit,
+      )
+
+      // Verify custom gas limit was set
+      expect(await customMetaProver.DEFAULT_GAS_LIMIT()).to.equal(
+        customGasLimit,
+      )
     })
 
     it('should return the correct proof type', async () => {
@@ -104,9 +166,12 @@ describe('MetaProver Test', (): void => {
       // Set up a new MetaProver with owner as router for direct testing
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
+      ).deploy(
+        owner.address,
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
     })
 
     it('should revert when msg.sender is not the router', async () => {
@@ -124,20 +189,16 @@ describe('MetaProver Test', (): void => {
     })
 
     it('should revert when sender field is not authorized', async () => {
+      const validAddress = await solver.getAddress()
       await expect(
-        metaProver
-          .connect(owner)
-          .handle(
-            12345,
-            ethers.zeroPadValue('0x', 32),
-            ethers.zeroPadValue('0x', 32),
-            [],
-            [],
-          ),
-      ).to.be.revertedWithCustomError(
-        metaProver,
-        'UnauthorizedDestinationProve',
-      )
+        metaProver.connect(owner).handle(
+          12345,
+          ethers.zeroPadValue(validAddress, 32), // Use a valid but unauthorized address
+          ethers.zeroPadValue('0x', 32),
+          [],
+          [],
+        ),
+      ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedIncomingProof')
     })
 
     it('should record a single proven intent when called correctly', async () => {
@@ -239,17 +300,20 @@ describe('MetaProver Test', (): void => {
     })
   })
 
-  describe('3. DestinationProve', () => {
+  describe('3. SendProof', () => {
     beforeEach(async () => {
-      // Use owner as inbox so we can test DestinationProve
+      // Use owner as inbox so we can test SendProof
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await testRouter.getAddress(), owner.address, [
-        await inbox.getAddress(),
-      ])
+      ).deploy(
+        await testRouter.getAddress(),
+        owner.address,
+        [await inbox.getAddress()],
+        200000,
+      )
     })
 
-    it('should gracefully return funds to sender if they overpay', async () => {
+    it('should revert on underpayment', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -260,7 +324,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before DestinationProve, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
@@ -272,7 +336,7 @@ describe('MetaProver Test', (): void => {
       const initBalance = await solver.provider.getBalance(solver.address)
 
       await expect(
-        metaProver.connect(owner).destinationProve(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -283,7 +347,7 @@ describe('MetaProver Test', (): void => {
       ).to.be.reverted
     })
 
-    it('should correctly call dispatch in the DestinationProve method', async () => {
+    it('should correctly call dispatch in the sendProof method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -294,11 +358,11 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before DestinationProve, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
-        metaProver.connect(owner).destinationProve(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -331,7 +395,7 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.messageBody()).to.eq(expectedBody)
     })
 
-    it('should reject DestinationProve from unauthorized source', async () => {
+    it('should reject sendProof from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
@@ -343,11 +407,10 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(solver)
-          .destinationProve(owner.address, 123, intentHashes, claimants, data),
-      ).to.be.revertedWithCustomError(
-        metaProver,
-        'UnauthorizedDestinationProve',
+          .prove(owner.address, 123, intentHashes, claimants, data),
       )
+        .to.be.revertedWithCustomError(metaProver, 'UnauthorizedProve')
+        .withArgs(await solver.getAddress())
     })
 
     it('should correctly get fee via fetchFee', async () => {
@@ -372,7 +435,7 @@ describe('MetaProver Test', (): void => {
       expect(fee).to.equal(await testRouter.FEE())
     })
 
-    it('should correctly call dispatch in the DestinationProve method', async () => {
+    it('should correctly call dispatch in the sendProof method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -383,11 +446,11 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before DestinationProve, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
-        metaProver.connect(owner).destinationProve(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -431,7 +494,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before DestinationProve, make sure the router hasn't been called
+      // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
@@ -443,7 +506,7 @@ describe('MetaProver Test', (): void => {
       const initBalance = await solver.provider.getBalance(solver.address)
 
       await expect(
-        metaProver.connect(owner).destinationProve(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -482,7 +545,7 @@ describe('MetaProver Test', (): void => {
       )
 
       // Call with exact fee (no refund needed)
-      await metaProver.connect(owner).destinationProve(
+      await metaProver.connect(owner).prove(
         solver.address,
         sourceChainId,
         intentHashes,
@@ -523,14 +586,9 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .destinationProve(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: fee },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: fee,
+          }),
       ).to.not.be.reverted
 
       // Should dispatch successfully
@@ -541,9 +599,12 @@ describe('MetaProver Test', (): void => {
       // Set up a new MetaProver with owner as router for direct testing
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
+      ).deploy(
+        owner.address,
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
 
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
@@ -580,23 +641,110 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // While our implementation doesn't actually check for this,
-      // the test confirms current behavior (for future improvement)
+      // Our implementation correctly checks for array length mismatch
       await expect(
         metaProver
           .connect(owner)
-          .destinationProve(
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: await testRouter.FEE(),
+          }),
+      ).to.be.revertedWithCustomError(metaProver, 'ArrayLengthMismatch')
+
+      // This test confirms the validation that arrays must have
+      // consistent lengths, which is a security best practice
+    })
+
+    it('should handle zero-length arrays safely', async () => {
+      // Set up test data with empty arrays (but matched lengths)
+      const sourceChainId = 123
+      const intentHashes: string[] = []
+      const claimants: string[] = []
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
+      )
+
+      // Empty arrays should process without error
+      await expect(
+        metaProver
+          .connect(owner)
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: await testRouter.FEE(),
+          }),
+      ).to.not.be.reverted
+
+      // Verify the dispatch was called (event should be emitted)
+      expect(await testRouter.dispatched()).to.be.true
+    })
+
+    it('should handle large arrays without gas issues', async () => {
+      // Create large arrays (100 elements - which is reasonably large for gas testing)
+      const sourceChainId = 123
+      const intentHashes: string[] = []
+      const claimants: string[] = []
+
+      // Generate 100 random intent hashes and corresponding claimant addresses
+      for (let i = 0; i < 100; i++) {
+        intentHashes.push(ethers.keccak256(ethers.toUtf8Bytes(`intent-${i}`)))
+        claimants.push(await solver.getAddress()) // Use solver as claimant for all
+      }
+
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
+      )
+
+      // Get fee for this large batch
+      const fee = await metaProver.fetchFee(
+        sourceChainId,
+        intentHashes,
+        claimants,
+        data,
+      )
+
+      // Large arrays should still process without gas errors
+      // Note: In real networks, this might actually hit gas limits
+      // This test is more to verify the code logic handles large arrays
+      await expect(
+        metaProver
+          .connect(owner)
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: fee,
+          }),
+      ).to.not.be.reverted
+
+      // Verify dispatch was called
+      expect(await testRouter.dispatched()).to.be.true
+    })
+
+    it('should reject excessively large chain IDs', async () => {
+      // Test with a very large chain ID (near uint256 max)
+      const veryLargeChainId = ethers.MaxUint256 - 1n
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
+      )
+
+      // Should revert with ChainIdTooLarge error
+      await expect(
+        metaProver
+          .connect(owner)
+          .prove(
             solver.address,
-            sourceChainId,
+            veryLargeChainId,
             intentHashes,
             claimants,
             data,
             { value: await testRouter.FEE() },
           ),
-      ).to.not.be.reverted // Should not revert currently
-
-      // This test documents current behavior, but ideally would check
-      // that the arrays have consistent lengths in a future improvement
+      )
+        .to.be.revertedWithCustomError(metaProver, 'ChainIdTooLarge')
+        .withArgs(veryLargeChainId)
     })
   })
 
@@ -604,12 +752,14 @@ describe('MetaProver Test', (): void => {
   // interactions with Inbox without dealing with the actual cross-chain mechanisms
   async function createTestProvers() {
     // Deploy a TestMessageBridgeProver for use with the inbox
+    // Since whitelist is immutable, we need to include both addresses from the start
+    const whitelistedAddresses = [
+      await inbox.getAddress(),
+      await metaProver.getAddress(),
+    ]
     const testMsgProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
-    ).deploy(await inbox.getAddress(), [await inbox.getAddress()])
-
-    // Update whitelist to allow our MetaProver
-    await testMsgProver.addWhitelistedProver(await metaProver.getAddress())
+    ).deploy(await inbox.getAddress(), whitelistedAddresses, 200000) // Add default gas limit
 
     return { testMsgProver }
   }
@@ -630,9 +780,12 @@ describe('MetaProver Test', (): void => {
       // Update metaProver to use the new router
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await metaTestRouter.getAddress(), await inbox.getAddress(), [
+      ).deploy(
+        await metaTestRouter.getAddress(),
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      ) // Add default gas limit
 
       // Update the router reference
       testRouter = metaTestRouter
@@ -728,9 +881,12 @@ describe('MetaProver Test', (): void => {
       // Reset the metaProver's proven intents for testing
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(owner.address, await inbox.getAddress(), [
+      ).deploy(
+        owner.address,
         await inbox.getAddress(),
-      ])
+        [await inbox.getAddress()],
+        200000,
+      )
 
       // Call handle directly to verify that MetaProver's intent proving works
       await metaProver

@@ -487,83 +487,66 @@ For Optimisms BedRock release we submit an `outputRoot` storage proof created by
 output_root = kecakk256( version_byte || state_root || withdrawal_storage_root || latest_block_hash)
 ```
 
-## ERC-7683
+## Cross-Chain Message Bridge Architecture
 
-Eco Protocol also allows the creation and solving of intents via the ERC-7683 interface.
+Eco Protocol has been refactored to use a modular message bridge architecture for cross-chain communication. This allows the protocol to leverage different messaging systems like Hyperlane and Metalayer while maintaining a consistent interface.
 
-## Eco7683OriginSettler
+### Message Bridge Provers
 
-An implementation of the ERC-7683 OriginSettler designed to work with Eco protocol. This contract is where intents are created and funded. Reward withdrawal has not yet been implemented within Eco's ERC7683 implementation, but it can be accomplished via the IntentSource contract.
+The protocol now follows a flexible architecture with a hierarchy of prover implementations:
 
-### Events
+1. **BaseProver**: Abstract base contract that defines core proving functionality
+2. **MessageBridgeProver**: Abstract contract that extends BaseProver with common functionality for message-based proving
+3. **Concrete Provers**: Specific implementations for different messaging systems:
+   - **HyperProver**: Uses Hyperlane for cross-chain messaging
+   - **MetaProver**: Uses Caldera Metalayer for cross-chain messaging
 
-<h4><ins>Open</ins></h4>
-<h5>Signals that an order has been opened</h5>
+### Security Features
 
-Parameters:
+All message bridge provers implement these security features:
 
-- `orderId` (bytes32) a unique order identifier within this settlement system
-- `resolvedOrder` (ResolvedCrossChainOrder) resolved order that would be returned by resolve if called instead of Open
+- **Reentrancy Protection**: Guards against reentrancy attacks during token transfers
+- **Array Length Validation**: Ensures message data integrity with array length checks
+- **Message Sender Validation**: Prevents unauthorized message handling
+- **Payment Processing**: Secure handling of native token payments for bridge fees
+- **Prover Whitelisting**: Only authorized addresses can initiate proving
 
-### Methods
+### Integration Patterns
 
-<h4><ins>open</ins></h4>
-<h5>Opens an Eco intent directly on chain</h5>
+To use a message bridge prover with the Eco Protocol:
 
-Parameters:
+1. **Deploy the Prover**: Deploy the specific prover (HyperProver or MetaProver) with configuration for your chosen message bridge
+2. **Register with Inbox**: Add the prover to the Inbox's approved provers list
+3. **Create Intents**: Create intents specifying the prover to use for cross-chain proof transmission
+4. **Solve Intents**: When solving intents, specify the appropriate proof type in the fulfillment call
 
-- `_order` (OnchainCrossChainOrder) the onchain order containing all relevant intent data. The orderData of the order is of type OnchainCrosschainOrderData.
+### Supported Message Bridges
 
-<ins>Security:</ins> This method will fail if the orderDataType does not match the typehash of OnchainCrosschainOrderData. This method is payable to account for users who wish to create intents that reward solvers with native tokens. A user should have approved the Eco7683OriginSettler to transfer reward tokens. This method will also fail if a user attempts to use it to open an intent that has already been funded.
+#### Hyperlane
 
-<h4><ins>openFor</ins></h4>
-<h5>Opens an Eco intent on behalf of a user</h5>
+The HyperProver uses Hyperlane's IMessageRecipient interface to receive and process cross-chain messages. It interacts with the Hyperlane Mailbox contract to send and receive messages.
 
-Parameters:
+Configuration parameters:
 
-- `_order` (GaslessCrossChainOrder) the gasless order containing all relevant intent data. The orderData of the order is of type GaslessCrosschainOrderData.
-- `_signature` (bytes32) the intent user's signature over _order
-  _ `_originFillerData` (bytes) filler data for the origin chain (this is vestigial, not used and included only to maintain compatibility)
+- Mailbox address: Address of the Hyperlane Mailbox on the current chain
+- Trusted provers: List of addresses authorized to send proof messages
 
-<ins>Security:</ins> This method will fail if the orderDataType does not match the typehash of GaslessCrosschainOrderData. This method is made payable in the event that the caller of this method (a solver) is opening an intent that has native token as a reward. How that solver receives the native token from the user is not within the scope of this method. This method also demands that the intent is funded in its entirety and will fail if the requisite funds have not been approved by the user. Lastly, this method will fail if the same intent has already been funded.
+#### Metalayer
 
-<h4><ins>resolve</ins></h4>
-<h5>resolves an OnchainCrossChainOrder to a ResolvedCrossChainOrder</h5>
+The MetaProver uses Caldera Metalayer's IMetalayerRecipient interface to receive and process cross-chain messages. It interacts with the Metalayer Router contract to send and receive messages.
 
-Parameters:
+Configuration parameters:
 
-- `_order` (OnchainCrossChainOrder) the OnchainCrossChainOrder to be resolved
+- Router address: Address of the Metalayer Router on the current chain
+- Trusted provers: List of addresses authorized to send proof messages
 
-<h4><ins>resolveFor</ins></h4>
-<h5>resolves a GaslessCrossChainOrder to a ResolvedCrossChainOrder</h5>
+### ERC-7683 Support
 
-Parameters:
+The previous standalone ERC-7683 implementation has been refactored into the core protocol. Instead of separate settler contracts, ERC-7683 compatibility is now integrated within the Inbox contract using the message bridge provers for cross-chain communication.
 
-- `_order` (OnchainCrossChainOrder) the GaslessCrossChainOrder to be resolved
+This refactoring offers several benefits:
 
-## Eco7683DestinationSettler
-
-An implementation of the ERC-7683 DestinationSettler designed to work with Eco protocol. This is an abstract contract whose functionality is present on Eco's Inbox contract. This is where intent fulfillment lives within the ERC-7683 system.
-
-### Events
-
-<h4><ins>OrderFilled</ins></h4>
-<h5>Emitted when an intent is fulfilled via the Eco7683DestinationSettler using Hyperlane instant proving</h5>
-
-Parameters:
-
-- `_orderId` (bytes32) Hash of the fulfilled intent
-- `_solver` (address) Address that fulfilled the intent
-
-### Methods
-
-<h4><ins>fill</ins></h4>
-<h5>Fills an order on the destination chain</h5>
-
-Parameters:
-
-- `_orderId` (bytes32) Unique identifier for the order being filled
-- `_originData` (bytes) Data emitted on the origin chain to parameterize the fill, equivalent to the originData field from the fillInstruction of the ResolvedCrossChainOrder. An encoded Intent struct.
-- `_fillerData` (bytes) Data provided by the filler to inform the fill or express their preferences. an encoding of the ProofType (enum), claimant (address), and optionally postDispatchHook (address) and metadata (bytes) in the event that the intent is to be proven against a HyperProver.
-
-<ins>Security:</ins> This method fails if the intent's fillDeadline has passed. It also inherits all of the security features in fulfillStorage / fulfillHyperInstantWithRelayer.
+- More consistent codebase with less duplication
+- Better security through shared validation logic
+- More flexible proving mechanisms
+- Easier integration of new cross-chain messaging solutions

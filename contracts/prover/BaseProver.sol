@@ -32,21 +32,40 @@ abstract contract BaseProver is IProver, ERC165 {
     }
 
     /**
-     * @notice Initiates the proving process for intents from the destination chain
-     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
-     * @param _sender Address of the original transaction sender
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
+     * @notice Process intent proofs from a cross-chain message
+     * @param _hashes Array of intent hashes
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data specific to the proving implementation
      */
-    function destinationProve(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) external payable virtual;
+    function _processIntentProofs(
+        bytes32[] memory _hashes,
+        address[] memory _claimants
+    ) internal {
+        // If arrays are empty, just return early
+        if (_hashes.length == 0) return;
+
+        // Require matching array lengths for security
+        if (_hashes.length != _claimants.length) {
+            revert ArrayLengthMismatch();
+        }
+
+        for (uint256 i = 0; i < _hashes.length; i++) {
+            bytes32 intentHash = _hashes[i];
+            address claimant = _claimants[i];
+
+            // Validate claimant is not zero address
+            if (claimant == address(0)) {
+                continue; // Skip invalid claimants
+            }
+
+            // Skip rather than revert for already proven intents
+            if (provenIntents[intentHash] != address(0)) {
+                emit IntentAlreadyProven(intentHash);
+            } else {
+                provenIntents[intentHash] = claimant;
+                emit IntentProven(intentHash, claimant);
+            }
+        }
+    }
 
     /**
      * @notice Checks if this contract supports a given interface
