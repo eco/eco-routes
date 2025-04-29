@@ -5,6 +5,7 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IProver} from "./interfaces/IProver.sol";
+import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IInbox} from "./interfaces/IInbox.sol";
@@ -18,7 +19,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Semver {
+contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     using TypeCasts for address;
     using SafeERC20 for IERC20;
 
@@ -83,8 +84,13 @@ contract Inbox is IInbox, Semver {
         address _claimant,
         bytes32 _expectedHash,
         address _localProver,
-        bytes calldata _data
-    ) public payable returns (bytes[] memory) {
+        bytes memory _data
+    )
+        public
+        payable
+        override(Eco7683DestinationSettler, IInbox)
+        returns (bytes[] memory)
+    {
         bytes[] memory result = _fulfill(
             _route,
             _rewardHash,
@@ -114,7 +120,7 @@ contract Inbox is IInbox, Semver {
         uint256 _sourceChainId,
         bytes32[] memory _intentHashes,
         address _localProver,
-        bytes calldata _data
+        bytes memory _data
     ) public payable {
         if (_localProver == address(0)) {
             // storage prover case, this method should do nothing

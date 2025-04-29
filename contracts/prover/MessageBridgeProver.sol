@@ -88,7 +88,7 @@ abstract contract MessageBridgeProver is
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 /* _sourceChainId */,
+        uint256 _sourceChainId, //not used but kept for interface compatibility
         address _messageSender,
         bytes calldata _message
     ) internal {
