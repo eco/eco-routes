@@ -4,23 +4,25 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
+import {INativeProver, ProveScalarArgs} from "../interfaces/INativeProver.sol";
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
 import {Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
- * @title PolymerProver
+ * @title PolyNativeProver
  * @notice Prover implementation using Polymer's cross-chain messaging system
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
-contract PolymerProver is BaseProver, Semver {
+contract PolyNativeProver is BaseProver, Semver {
     // Constants
     ProofType public constant PROOF_TYPE = ProofType.Polymer;
     bytes32 public constant PROOF_SELECTOR = keccak256("ToBeProven(bytes32,uint256,address)");
     bytes32 public constant BATCH_PROOF_SELECTOR = keccak256("BatchToBeProven(uint256,bytes)");
-    
+    uint256 constant _STARTING_INBOX_FULFILLED_SLOT = 1; // Slot where we expect the fullfilled mapping to be populated in the inbox contract. Used in native proof path.
+
     // Events
     event IntentAlreadyProven(bytes32 _intentHash);
-    
+
     // Errors
     error InvalidEventSignature();
     error UnsupportedChainId();
@@ -28,7 +30,8 @@ contract PolymerProver is BaseProver, Semver {
     error InvalidTopicsLength();
     error SizeMismatch();
     error IntentHashMismatch();
-    
+    error IncorrectStorageSlot(bytes32 expected, bytes32 actual);
+
     // Structs
     struct ProverReward {
         address creator;
@@ -36,26 +39,24 @@ contract PolymerProver is BaseProver, Semver {
         uint256 nativeValue;
         TokenAmount[] tokens;
     }
-    
+
     // Immutable state variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
+    INativeProver public immutable NATIVE_PROVER;
     address public immutable INBOX;
-    
+
     // State variables
     mapping(uint32 => bool) public supportedChainIds;
 
     /**
-     * @notice Initializes the PolymerProver contract
+     * @notice Initializes the PolyNativeProver contract
      * @param _crossL2ProverV2 Address of the Polymer CrossL2ProverV2 contract
      * @param _inbox Address of the Inbox contract that emits proof events
      * @param _supportedChainIds Array of chain IDs that this prover will accept proofs from
      */
-    constructor(
-        address _crossL2ProverV2,
-        address _inbox,
-        uint32[] memory _supportedChainIds
-    ) {
+    constructor(address _crossL2ProverV2, address _nativeProver, address _inbox, uint32[] memory _supportedChainIds) {
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
+        NATIVE_PROVER = INativeProver(_nativeProver);
         INBOX = _inbox;
         for (uint32 i = 0; i < _supportedChainIds.length; i++) {
             supportedChainIds[_supportedChainIds[i]] = true;
@@ -70,6 +71,18 @@ contract PolymerProver is BaseProver, Semver {
      */
     function validate(bytes calldata proof) external {
         (bytes32 intentHash, address claimant) = _validateProof(proof);
+        processIntent(intentHash, claimant);
+    }
+
+    /**
+     * @notice Validate a native proof of storage through this L2's view of the L1 blockhash.
+     * This is more expensive than validate() but is useful as a fallback if polymer is ever down.
+     * The storage proof we are interested in is the fullilled mapping of a given intentHash.
+     * @param proof A storage proof using the native L1 proof.
+     * @notice This cli tool can be used to generate this proof: https://github.com/polymerdao/fallback-prover
+     */
+    function validateNative(bytes calldata proof, bytes32 intentHash) external {
+        (address claimant) = _validateNativeProof(proof, intentHash);
         processIntent(intentHash, claimant);
     }
 
@@ -112,15 +125,9 @@ contract PolymerProver is BaseProver, Semver {
      * @return intentHash Hash of the proven intent
      * @return claimant Address that fulfilled the intent
      */
-    function _validateProof(
-        bytes calldata proof
-    ) internal returns (bytes32 intentHash, address claimant) {
-        (
-            uint32 chainId,
-            address emittingContract,
-            bytes memory topics,
-            bytes memory data
-        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
+    function _validateProof(bytes calldata proof) internal returns (bytes32 intentHash, address claimant) {
+        (uint32 chainId, address emittingContract, bytes memory topics, bytes memory data) =
+            CROSS_L2_PROVER_V2.validateEvent(proof);
 
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
@@ -131,15 +138,8 @@ contract PolymerProver is BaseProver, Semver {
         // Use assembly for efficient memory operations when splitting topics
         assembly {
             let topicsPtr := add(topics, 32)
-            for {
-                let i := 0
-            } lt(i, 4) {
-                i := add(i, 1)
-            } {
-                mstore(
-                    add(add(topicsArray, 32), mul(i, 32)),
-                    mload(add(topicsPtr, mul(i, 32)))
-                )
+            for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
+                mstore(add(add(topicsArray, 32), mul(i, 32)), mload(add(topicsPtr, mul(i, 32))))
             }
         }
 
@@ -149,16 +149,46 @@ contract PolymerProver is BaseProver, Semver {
     }
 
     /**
+     * The storage proof we are interested in is the fullilled mapping of a given intentHash.
+     * @param proof The proof data to validate. See cli tool https://github.com/polymerdao/fallback-prover
+     * @param intentHash - this is required to calculate the storage key of the inbox contract where
+     * @return claimant Address that fulfilled the intent
+     */
+    function _validateNativeProof(bytes calldata proof, bytes32 intentHash) internal returns (address claimant) {
+        (
+            ProveScalarArgs memory _proveArgs,
+            bytes memory _rlpEncodedL1Header,
+            bytes memory _rlpEncodedL2Header,
+            bytes memory _settledStateProof,
+            bytes[] memory _l2StorageProof,
+            bytes memory _rlpEncodedContractAccount,
+            bytes[] memory _l2AccountProof
+        ) = abi.decode(proof, (ProveScalarArgs, bytes, bytes, bytes, bytes[], bytes, bytes[]));
+
+        checkInboxContract(_proveArgs.contractAddr);
+        checkSupportedChainId(uint32(_proveArgs.chainID));
+        checkStorageSlot(intentHash, _proveArgs.storageSlot);
+
+        NATIVE_PROVER.prove(
+            _proveArgs,
+            _rlpEncodedL1Header,
+            _rlpEncodedL2Header,
+            _settledStateProof,
+            _l2StorageProof,
+            _rlpEncodedContractAccount,
+            _l2AccountProof
+        );
+
+        return slotToClaimant(_proveArgs.storageValue);
+    }
+
+    /**
      * @notice Internal function to validate a packed proof
      * @param proof The packed proof data to validate
      */
     function _validatePackedProof(bytes calldata proof) internal {
-        (
-            uint32 chainId,
-            address emittingContract,
-            bytes memory topics,
-            bytes memory data
-        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
+        (uint32 chainId, address emittingContract, bytes memory topics, bytes memory data) =
+            CROSS_L2_PROVER_V2.validateEvent(proof);
 
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
@@ -190,17 +220,12 @@ contract PolymerProver is BaseProver, Semver {
      * @param reward The reward structure to encode
      * @param expectedIntentHash The expected intent hash to compare against
      */
-    function validateIntentHash(
-        bytes32 routeHash,
-        Reward memory reward,
-        bytes32 expectedIntentHash
-    ) internal pure {
+    function validateIntentHash(bytes32 routeHash, Reward memory reward, bytes32 expectedIntentHash) internal pure {
         bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
-        bytes32 calculatedIntentHash = keccak256(
-            abi.encodePacked(routeHash, calculatedRewardHash)
-        );
-        if (calculatedIntentHash != expectedIntentHash)
+        bytes32 calculatedIntentHash = keccak256(abi.encodePacked(routeHash, calculatedRewardHash));
+        if (calculatedIntentHash != expectedIntentHash) {
             revert IntentHashMismatch();
+        }
     }
 
     /**
@@ -208,9 +233,7 @@ contract PolymerProver is BaseProver, Semver {
      * @param _proverReward The proverReward struct to convert
      * @return Reward struct with this contract as the prover
      */
-    function _toReward(
-        ProverReward memory _proverReward
-    ) internal view returns (Reward memory) {
+    function _toReward(ProverReward memory _proverReward) internal view returns (Reward memory) {
         return Reward(
             _proverReward.creator,
             address(this),
@@ -267,10 +290,7 @@ contract PolymerProver is BaseProver, Semver {
      * @return intentHashes Array of decoded intent hashes
      * @return claimants Array of corresponding claimant addresses
      */
-    function decodeMessageBeforeClaim(
-        bytes memory messageBody,
-        uint256 expectedSize
-    )
+    function decodeMessageBeforeClaim(bytes memory messageBody, uint256 expectedSize)
         public
         pure
         returns (bytes32[] memory intentHashes, address[] memory claimants)
@@ -278,7 +298,7 @@ contract PolymerProver is BaseProver, Semver {
         uint256 size = messageBody.length;
         uint256 offset = 0;
         uint256 totalIntentCount = 0;
-        
+
         intentHashes = new bytes32[](expectedSize);
         claimants = new address[](expectedSize);
 
@@ -309,7 +329,7 @@ contract PolymerProver is BaseProver, Semver {
                 totalIntentCount++;
             }
         }
-        
+
         if (totalIntentCount != expectedSize) revert SizeMismatch();
         return (intentHashes, claimants);
     }
@@ -342,6 +362,31 @@ contract PolymerProver is BaseProver, Semver {
     }
 
     /**
+     * @notice Check that storage slot of a given intent indeed matches the expected storage slot in the inbox contract on counterparty chain.
+     * mapping is declared in Inbox contract as follows:
+     *     mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
+     */
+    function checkStorageSlot(bytes32 intentHash, bytes32 storageSlot) internal view {
+        if (keccak256(abi.encode(intentHash, _STARTING_INBOX_FULFILLED_SLOT)) != storageSlot) {
+            revert IncorrectStorageSlot(storageSlot, keccak256(abi.encode(intentHash, _STARTING_INBOX_FULFILLED_SLOT)));
+        }
+    }
+
+    /**
+     * @notice Convert a raw Inbox contract storage slot to a claimant address.
+     */
+    function slotToClaimant(bytes32 slotValue) internal pure returns (address) {
+        // The storage slot should be in this format:
+        // struct ClaimantAndBatcherReward {
+        //     address claimant;
+        //     uint96 reward;
+        // }
+
+        // Shift to discard the reward bits
+        return address(uint160(uint256(slotValue >> 96)));
+    }
+
+    /**
      * @notice Validates that the topics have the expected length
      * @param topics The topics to check
      * @param length The expected length
@@ -360,5 +405,4 @@ contract PolymerProver is BaseProver, Semver {
     function getProofType() external pure override returns (ProofType) {
         return PROOF_TYPE;
     }
-
 }
