@@ -25,42 +25,31 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     constructor(
         address _inbox,
-        IMessageBridgeProver.TrustedProver[] memory _provers,
+        address[] memory _provers,
         uint256 _gasLimit
     ) MessageBridgeProver(_inbox, _provers, _gasLimit) {}
 
     /**
-     * @notice Add a prover to the whitelist for a specific chain
-     * @param _chainId Chain ID where the prover is authorized
-     * @param _prover Address of the prover to whitelist
+     * @notice Legacy test method for backward compatibility
+     * @dev This method exists only for test compatibility with old code
+     * In production code, always use isWhitelisted() directly instead of this method
+     * @param _prover Address of the prover to test whitelisting for
+     * @return Whether the prover is whitelisted
+     * @custom:deprecated Use isWhitelisted() instead
      */
-    function addWhitelistedProver(uint256 _chainId, address _prover) external {
-        proverWhitelist[_chainId][_prover] = true;
-        emit ProverWhitelisted(_chainId, _prover);
+    function isAddressWhitelisted(address _prover) external view returns (bool) {
+        return isWhitelisted(_prover);
     }
-
+    
     /**
-     * @notice Remove a prover from the whitelist for a specific chain
-     * @param _chainId Chain ID where the prover is authorized
-     * @param _prover Address of the prover to remove from whitelist
+     * @notice Test helper to access the whitelist
+     * @return Array of all addresses in the whitelist
      */
-    function removeWhitelistedProver(
-        uint256 _chainId,
-        address _prover
-    ) external {
-        proverWhitelist[_chainId][_prover] = false;
-        emit ProverWhitelistRemoved(_chainId, _prover);
+    function getWhitelistedAddresses() external view returns (address[] memory) {
+        return getWhitelist();
     }
-
-    /**
-     * @notice Event emitted when a prover is removed from the whitelist
-     * @param _chainId Chain ID where the prover was authorized
-     * @param _prover Address of the prover removed from whitelist
-     */
-    event ProverWhitelistRemoved(
-        uint256 indexed _chainId,
-        address indexed _prover
-    );
+    
+    // No custom events needed for testing
 
     /**
      * @notice Mock implementation of initiateProving

@@ -81,25 +81,42 @@ async function main() {
       `Using Metalayer router at: ${deployNetwork.metalayerRouterAddress}`,
     )
 
-    // Create trusted provers array with properly structured objects
-    const trustedProvers = [] // Empty initially, will be configured later
-    // Example of how to add trusted provers if needed:
+    // Create trusted provers array with addresses
+    // IMPORTANT: This array should not be empty in a production deployment!
+    // For testing purposes, you can use an empty array, but real deployments should include
+    // trusted provers to ensure security.
+    const trustedProvers: string[] = [] // Add production prover addresses here
+    
+    // Example of how to add trusted provers:
     // const trustedProvers = [
-    //   { chainId: 1, prover: "0x1234..." },
-    //   { chainId: 10, prover: "0x5678..." }
+    //   "0x1234...",
+    //   "0x5678..."
     // ];
 
-    // Validate chain IDs if any trusted provers are added
+    // Validate addresses and check whitelist size limit
+    if (trustedProvers.length > 20) {
+      throw new Error(`Too many trusted provers: ${trustedProvers.length}. Maximum allowed is 20.`)
+    }
+    
     for (const prover of trustedProvers) {
-      if (!prover.chainId || prover.chainId <= 0) {
-        throw new Error(`Invalid chain ID in trusted prover: ${prover.chainId}`)
+      if (!ethers.isAddress(prover)) {
+        throw new Error(`Invalid address in trusted prover: ${prover}`)
       }
+    }
+    
+    // Display warning if deploying with an empty whitelist
+    if (trustedProvers.length === 0) {
+      console.warn(`
+      ⚠️ WARNING: Deploying with EMPTY whitelist ⚠️
+      No provers will be whitelisted initially, which may prevent the contract from working correctly.
+      Consider adding trusted provers before deployment as the whitelist is immutable and cannot be modified later.
+      `)
     }
 
     const metaProverTx = await metaProverFactory.getDeployTransaction(
       deployNetwork.metalayerRouterAddress,
       inboxAddress,
-      trustedProvers, // TrustedProver[] struct array
+      trustedProvers, // Array of whitelisted addresses
     )
 
     receipt = await singletonDeployer.deploy(metaProverTx.data, salt, {
@@ -142,11 +159,9 @@ async function main() {
   1. Configure the Inbox with the new MetaProver:
      - inbox.setProvers([hyperProverAddress, metaProverAddress])
   
-  2. For production systems, configure trusted provers with chain IDs:
-     - metaProver.addTrustedProvers([
-         { chainId: 1, prover: "0x1234..." },
-         { chainId: 10, prover: "0x5678..." }
-       ])
+  2. IMPORTANT: The whitelist is immutable and configured at deployment time.
+     Make sure to include all required prover addresses in the trustedProvers 
+     array when deploying, as they cannot be added later.
   
   3. Update your client applications to use either HyperProver or MetaProver
      based on your cross-chain messaging requirements
