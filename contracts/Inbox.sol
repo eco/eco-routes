@@ -130,7 +130,7 @@ contract Inbox is IInbox, Semver {
             }
             claimants[i] = claimant;
         }
-        IProver(_localProver).sendProof{value: msg.value}(
+        IProver(_localProver).prove{value: msg.value}(
             msg.sender,
             _sourceChainId,
             _intentHashes,

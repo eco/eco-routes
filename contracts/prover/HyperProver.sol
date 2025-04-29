@@ -39,16 +39,16 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @param _mailbox Address of local Hyperlane mailbox
      * @param _inbox Address of Inbox contract
-     * @param _provers Array of trusted provers to whitelist
+     * @param _provers Array of trusted prover addresses
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _mailbox,
         address _inbox,
-        IMessageBridgeProver.TrustedProver[] memory _provers,
+        address[] memory _provers,
         uint256 _defaultGasLimit
     ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
-        require(_mailbox != address(0), "Mailbox cannot be zero address");
+        if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
         MAILBOX = _mailbox;
     }
 
@@ -68,11 +68,11 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         _validateMessageSender(msg.sender, MAILBOX);
 
         // Verify _origin and _sender are valid
-        require(_origin > 0, "Invalid origin chain ID");
+        if (_origin == 0) revert InvalidOriginChainId();
 
         // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
-        require(sender != address(0), "Sender cannot be zero address");
+        if (sender == address(0)) revert SenderCannotBeZeroAddress();
 
         _handleCrossChainMessage(_origin, sender, _messageBody);
     }
@@ -86,7 +86,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      */
-    function sendProof(
+    function prove(
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,

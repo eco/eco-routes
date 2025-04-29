@@ -67,29 +67,19 @@ describe('HyperProver Test', (): void => {
 
     it('should add constructor-provided provers to the whitelist', async () => {
       const additionalProver = await owner.getAddress()
-      const chainId = 12345
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: chainId, prover: additionalProver }],
+        [additionalProver],
         200000,
       )
 
-      // HyperProver whitelists itself on current chainId
-      const currentChainId = await ethers.provider
-        .getNetwork()
-        .then((n) => n.chainId)
-      expect(
-        await hyperProver.proverWhitelist(
-          currentChainId,
-          await hyperProver.getAddress(),
-        ),
-      ).to.be.true
-      // And whitelists the provided address on the specified chainId
-      expect(await hyperProver.proverWhitelist(chainId, additionalProver)).to.be
-        .true
+      // Check if the prover address is in the whitelist
+      expect(await hyperProver.isWhitelisted(additionalProver)).to.be.true
+      // Check if the hyperProver itself is also whitelisted
+      expect(await hyperProver.isWhitelisted(await hyperProver.getAddress())).to.be.true
     })
 
     it('should return the correct proof type', async () => {
@@ -108,7 +98,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
     })
@@ -229,7 +219,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         owner.address,
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
     })
@@ -364,7 +354,7 @@ describe('HyperProver Test', (): void => {
       // Call with custom hook
       await hyperProver
         .connect(owner)
-        .sendProof(
+        .prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -405,7 +395,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .sendProof(
+          .prove(
             solver.address,
             sourceChainId,
             intentHashes,
@@ -444,7 +434,7 @@ describe('HyperProver Test', (): void => {
       expect(fee).to.be.gt(0)
     })
 
-    it('should correctly call dispatch in the sendProof method', async () => {
+    it('should correctly call dispatch in the prove method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -461,11 +451,11 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before sendProof, make sure the mailbox hasn't been called
+      // Before proving, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       await expect(
-        hyperProver.connect(owner).sendProof(
+        hyperProver.connect(owner).prove(
           owner.address,
           sourceChainId,
           intentHashes,
@@ -509,7 +499,7 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before sendProof, make sure the mailbox hasn't been called
+      // Before proving, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
@@ -520,7 +510,7 @@ describe('HyperProver Test', (): void => {
       )
       const initBalance = await solver.provider.getBalance(solver.address)
       await expect(
-        hyperProver.connect(owner).sendProof(
+        hyperProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -544,7 +534,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
       await token.mint(solver.address, amount)
@@ -639,7 +629,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
 
@@ -667,7 +657,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
 
@@ -833,7 +823,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
 

@@ -31,7 +31,7 @@ contract TestProver is BaseProver {
         return "storage";
     }
 
-    function sendProof(
+    function prove(
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,

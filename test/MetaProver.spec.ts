@@ -30,7 +30,7 @@ import { hashIntent, TokenAmount } from '../utils/intent'
  *   - Test batch proving of multiple intents
  *   - Test validation of message data format
  *
- * 3. Proof Sending (sendProof())
+ * 3. Proof Initiation (prove())
  *   - Test authorization checks for proof initiators
  *   - Test fee calculation and handling
  *   - Test underpayment rejection
@@ -127,23 +127,12 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await testRouter.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: 1, prover: additionalProver }],
+        [additionalProver],
         200000,
       ) // 200k gas limit
 
-      // MetaProver whitelists itself on current chainId
-      const currentChainId = await ethers.provider
-        .getNetwork()
-        .then((n) => n.chainId)
-      expect(
-        await newMetaProver.proverWhitelist(
-          currentChainId,
-          await newMetaProver.getAddress(),
-        ),
-      ).to.be.true
-      // And whitelists the provided address on the specified chainId
-      expect(await newMetaProver.proverWhitelist(1, additionalProver)).to.be
-        .true
+      // Check if the prover address is in the whitelist
+      expect(await newMetaProver.isWhitelisted(additionalProver)).to.be.true
     })
 
     it('should have the correct default gas limit', async () => {
@@ -180,7 +169,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
     })
@@ -319,7 +308,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await testRouter.getAddress(),
         owner.address,
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
     })
@@ -347,7 +336,7 @@ describe('MetaProver Test', (): void => {
       const initBalance = await solver.provider.getBalance(solver.address)
 
       await expect(
-        metaProver.connect(owner).sendProof(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -373,7 +362,7 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
-        metaProver.connect(owner).sendProof(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -418,7 +407,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(solver)
-          .sendProof(owner.address, 123, intentHashes, claimants, data),
+          .prove(owner.address, 123, intentHashes, claimants, data),
       )
         .to.be.revertedWithCustomError(metaProver, 'UnauthorizedSendProof')
         .withArgs(await solver.getAddress())
@@ -461,7 +450,7 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
-        metaProver.connect(owner).sendProof(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -517,7 +506,7 @@ describe('MetaProver Test', (): void => {
       const initBalance = await solver.provider.getBalance(solver.address)
 
       await expect(
-        metaProver.connect(owner).sendProof(
+        metaProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -556,7 +545,7 @@ describe('MetaProver Test', (): void => {
       )
 
       // Call with exact fee (no refund needed)
-      await metaProver.connect(owner).sendProof(
+      await metaProver.connect(owner).prove(
         solver.address,
         sourceChainId,
         intentHashes,
@@ -597,7 +586,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .sendProof(
+          .prove(
             solver.address,
             sourceChainId,
             intentHashes,
@@ -618,7 +607,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
 
@@ -661,7 +650,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .sendProof(
+          .prove(
             solver.address,
             sourceChainId,
             intentHashes,
@@ -690,7 +679,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .sendProof(
+          .prove(
             solver.address,
             sourceChainId,
             intentHashes,
@@ -736,7 +725,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .sendProof(
+          .prove(
             solver.address,
             sourceChainId,
             intentHashes,
@@ -765,7 +754,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .sendProof(
+          .prove(
             solver.address,
             veryLargeChainId,
             intentHashes,
@@ -783,19 +772,15 @@ describe('MetaProver Test', (): void => {
   // interactions with Inbox without dealing with the actual cross-chain mechanisms
   async function createTestProvers() {
     // Deploy a TestMessageBridgeProver for use with the inbox
+    // Since whitelist is immutable, we need to include both addresses from the start
+    const whitelistedAddresses = [await inbox.getAddress(), await metaProver.getAddress()];
     const testMsgProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
     ).deploy(
       await inbox.getAddress(),
-      [{ chainId: 12345, prover: await inbox.getAddress() }],
+      whitelistedAddresses,
       200000,
     ) // Add default gas limit
-
-    // Update whitelist to allow our MetaProver
-    await testMsgProver.addWhitelistedProver(
-      12345,
-      await metaProver.getAddress(),
-    )
 
     return { testMsgProver }
   }
@@ -819,7 +804,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await metaTestRouter.getAddress(),
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       ) // Add default gas limit
 
@@ -920,7 +905,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [{ chainId: 12345, prover: await inbox.getAddress() }],
+        [await inbox.getAddress()],
         200000,
       )
 

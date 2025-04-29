@@ -44,7 +44,7 @@ interface IProver is ISemver {
      * @param _claimants Array of claimant addresses
      * @param _data Additional data specific to the proving implementation
      */
-    function sendProof(
+    function prove(
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
