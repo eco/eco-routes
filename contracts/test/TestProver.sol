@@ -27,15 +27,6 @@ contract TestProver is BaseProver {
         provenIntents[_hash] = _claimant;
     }
 
-    /**
-     * @notice Test helper for adding addresses to whitelist
-     * @dev Only for testing in MessageBridgeProver derivatives
-     */
-    function addWhitelistForTest(address _address) external {
-        // This is a no-op in TestProver since it's not a MessageBridgeProver
-        // But we define it so tests can call it
-    }
-
     function getProofType() external pure override returns (string memory) {
         return "storage";
     }

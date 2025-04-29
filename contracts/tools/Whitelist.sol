@@ -53,10 +53,7 @@ abstract contract Whitelist {
      * @param addresses Array of addresses to whitelist
      */
     constructor(address[] memory addresses) {
-        require(
-            addresses.length <= MAX_WHITELIST_SIZE,
-            "Too many addresses for whitelist"
-        );
+        require(addresses.length <= MAX_WHITELIST_SIZE);
 
         // Store whitelist size
         WHITELIST_SIZE = addresses.length;
@@ -96,108 +93,64 @@ abstract contract Whitelist {
         // Short circuit check for zero address
         if (addr == address(0)) return false;
 
-        // Check against each stored address
-        // Exit early when we hit an empty address slot
-        address slot;
-
-        slot = ADDRESS_1;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_1 == addr) return true;
         if (WHITELIST_SIZE <= 1) return false;
 
-        slot = ADDRESS_2;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_2 == addr) return true;
         if (WHITELIST_SIZE <= 2) return false;
 
-        slot = ADDRESS_3;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_3 == addr) return true;
         if (WHITELIST_SIZE <= 3) return false;
 
-        slot = ADDRESS_4;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_4 == addr) return true;
         if (WHITELIST_SIZE <= 4) return false;
 
-        slot = ADDRESS_5;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_5 == addr) return true;
         if (WHITELIST_SIZE <= 5) return false;
 
-        slot = ADDRESS_6;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_6 == addr) return true;
         if (WHITELIST_SIZE <= 6) return false;
 
-        slot = ADDRESS_7;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_7 == addr) return true;
         if (WHITELIST_SIZE <= 7) return false;
 
-        slot = ADDRESS_8;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_8 == addr) return true;
         if (WHITELIST_SIZE <= 8) return false;
 
-        slot = ADDRESS_9;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_9 == addr) return true;
         if (WHITELIST_SIZE <= 9) return false;
 
-        slot = ADDRESS_10;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_10 == addr) return true;
         if (WHITELIST_SIZE <= 10) return false;
 
-        slot = ADDRESS_11;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_11 == addr) return true;
         if (WHITELIST_SIZE <= 11) return false;
 
-        slot = ADDRESS_12;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_12 == addr) return true;
         if (WHITELIST_SIZE <= 12) return false;
 
-        slot = ADDRESS_13;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_13 == addr) return true;
         if (WHITELIST_SIZE <= 13) return false;
 
-        slot = ADDRESS_14;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_14 == addr) return true;
         if (WHITELIST_SIZE <= 14) return false;
 
-        slot = ADDRESS_15;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_15 == addr) return true;
         if (WHITELIST_SIZE <= 15) return false;
 
-        slot = ADDRESS_16;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_16 == addr) return true;
         if (WHITELIST_SIZE <= 16) return false;
 
-        slot = ADDRESS_17;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_17 == addr) return true;
         if (WHITELIST_SIZE <= 17) return false;
 
-        slot = ADDRESS_18;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_18 == addr) return true;
         if (WHITELIST_SIZE <= 18) return false;
 
-        slot = ADDRESS_19;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
+        if (ADDRESS_19 == addr) return true;
         if (WHITELIST_SIZE <= 19) return false;
 
-        slot = ADDRESS_20;
-        if (slot == address(0)) return false;
-        return slot == addr;
+        return ADDRESS_20 == addr;
     }
 
     /**

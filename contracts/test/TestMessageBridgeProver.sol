@@ -120,26 +120,4 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     function version() external pure returns (string memory) {
         return "test";
     }
-
-    /**
-     * @notice Test method to add an address to the whitelist
-     * @dev This is ONLY for testing - real whitelist is immutable
-     * @param _address Address to add to the whitelist for testing
-     */
-    function addWhitelistForTest(address _address) external {
-        // This method can't actually add to the immutable whitelist
-        // For test purposes, we'll just mark the intent as proven to simulate a valid cross-chain message
-        bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
-
-        // Create a dummy intent hash from the address for testing
-        hashes[0] = keccak256(abi.encodePacked(_address));
-        claimants[0] = _address;
-
-        // Process this directly
-        _processIntentProofs(hashes, claimants);
-
-        // Emit an event to confirm
-        emit IntentProven(hashes[0], _address);
-    }
 }

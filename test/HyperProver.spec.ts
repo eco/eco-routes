@@ -72,7 +72,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [additionalProver],
+        [additionalProver, await hyperProver.getAddress()],
         200000,
       )
 
@@ -99,7 +99,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [await inbox.getAddress(), await hyperProver.getAddress()],
         200000,
       )
     })
@@ -220,7 +220,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         owner.address,
-        [await inbox.getAddress()],
+        [await inbox.getAddress(), await hyperProver.getAddress()],
         200000,
       )
     })
@@ -525,7 +525,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [await inbox.getAddress(), await hyperProver.getAddress()],
         200000,
       )
       await token.mint(solver.address, amount)
@@ -648,7 +648,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [await inbox.getAddress(), await hyperProver.getAddress()],
         200000,
       )
 
