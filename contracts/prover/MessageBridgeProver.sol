@@ -11,7 +11,11 @@ import {Whitelist} from "../tools/Whitelist.sol";
  * @notice Abstract contract for cross-chain message-based proving mechanisms
  * @dev Extends BaseProver with functionality for message bridge provers like Hyperlane and Metalayer
  */
-abstract contract MessageBridgeProver is BaseProver, IMessageBridgeProver, Whitelist {
+abstract contract MessageBridgeProver is
+    BaseProver,
+    IMessageBridgeProver,
+    Whitelist
+{
     /**
      * @notice Default gas limit for cross-chain message dispatch
      * @dev Set at deployment and cannot be changed afterward

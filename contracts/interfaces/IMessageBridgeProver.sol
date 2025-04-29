@@ -9,7 +9,6 @@ import {IProver} from "./IProver.sol";
  * @dev Defines common functionality and events for cross-chain message bridge provers
  */
 interface IMessageBridgeProver is IProver {
-
     /**
      * @notice Insufficient fee provided for cross-chain message dispatch
      * @param _requiredFee Amount of fee required
@@ -44,32 +43,32 @@ interface IMessageBridgeProver is IProver {
      * @param _sender Address that initiated the proof
      */
     error UnauthorizedIncomingProof(address _sender);
-    
+
     /**
      * @notice Mailbox address cannot be zero
      */
     error MailboxCannotBeZeroAddress();
-    
+
     /**
      * @notice Router address cannot be zero
      */
     error RouterCannotBeZeroAddress();
-    
+
     /**
      * @notice Inbox address cannot be zero
      */
     error InboxCannotBeZeroAddress();
-    
+
     /**
      * @notice Prover address cannot be zero
      */
     error ProverCannotBeZeroAddress();
-    
+
     /**
      * @notice Invalid chain ID for the origin
      */
     error InvalidOriginChainId();
-    
+
     /**
      * @notice Sender address cannot be zero
      */

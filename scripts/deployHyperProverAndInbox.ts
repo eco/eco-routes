@@ -98,7 +98,7 @@ async function main() {
     // For testing purposes, you can use an empty array, but real deployments should include
     // trusted provers to ensure security.
     const trustedProvers: string[] = [] // Add production prover addresses here
-    
+
     // Example of how to add trusted provers:
     // const trustedProvers = [
     //   "0x1234...",
@@ -107,15 +107,17 @@ async function main() {
 
     // Validate addresses and check whitelist size limit
     if (trustedProvers.length > 20) {
-      throw new Error(`Too many trusted provers: ${trustedProvers.length}. Maximum allowed is 20.`)
+      throw new Error(
+        `Too many trusted provers: ${trustedProvers.length}. Maximum allowed is 20.`,
+      )
     }
-    
+
     for (const prover of trustedProvers) {
       if (!ethers.isAddress(prover)) {
         throw new Error(`Invalid address in trusted prover: ${prover}`)
       }
     }
-    
+
     // Display warning if deploying with an empty whitelist
     if (trustedProvers.length === 0) {
       console.warn(`

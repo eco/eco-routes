@@ -37,18 +37,24 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @return Whether the prover is whitelisted
      * @custom:deprecated Use isWhitelisted() instead
      */
-    function isAddressWhitelisted(address _prover) external view returns (bool) {
+    function isAddressWhitelisted(
+        address _prover
+    ) external view returns (bool) {
         return isWhitelisted(_prover);
     }
-    
+
     /**
      * @notice Test helper to access the whitelist
      * @return Array of all addresses in the whitelist
      */
-    function getWhitelistedAddresses() external view returns (address[] memory) {
+    function getWhitelistedAddresses()
+        external
+        view
+        returns (address[] memory)
+    {
         return getWhitelist();
     }
-    
+
     // No custom events needed for testing
 
     /**

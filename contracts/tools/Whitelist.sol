@@ -24,6 +24,7 @@ abstract contract Whitelist {
     uint256 private constant MAX_WHITELIST_SIZE = 20;
 
     /// @dev Immutable storage for whitelisted addresses (up to 20)
+    address private immutable _whitelist0;
     address private immutable _whitelist1;
     address private immutable _whitelist2;
     address private immutable _whitelist3;
@@ -43,8 +44,7 @@ abstract contract Whitelist {
     address private immutable _whitelist17;
     address private immutable _whitelist18;
     address private immutable _whitelist19;
-    address private immutable _whitelist20;
-    
+
     /// @dev Number of addresses actually in the whitelist
     uint256 private immutable _whitelistSize;
 
@@ -53,12 +53,16 @@ abstract contract Whitelist {
      * @param addresses Array of addresses to whitelist
      */
     constructor(address[] memory addresses) {
-        require(addresses.length <= MAX_WHITELIST_SIZE, "Too many addresses for whitelist");
-        
+        require(
+            addresses.length <= MAX_WHITELIST_SIZE,
+            "Too many addresses for whitelist"
+        );
+
         // Store whitelist size
-        _whitelistSize = addresses.length;
-        
+        _whitelistSize = addresses.length + 1;
+
         // Initialize all addresses to zero address
+        _whitelist0 = address(this);
         _whitelist1 = addresses.length > 0 ? addresses[0] : address(0);
         _whitelist2 = addresses.length > 1 ? addresses[1] : address(0);
         _whitelist3 = addresses.length > 2 ? addresses[2] : address(0);
@@ -78,7 +82,6 @@ abstract contract Whitelist {
         _whitelist17 = addresses.length > 16 ? addresses[16] : address(0);
         _whitelist18 = addresses.length > 17 ? addresses[17] : address(0);
         _whitelist19 = addresses.length > 18 ? addresses[18] : address(0);
-        _whitelist20 = addresses.length > 19 ? addresses[19] : address(0);
     }
 
     /**
@@ -89,110 +92,108 @@ abstract contract Whitelist {
     function isWhitelisted(address addr) public view returns (bool) {
         // Short circuit check for empty whitelist
         if (_whitelistSize == 0) return false;
-        
+
         // Short circuit check for zero address
         if (addr == address(0)) return false;
-        
+
+        // Short circuit check for self
+        if (addr == address(this)) return true;
+
         // Check against each stored address
         // Exit early when we hit an empty address slot
         address slot;
-        
+
         slot = _whitelist1;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 1) return false;
-        
+
         slot = _whitelist2;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 2) return false;
-        
+
         slot = _whitelist3;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 3) return false;
-        
+
         slot = _whitelist4;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 4) return false;
-        
+
         slot = _whitelist5;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 5) return false;
-        
+
         slot = _whitelist6;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 6) return false;
-        
+
         slot = _whitelist7;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 7) return false;
-        
+
         slot = _whitelist8;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 8) return false;
-        
+
         slot = _whitelist9;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 9) return false;
-        
+
         slot = _whitelist10;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 10) return false;
-        
+
         slot = _whitelist11;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 11) return false;
-        
+
         slot = _whitelist12;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 12) return false;
-        
+
         slot = _whitelist13;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 13) return false;
-        
+
         slot = _whitelist14;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 14) return false;
-        
+
         slot = _whitelist15;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 15) return false;
-        
+
         slot = _whitelist16;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 16) return false;
-        
+
         slot = _whitelist17;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 17) return false;
-        
+
         slot = _whitelist18;
         if (slot == address(0)) return false;
         if (slot == addr) return true;
         if (_whitelistSize <= 18) return false;
-        
+
         slot = _whitelist19;
-        if (slot == address(0)) return false;
-        if (slot == addr) return true;
-        if (_whitelistSize <= 19) return false;
-        
-        slot = _whitelist20;
         if (slot == address(0)) return false;
         return slot == addr;
     }
@@ -206,38 +207,37 @@ abstract contract Whitelist {
             revert AddressNotWhitelisted(addr);
         }
     }
-    
+
     /**
      * @notice Returns the list of whitelisted addresses
      * @return whitelist Array of whitelisted addresses
      */
     function getWhitelist() public view returns (address[] memory) {
         address[] memory whitelist = new address[](_whitelistSize);
-        
-        if (_whitelistSize > 0) whitelist[0] = _whitelist1;
-        if (_whitelistSize > 1) whitelist[1] = _whitelist2;
-        if (_whitelistSize > 2) whitelist[2] = _whitelist3;
-        if (_whitelistSize > 3) whitelist[3] = _whitelist4;
-        if (_whitelistSize > 4) whitelist[4] = _whitelist5;
-        if (_whitelistSize > 5) whitelist[5] = _whitelist6;
-        if (_whitelistSize > 6) whitelist[6] = _whitelist7;
-        if (_whitelistSize > 7) whitelist[7] = _whitelist8;
-        if (_whitelistSize > 8) whitelist[8] = _whitelist9;
-        if (_whitelistSize > 9) whitelist[9] = _whitelist10;
-        if (_whitelistSize > 10) whitelist[10] = _whitelist11;
-        if (_whitelistSize > 11) whitelist[11] = _whitelist12;
-        if (_whitelistSize > 12) whitelist[12] = _whitelist13;
-        if (_whitelistSize > 13) whitelist[13] = _whitelist14;
-        if (_whitelistSize > 14) whitelist[14] = _whitelist15;
-        if (_whitelistSize > 15) whitelist[15] = _whitelist16;
-        if (_whitelistSize > 16) whitelist[16] = _whitelist17;
-        if (_whitelistSize > 17) whitelist[17] = _whitelist18;
-        if (_whitelistSize > 18) whitelist[18] = _whitelist19;
-        if (_whitelistSize > 19) whitelist[19] = _whitelist20;
-        
+        whitelist[0] = _whitelist0;
+        if (_whitelistSize > 1) whitelist[1] = _whitelist1;
+        if (_whitelistSize > 2) whitelist[2] = _whitelist2;
+        if (_whitelistSize > 3) whitelist[3] = _whitelist3;
+        if (_whitelistSize > 4) whitelist[4] = _whitelist4;
+        if (_whitelistSize > 5) whitelist[5] = _whitelist5;
+        if (_whitelistSize > 6) whitelist[6] = _whitelist6;
+        if (_whitelistSize > 7) whitelist[7] = _whitelist7;
+        if (_whitelistSize > 8) whitelist[8] = _whitelist8;
+        if (_whitelistSize > 9) whitelist[9] = _whitelist9;
+        if (_whitelistSize > 10) whitelist[10] = _whitelist10;
+        if (_whitelistSize > 11) whitelist[11] = _whitelist11;
+        if (_whitelistSize > 12) whitelist[12] = _whitelist12;
+        if (_whitelistSize > 13) whitelist[13] = _whitelist13;
+        if (_whitelistSize > 14) whitelist[14] = _whitelist14;
+        if (_whitelistSize > 15) whitelist[15] = _whitelist15;
+        if (_whitelistSize > 16) whitelist[16] = _whitelist16;
+        if (_whitelistSize > 17) whitelist[17] = _whitelist17;
+        if (_whitelistSize > 18) whitelist[18] = _whitelist18;
+        if (_whitelistSize > 19) whitelist[19] = _whitelist19;
+
         return whitelist;
     }
-    
+
     /**
      * @notice Returns the number of whitelisted addresses
      * @return Number of addresses in the whitelist

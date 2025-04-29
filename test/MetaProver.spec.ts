@@ -409,7 +409,7 @@ describe('MetaProver Test', (): void => {
           .connect(solver)
           .prove(owner.address, 123, intentHashes, claimants, data),
       )
-        .to.be.revertedWithCustomError(metaProver, 'UnauthorizedSendProof')
+        .to.be.revertedWithCustomError(metaProver, 'UnauthorizedProve')
         .withArgs(await solver.getAddress())
     })
 
@@ -586,14 +586,9 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .prove(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: fee },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: fee,
+          }),
       ).to.not.be.reverted
 
       // Should dispatch successfully
@@ -650,14 +645,9 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .prove(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: await testRouter.FEE() },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: await testRouter.FEE(),
+          }),
       ).to.be.revertedWithCustomError(metaProver, 'ArrayLengthMismatch')
 
       // This test confirms the validation that arrays must have
@@ -679,14 +669,9 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .prove(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: await testRouter.FEE() },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: await testRouter.FEE(),
+          }),
       ).to.not.be.reverted
 
       // Verify the dispatch was called (event should be emitted)
@@ -725,14 +710,9 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .prove(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: fee },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: fee,
+          }),
       ).to.not.be.reverted
 
       // Verify dispatch was called
@@ -773,14 +753,13 @@ describe('MetaProver Test', (): void => {
   async function createTestProvers() {
     // Deploy a TestMessageBridgeProver for use with the inbox
     // Since whitelist is immutable, we need to include both addresses from the start
-    const whitelistedAddresses = [await inbox.getAddress(), await metaProver.getAddress()];
+    const whitelistedAddresses = [
+      await inbox.getAddress(),
+      await metaProver.getAddress(),
+    ]
     const testMsgProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
-    ).deploy(
-      await inbox.getAddress(),
-      whitelistedAddresses,
-      200000,
-    ) // Add default gas limit
+    ).deploy(await inbox.getAddress(), whitelistedAddresses, 200000) // Add default gas limit
 
     return { testMsgProver }
   }

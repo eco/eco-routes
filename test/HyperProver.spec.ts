@@ -79,7 +79,8 @@ describe('HyperProver Test', (): void => {
       // Check if the prover address is in the whitelist
       expect(await hyperProver.isWhitelisted(additionalProver)).to.be.true
       // Check if the hyperProver itself is also whitelisted
-      expect(await hyperProver.isWhitelisted(await hyperProver.getAddress())).to.be.true
+      expect(await hyperProver.isWhitelisted(await hyperProver.getAddress())).to
+        .be.true
     })
 
     it('should return the correct proof type', async () => {
@@ -252,7 +253,7 @@ describe('HyperProver Test', (): void => {
       )
       const initBalance = await solver.provider.getBalance(solver.address)
       await expect(
-        hyperProver.connect(owner).sendProof(
+        hyperProver.connect(owner).prove(
           solver.address,
           sourceChainId,
           intentHashes,
@@ -275,8 +276,8 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(solver)
-          .sendProof(owner.address, 123, intentHashes, claimants, data),
-      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedSendProof')
+          .prove(owner.address, 123, intentHashes, claimants, data),
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedProve')
     })
 
     it('should handle exact fee payment with no refund needed', async () => {
@@ -308,7 +309,7 @@ describe('HyperProver Test', (): void => {
       )
 
       // Call with exact fee (no refund needed)
-      await hyperProver.connect(owner).sendProof(
+      await hyperProver.connect(owner).prove(
         solver.address,
         sourceChainId,
         intentHashes,
@@ -354,14 +355,9 @@ describe('HyperProver Test', (): void => {
       // Call with custom hook
       await hyperProver
         .connect(owner)
-        .prove(
-          solver.address,
-          sourceChainId,
-          intentHashes,
-          claimants,
-          data,
-          { value: fee },
-        )
+        .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+          value: fee,
+        })
 
       // Verify dispatch was called (we can't directly check hook address as
       // TestMailbox doesn't expose that property)
@@ -395,14 +391,9 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .prove(
-            solver.address,
-            sourceChainId,
-            intentHashes,
-            claimants,
-            data,
-            { value: fee },
-          ),
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
+            value: fee,
+          }),
       ).to.not.be.reverted
 
       // Should dispatch successfully
