@@ -8,8 +8,8 @@ import {
   IntentSource__factory,
   Inbox,
   Inbox__factory,
-  PolymerProver,
-  PolymerProver__factory,
+  PolyNativeProver,
+  PolyNativeProver__factory,
   TestERC20__factory,
 } from '../../typechain-types'
 
@@ -119,7 +119,7 @@ async function main() {
   const baseWallet = new ethers.Wallet(privateKey, baseProvider)
 
   console.log('⛓️  connected to optimism and base...')
-  /// bind the contracts on Optimism mainnet (IntentSource, Inbox, PolymerProver) ///
+  /// bind the contracts on Optimism mainnet (IntentSource, Inbox, PolyNativeProver) ///
 
   const optimismIntentSource: IntentSource = IntentSource__factory.connect(
     network_info.optimism.intentSource,
@@ -131,7 +131,7 @@ async function main() {
     optimismWallet,
   )
 
-  const optimismPolymerProver: PolymerProver = PolymerProver__factory.connect(
+  const optimismPolyNativeProver: PolyNativeProver = PolyNativeProver__factory.connect(
     network_info.optimism.prover,
     optimismWallet,
   )
@@ -156,7 +156,7 @@ async function main() {
     baseWallet,
   )
 
-  const basePolymerProver: PolymerProver = PolymerProver__factory.connect(
+  const basePolyNativeProver: PolyNativeProver = PolyNativeProver__factory.connect(
     network_info.base.prover,
     baseWallet,
   )
@@ -375,7 +375,7 @@ async function main() {
 
   /// POLYMER PROVER CONTRACT FLOW ///
   console.log('🔄 Validating proof...')
-  const proveTx = await optimismPolymerProver.validate(hexProof)
+  const proveTx = await optimismPolyNativeProver.validate(hexProof)
 
   const proveTxReceipt = await proveTx.wait()
   if (!proveTxReceipt) {
@@ -386,7 +386,7 @@ async function main() {
   const intentProvenEvent = proveTxReceipt.logs.find(
     (log) =>
       log.topics[0] ===
-      optimismPolymerProver.interface.getEvent('IntentProven').topicHash,
+      optimismPolyNativeProver.interface.getEvent('IntentProven').topicHash,
   )
 
   if (!intentProvenEvent) {
@@ -394,7 +394,7 @@ async function main() {
   }
 
   const [provenIntentHash, provenClaimant] =
-    optimismPolymerProver.interface.decodeEventLog(
+    optimismPolyNativeProver.interface.decodeEventLog(
       'IntentProven',
       intentProvenEvent.data,
       intentProvenEvent.topics,

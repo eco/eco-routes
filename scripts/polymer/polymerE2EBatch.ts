@@ -8,8 +8,8 @@ import {
   IntentSource__factory,
   Inbox,
   Inbox__factory,
-  PolymerProver,
-  PolymerProver__factory,
+  PolyNativeProver,
+  PolyNativeProver__factory,
   TestERC20__factory,
 } from '../../typechain-types'
 
@@ -124,7 +124,7 @@ async function main() {
   const baseWallet = new ethers.Wallet(privateKey, baseProvider)
 
   console.log('⛓️  connected to optimism and base...')
-  /// bind the contracts on Optimism mainnet (IntentSource, Inbox, PolymerProver) ///
+  /// bind the contracts on Optimism mainnet (IntentSource, Inbox, PolyNativeProver) ///
 
   const optimismIntentSource: IntentSource = IntentSource__factory.connect(
     network_info.optimism.intentSource,
@@ -136,7 +136,7 @@ async function main() {
     optimismWallet,
   )
 
-  const optimismPolymerProver: PolymerProver = PolymerProver__factory.connect(
+  const optimismPolyNativeProver: PolyNativeProver = PolyNativeProver__factory.connect(
     network_info.optimism.prover,
     optimismWallet,
   )
@@ -161,7 +161,7 @@ async function main() {
     baseWallet,
   )
 
-  const basePolymerProver: PolymerProver = PolymerProver__factory.connect(
+  const basePolyNativeProver: PolyNativeProver = PolyNativeProver__factory.connect(
     network_info.base.prover,
     baseWallet,
   )
@@ -406,7 +406,7 @@ async function main() {
   console.log('🔄 Validating proof...')
 
   
-  const proveTx = await optimismPolymerProver.validatePacked(hexProof)
+  const proveTx = await optimismPolyNativeProver.validatePacked(hexProof)
 
   const proveTxReceipt = await proveTx.wait()
   if (!proveTxReceipt) {
@@ -417,7 +417,7 @@ async function main() {
   const intentProvenEvents = proveTxReceipt.logs.filter(
     (log) =>
       log.topics[0] ===
-      optimismPolymerProver.interface.getEvent('IntentProven').topicHash,
+      optimismPolyNativeProver.interface.getEvent('IntentProven').topicHash,
   )
 
   if (intentProvenEvents.length !== batchSize) {
@@ -427,7 +427,7 @@ async function main() {
   // Verify each event matches our intent hashes
   for (let i = 0; i < batchSize; i++) {
     const [provenIntentHash, provenClaimant] =
-      optimismPolymerProver.interface.decodeEventLog(
+      optimismPolyNativeProver.interface.decodeEventLog(
         'IntentProven',
         intentProvenEvents[i].data,
         intentProvenEvents[i].topics,

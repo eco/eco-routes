@@ -15,7 +15,7 @@ async function main() {
   const [deployer] = await ethers.getSigners()
   const nonce = await deployer.getNonce()
   console.log('deploying polymer prover with nonce:', nonce)
-  const proverFactory = await ethers.getContractFactory('PolymerProver')
+  const proverFactory = await ethers.getContractFactory('PolyNativeProver')
   const polymerProver = await proverFactory.deploy(
     crossL2Prover,
     inboxAddress,
