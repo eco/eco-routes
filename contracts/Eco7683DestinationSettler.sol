@@ -11,6 +11,7 @@ import {IProver} from "./interfaces/IProver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {console} from "hardhat/console.sol";
 
 abstract contract Eco7683DestinationSettler is IDestinationSettler {
     using ECDSA for bytes32;
@@ -37,11 +38,12 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         emit OrderFilled(_orderId, msg.sender);
 
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        string memory proofType = abi.decode(_fillerData, (string));
         (address claimant, bytes memory data) = abi.decode(
             _fillerData,
             (address, bytes)
         );
+        console.logAddress(claimant);
+        console.logBytes(data);
         fulfillAndProve(
             intent.route,
             rewardHash,

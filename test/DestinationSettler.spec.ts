@@ -50,16 +50,10 @@ describe('Destination Settler Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
     const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy(
-      owner.address,
-      true,
-      minBatcherReward,
-      [],
-    )
-    await inbox.connect(owner).setMailbox(await mailbox.getAddress())
+    const inbox = await inboxFactory.deploy()
     const prover = await (
       await ethers.getContractFactory('TestProver')
-    ).deploy()
+    ).deploy(await inbox.getAddress())
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -150,8 +144,8 @@ describe('Destination Settler Test', (): void => {
     await time.increaseTo(intent.reward.deadline + 1)
     await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['uint256', 'address'],
-      [0, solver.address],
+      ['address'],
+      [solver.address],
     )
     await expect(
       inbox.connect(solver).fill(intentHash, encodeIntent(intent), fillerData, {
@@ -159,16 +153,15 @@ describe('Destination Settler Test', (): void => {
       }),
     ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
   })
-  it('successfully calls storage prover fulfill', async (): Promise<void> => {
-    let fulfillment = await inbox.fulfilled(intentHash)
-    expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
+  it('successfully calls fulfill with testprover', async (): Promise<void> => {
+    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction
     await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['uint256', 'address'],
-      [0, solver.address],
+      ['address', 'bytes'],
+      [solver.address, await prover.getAddress()],
     )
     expect(
       await inbox
@@ -179,31 +172,7 @@ describe('Destination Settler Test', (): void => {
     )
       .to.emit(inbox, 'OrderFilled')
       .withArgs(intentHash, solver.address)
-      .and.to.emit(inbox, 'ToBeProven')
-      .withArgs(intentHash, route.source, solver.address)
-
-    expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
-  })
-
-  it('successfully calls hyper instant fulfill', async (): Promise<void> => {
-    let fulfillment = await inbox.fulfilled(intentHash)
-    expect(fulfillment.claimant).to.equal(ethers.ZeroAddress)
-    expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
-
-    // transfer the tokens to the settler so it can process the transaction
-    await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
-    fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['uint256', 'address', 'address', 'bytes'],
-      [1, solver.address, ethers.ZeroAddress, '0x'],
-    )
-    expect(
-      await inbox
-        .connect(solver)
-        .fill(intentHash, encodeIntent(intent), fillerData, {
-          value: nativeAmount + BigInt(120000), // add some extra to pay for hyperlane gas
-        }),
-    )
-      .to.emit(inbox, 'HyperInstantFulfillment')
+      .and.to.emit(inbox, 'Fulfillment')
       .withArgs(intentHash, route.source, solver.address)
 
     expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)

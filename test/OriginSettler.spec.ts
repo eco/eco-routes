@@ -84,14 +84,15 @@ describe('Origin Settler Test', (): void => {
     otherPerson: SignerWithAddress
   }> {
     const [creator, owner, otherPerson] = await ethers.getSigners()
-    // deploy prover
-    prover = await (await ethers.getContractFactory('TestProver')).deploy()
 
     const intentSourceFactory = await ethers.getContractFactory('IntentSource')
     const intentSource = await intentSourceFactory.deploy()
-    inbox = await (
-      await ethers.getContractFactory('Inbox')
-    ).deploy(owner.address, false, minBatcherReward, [owner.address])
+    inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+
+    // deploy prover
+    prover = await (
+      await ethers.getContractFactory('TestProver')
+    ).deploy(await inbox.getAddress())
 
     const originSettlerFactory = await ethers.getContractFactory(
       'Eco7683OriginSettler',
