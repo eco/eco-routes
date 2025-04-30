@@ -8,26 +8,20 @@ import { ethers } from 'hardhat'
 import {
   PolyNativeProver,
   Inbox,
-  TestERC20,
   TestCrossL2ProverV2,
-  MockIntentSource,
+  IntentSource,
+  TestNativeProver,
 } from '../typechain-types'
-import { encodeTransfer } from '../utils/encode'
-import { TokenAmount, Reward } from '../utils/intent'
+import { Reward, hashIntent, Intent, Route } from '../utils/intent'
+import { keccak256 } from 'ethers'
 
-export function hashIntent(routeHash: string, reward: Reward): string {
+export function calculateStorageSlot(intentHash: string): string {
   // Use the full Reward type for encoding, matching the Solidity abi.encode(reward)
-  const rewardHash = ethers.keccak256(
-    ethers.AbiCoder.defaultAbiCoder().encode(
-      [
-        'tuple(address creator, address prover, uint256 deadline, uint256 nativeValue, tuple(address token, uint256 amount)[] tokens)',
-      ],
-      [reward],
-    ),
-  )
-
   return ethers.keccak256(
-    ethers.solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ['bytes32', 'uint256'],
+      [intentHash, 1],
+    ),
   )
 }
 
@@ -35,22 +29,25 @@ describe('PolyNativeProver Test', (): void => {
   let polymerProver: PolyNativeProver
   let inbox: Inbox
   let testCrossL2ProverV2: TestCrossL2ProverV2
-  let mockIntentSource: MockIntentSource
+  let testNativeProver: TestNativeProver
+  let intentSource: IntentSource
   let owner: SignerWithAddress
-  let solver: SignerWithAddress
   let claimant: SignerWithAddress
   let claimant2: SignerWithAddress
   let claimant3: SignerWithAddress
-  let token: SignerWithAddress
   let chainIds: number[] = [10, 42161]
   let emptyTopics: string =
     '0x0000000000000000000000000000000000000000000000000000000000000000'
   let emptyData: string = '0x'
 
+  let intent: Intent
   async function deployPolyNativeProverFixture(): Promise<{
     polymerProver: PolyNativeProver
     inbox: Inbox
+    intentSource: IntentSource
+    intent: Intent
     testCrossL2ProverV2: TestCrossL2ProverV2
+    testNativeProver: TestNativeProver
     owner: SignerWithAddress
     solver: SignerWithAddress
     claimant: SignerWithAddress
@@ -69,18 +66,56 @@ describe('PolyNativeProver Test', (): void => {
       await ethers.getContractFactory('TestCrossL2ProverV2')
     ).deploy(chainIds[0], await inbox.getAddress(), emptyTopics, emptyData)
 
-    polymerProver = await (
+    const testNativeProver = await (
+      await ethers.getContractFactory('TestNativeProver')
+    ).deploy()
+
+    const polymerProver = await (
       await ethers.getContractFactory('PolyNativeProver')
     ).deploy(
       await testCrossL2ProverV2.getAddress(),
+      await testNativeProver.getAddress(),
       await inbox.getAddress(),
       chainIds,
     )
 
+    const intentSource = await (
+      await ethers.getContractFactory('IntentSource')
+    ).deploy()
+
+    const srcChainId = (await ethers.provider.getNetwork()).chainId
+
+    let route: Route = {
+      salt: ethers.keccak256(ethers.toUtf8Bytes('testsalt')),
+      source: Number(srcChainId),
+      destination: chainIds[1],
+      inbox: await inbox.getAddress(),
+      tokens: [],
+      calls: [],
+    }
+
+    const currentTimestamp = await time.latest() // Get the current blockchain timestamp
+
+    let reward: Reward = {
+      creator: owner.address,
+      prover: await polymerProver.getAddress(),
+      deadline: currentTimestamp + 3600, // Set deadline to 1 hour from now
+      nativeValue: ethers.parseEther('1'),
+      tokens: [],
+    }
+
+    intent = {
+      reward,
+      route,
+    }
+
     return {
       polymerProver,
+      intentSource,
       inbox,
       testCrossL2ProverV2,
+      testNativeProver,
+      intent,
       owner,
       solver,
       claimant,
@@ -93,18 +128,19 @@ describe('PolyNativeProver Test', (): void => {
   beforeEach(async (): Promise<void> => {
     ;({
       polymerProver,
+      intentSource,
       inbox,
       testCrossL2ProverV2,
-      mockIntentSource,
-      solver,
+      testNativeProver,
+      intent,
+      owner,
       claimant,
       claimant2,
       claimant3,
-      token,
     } = await loadFixture(deployPolyNativeProverFixture))
   })
 
-  describe('Single emit', (): void => {
+  describe('Single emit for non-native path', (): void => {
     let topics: string[]
     let data: string
     let expectedHash: string
@@ -124,6 +160,12 @@ describe('PolyNativeProver Test', (): void => {
         ethers.zeroPadValue(ethers.toBeHex(chainIds[0]), 32),
         ethers.zeroPadValue(claimant.address, 32),
       ]
+
+      await expect(
+        intentSource
+          .connect(owner)
+          .publishAndFund(intent, false, { value: ethers.parseEther('1') }),
+      ).to.emit(intentSource, 'IntentFunded')
     })
 
     it('should validate a single emit', async (): Promise<void> => {
@@ -377,6 +419,160 @@ describe('PolyNativeProver Test', (): void => {
     })
   })
 
+  describe('Single emit for native fallback path', (): void => {
+    let intentHash: string
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder()
+    let expectedStorageValue: string
+    let happyPathProveArgs: any
+
+    beforeEach(async (): Promise<void> => {
+      intentHash = hashIntent(intent).intentHash
+
+      const expectedStorageSlot = calculateStorageSlot(intentHash)
+      expectedStorageValue = ethers.solidityPacked(
+        ['address', 'uint96'],
+        [claimant.address, ethers.parseUnits('1', 'ether')],
+      )
+
+      await testNativeProver.setAllowableStorage(expectedStorageValue)
+
+      happyPathProveArgs = {
+        chainID: chainIds[0],
+        contractAddr: await inbox.getAddress(),
+        storageSlot: expectedStorageSlot,
+        storageValue: expectedStorageValue,
+        l2WorldStateRoot: keccak256(ethers.toUtf8Bytes('world state route')),
+      }
+      await expect(
+        intentSource
+          .connect(owner)
+          .publishAndFund(intent, false, { value: ethers.parseEther('1') }),
+      ).to.emit(intentSource, 'IntentFunded')
+    })
+
+    const encodeProofData = async (proveArgs) => {
+      const rlpEncodedL1Header = ethers.toUtf8Bytes('rlp l1 header')
+      const rlpEncodedL2Header = ethers.toUtf8Bytes('rlp l2 header')
+      const settledStateProof = ethers.toUtf8Bytes('settled state proof')
+      const storageProof = [
+        keccak256(ethers.toUtf8Bytes('storage proof root')),
+        keccak256(ethers.toUtf8Bytes('storage proof')),
+      ]
+      const rlpEncodedAccount = ethers.toUtf8Bytes('RlpEncodedContractAccount')
+      const l2AccountProof = [
+        ethers.toUtf8Bytes('L2AccountProof1'),
+        ethers.toUtf8Bytes('0xL2AccountProof2'),
+      ]
+
+      const proofBytes = abiCoder.encode(
+        [
+          'tuple(uint256 chainID, address contractAddr, bytes32 storageSlot, bytes32 storageValue, bytes32 l2WorldStateRoot)',
+          'bytes',
+          'bytes',
+          'bytes',
+          'bytes[]',
+          'bytes',
+          'bytes[]',
+        ],
+        [
+          proveArgs,
+          rlpEncodedL1Header,
+          rlpEncodedL2Header,
+          settledStateProof,
+          storageProof,
+          rlpEncodedAccount,
+          l2AccountProof,
+        ],
+      )
+
+      // get values from mock prover and ensure they are correct
+      if (proveArgs.storageValue == expectedStorageValue) {
+        const { chainId, storingContract, storageValue } =
+          await testNativeProver.prove(
+            proveArgs,
+            rlpEncodedL1Header,
+            rlpEncodedL2Header,
+            settledStateProof,
+            storageProof,
+            rlpEncodedAccount,
+            l2AccountProof,
+          )
+
+        expect(chainId).to.equal(proveArgs.chainID)
+        expect(storingContract).to.equal(proveArgs.contractAddr)
+        expect(storageValue).to.equal(proveArgs.storageValue)
+      }
+      return proofBytes
+    }
+
+    it('should validate a single storage proof', async (): Promise<void> => {
+      const proofBytes = await encodeProofData(happyPathProveArgs)
+      await expect(polymerProver.validateNative(proofBytes, intentHash))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHash, claimant.address)
+    })
+
+    it('should emit IntentAlreadyProven if the proof is already proven', async (): Promise<void> => {
+      const proofBytes = await encodeProofData(happyPathProveArgs)
+      await expect(polymerProver.validateNative(proofBytes, intentHash))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(intentHash, claimant.address)
+
+      await expect(polymerProver.validateNative(proofBytes, intentHash))
+        .to.emit(polymerProver, 'IntentAlreadyProven')
+        .withArgs(intentHash)
+    })
+
+    it('should revert if inbox contract is not the contract being read from', async (): Promise<void> => {
+      const proofData = {
+        ...happyPathProveArgs,
+        contractAddr: owner.address,
+      }
+      const proofBytes = await encodeProofData(proofData)
+
+      await expect(
+        polymerProver.validateNative(proofBytes, intentHash),
+      ).to.be.revertedWithCustomError(polymerProver, 'InvalidEmittingContract')
+    })
+
+    it('should revert if chainId is not supported', async (): Promise<void> => {
+      const proveArgs = {
+        ...happyPathProveArgs,
+        chainID: 12312,
+      }
+      const proofBytes = await encodeProofData(proveArgs)
+      await expect(
+        polymerProver.validateNative(proofBytes, intentHash),
+      ).to.be.revertedWithCustomError(polymerProver, 'UnsupportedChainId')
+    })
+
+    it('should revert if the wrong storage slot is used', async (): Promise<void> => {
+      const invalidRoute = { ...intent.route, chainId: 123123 }
+      const invalidIntent = { reward: intent.reward, route: invalidRoute }
+      const invalidIntentHash = hashIntent(invalidIntent)
+      const proofBytes = await encodeProofData({
+        ...happyPathProveArgs,
+        storageSlot: ethers.zeroPadValue(ethers.toBeHex(27), 32),
+      })
+      await expect(
+        polymerProver.validateNative(proofBytes, invalidIntentHash.intentHash),
+      ).to.be.revertedWithCustomError(polymerProver, 'IncorrectStorageSlot')
+    })
+
+    it('should revert if the wrong storage value is used', async (): Promise<void> => {
+      const invalidRoute = { ...intent.route, chainId: 123123 }
+      const invalidIntent = { reward: intent.reward, route: invalidRoute }
+      const invalidIntentHash = hashIntent(invalidIntent)
+      const proofBytes = await encodeProofData({
+        ...happyPathProveArgs,
+        storageValue: ethers.zeroPadValue(ethers.toBeHex(0), 32),
+      })
+      await expect(
+        polymerProver.validateNative(proofBytes, invalidIntentHash.intentHash),
+      ).to.be.reverted
+    })
+  })
+
   describe('Batch emit', (): void => {
     let topics_0: string[]
     let topics_1: string[]
@@ -513,20 +709,5 @@ describe('PolyNativeProver Test', (): void => {
         .to.emit(polymerProver, 'IntentProven')
         .withArgs(expectedHash2, claimant2.address)
     })
-  })
-
-
-  describe('messageBeforeClaim', (): void => {
-    it('happy path should work', async (): Promise<void> => {})
-
-    it('variations on happy path should work', async (): Promise<void> => {})
-
-    it('should revert for truncated size', async (): Promise<void> => {})
-
-    it('should revert for truncated claimant address', async (): Promise<void> => {})
-
-    it('should revert for truncated intent set', async (): Promise<void> => {})
-
-    it('should revert for size mismatch', async (): Promise<void> => {})
   })
 })
