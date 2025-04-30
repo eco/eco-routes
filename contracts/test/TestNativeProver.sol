@@ -20,11 +20,19 @@ contract TestNativeProver is INativeProver {
         bytes[] memory _l2StorageProof,
         bytes memory _rlpEncodedContractAccount,
         bytes[] memory _l2AccountProof
-    ) external view returns (uint256 chainId, address storingContract, bytes32 storageValue) {
+    )
+        external
+        view
+        returns (uint256 chainId, address storingContract, bytes32 storageValue)
+    {
         if (_proveArgs.storageValue != allowedStorageValue) {
             revert invalidStorageValue();
         }
         uint256 proofIndex = uint256(bytes32(_settledStateProof));
-        return (_proveArgs.chainID, _proveArgs.contractAddr, _proveArgs.storageValue);
+        return (
+            _proveArgs.chainID,
+            _proveArgs.contractAddr,
+            _proveArgs.storageValue
+        );
     }
 }

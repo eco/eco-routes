@@ -1,5 +1,4 @@
-import { ethers } from 'hardhat'
-import hre from 'hardhat'
+import hre, { ethers } from 'hardhat'
 
 async function main() {
   const crossL2Prover = '0xcDa03d74DEc5B24071D1799899B2e0653C24e5Fa'
@@ -25,7 +24,7 @@ async function main() {
   const proverAddr = await polymerProver.getAddress()
   console.log('polymer prover deployed at:', proverAddr)
 
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  await new Promise((resolve) => setTimeout(resolve, 5000))
 
   await hre.run('verify:verify', {
     address: proverAddr,
@@ -35,5 +34,5 @@ async function main() {
 
 main().catch((err) => {
   console.error(err)
-  process.exit(1)
+  throw err
 })

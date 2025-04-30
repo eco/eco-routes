@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.2;
 
 /**
  * @title ICrossL2Prover
@@ -33,24 +33,40 @@ interface ICrossL2ProverV2 {
      * Event.selector. The remaining elements in this array are the indexed parameters of the event.
      * @return unindexedData // The abi encoded non-indexed parameters of the event.
      */
-    function validateEvent(bytes calldata proof)
+    function validateEvent(
+        bytes calldata proof
+    )
         external
         view
-        returns (uint32 chainId, address emittingContract, bytes calldata topics, bytes calldata unindexedData);
+        returns (
+            uint32 chainId,
+            address emittingContract,
+            bytes calldata topics,
+            bytes calldata unindexedData
+        );
 
     /**
      * Return srcChain, Block Number, Receipt Index, and Local Index for a requested proof
      */
-    function inspectLogIdentifier(bytes calldata proof)
+    function inspectLogIdentifier(
+        bytes calldata proof
+    )
         external
         pure
-        returns (uint32 srcChain, uint64 blockNumber, uint16 receiptIndex, uint8 logIndex);
+        returns (
+            uint32 srcChain,
+            uint64 blockNumber,
+            uint16 receiptIndex,
+            uint8 logIndex
+        );
 
     /**
      * Return polymer state root, height , and signature over height and root which can be verified by
      * crypto.pubkey(keccak(peptideStateRoot, peptideHeight))
      */
-    function inspectPolymerState(bytes calldata proof)
+    function inspectPolymerState(
+        bytes calldata proof
+    )
         external
         pure
         returns (bytes32 stateRoot, uint64 height, bytes memory signature);

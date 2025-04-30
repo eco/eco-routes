@@ -26,23 +26,28 @@ source .env
 1. First, compile the contracts from the root directory using the instructions in the [README](../README.md).
 
 2. From the project root, make the deployment script executable:
+
    ```bash
    chmod +x scripts/polymer/deploy.sh
    ```
 
 3. From the project root, run the deployment script:
+
    ```bash
    ./scripts/polymer/deploy.sh
    ```
+
    The script will prompt you to choose between:
-   1) Testnets (Optimism Sepolia and Base Sepolia)
-   2) Mainnets (Optimism and Base)
+
+   1. Testnets (Optimism Sepolia and Base Sepolia)
+   2. Mainnets (Optimism and Base)
 
    Select option 1 for testnet deployment or option 2 for mainnet deployment. You will need a wallet with ETH and USDC on either Optimism and Base (or their respective Sepolia testnets) to run the end-to-end tests.
 
    See https://faucet.circle.com/ for testnet USDC. Pray to God if you need testnet ETH.
 
    This will deploy the contracts and output a `deployed.json` file containing the deployed contract addresses for:
+
    - Optimism Intent Source
    - Optimism Inbox
    - Optimism Prover
@@ -55,7 +60,7 @@ source .env
 After successful deployment, you can run the end-to-end tests using (replace testnet with mainnet to run on mainnet):
 
 ```bash
-npx ts-node scripts/polymer/polymerE2E.ts testnet 
+npx ts-node scripts/polymer/polymerE2E.ts testnet
 ```
 
 This will validate the deployment and test the cross-chain messaging functionality between Base and Optimism. You will need a wallet with 5 USDC on either Optimism or Base (or their respective Sepolia testnets) to run the end-to-end tests.

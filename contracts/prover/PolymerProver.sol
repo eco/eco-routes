@@ -16,9 +16,11 @@ import {Reward, TokenAmount} from "../types/Intent.sol";
 contract PolyNativeProver is BaseProver, Semver {
     // Constants
     ProofType public constant PROOF_TYPE = ProofType.Polymer;
-    bytes32 public constant PROOF_SELECTOR = keccak256("ToBeProven(bytes32,uint256,address)");
-    bytes32 public constant BATCH_PROOF_SELECTOR = keccak256("BatchToBeProven(uint256,bytes)");
-    uint256 constant _STARTING_INBOX_FULFILLED_SLOT = 1; // Slot where we expect the fullfilled mapping to be populated in the inbox contract. Used in native proof path.
+    bytes32 public constant PROOF_SELECTOR =
+        keccak256("ToBeProven(bytes32,uint256,address)");
+    bytes32 public constant BATCH_PROOF_SELECTOR =
+        keccak256("BatchToBeProven(uint256,bytes)");
+    uint256 public constant _STARTING_INBOX_FULFILLED_SLOT = 1; // Slot where we expect the fullfilled mapping to be populated in the inbox contract. Used in native proof path.
 
     // Events
     event IntentAlreadyProven(bytes32 _intentHash);
@@ -54,7 +56,12 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param _inbox Address of the Inbox contract that emits proof events
      * @param _supportedChainIds Array of chain IDs that this prover will accept proofs from
      */
-    constructor(address _crossL2ProverV2, address _nativeProver, address _inbox, uint32[] memory _supportedChainIds) {
+    constructor(
+        address _crossL2ProverV2,
+        address _nativeProver,
+        address _inbox,
+        uint32[] memory _supportedChainIds
+    ) {
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
         NATIVE_PROVER = INativeProver(_nativeProver);
         INBOX = _inbox;
@@ -125,9 +132,15 @@ contract PolyNativeProver is BaseProver, Semver {
      * @return intentHash Hash of the proven intent
      * @return claimant Address that fulfilled the intent
      */
-    function _validateProof(bytes calldata proof) internal returns (bytes32 intentHash, address claimant) {
-        (uint32 chainId, address emittingContract, bytes memory topics, bytes memory data) =
-            CROSS_L2_PROVER_V2.validateEvent(proof);
+    function _validateProof(
+        bytes calldata proof
+    ) internal returns (bytes32 intentHash, address claimant) {
+        (
+            uint32 chainId,
+            address emittingContract,
+            bytes memory topics,
+            bytes memory data
+        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
@@ -138,8 +151,15 @@ contract PolyNativeProver is BaseProver, Semver {
         // Use assembly for efficient memory operations when splitting topics
         assembly {
             let topicsPtr := add(topics, 32)
-            for { let i := 0 } lt(i, 4) { i := add(i, 1) } {
-                mstore(add(add(topicsArray, 32), mul(i, 32)), mload(add(topicsPtr, mul(i, 32))))
+            for {
+                let i := 0
+            } lt(i, 4) {
+                i := add(i, 1)
+            } {
+                mstore(
+                    add(add(topicsArray, 32), mul(i, 32)),
+                    mload(add(topicsPtr, mul(i, 32)))
+                )
             }
         }
 
@@ -154,7 +174,10 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param intentHash Used to calculate the storage key of the inbox contract we are proving.
      * @return claimant Address that fulfilled the intent
      */
-    function _validateNativeProof(bytes calldata proof, bytes32 intentHash) internal returns (address claimant) {
+    function _validateNativeProof(
+        bytes calldata proof,
+        bytes32 intentHash
+    ) internal returns (address claimant) {
         (
             ProveScalarArgs memory _proveArgs,
             bytes memory _rlpEncodedL1Header,
@@ -163,7 +186,10 @@ contract PolyNativeProver is BaseProver, Semver {
             bytes[] memory _l2StorageProof,
             bytes memory _rlpEncodedContractAccount,
             bytes[] memory _l2AccountProof
-        ) = abi.decode(proof, (ProveScalarArgs, bytes, bytes, bytes, bytes[], bytes, bytes[]));
+        ) = abi.decode(
+                proof,
+                (ProveScalarArgs, bytes, bytes, bytes, bytes[], bytes, bytes[])
+            );
 
         checkInboxContract(_proveArgs.contractAddr);
         checkSupportedChainId(uint32(_proveArgs.chainID));
@@ -187,8 +213,12 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param proof The packed proof data to validate
      */
     function _validatePackedProof(bytes calldata proof) internal {
-        (uint32 chainId, address emittingContract, bytes memory topics, bytes memory data) =
-            CROSS_L2_PROVER_V2.validateEvent(proof);
+        (
+            uint32 chainId,
+            address emittingContract,
+            bytes memory topics,
+            bytes memory data
+        ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
         checkInboxContract(emittingContract);
         checkSupportedChainId(chainId);
@@ -220,9 +250,15 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param reward The reward structure to encode
      * @param expectedIntentHash The expected intent hash to compare against
      */
-    function validateIntentHash(bytes32 routeHash, Reward memory reward, bytes32 expectedIntentHash) internal pure {
+    function validateIntentHash(
+        bytes32 routeHash,
+        Reward memory reward,
+        bytes32 expectedIntentHash
+    ) internal pure {
         bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
-        bytes32 calculatedIntentHash = keccak256(abi.encodePacked(routeHash, calculatedRewardHash));
+        bytes32 calculatedIntentHash = keccak256(
+            abi.encodePacked(routeHash, calculatedRewardHash)
+        );
         if (calculatedIntentHash != expectedIntentHash) {
             revert IntentHashMismatch();
         }
@@ -233,14 +269,17 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param _proverReward The proverReward struct to convert
      * @return Reward struct with this contract as the prover
      */
-    function _toReward(ProverReward memory _proverReward) internal view returns (Reward memory) {
-        return Reward(
-            _proverReward.creator,
-            address(this),
-            _proverReward.deadline,
-            _proverReward.nativeValue,
-            _proverReward.tokens
-        );
+    function _toReward(
+        ProverReward memory _proverReward
+    ) internal view returns (Reward memory) {
+        return
+            Reward(
+                _proverReward.creator,
+                address(this),
+                _proverReward.deadline,
+                _proverReward.nativeValue,
+                _proverReward.tokens
+            );
     }
 
     // ------------- INTERNAL FUNCTIONS - MESSAGE DECODING -------------
@@ -290,7 +329,10 @@ contract PolyNativeProver is BaseProver, Semver {
      * @return intentHashes Array of decoded intent hashes
      * @return claimants Array of corresponding claimant addresses
      */
-    function decodeMessageBeforeClaim(bytes memory messageBody, uint256 expectedSize)
+    function decodeMessageBeforeClaim(
+        bytes memory messageBody,
+        uint256 expectedSize
+    )
         public
         pure
         returns (bytes32[] memory intentHashes, address[] memory claimants)
@@ -341,7 +383,10 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param topic The topic signature to check
      * @param selector The expected selector
      */
-    function checkTopicSignature(bytes32 topic, bytes32 selector) internal pure {
+    function checkTopicSignature(
+        bytes32 topic,
+        bytes32 selector
+    ) internal pure {
         if (topic != selector) revert InvalidEventSignature();
     }
 
@@ -366,9 +411,20 @@ contract PolyNativeProver is BaseProver, Semver {
      * mapping is declared in Inbox contract as follows:
      *     mapping(bytes32 => ClaimantAndBatcherReward) public fulfilled;
      */
-    function checkStorageSlot(bytes32 intentHash, bytes32 storageSlot) internal view {
-        if (keccak256(abi.encode(intentHash, _STARTING_INBOX_FULFILLED_SLOT)) != storageSlot) {
-            revert IncorrectStorageSlot(storageSlot, keccak256(abi.encode(intentHash, _STARTING_INBOX_FULFILLED_SLOT)));
+    function checkStorageSlot(
+        bytes32 intentHash,
+        bytes32 storageSlot
+    ) internal view {
+        if (
+            keccak256(abi.encode(intentHash, _STARTING_INBOX_FULFILLED_SLOT)) !=
+            storageSlot
+        ) {
+            revert IncorrectStorageSlot(
+                storageSlot,
+                keccak256(
+                    abi.encode(intentHash, _STARTING_INBOX_FULFILLED_SLOT)
+                )
+            );
         }
     }
 
@@ -391,7 +447,10 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param topics The topics to check
      * @param length The expected length
      */
-    function checkTopicLength(bytes memory topics, uint256 length) internal pure {
+    function checkTopicLength(
+        bytes memory topics,
+        uint256 length
+    ) internal pure {
         if (topics.length != length) revert InvalidTopicsLength();
     }
 

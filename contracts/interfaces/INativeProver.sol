@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.2;
 
 // contracts/libs/RegistryTypes.sol
 
@@ -99,5 +99,12 @@ interface INativeProver {
         bytes[] calldata _l2StorageProof,
         bytes calldata _rlpEncodedContractAccount,
         bytes[] calldata _l2AccountProof
-    ) external view returns (uint256 chainId, address storingContract, bytes32 storageValue);
+    )
+        external
+        view
+        returns (
+            uint256 chainId,
+            address storingContract,
+            bytes32 storageValue
+        );
 }
