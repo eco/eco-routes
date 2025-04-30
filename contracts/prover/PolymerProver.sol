@@ -82,7 +82,7 @@ contract PolyNativeProver is BaseProver, Semver {
      * @notice This cli tool can be used to generate this proof: https://github.com/polymerdao/fallback-prover
      */
     function validateNative(bytes calldata proof, bytes32 intentHash) external {
-        (address claimant) = _validateNativeProof(proof, intentHash);
+        address claimant = _validateNativeProof(proof, intentHash);
         processIntent(intentHash, claimant);
     }
 
@@ -151,7 +151,7 @@ contract PolyNativeProver is BaseProver, Semver {
     /**
      * The storage proof we are interested in is the fullilled mapping of a given intentHash.
      * @param proof The proof data to validate. See cli tool https://github.com/polymerdao/fallback-prover
-     * @param intentHash - this is required to calculate the storage key of the inbox contract where
+     * @param intentHash Used to calculate the storage key of the inbox contract we are proving.
      * @return claimant Address that fulfilled the intent
      */
     function _validateNativeProof(bytes calldata proof, bytes32 intentHash) internal returns (address claimant) {

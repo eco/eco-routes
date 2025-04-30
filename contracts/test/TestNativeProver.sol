@@ -2,18 +2,8 @@ pragma solidity ^0.8.26;
 
 import {INativeProver, ProveScalarArgs} from "../interfaces/INativeProver.sol";
 
-contract TestCrossL2ProverV2 is INativeProver {
-    uint32[] public chainId;
-    address[] public emittingContract;
-    bytes[] public topics;
-    bytes[] public data;
-
-    constructor(uint32 _chainId, address _emittingContract, bytes memory _topics, bytes memory _data) {
-        chainId.push(_chainId);
-        emittingContract.push(_emittingContract);
-        topics.push(_topics);
-        data.push(_data);
-    }
+contract TestNativeProver is INativeProver {
+    constructor() {}
 
     function prove(
         ProveScalarArgs calldata _proveArgs,

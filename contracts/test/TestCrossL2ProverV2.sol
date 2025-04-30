@@ -1,8 +1,6 @@
 pragma solidity ^0.8.26;
 
-
-contract TestCrossL2ProverV2{
-
+contract TestCrossL2ProverV2 {
     uint32[] public chainId;
     address[] public emittingContract;
     bytes[] public topics;
@@ -21,7 +19,7 @@ contract TestCrossL2ProverV2{
         topics.push(_topics);
         data.push(_data);
     }
-    
+
     function setChainId(uint32 _chainId) public {
         chainId.push(_chainId);
     }
