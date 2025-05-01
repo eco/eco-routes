@@ -574,15 +574,29 @@ contract IntentSource is IIntentSource, Semver {
         address funder,
         bool allowPartial
     ) internal {
+        bool partiallyFunded;
+
         if (reward.nativeValue > 0) {
-            if (msg.value < reward.nativeValue) {
-                revert InsufficientNativeReward(intentHash);
+            uint256 vaultBalance = vault.balance;
+
+            if (vaultBalance < reward.nativeValue) {
+                uint256 remainingAmount = reward.nativeValue - vaultBalance;
+                uint256 transferAmount;
+
+                if (msg.value >= remainingAmount) {
+                    transferAmount = remainingAmount;
+                } else if (allowPartial) {
+                    transferAmount = msg.value;
+                    partiallyFunded = true;
+                } else {
+                    revert InsufficientNativeReward(intentHash);
+                }
+
+                payable(vault).transfer(transferAmount);
             }
-            payable(vault).transfer(reward.nativeValue);
         }
 
         uint256 rewardsLength = reward.tokens.length;
-        bool partiallyFunded;
 
         // Iterate through each token in the reward structure
         for (uint256 i; i < rewardsLength; ++i) {
