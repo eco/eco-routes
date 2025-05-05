@@ -85,6 +85,12 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "yarn"
+      # Configure Git to handle GitHub URLs without authentication prompts
+      # https://github.com/matter-labs/zksync-telemetry-js.git
+      - name: Configure Git
+        run: |
+          git config --global url."https://github.com/".insteadOf git://github.com/
+          git config --global --add url."https://github.com/".insteadOf git@github.com:
       - name: Install dependencies
         uses: borales/actions-yarn@v5
         with:
