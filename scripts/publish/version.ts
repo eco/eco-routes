@@ -4,7 +4,7 @@ import { ProtocolVersion } from '../viem_deploy/ProtocolVersion'
 async function main() {
   const pv = new ProtocolVersion()
   pv.updateProjectVersion()
-  await pv.getDeployChains()
+  // await pv.getDeployChains()
 }
 
 main()
