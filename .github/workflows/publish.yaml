@@ -80,10 +80,15 @@ jobs:
           path: .
       - name: List Files
         run: ls -R
-      - uses: actions/setup-node@v4.1.0
+      - name: Install Node
+        uses: actions/setup-node@v4.1.0
         with:
           node-version-file: ".nvmrc"
           cache: "yarn"
+      - name: Install dependencies
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: install # will run `yarn install` command
       - name: ⚡ Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: 🔍 Verify Installation
@@ -94,10 +99,6 @@ jobs:
         run: chmod +x scripts/MultiDeploy.sh
       - name: 🔧 Grant Execute Permission to Verify.sh
         run: chmod +x scripts/Verify.sh
-      - name: Install dependencies
-        uses: borales/actions-yarn@v5
-        with:
-          cmd: install
       - name: Deploy Contracts
         uses: borales/actions-yarn@v5
         with:
