@@ -111,9 +111,15 @@ contract Deploy is Script {
 
         // Deploy HyperProver - using a code block to manage variable lifetimes
         {
+            address hyperProverPreviewAddr = create3Deployer.deployedAddress(
+                new bytes(0), // Bytecode isn't used to determine the deployed address
+                ctx.deployer,
+                ctx.hyperProverSalt
+            );
+
             // Initialize provers array properly with inbox address
             address[] memory provers = new address[](1);
-            provers[0] = ctx.inbox;
+            provers[0] = hyperProverPreviewAddr;
 
             ctx.hyperProverConstructorArgs = abi.encode(
                 ctx.mailbox,
