@@ -80,21 +80,10 @@ jobs:
           path: .
       - name: List Files
         run: ls -R
-      - name: Install Node
-        uses: actions/setup-node@v4.1.0
+      - uses: actions/setup-node@v4.1.0
         with:
           node-version-file: ".nvmrc"
           cache: "yarn"
-      # Configure Git to handle GitHub URLs without authentication prompts
-      # https://github.com/matter-labs/zksync-telemetry-js.git
-      - name: Configure Git
-        run: |
-          git config --global url."https://github.com/".insteadOf git://github.com/
-          git config --global --add url."https://github.com/".insteadOf git@github.com:
-      - name: Install dependencies
-        uses: borales/actions-yarn@v5
-        with:
-          cmd: install # will run `yarn install` command
       - name: ⚡ Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: 🔍 Verify Installation
@@ -105,13 +94,17 @@ jobs:
         run: chmod +x scripts/MultiDeploy.sh
       - name: 🔧 Grant Execute Permission to Verify.sh
         run: chmod +x scripts/Verify.sh
+      - name: Install dependencies
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: install
       - name: Deploy Contracts
         uses: borales/actions-yarn@v5
         with:
           cmd: deployForgeCI
         env:
           PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-          CHAIN_IDS: "10,8453,42161"
+          CHAIN_IDS: "1,10,137,5000,8453,42161,84532,11155111,11155420"
 
           # RPC URLs
           RPC_URL_1: "https://eth-mainnet.g.alchemy.com/v2/${{ secrets.ALCHEMY_API_KEY }}"
