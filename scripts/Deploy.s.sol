@@ -112,7 +112,7 @@ contract Deploy is Script {
         // Deploy HyperProver - using a code block to manage variable lifetimes
         {
             address hyperProverPreviewAddr = create3Deployer.deployedAddress(
-                0x00, // Bytecode isn't used to determine the deployed address
+                new bytes(0), // Bytecode isn't used to determine the deployed address
                 ctx.deployer,
                 ctx.hyperProverSalt
             );
