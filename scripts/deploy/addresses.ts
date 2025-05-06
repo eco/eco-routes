@@ -1,14 +1,6 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { merge } from 'lodash'
-import { Hex } from 'viem'
 
-interface AddressBook {
-  [network: string]: {
-    [key: string]: string
-  }
-}
-export const PRE_SUFFIX = '-pre'
 export const jsonFileName = 'deployAddresses.json'
 export const jsonFilePath = path.join(__dirname, `../../build/${jsonFileName}`)
 export const tsFilePath = path.join(__dirname, '../../build/src/index.ts')
@@ -16,8 +8,7 @@ export const csvFilePath = path.join(
   __dirname,
   '../../build/deployAddresses.csv',
 )
-export const saltFileName = 'salt.json'
-export const saltPath = path.join(__dirname, `../../build/${saltFileName}`)
+
 export function createFile(path: string = jsonFilePath) {
   if (fs.existsSync(path)) {
     console.log('Addresses file already exists: ', path)
@@ -35,45 +26,6 @@ export function getJsonFromFile<T>(path: string = jsonFilePath): T {
     createFile(path)
     return getJsonFromFile<T>(path)
   }
-}
-
-export function mergeAddresses(ads: AddressBook, path: string = jsonFilePath) {
-  const addresses: AddressBook = getJsonFromFile<AddressBook>(path)
-
-  fs.writeFileSync(path, JSON.stringify(merge(addresses, ads)), 'utf8')
-}
-
-export type JsonConfig = {
-  chainId: number
-  pre?: boolean
-}
-
-/**
- * Adds a new address to the address json file
- * @param deployNetwork the network of the deployed contract
- * @param key the network id
- * @param value the deployed contract address
- */
-export function addJsonAddress(
-  deployNetwork: JsonConfig,
-  key: string,
-  value: string,
-) {
-  const addresses: AddressBook = getJsonFromFile<AddressBook>()
-  const ck = deployNetwork.chainId.toString()
-  const chainKey = deployNetwork.pre ? ck + PRE_SUFFIX : ck
-  addresses[chainKey] = addresses[chainKey] || {}
-  addresses[chainKey][key] = value
-  fs.writeFileSync(jsonFilePath, JSON.stringify(addresses), 'utf8')
-}
-export type SaltsType = {
-  salt: Hex
-  saltPre: Hex
-}
-
-export function saveDeploySalts(salts: SaltsType) {
-  createFile(saltPath)
-  fs.writeFileSync(saltPath, JSON.stringify(salts), 'utf8')
 }
 
 /**
