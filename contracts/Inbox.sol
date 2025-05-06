@@ -26,7 +26,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Interface ID for IProver used to detect prover contracts
      */
-    bytes4 public constant IPROVER_INTERFACE_ID = 0xd8e1f34f; //type(IProver).interfaceId
+    bytes4 public constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
 
     /**
      * @notice Mapping of intent hashes to their claimant addresses
@@ -208,16 +208,18 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
                 // no code at this address
                 revert CallToEOA(call.target);
             }
-            (bool isProverCall, ) = (call.target).call(
-                abi.encodeWithSignature(
-                    "supportsInterface(bytes4)",
-                    IPROVER_INTERFACE_ID
-                )
-            );
-            if (isProverCall) {
-                // call to prover
-                revert CallToProver();
+
+            try
+                IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)
+            returns (bool isProverCall) {
+                if (isProverCall) {
+                    // call to prover
+                    revert CallToProver();
+                }
+            } catch {
+                // If target doesn't support ERC-165, continue.
             }
+
             (bool success, bytes memory result) = call.target.call{
                 value: call.value
             }(call.data);
