@@ -2,6 +2,8 @@
 solc_version="0.8.27"
 src = "contracts"
 out = "out"
+fs_permissions = [{ access = "read-write", path = "./out"}]
 libs = ["lib"]
 optimizer = true
+viaIR = true
 runs = 1000000
