@@ -1,7 +1,5 @@
-import { ethers, run, network } from 'hardhat'
+import { ethers, network, run } from 'hardhat'
 import { setTimeout } from 'timers/promises'
-import { networks as testnetNetworks } from '../config/testnet/config'
-import { networks as mainnetNetworks } from '../config/mainnet/config'
 
 // Use the same salt pattern as other deployments
 let salt: string
@@ -22,26 +20,8 @@ console.log('Deploying to Network: ', network.name)
 console.log(`Deploying with salt: ethers.keccak256(ethers.toUtf8bytes(${salt})`)
 salt = ethers.keccak256(ethers.toUtf8Bytes(salt))
 
-let deployNetwork: any
-switch (network.name) {
-  case 'optimismSepoliaBlockscout':
-    deployNetwork = testnetNetworks.optimismSepolia
-    break
-  case 'baseSepolia':
-    deployNetwork = testnetNetworks.baseSepolia
-    break
-  case 'ecoTestnet':
-    deployNetwork = testnetNetworks.ecoTestnet
-    break
-  case 'optimism':
-    deployNetwork = mainnetNetworks.optimism
-    break
-  case 'base':
-    deployNetwork = mainnetNetworks.base
-    break
-  case 'helix':
-    deployNetwork = mainnetNetworks.helix
-    break
+const deployNetwork = {
+  metalayerRouterAddress: '',
 }
 
 async function main() {
