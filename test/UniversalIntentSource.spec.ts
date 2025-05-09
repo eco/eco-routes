@@ -462,41 +462,207 @@ describe('Universal Intent Source Test', (): void => {
     it('should correctly hash intent components', async function() {
       // Get hash from standard contract
       const evmHashes = await intentSource.getIntentHash(evmIntent)
-      
+
       // Get hash from universal contract
       const universalHashes = await universalIntentSource.getIntentHash(universalIntent)
-      
+
       // Verify both methods return valid hashes
       expect(evmHashes[0]).to.not.equal(ethers.ZeroHash)
       expect(universalHashes[0]).to.not.equal(ethers.ZeroHash)
-      
+
       // Compare with our local calculation
       const manualHashes = hashUniversalIntent(universalIntent)
       expect(universalHashes[0]).to.equal(manualHashes.intentHash)
       expect(universalHashes[1]).to.equal(manualHashes.routeHash)
       expect(universalHashes[2]).to.equal(manualHashes.rewardHash)
-      
+
       // The same intent should hash to the same values regardless of interface
       expect(evmHashes[0]).to.equal(universalHashes[0])
       expect(evmHashes[1]).to.equal(universalHashes[1])
       expect(evmHashes[2]).to.equal(universalHashes[2])
     })
-    
+
     it('should compute the same vault address from both interfaces', async function() {
       // Get vault address for both formats
       const evmVaultAddr = await intentSource.intentVaultAddress(evmIntent)
       const universalVaultAddr = await universalIntentSource.intentVaultAddress(universalIntent)
-      
+
       // They should be the same vault
       expect(evmVaultAddr).to.equal(universalVaultAddr)
-      
+
       // Also verify against manual calculation
       const calculatedVaultAddr = await universalIntentVaultAddress(
         await intentSource.getAddress(),
         universalIntent
       )
-      
+
       expect(universalVaultAddr).to.equal(calculatedVaultAddr)
+    })
+
+    it('should produce the same intent hash for equivalent EVM and Universal intents with different encodings', async function() {
+      // Create standard EVM intent
+      const standardIntent = await createEVMIntent()
+
+      // Create Universal intent from the EVM intent
+      const universalIntentFromEVM = convertToUniversalIntent(standardIntent)
+
+      // Create a completely different Universal intent with the same logical values but different representation
+      const customUniversalIntent: UniversalIntent = {
+        route: {
+          salt: standardIntent.route.salt,
+          source: standardIntent.route.source,
+          destination: standardIntent.route.destination,
+          inbox: addressToBytes32(standardIntent.route.inbox),
+          tokens: standardIntent.route.tokens.map(t => ({
+            // Create bytes32 in a different way, but should hash to the same
+            token: '0x' + '0'.repeat(24) + t.token.slice(2).toLowerCase(),
+            amount: t.amount
+          })),
+          calls: standardIntent.route.calls.map(c => ({
+            // Create bytes32 in a different way
+            target: '0x' + '0'.repeat(24) + c.target.slice(2).toLowerCase(),
+            data: c.data,
+            value: c.value
+          }))
+        },
+        reward: {
+          creator: addressToBytes32(standardIntent.reward.creator),
+          prover: addressToBytes32(standardIntent.reward.prover),
+          deadline: standardIntent.reward.deadline,
+          nativeValue: standardIntent.reward.nativeValue,
+          tokens: standardIntent.reward.tokens.map(t => ({
+            // Create bytes32 in a different way
+            token: '0x' + '0'.repeat(24) + t.token.slice(2).toLowerCase(),
+            amount: t.amount
+          }))
+        }
+      }
+
+      // Get hashes using the IUniversalIntentSource interface
+      const [hash1] = await universalIntentSource.getIntentHash(universalIntentFromEVM)
+      const [hash2] = await universalIntentSource.getIntentHash(customUniversalIntent)
+
+      // The hashes should be identical even though the representations are different
+      expect(hash1).to.equal(hash2)
+    })
+
+    it('should produce the same vault address for equivalent EVM and Universal intents with different encodings', async function() {
+      // Create standard EVM intent
+      const standardIntent = await createEVMIntent()
+
+      // Create Universal intent from the EVM intent
+      const universalIntentFromEVM = convertToUniversalIntent(standardIntent)
+
+      // Create a completely different Universal intent with the same logical values but different representation
+      const customUniversalIntent: UniversalIntent = {
+        route: {
+          salt: standardIntent.route.salt,
+          source: standardIntent.route.source,
+          destination: standardIntent.route.destination,
+          inbox: addressToBytes32(standardIntent.route.inbox),
+          tokens: standardIntent.route.tokens.map(t => ({
+            token: '0x' + '0'.repeat(24) + t.token.slice(2).toLowerCase(),
+            amount: t.amount
+          })),
+          calls: standardIntent.route.calls.map(c => ({
+            target: '0x' + '0'.repeat(24) + c.target.slice(2).toLowerCase(),
+            data: c.data,
+            value: c.value
+          }))
+        },
+        reward: {
+          creator: addressToBytes32(standardIntent.reward.creator),
+          prover: addressToBytes32(standardIntent.reward.prover),
+          deadline: standardIntent.reward.deadline,
+          nativeValue: standardIntent.reward.nativeValue,
+          tokens: standardIntent.reward.tokens.map(t => ({
+            token: '0x' + '0'.repeat(24) + t.token.slice(2).toLowerCase(),
+            amount: t.amount
+          }))
+        }
+      }
+
+      // Get vault addresses using the IUniversalIntentSource interface
+      const vault1 = await universalIntentSource.intentVaultAddress(universalIntentFromEVM)
+      const vault2 = await universalIntentSource.intentVaultAddress(customUniversalIntent)
+
+      // Also get vault address using the standard IIntentSource interface
+      const standardVault = await intentSource.intentVaultAddress(standardIntent)
+
+      // All vault addresses should be identical
+      expect(vault1).to.equal(vault2)
+      expect(vault1).to.equal(standardVault)
+    })
+
+    it('should preserve intent hash when converting between EVM and Universal formats', async function() {
+      // Create standard EVM intent
+      const evmIntent = await createEVMIntent()
+
+      // Convert to universal intent
+      const universalIntent = convertToUniversalIntent(evmIntent)
+
+      // Convert back to EVM intent
+      const reconvertedEvmIntent: Intent = {
+        route: {
+          salt: universalIntent.route.salt,
+          source: universalIntent.route.source,
+          destination: universalIntent.route.destination,
+          inbox: bytes32ToAddress(universalIntent.route.inbox),
+          tokens: universalIntent.route.tokens.map(t => ({
+            token: bytes32ToAddress(t.token),
+            amount: t.amount
+          })),
+          calls: universalIntent.route.calls.map(c => ({
+            target: bytes32ToAddress(c.target),
+            data: c.data,
+            value: c.value
+          }))
+        },
+        reward: {
+          creator: bytes32ToAddress(universalIntent.reward.creator),
+          prover: bytes32ToAddress(universalIntent.reward.prover),
+          deadline: universalIntent.reward.deadline,
+          nativeValue: universalIntent.reward.nativeValue,
+          tokens: universalIntent.reward.tokens.map(t => ({
+            token: bytes32ToAddress(t.token),
+            amount: t.amount
+          }))
+        }
+      }
+
+      // Get hashes for all three formats
+      const [originalHash] = await intentSource.getIntentHash(evmIntent)
+      const [universalHash] = await universalIntentSource.getIntentHash(universalIntent)
+      const [reconvertedHash] = await intentSource.getIntentHash(reconvertedEvmIntent)
+
+      // All hashes should match
+      expect(originalHash).to.equal(universalHash)
+      expect(originalHash).to.equal(reconvertedHash)
+    })
+
+    it('should handle mixed-case addresses correctly in hash calculations', async function() {
+      // Create a standard intent with one address in lowercase and one in checksum case
+      const standardIntent = await createEVMIntent()
+
+      // Make a copy with different casing for addresses
+      const mixedCaseIntent: Intent = {
+        ...standardIntent,
+        route: {
+          ...standardIntent.route,
+          inbox: standardIntent.route.inbox.toLowerCase() // lowercase
+        },
+        reward: {
+          ...standardIntent.reward,
+          creator: ethers.getAddress(standardIntent.reward.creator) // checksum case
+        }
+      }
+
+      // Calculate intent hashes
+      const [standardHash] = await intentSource.getIntentHash(standardIntent)
+      const [mixedCaseHash] = await intentSource.getIntentHash(mixedCaseIntent)
+
+      // Addresses with different case should produce the same hash
+      expect(standardHash).to.equal(mixedCaseHash)
     })
   })
 
