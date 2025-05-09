@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 
 import {BaseProver} from "./BaseProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
-import {Whitelist} from "../tools/Whitelist.sol";
+import {Whitelist} from "../libs/Whitelist.sol";
 import {Intent} from "../types/Intent.sol";
 
 /**

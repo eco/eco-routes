@@ -3,9 +3,9 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
-import {IVaultStorage} from "./IVaultStorage.sol";
+import {IBaseSource} from "./IBaseSource.sol";
 
-import {Intent, Reward, Call, TokenAmount} from "../types/UniversalIntent.sol";
+import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
 
 /**
  * @title IUniversalIntentSource
@@ -14,102 +14,9 @@ import {Intent, Reward, Call, TokenAmount} from "../types/UniversalIntent.sol";
  *      and a prover contract for verification. It handles intent creation, funding,
  *      and reward distribution using bytes32 identifiers for cross-chain compatibility.
  */
-interface IUniversalIntentSource is ISemver, IVaultStorage {
+interface IUniversalIntentSource is IBaseSource {
     /**
-     * @notice Indicates an attempt to fund an intent on an incorrect chain
-     * @param intentHash The hash of the intent that was incorrectly targeted
-     */
-    error WrongSourceChain(bytes32 intentHash);
-
-    /**
-     * @notice Indicates a failed native token transfer during reward distribution
-     * @param intentHash The hash of the intent whose reward transfer failed
-     */
-    error NativeRewardTransferFailed(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an attempt to publish a duplicate intent
-     * @param intentHash The hash of the pre-existing intent
-     */
-    error IntentAlreadyExists(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an attempt to fund an already funded intent
-     * @param intentHash The hash of the previously funded intent
-     */
-    error IntentAlreadyFunded(bytes32 intentHash);
-
-    /**
-     * @notice Indicates insufficient native token payment for the required reward
-     * @param intentHash The hash of the intent with insufficient funding
-     */
-    error InsufficientNativeReward(bytes32 intentHash);
-
-    /**
-     * @notice Thrown when the vault has insufficient token allowance for reward funding
-     */
-    error InsufficientTokenAllowance(
-        bytes32 token,
-        bytes32 spender,
-        uint256 amount
-    );
-
-    /**
-     * @notice Indicates an invalid attempt to fund with native tokens
-     * @param intentHash The hash of the intent that cannot accept native tokens
-     */
-    error CannotFundForWithNativeReward(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an unauthorized reward withdrawal attempt
-     * @param hash The hash of the intent with protected rewards
-     */
-    error UnauthorizedWithdrawal(bytes32 hash);
-
-    /**
-     * @notice Indicates an attempt to withdraw already claimed rewards
-     * @param hash The hash of the intent with depleted rewards
-     */
-    error RewardsAlreadyWithdrawn(bytes32 hash);
-
-    /**
-     * @notice Indicates a premature withdrawal attempt before intent expiration
-     * @param intentHash The hash of the unexpired intent
-     */
-    error IntentNotExpired(bytes32 intentHash);
-
-    /**
-     * @notice Indicates a premature refund attempt before intent completion
-     * @param intentHash The hash of the unclaimed intent
-     */
-    error IntentNotClaimed(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an invalid token specified for refund
-     */
-    error InvalidRefundToken();
-
-    /**
-     * @notice Indicates mismatched array lengths in batch operations
-     */
-    error ArrayLengthMismatch();
-
-    /**
-     * @notice Signals partial funding of an intent
-     * @param intentHash The hash of the partially funded intent
-     * @param funder The funder bytes32 identifier (cross-chain compatible)
-     */
-    event IntentPartiallyFunded(bytes32 intentHash, bytes32 funder);
-
-    /**
-     * @notice Signals complete funding of an intent
-     * @param intentHash The hash of the fully funded intent
-     * @param funder The funder bytes32 identifier (cross-chain compatible)
-     */
-    event IntentFunded(bytes32 intentHash, bytes32 funder);
-
-    /**
-     * @notice Signals the creation of a new cross-chain intent
+     * @notice Signals the creation of a new cross-chain intent with Universal types
      * @param hash Unique identifier of the intent
      * @param salt Creator-provided uniqueness factor
      * @param source Source chain identifier
@@ -117,13 +24,13 @@ interface IUniversalIntentSource is ISemver, IVaultStorage {
      * @param inbox bytes32 identifier of the receiving contract on destination chain
      * @param routeTokens Required tokens for executing destination chain calls
      * @param calls Instructions to execute on the destination chain
-     * @param creator Intent originator bytes32 identifier
-     * @param prover Prover contract bytes32 identifier
+     * @param creator Intent originator address
+     * @param prover Prover contract address
      * @param deadline Timestamp for reward claim eligibility
      * @param nativeValue Native token reward amount
      * @param rewardTokens Token rewards with amounts
      */
-    event IntentCreated(
+    event UniversalIntentCreated(
         bytes32 indexed hash,
         bytes32 salt,
         uint256 source,
@@ -131,53 +38,14 @@ interface IUniversalIntentSource is ISemver, IVaultStorage {
         bytes32 inbox,
         TokenAmount[] routeTokens,
         Call[] calls,
-        bytes32 indexed creator,
-        bytes32 indexed prover,
+        address indexed creator,
+        address indexed prover,
         uint256 deadline,
         uint256 nativeValue,
         TokenAmount[] rewardTokens
     );
 
-    /**
-     * @notice Signals successful reward withdrawal
-     * @param hash The hash of the claimed intent
-     * @param recipient The bytes32 identifier receiving the rewards
-     */
-    event Withdrawal(bytes32 hash, bytes32 indexed recipient);
-
-    /**
-     * @notice Signals successful reward refund
-     * @param hash The hash of the refunded intent
-     * @param recipient The bytes32 identifier receiving the refund
-     */
-    event Refund(bytes32 hash, bytes32 indexed recipient);
-
-    /**
-     * @notice Retrieves the current reward claim status for an intent
-     * @param intentHash The hash of the intent
-     * @return status Current reward status
-     */
-    function getRewardStatus(
-        bytes32 intentHash
-    ) external view returns (RewardStatus status);
-
-    /**
-     * @notice Retrieves the current state of an intent's vault
-     * @param intentHash The hash of the intent
-     * @return Current vault state
-     */
-    function getVaultState(
-        bytes32 intentHash
-    ) external view returns (VaultState memory);
-
-    /**
-     * @notice Retrieves the permit contract for token transfers
-     * @param intentHash The hash of the intent
-     * @return bytes32 identifier of the permit contract
-     */
-    function getUniversalPermitContract(
-        bytes32 intentHash
-    ) external view returns (bytes32);
+    // Common state access functions are inherited from IBaseSource
 
     /**
      * @notice Computes the hash components of an intent
@@ -246,8 +114,8 @@ interface IUniversalIntentSource is ISemver, IVaultStorage {
     function fundFor(
         bytes32 routeHash,
         Reward calldata reward,
-        bytes32 fundingAddress,
-        bytes32 permitContract,
+        address fundingAddress,
+        address permitContract,
         bool allowPartial
     ) external returns (bytes32 intentHash);
 
@@ -261,8 +129,8 @@ interface IUniversalIntentSource is ISemver, IVaultStorage {
      */
     function publishAndFundFor(
         Intent calldata intent,
-        bytes32 funder,
-        bytes32 permitContact,
+        address funder,
+        address permitContact,
         bool allowPartial
     ) external returns (bytes32 intentHash);
 
@@ -312,6 +180,6 @@ interface IUniversalIntentSource is ISemver, IVaultStorage {
     function recoverToken(
         bytes32 routeHash,
         Reward calldata reward,
-        bytes32 token
+        address token
     ) external;
 }

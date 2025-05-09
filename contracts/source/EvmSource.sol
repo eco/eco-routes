@@ -16,26 +16,13 @@ import {BaseSource} from "./BaseSource.sol";
  * @notice Implementation of Intent Source interface for EVM chains
  * @dev Handles EVM-specific intent functionality
  */
-abstract contract EvmSource is BaseSource {
+contract EvmSource is BaseSource, IIntentSource {
     using SafeERC20 for IERC20;
 
     /**
      * @notice Event for creating standard EVM intents
      */
-    event IntentCreated(
-        bytes32 indexed hash,
-        bytes32 salt,
-        uint256 source,
-        uint256 destination,
-        address inbox,
-        TokenAmount[] routeTokens,
-        Call[] calls,
-        address indexed creator,
-        address indexed prover,
-        uint256 deadline,
-        uint256 nativeValue,
-        TokenAmount[] rewardTokens
-    );
+    // Event IntentCreated is defined in IIntentSource interface
 
     /**
      * @notice Retrieves reward status for a given intent hash

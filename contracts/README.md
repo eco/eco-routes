@@ -1,3 +1,162 @@
+# Eco Protocol Cross-Chain Intent System
+
+## Overview
+
+Eco Protocol enables secure, efficient cross-chain message passing via an intent-based system. This repository contains smart contracts that implement the intent creation, verification, and execution processes.
+
+## Cross-Chain Compatibility Architecture
+
+### Modular Contract Structure
+
+The protocol has been refactored into a modular structure to better support cross-chain compatibility:
+
+1. **BaseSource**: Common functionality shared across all implementations
+   - Essential helper functions and state storage
+   - Common validation methods and error handling
+
+2. **EvmSource**: EVM-specific implementation using address (20 bytes) types
+   - Handles all EVM-specific intent operations
+   - Manages reward claiming and refunding
+
+3. **UniversalSource**: Cross-chain compatible implementation using bytes32 (32 bytes) types
+   - Universal type support for non-EVM chains like Solana
+   - Transparent type conversion for cross-chain compatibility
+
+4. **IntentSource**: Main entry point combining both implementations
+   - Inherits from both EvmSource and UniversalSource
+   - Presents a unified interface to users
+
+```
+IntentSource
+├── EvmSource (address-based implementation)
+│   └── BaseSource (common functionality)
+└── UniversalSource (bytes32-based implementation)
+    └── BaseSource (common functionality)
+```
+
+### Dual-Type System
+
+The protocol supports both EVM chains and non-EVM chains like Solana through a dual-type system:
+
+1. **EVM Intent Types (Intent.sol)**
+   - Uses Ethereum's native `address` type (20 bytes)
+   - Maintains backward compatibility with existing integrations
+   - Optimized for EVM-chain interactions
+
+2. **Universal Intent Types (UniversalIntent.sol)**
+   - Uses `bytes32` for address identifiers
+   - Compatible with all blockchain platforms including Solana
+   - Designed for cross-chain messaging
+   - Uses the same struct names for simpler integration
+
+### Type Conversion
+
+The protocol includes built-in conversion between the two type systems:
+
+```solidity
+// Convert from Universal bytes32 to EVM address
+address evmAddress = bytes32AddressId.toAddress();
+
+// Convert from EVM address to Universal bytes32
+bytes32 universalAddressId = evmAddress.toBytes32();
+```
+
+### Technical Design
+
+The dual-type approach takes advantage of EVM's ABI encoding:
+- In EVM, address types are 20 bytes and are padded to 32 bytes when encoded
+- The bytes32 type exactly matches this encoding pattern
+- This allows both types to be used interchangeably at the binary level
+
+## Integration Guidelines
+
+### For EVM-Only Applications
+
+If your application only needs to interact with EVM chains:
+
+1. Import and use the EVM-specific types:
+   ```solidity
+   import {Intent, Route, Reward} from "./types/Intent.sol";
+   ```
+
+2. Create intents using the familiar address types:
+   ```solidity
+   Intent memory intent = Intent({
+       route: Route({
+           salt: bytes32(0),
+           source: 1,
+           destination: 2,
+           inbox: 0x1234...,  // regular address type
+           tokens: tokenAmounts,
+           calls: calls
+       }),
+       reward: Reward({...})
+   });
+   ```
+
+3. Use the IntentSource contract directly:
+   ```solidity
+   // The interface will use address types automatically
+   IIntentSource intentSource = IIntentSource(intentSourceAddress);
+   bytes32 intentHash = intentSource.publish(intent);
+   ```
+
+### For Cross-Chain Applications
+
+If your application needs to interact with both EVM and non-EVM chains:
+
+1. Import and use the universal types:
+   ```solidity
+   import {Intent, Route, Reward} from "./types/UniversalIntent.sol";
+   import {AddressConverter} from "./libs/AddressConverter.sol";
+   ```
+
+2. Create intents using bytes32 for address identifiers:
+   ```solidity
+   Intent memory universalIntent = Intent({
+       route: Route({
+           salt: bytes32(0),
+           source: 1,
+           destination: 2,
+           inbox: AddressConverter.toBytes32(0x1234...),  // convert EVM address to bytes32
+           tokens: tokenAmounts,
+           calls: calls
+       }),
+       reward: Reward({...})
+   });
+   ```
+
+3. Use the IUniversalIntentSource interface:
+   ```solidity
+   // Use the universal interface with bytes32 types
+   IUniversalIntentSource intentSource = IUniversalIntentSource(intentSourceAddress);
+   bytes32 intentHash = intentSource.publish(universalIntent);
+   ```
+
+## Best Practices
+
+1. Use the universal types (bytes32-based) for core protocol interactions
+2. Use the EVM-specific types for user-facing interfaces on EVM chains
+3. Convert between types at the edge of your application
+4. Remember that reward claiming is always EVM-specific
+
+## Implementation Details
+
+The system consists of the following key components:
+
+1. **Intent Types**:
+   - `Intent.sol`: EVM-specific types using address (20 bytes)
+   - `UniversalIntent.sol`: Universal types using bytes32 (32 bytes)
+
+2. **Source Implementations**:
+   - `BaseSource.sol`: Common functionality
+   - `EvmSource.sol`: EVM-specific implementation
+   - `UniversalSource.sol`: Cross-chain implementation
+   - `IntentSource.sol`: Combined implementation
+
+3. **Conversion Utilities**:
+   - `AddressConverter.sol`: Convert between address and bytes32
+ 
 # API Documentation
 
 Type references can be found in the [types directory](./types).
@@ -41,6 +200,24 @@ Parameters:
 - `deadline` (address) Timestamp for reward claim eligibility
 - `nativeValue` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) ERC20 token rewards with amounts
+
+<h4><ins>UniversalIntentCreated</ins></h4>
+<h5>Signals the creation of a new cross-chain intent with Universal types</h5>
+
+Parameters:
+
+- `hash` (bytes32) Unique identifier of the intent
+- `salt` (bytes32) Creator-provided uniqueness factor
+- `source` (uint256) Source chain identifier
+- `destination` (uint256) Destination chain identifier
+- `inbox` (bytes32) Identifier of the receiving contract on destination chain
+- `routeTokens` (TokenAmount[]) Required tokens for executing destination chain calls
+- `calls` (Call[]) Instructions to execute on the destination chain
+- `creator` (address) Intent originator address
+- `prover` (address) Prover contract address
+- `deadline` (uint256) Timestamp for reward claim eligibility
+- `nativeValue` (uint256) Native token reward amount
+- `rewardTokens` (TokenAmount[]) Token rewards with amounts
 
 <h4><ins>Withdrawal</ins></h4>
 <h5>Signals successful reward withdrawal</h5>
@@ -368,6 +545,20 @@ Returns "Hyperlane" to identify the proving mechanism.
 
 A concrete implementation of MessageBridgeProver that uses Caldera Metalayer for cross-chain messaging. Similar interface to HyperProver but adapted for Metalayer's messaging system.
 
+## Cross-Chain Message Bridge Architecture
+
+Eco Protocol has been refactored to use a modular message bridge architecture for cross-chain communication. This allows the protocol to leverage different messaging systems like Hyperlane and Metalayer while maintaining a consistent interface.
+
+### Message Bridge Provers
+
+The protocol now follows a flexible architecture with a hierarchy of prover implementations:
+
+1. **BaseProver**: Abstract base contract that defines core proving functionality
+2. **MessageBridgeProver**: Abstract contract that extends BaseProver with common functionality for message-based proving
+3. **Concrete Provers**: Specific implementations for different messaging systems:
+   - **HyperProver**: Uses Hyperlane for cross-chain messaging
+   - **MetaProver**: Uses Caldera Metalayer for cross-chain messaging
+
 ## ERC-7683 Integration
 
 Eco Protocol has integrated ERC-7683 compatibility directly into the core protocol. The Inbox contract inherits from Eco7683DestinationSettler, providing ERC-7683 settlement functionality while leveraging the modular message bridge architecture for cross-chain communication.
@@ -388,3 +579,32 @@ All message bridge provers implement these security features:
 - **Message Sender Validation**: Prevents unauthorized message handling
 - **Payment Processing**: Secure handling of native token payments for bridge fees
 - **Prover Whitelisting**: Only authorized addresses can initiate proving
+
+### Integration Patterns
+
+To use a message bridge prover with the Eco Protocol:
+
+1. **Deploy the Prover**: Deploy the specific prover (HyperProver or MetaProver) with configuration for your chosen message bridge
+2. **Register with Inbox**: Add the prover to the Inbox's approved provers list
+3. **Create Intents**: Create intents specifying the prover to use for cross-chain proof transmission
+4. **Solve Intents**: When solving intents, specify the appropriate proof type in the fulfillment call
+
+### Supported Message Bridges
+
+#### Hyperlane
+
+The HyperProver uses Hyperlane's IMessageRecipient interface to receive and process cross-chain messages. It interacts with the Hyperlane Mailbox contract to send and receive messages.
+
+Configuration parameters:
+
+- Mailbox address: Address of the Hyperlane Mailbox on the current chain
+- Trusted provers: List of addresses authorized to send proof messages
+
+#### Metalayer
+
+The MetaProver uses Caldera Metalayer's IMetalayerRecipient interface to receive and process cross-chain messages. It interacts with the Metalayer Router contract to send and receive messages.
+
+Configuration parameters:
+
+- Router address: Address of the Metalayer Router on the current chain
+- Trusted provers: List of addresses authorized to send proof messages
