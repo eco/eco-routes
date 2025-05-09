@@ -27,6 +27,18 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     }
 
     /**
+     * @notice Struct for Hyperlane dispatch parameters
+     * @dev Consolidates message dispatch parameters to reduce stack usage
+     */
+    struct DispatchParams {
+        uint32 destinationDomain;   // Hyperlane domain ID
+        bytes32 recipientAddress;   // Recipient address encoded as bytes32
+        bytes messageBody;          // Encoded message body with intent hashes and claimants
+        bytes metadata;             // Additional metadata for the message
+        IPostDispatchHook hook;     // Post-dispatch hook contract
+    }
+
+    /**
      * @notice Constant indicating this contract uses Hyperlane for proving
      */
     string public constant PROOF_TYPE = "Hyperlane";
@@ -133,36 +145,24 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
             }
         }
 
-        // Declare dispatch parameters for cross-chain message delivery
-        uint32 destinationDomain;
-        bytes32 recipientAddress;
-        bytes memory messageBody;
-        bytes memory metadata;
-        IPostDispatchHook hook;
-
-        // Prepare parameters for cross-chain message dispatch
-        (
-            destinationDomain,
-            recipientAddress,
-            messageBody,
-            metadata,
-            hook
-        ) = _formatHyperlaneMessage(
+        // Prepare parameters for cross-chain message dispatch using a struct
+        // to reduce stack usage and improve code maintainability
+        DispatchParams memory params = _formatHyperlaneMessage(
             _sourceChainId,
             _intentHashes,
             _claimants,
             unpacked
         );
 
-        // Send the message through Hyperlane mailbox using local variables
+        // Send the message through Hyperlane mailbox using params from the struct
         // Note: Some Hyperlane versions have different dispatch signatures.
         // This matches the expected signature for testing.
         IMailbox(MAILBOX).dispatch{value: fee}(
-            destinationDomain,
-            recipientAddress,
-            messageBody,
-            metadata,
-            hook
+            params.destinationDomain,
+            params.recipientAddress,
+            params.messageBody,
+            params.metadata,
+            params.hook
         );
 
         // Send refund if needed
@@ -222,27 +222,21 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
-        (
-            uint32 destinationDomain,
-            bytes32 recipientAddress,
-            bytes memory messageBody,
-            bytes memory metadata,
-            IPostDispatchHook hook
-        ) = _formatHyperlaneMessage(
-                _sourceChainId,
-                _intentHashes,
-                _claimants,
-                unpacked
-            );
+        DispatchParams memory params = _formatHyperlaneMessage(
+            _sourceChainId,
+            _intentHashes,
+            _claimants,
+            unpacked
+        );
 
         // Query Hyperlane mailbox for accurate fee estimate
         return
             IMailbox(MAILBOX).quoteDispatch(
-                destinationDomain,
-                recipientAddress,
-                messageBody,
-                metadata,
-                hook
+                params.destinationDomain,
+                params.recipientAddress,
+                params.messageBody,
+                params.metadata,
+                params.hook
             );
     }
 
@@ -261,11 +255,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _hashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _unpacked Struct containing decoded data from _data parameter
-     * @return domain Hyperlane domain ID
-     * @return recipient Recipient address encoded as bytes32
-     * @return message Encoded message body with intent hashes and claimants
-     * @return metadata Additional metadata for the message
-     * @return hook Post-dispatch hook contract
+     * @return params Structured dispatch parameters for Hyperlane message
      */
     function _formatHyperlaneMessage(
         uint256 _sourceChainId,
@@ -275,13 +265,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     )
         internal
         view
-        returns (
-            uint32 domain,
-            bytes32 recipient,
-            bytes memory message,
-            bytes memory metadata,
-            IPostDispatchHook hook
-        )
+        returns (DispatchParams memory params)
     {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
@@ -294,19 +278,19 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         if (_sourceChainId > type(uint32).max) {
             revert ChainIdTooLarge(_sourceChainId);
         }
-        domain = uint32(_sourceChainId);
+        params.destinationDomain = uint32(_sourceChainId);
 
         // Use the source chain prover address as the message recipient
-        recipient = _unpacked.sourceChainProver;
+        params.recipientAddress = _unpacked.sourceChainProver;
 
         // Pack intent hashes and claimant addresses together as the message payload
-        message = abi.encode(_hashes, _claimants);
+        params.messageBody = abi.encode(_hashes, _claimants);
 
         // Pass through metadata as provided
-        metadata = _unpacked.metadata;
+        params.metadata = _unpacked.metadata;
 
         // Default to mailbox's hook if none provided, following Hyperlane best practices
-        hook = (_unpacked.hookAddr == address(0))
+        params.hook = (_unpacked.hookAddr == address(0))
             ? IMailbox(MAILBOX).defaultHook()
             : IPostDispatchHook(_unpacked.hookAddr);
     }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "../utils/AddressConverter.sol";
+import "../libs/AddressConverter.sol";
 
 /**
  * @title AddressConverterTest
