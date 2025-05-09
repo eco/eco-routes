@@ -1,3 +1,162 @@
+# Eco Protocol Cross-Chain Intent System
+
+## Overview
+
+Eco Protocol enables secure, efficient cross-chain message passing via an intent-based system. This repository contains smart contracts that implement the intent creation, verification, and execution processes.
+
+## Cross-Chain Compatibility Architecture
+
+### Modular Contract Structure
+
+The protocol has been refactored into a modular structure to better support cross-chain compatibility:
+
+1. **BaseSource**: Common functionality shared across all implementations
+   - Essential helper functions and state storage
+   - Common validation methods and error handling
+
+2. **EvmSource**: EVM-specific implementation using address (20 bytes) types
+   - Handles all EVM-specific intent operations
+   - Manages reward claiming and refunding
+
+3. **UniversalSource**: Cross-chain compatible implementation using bytes32 (32 bytes) types
+   - Universal type support for non-EVM chains like Solana
+   - Transparent type conversion for cross-chain compatibility
+
+4. **IntentSource**: Main entry point combining both implementations
+   - Inherits from both EvmSource and UniversalSource
+   - Presents a unified interface to users
+
+```
+IntentSource
+├── EvmSource (address-based implementation)
+│   └── BaseSource (common functionality)
+└── UniversalSource (bytes32-based implementation)
+    └── BaseSource (common functionality)
+```
+
+### Dual-Type System
+
+The protocol supports both EVM chains and non-EVM chains like Solana through a dual-type system:
+
+1. **EVM Intent Types (Intent.sol)**
+   - Uses Ethereum's native `address` type (20 bytes)
+   - Maintains backward compatibility with existing integrations
+   - Optimized for EVM-chain interactions
+
+2. **Universal Intent Types (UniversalIntent.sol)**
+   - Uses `bytes32` for address identifiers
+   - Compatible with all blockchain platforms including Solana
+   - Designed for cross-chain messaging
+   - Uses the same struct names for simpler integration
+
+### Type Conversion
+
+The protocol includes built-in conversion between the two type systems:
+
+```solidity
+// Convert from Universal bytes32 to EVM address
+address evmAddress = bytes32AddressId.toAddress();
+
+// Convert from EVM address to Universal bytes32
+bytes32 universalAddressId = evmAddress.toBytes32();
+```
+
+### Technical Design
+
+The dual-type approach takes advantage of EVM's ABI encoding:
+- In EVM, address types are 20 bytes and are padded to 32 bytes when encoded
+- The bytes32 type exactly matches this encoding pattern
+- This allows both types to be used interchangeably at the binary level
+
+## Integration Guidelines
+
+### For EVM-Only Applications
+
+If your application only needs to interact with EVM chains:
+
+1. Import and use the EVM-specific types:
+   ```solidity
+   import {Intent, Route, Reward} from "./types/Intent.sol";
+   ```
+
+2. Create intents using the familiar address types:
+   ```solidity
+   Intent memory intent = Intent({
+       route: Route({
+           salt: bytes32(0),
+           source: 1,
+           destination: 2,
+           inbox: 0x1234...,  // regular address type
+           tokens: tokenAmounts,
+           calls: calls
+       }),
+       reward: Reward({...})
+   });
+   ```
+
+3. Use the IntentSource contract directly:
+   ```solidity
+   // The interface will use address types automatically
+   IIntentSource intentSource = IIntentSource(intentSourceAddress);
+   bytes32 intentHash = intentSource.publish(intent);
+   ```
+
+### For Cross-Chain Applications
+
+If your application needs to interact with both EVM and non-EVM chains:
+
+1. Import and use the universal types:
+   ```solidity
+   import {Intent, Route, Reward} from "./types/UniversalIntent.sol";
+   import {AddressConverter} from "./libs/AddressConverter.sol";
+   ```
+
+2. Create intents using bytes32 for address identifiers:
+   ```solidity
+   Intent memory universalIntent = Intent({
+       route: Route({
+           salt: bytes32(0),
+           source: 1,
+           destination: 2,
+           inbox: AddressConverter.toBytes32(0x1234...),  // convert EVM address to bytes32
+           tokens: tokenAmounts,
+           calls: calls
+       }),
+       reward: Reward({...})
+   });
+   ```
+
+3. Use the IUniversalIntentSource interface:
+   ```solidity
+   // Use the universal interface with bytes32 types
+   IUniversalIntentSource intentSource = IUniversalIntentSource(intentSourceAddress);
+   bytes32 intentHash = intentSource.publish(universalIntent);
+   ```
+
+## Best Practices
+
+1. Use the universal types (bytes32-based) for core protocol interactions
+2. Use the EVM-specific types for user-facing interfaces on EVM chains
+3. Convert between types at the edge of your application
+4. Remember that reward claiming is always EVM-specific
+
+## Implementation Details
+
+The system consists of the following key components:
+
+1. **Intent Types**:
+   - `Intent.sol`: EVM-specific types using address (20 bytes)
+   - `UniversalIntent.sol`: Universal types using bytes32 (32 bytes)
+
+2. **Source Implementations**:
+   - `BaseSource.sol`: Common functionality
+   - `EvmSource.sol`: EVM-specific implementation
+   - `UniversalSource.sol`: Cross-chain implementation
+   - `IntentSource.sol`: Combined implementation
+
+3. **Conversion Utilities**:
+   - `AddressConverter.sol`: Convert between address and bytes32
+ 
 # API Documentation
 
 Type references can be found in the (types directory)[/types].
@@ -41,6 +200,24 @@ Parameters:
 - `deadline` (address) Timestamp for reward claim eligibility
 - `nativeValue` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) ERC20 token rewards with amounts
+
+<h4><ins>UniversalIntentCreated</ins></h4>
+<h5>Signals the creation of a new cross-chain intent with Universal types</h5>
+
+Parameters:
+
+- `hash` (bytes32) Unique identifier of the intent
+- `salt` (bytes32) Creator-provided uniqueness factor
+- `source` (uint256) Source chain identifier
+- `destination` (uint256) Destination chain identifier
+- `inbox` (bytes32) Identifier of the receiving contract on destination chain
+- `routeTokens` (TokenAmount[]) Required tokens for executing destination chain calls
+- `calls` (Call[]) Instructions to execute on the destination chain
+- `creator` (address) Intent originator address
+- `prover` (address) Prover contract address
+- `deadline` (uint256) Timestamp for reward claim eligibility
+- `nativeValue` (uint256) Native token reward amount
+- `rewardTokens` (TokenAmount[]) Token rewards with amounts
 
 <h4><ins>Withdrawal</ins></h4>
 <h5>Signals successful reward withdrawal</h5>
@@ -304,25 +481,7 @@ Parameters:
 <ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
 
 <h4><ins>fulfillHyperInstantWithRelayer</ins></h4>
-<h5> Performs the same functionality as fulfillHyperInstant, but allows the user to use a custom HyperLane relayer and pass in the corresponding metadata</h5>
-
-Parameters:
-
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
-- `_data` (bytes[]) the instructions to be executed on \_targets
-- `_expiryTime` (uint256) the timestamp at which the intent expires
-- `_nonce` (bytes32) the nonce of the calldata. Composed of the hash on the source chain of the global nonce and chainID
-- `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
-- `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
-- `_prover` (address) the address of the hyperProver on the source chain
-- `_metadata` (bytes) Metadata for postDispatchHook (empty bytes if not applicable)
-- `_postDispatchHook` (address) Address of postDispatchHook (zero address if not applicable)
-
-<ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge. Additionally, the user is charged with the responsibility of ensuring that the passed in metadata and relayer perform according to their expectations
-
-<h4><ins>fulfillHyperBatched</ins></h4>`
-<h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method emits an event that indicates which intent was fulfilled. Fillers of hyperprover-destined intents will listen to these events and batch process them later on. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens. Note: this method is currently not supported by Eco's solver services, but has been included for completeness. Work on services for this method is ongoing.</h5>
+<h5> Performs the same functionality as fulfillHyperInstant, but allows the user to use a custom HyperLane relayer and pass in the corresponding metadata. </h5>
 
 Parameters:
 
@@ -401,91 +560,6 @@ Parameters:
 - `_destination` (address) the destination of the transferred funds
 
 <ins>Security:</ins> This method can only be called by the owner of the Inbox. This method is primarily for testing purposes.
-
-## HyperProver (HyperProver.sol)
-
-A message-based implementation of BaseProver that consumes data coming from HyperLane's message bridge sent by the Inbox on the destination chain. intentHash - claimant address pairs sent across the chain are written to the HyperProver's provenIntents mapping and are later read by the IntentSource when reward withdrawals are attempted.
-
-### Events
-
-<h4><ins>IntentProven</ins></h4>
-<h5> emitted when an intent has been successfully proven</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-- `_claimant` (address) the address that can claim this intent's rewards
-
-<h4><ins>IntentAlreadyProven</ins></h4>
-<h5> emitted when an attempt is made to re-prove an already-proven intent</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-
-### Methods
-
-<h4><ins>handle</ins></h4>
-<h5>Called by the HyperLane Mailbox contract to finish the HyperProving process. This method parses the message sent via HyperLane into intent hashes and their corresponding claimant addresses, then writes them to the provenIntents mapping so that the IntentSource can read from them when a reward withdrawal is attempted.</h5>
-
-Parameters:
-
-- ` ` (uint32) this variable is not used, but is required by the interface. it is the chain ID of the intent's origin chain.
-- `_sender` (bytes32) the address that called dispatch() on the HyperLane Mailbox on the destination chain
-- `_messageBody` (bytes) the message body containing intent hashes and their corresponding claimants
-
-<ins>Security:</ins> This method is public but there are checks in place to ensure that it reverts unless msg.sender is the local hyperlane mailbox and \_sender is the destination chain's inbox. This method has direct write access to the provenIntents mapping and, therefore, gates access to the rewards for hyperproven intents.
-
-## Storage Prover (Prover.sol)
-
-A storage-based implementation of BaseProver that utilizes the digests posted between rollups and mainnet to verify fulfilled status of intents on the destination chain.
-
-### Events
-
-<h4><ins>L1WorldStateProven</ins></h4>
-<h5> emitted when L1 world state is proven</h5>
-
-Parameters:
-
-- `_blocknumber` (uint256) the block number corresponding to this L1 world state
-- `_L1WorldStateRoot` (bytes32) the world state root at \_blockNumber
-
-<h4><ins>L2WorldStateProven</ins></h4>
-<h5> emitted when L2 world state is proven</h5>
-
-Parameters:
-
-- `_destinationChainID` (uint256) the chainID of the destination chain
-- `_blocknumber` (uint256) the block number corresponding to this L2 world state
-- `_L2WorldStateRoot` (bytes32) the world state root at \_blockNumber
-
-<h4><ins>IntentProven</ins></h4>
-<h5> emitted when an intent has been successfully proven</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-- `_claimant` (address) the address that can claim this intent's rewards
-
-### Methods
-
-<h4><ins>proveSettlementLayerState</ins></h4>
-<h5> validates input L1 block state against the L1 oracle contract. This method does not need to be called per intent, but the L2 batch containing the intent must have been settled to L1 on or before this block.</h5>
-
-Parameters:
-
-- `rlpEncodedBlockData` (bytes) properly encoded L1 block data
-
-<ins>Security:</ins> This method can be called by anyone. Inputting the correct block's data encoded as expected will result in its hash matching the blockhash found on the L1 oracle contract. This means that the world state root found in that block corresponds to the block on the oracle contract, and that it represents a valid state. Notably, only one block's data is present on the oracle contract at a time, so the input data must match that block specifically, or the method will revert.
-
-<h4><ins>proveWorldStateBedrock</ins></h4>
-<h5> Validates World state by ensuring that the passed in world state root corresponds to value in the L2 output oracle on the Settlement Layer.  We submit a `StorageProof` proving that the L2 Block is included in a batch that has been settled to L1 and an `AccountProof` proving that the `StorageProof` submitted is linked to a `WorldState` for the contract that the `StorageProof` is for.</h5>
-
-For Optimisms BedRock release we submit an `outputRoot` storage proof created by concatenating
-
-```solidity
-output_root = kecakk256( version_byte || state_root || withdrawal_storage_root || latest_block_hash)
-```
 
 ## Cross-Chain Message Bridge Architecture
 

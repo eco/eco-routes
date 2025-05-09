@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
-import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
-import {Intent, Reward, Route, TokenAmount} from "./types/Intent.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
-import {IntentSource} from "./IntentSource.sol";
-import {Semver} from "./libs/Semver.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
+import {IIntentSource} from "./interfaces/IIntentSource.sol";
+
+import {Intent, Reward, Route, TokenAmount} from "./types/Intent.sol";
+import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
+import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
+import {Semver} from "./libs/Semver.sol";
 
 /**
  * @title Eco7683OriginSettler
@@ -29,7 +31,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         );
 
     /// @notice address of IntentSource contract where intents are actually published
-    address public immutable INTENT_SOURCE;
+    IIntentSource public immutable INTENT_SOURCE;
 
     /**
      * @notice Initializes the Eco7683OriginSettler
@@ -42,7 +44,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         string memory _version,
         address _intentSource
     ) EIP712(_name, _version) {
-        INTENT_SOURCE = _intentSource;
+        INTENT_SOURCE = IIntentSource(_intentSource);
     }
 
     /**
@@ -214,7 +216,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             abi.encode(intent)
         );
 
-        (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
+        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(
             intent
         );
         return
@@ -309,7 +311,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             abi.encode(intent)
         );
 
-        (bytes32 intentHash, , ) = IntentSource(INTENT_SOURCE).getIntentHash(
+        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(
             intent
         );
         return
@@ -358,8 +360,8 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         Intent memory _intent,
         address _user
     ) internal returns (bytes32 intentHash) {
-        if (!IntentSource(INTENT_SOURCE).isIntentFunded(_intent)) {
-            address vault = IntentSource(INTENT_SOURCE).intentVaultAddress(
+        if (!INTENT_SOURCE.isIntentFunded(_intent)) {
+            address vault = INTENT_SOURCE.intentVaultAddress(
                 _intent
             );
 
@@ -381,7 +383,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         payable(msg.sender).transfer(address(this).balance);
 
-        return IntentSource(INTENT_SOURCE).publish(_intent);
+        return INTENT_SOURCE.publish(_intent);
     }
 
     /// @notice EIP712 domain separator

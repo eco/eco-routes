@@ -24,7 +24,9 @@ describe('Token Security Tests', () => {
 
     // Deploy IntentSource
     const intentSourceFactory = await ethers.getContractFactory('IntentSource')
-    const intentSource = await intentSourceFactory.deploy()
+    const intentSourceImpl = await intentSourceFactory.deploy()
+    // Use the IIntentSource interface with the actual implementation
+    const intentSource = await ethers.getContractAt('IIntentSource', await intentSourceImpl.getAddress())
 
     // Deploy Inbox
     inbox = await (await ethers.getContractFactory('Inbox')).deploy()
