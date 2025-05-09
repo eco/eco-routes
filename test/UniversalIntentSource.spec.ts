@@ -14,12 +14,14 @@ import { keccak256, BytesLike, ZeroAddress, getCreate2Address, solidityPacked, A
 import { encodeIdentifier, encodeTransfer } from '../utils/encode'
 
 /**
- * Comprehensive test suite for IntentSource contract,
- * covering both EVM and Universal interfaces.
- * 
- * This test file consolidates functionality from:
- * - UniversalIntentSource.spec.ts
- * - UniversalSource.spec.ts
+ * Comprehensive test suite for Universal Intent Source functionality,
+ * testing cross-chain compatibility with both EVM and Universal interfaces.
+ *
+ * This test suite verifies:
+ * - Address conversion between EVM (20 bytes) and Universal (32 bytes) formats
+ * - Consistent intent hashing across different address encodings
+ * - Equivalent vault addresses regardless of representation format
+ * - Cross-chain intent publishing, funding, and claiming functionality
  */
 describe('Universal Intent Source Test', (): void => {
   // Contracts
