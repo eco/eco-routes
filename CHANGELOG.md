@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/eco/eco-routes/compare/v1.7.0...v1.8.0) (2025-05-12)
+
+
+### Features
+
+* set version to 2.0.0 ([418dfeb](https://github.com/eco/eco-routes/commit/418dfeb293d265f65658b7e6a7fbcfc5423a33fb))
+
 # [1.7.0](https://github.com/eco/eco-routes/compare/v1.6.1...v1.7.0) (2025-05-12)
 
 
