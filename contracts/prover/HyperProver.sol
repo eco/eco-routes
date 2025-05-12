@@ -21,6 +21,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Only contains fields decoded from the _data parameter
      */
     struct UnpackedData {
+        uint32 sourceChainDomain; // more often than not this is the source chain ID
         bytes32 sourceChainProver; // Address of prover on source chain
         bytes metadata; // Metadata for Hyperlane message
         address hookAddr; // Address of post-dispatch hook
@@ -172,14 +173,14 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Calculates the fee required for Hyperlane message dispatch
      * @dev Queries the Mailbox contract for accurate fee estimation
-     * @param _sourceChainId Chain ID of the source chain
+     * @param _sourceChainDomain Domain of the source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainId,
+        uint32 _sourceChainDomain,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes calldata _data
@@ -189,7 +190,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Process fee calculation using the decoded struct
         // This architecture separates decoding from core business logic
-        return _fetchFee(_sourceChainId, _intentHashes, _claimants, unpacked);
+        return _fetchFee(_sourceChainDomain, _intentHashes, _claimants, unpacked);
     }
 
     /**
@@ -201,8 +202,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function _unpackData(
         bytes calldata _data
     ) internal pure returns (UnpackedData memory unpacked) {
-        (unpacked.sourceChainProver, unpacked.metadata, unpacked.hookAddr) = abi
-            .decode(_data, (bytes32, bytes, address));
+        (
+            unpacked.sourceChainDomain,
+            unpacked.sourceChainProver,
+            unpacked.metadata,
+            unpacked.hookAddr
+        ) = abi.decode(_data, (uint32, bytes32, bytes, address));
 
         return unpacked;
     }

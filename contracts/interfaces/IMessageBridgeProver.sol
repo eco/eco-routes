@@ -83,7 +83,7 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Calculates the fee required for message dispatch
-     * @param _sourceChainId Chain ID of source chain
+     * @param _domain Domain of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting.
@@ -93,7 +93,7 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainId,
+        uint32 _domain,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes calldata _data
