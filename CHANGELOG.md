@@ -1,3 +1,11 @@
+## [2.0.4](https://github.com/eco/eco-routes/compare/v2.0.3...v2.0.4) (2025-05-13)
+
+
+### Bug Fixes
+
+* index fixes ([128b97f](https://github.com/eco/eco-routes/commit/128b97fa2aabbcd0279468f0f13bf1fe401cf519))
+* merge ([1d7b293](https://github.com/eco/eco-routes/commit/1d7b293b25c0538500362f4967aae515c282e308))
+
 ## [2.0.3](https://github.com/eco/eco-routes/compare/v2.0.2...v2.0.3) (2025-05-13)
 
 
