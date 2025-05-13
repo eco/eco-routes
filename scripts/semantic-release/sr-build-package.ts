@@ -585,30 +585,30 @@ export async function setPublishingPackage(
     const diffs =
       pubLib === PACKAGE.ROUTES_PACKAGE_NAME
         ? {
-          name: PACKAGE.ROUTES_PACKAGE_NAME,
-          ...defaults,
-          files: [
-            'dist',
-            'src',
-            'deployAddresses.json',
-            'deployAddresses.csv',
-            'deployBytecode.json',
-            '!src/abi',
-            '!src/utils',
-            '!src/index.ts',
-          ],
-        }
+            name: PACKAGE.ROUTES_PACKAGE_NAME,
+            ...defaults,
+            files: [
+              'dist',
+              'src',
+              'deployAddresses.json',
+              'deployAddresses.csv',
+              'deployBytecode.json',
+              '!src/abi',
+              '!src/utils',
+              '!src/index.ts',
+            ],
+          }
         : {
-          name: PACKAGE.ROUTES_TS_PACKAGE_NAME,
-          ...defaults,
-          files: [
-            'dist',
-            'deployAddresses.json',
-            'deployAddresses.csv',
-            'deployBytecode.json',
-          ],
-          dependencies: { viem: projectPackageJson.dependencies.viem },
-        }
+            name: PACKAGE.ROUTES_TS_PACKAGE_NAME,
+            ...defaults,
+            files: [
+              'dist',
+              'deployAddresses.json',
+              'deployAddresses.csv',
+              'deployBytecode.json',
+            ],
+            dependencies: { viem: projectPackageJson.dependencies.viem },
+          }
 
     // Modify package.json for TypeScript build
     // Change package name to add -ts suffix

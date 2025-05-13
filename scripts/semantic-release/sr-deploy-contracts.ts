@@ -232,6 +232,13 @@ async function deployContracts(
       fs.unlinkSync(allDeployPath)
     }
     for (const { value: salt, environment } of salts) {
+      const resultsPath = getDeploymentResultsPath(cwd)
+      if (fs.existsSync(resultsPath)) {
+        logger.log(
+          `Cleaning up previous deployment results file: ${resultsPath}`,
+        )
+        fs.unlinkSync(resultsPath)
+      }
       // Run the deployment script
       // Create a properly merged environment by spreading process.env first
       const exitCode = await executeProcess(
