@@ -1,9 +1,8 @@
 ## [2.0.1](https://github.com/eco/eco-routes/compare/v2.0.0...v2.0.1) (2025-05-13)
 
-
 ### Bug Fixes
 
-* add manta chain with fake id ([5abac0b](https://github.com/eco/eco-routes/commit/5abac0b6be5303d141e0d9a254fb3c2977774901))
+- add manta chain with fake id ([5abac0b](https://github.com/eco/eco-routes/commit/5abac0b6be5303d141e0d9a254fb3c2977774901))
 
 # [2.0.0](https://github.com/eco/eco-routes/compare/v1.6.1...v2.0.0) (2025-05-13)
 

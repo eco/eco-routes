@@ -99,7 +99,7 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     echo "📬 Router Contract: $ROUTER_CONTRACT"
 
     # Construct Foundry command
-    FOUNDRY_CMD="MAILBOX=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" forge script scripts/Deploy.s.sol \
+    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" forge script scripts/Deploy.s.sol \
             --rpc-url \"$RPC_URL\" \
             --slow \
             --broadcast \
