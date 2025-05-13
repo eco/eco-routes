@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/eco/eco-routes/compare/v2.0.1...v2.0.2) (2025-05-13)
+
+
+### Bug Fixes
+
+* package for npm , fix router env variable, add buffer to the eip2470 factory deploy ([c43d91a](https://github.com/eco/eco-routes/commit/c43d91ac6359230c58a11fbcf8561e09eec4838e))
+
 ## [2.0.1](https://github.com/eco/eco-routes/compare/v2.0.0...v2.0.1) (2025-05-13)
 
 ### Bug Fixes
