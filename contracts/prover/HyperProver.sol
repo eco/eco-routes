@@ -138,7 +138,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         }
 
         // Declare dispatch parameters for cross-chain message delivery
-        uint32 destinationDomain;
         bytes32 recipientAddress;
         bytes memory messageBody;
         bytes memory metadata;
@@ -156,7 +155,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Note: Some Hyperlane versions have different dispatch signatures.
         // This matches the expected signature for testing.
         IMailbox(MAILBOX).dispatch{value: fee}(
-            destinationDomain,
+            unpacked.sourceChainDomain,
             recipientAddress,
             messageBody,
             metadata,

@@ -437,6 +437,7 @@ describe('HyperProver Test', (): void => {
     it('should correctly call dispatch in the prove method', async () => {
       // Set up test data
       const sourceChainID = 123
+      const domain = 321
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await hyperProver.getAddress()
@@ -444,7 +445,7 @@ describe('HyperProver Test', (): void => {
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['uint32', 'bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
+          domain,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
@@ -469,6 +470,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify the mailbox was called with correct parameters
       expect(await mailbox.dispatchedWithRelayer()).to.be.true
+      expect(await mailbox.destinationDomain()).to.eq(domain)
       expect(await mailbox.recipientAddress()).to.eq(
         ethers.zeroPadValue(sourceChainProver, 32),
       )
