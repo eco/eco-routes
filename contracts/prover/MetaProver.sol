@@ -79,7 +79,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @param _data Additional data used for proving.
+     * @dev the _data parameter is expected to contain the sourceChain Domain (a uint32, usually the chainID) and the sourceChainProver (a bytes32)
      */
     function prove(
         address _sender,

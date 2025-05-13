@@ -85,7 +85,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @param _data Additional data used for proving.
+     * @dev the _data parameter is expected to contain data that will unpack into the UnpackedData struct
+     * @dev The first 32 bytes of _data should be the sourceChainDomain, followed by the sourceChainProver address
+     * @dev The next bytes should be the metadata, and the last 20 bytes should be the hookAddr
      */
     function prove(
         address _sender,
