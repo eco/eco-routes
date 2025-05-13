@@ -1,13 +1,12 @@
 # [2.0.0](https://github.com/eco/eco-routes/compare/v1.6.1...v2.0.0) (2025-05-13)
 
-
 ### Bug Fixes
 
-* add ignore of assets to tsc ([c56f290](https://github.com/eco/eco-routes/commit/c56f290d40c982ac73db7e3ab52983acae484d45))
-* **config:** update foundry.toml with correct optimizer setting and solc version ([#222](https://github.com/eco/eco-routes/issues/222)) ([4895078](https://github.com/eco/eco-routes/commit/48950783fe5afa632ab790a0f66ed061e569c416))
-* **IntentSource:** check funders balance ([#208](https://github.com/eco/eco-routes/issues/208)) ([d797854](https://github.com/eco/eco-routes/commit/d79785448e6aa905c49d5c75252df3dd51daead4))
-* **IntentSource:** emit IntentPartiallyFunded ([#204](https://github.com/eco/eco-routes/issues/204)) ([726cf85](https://github.com/eco/eco-routes/commit/726cf851c66a21770d05441768178f556a818eab))
-* update the release branch rules ([e297302](https://github.com/eco/eco-routes/commit/e29730265af381425111a9045cf0bc976b997fb7))
+- add ignore of assets to tsc ([c56f290](https://github.com/eco/eco-routes/commit/c56f290d40c982ac73db7e3ab52983acae484d45))
+- **config:** update foundry.toml with correct optimizer setting and solc version ([#222](https://github.com/eco/eco-routes/issues/222)) ([4895078](https://github.com/eco/eco-routes/commit/48950783fe5afa632ab790a0f66ed061e569c416))
+- **IntentSource:** check funders balance ([#208](https://github.com/eco/eco-routes/issues/208)) ([d797854](https://github.com/eco/eco-routes/commit/d79785448e6aa905c49d5c75252df3dd51daead4))
+- **IntentSource:** emit IntentPartiallyFunded ([#204](https://github.com/eco/eco-routes/issues/204)) ([726cf85](https://github.com/eco/eco-routes/commit/726cf851c66a21770d05441768178f556a818eab))
+- update the release branch rules ([e297302](https://github.com/eco/eco-routes/commit/e29730265af381425111a9045cf0bc976b997fb7))
 
 # [2.0.0](https://github.com/eco/eco-routes/compare/v1.19.2-beta...77156f0fa0d0a0f9932d74270f2acebffc61fc97) (2025-05-12)
 

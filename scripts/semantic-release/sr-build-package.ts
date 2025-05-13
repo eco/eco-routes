@@ -607,6 +607,8 @@ export async function setPublishingPackage(
     // Remove some unnecessary fields
     delete projectPackageJson.devDependencies
     delete projectPackageJson.scripts
+    delete projectPackageJson.engines
+    delete projectPackageJson.packageManager
 
     // Write the modified package.json
     fs.writeFileSync(

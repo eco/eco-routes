@@ -80,14 +80,15 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     balance=$(cast balance $FACTORY_DEPLOYER --rpc-url "$RPC_URL")
     # Convert to eth for comparison
     balance_eth=$(cast --from-wei "$balance")
-
-    # Check if the balance is less than 0.0247 ETH
-    if (($(echo "$balance_eth < 0.0247" | bc -l))); then
+    # 0.0247 ETH + .00001 ETH buffer
+    EIP_2470_COST=0.02471
+    # Check if the balance is less than EIP_2470_COST
+    if (($(echo "$balance_eth < $EIP_2470_COST" | bc -l))); then
       # We need to fund the account with exactly 0.0247 ETH
-      echo "💰 Funding deployer account with exactly 0.0247 ETH..."
+      echo "💰 Funding deployer account with exactly $EIP_2470_COST ETH..."
 
       # Calculate how much to send (0.0247 - current balance)
-      to_send=$(echo "0.0247 - $balance_eth" | bc -l)
+      to_send=$(echo "$EIP_2470_COST - $balance_eth" | bc -l)
 
       if [ -z "$PRIVATE_KEY" ]; then
         echo "❌ Error: PRIVATE_KEY environment variable is required to fund the deployer account."
@@ -97,11 +98,12 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
       # Send the exact amount needed
       echo "Sending $to_send ETH to deployer account..."
-      tx_hash=$(cast send --private-key "$PRIVATE_KEY" --value $(cast --to-wei "$to_send" eth) $FACTORY_DEPLOYER --rpc-url "$RPC_URL")
-      echo "Funding transaction: $tx_hash"
+      tx=$(cast send --private-key "$PRIVATE_KEY" --value $(cast --to-wei "$to_send" eth) $FACTORY_DEPLOYER --rpc-url "$RPC_URL")
+      tx_hash=$(echo "$tx" | grep "transactionHash" | awk '{print $2}')
+      echo "Funding transaction: $tx"
 
       # Wait for transaction to be confirmed
-      echo "Waiting for funding transaction to be confirmed..."
+      echo "Waiting for funding transaction $tx_hash to be confirmed..."
       cast receipt "$tx_hash" --rpc-url "$RPC_URL" --async
 
       # Verify the balance after funding
@@ -114,8 +116,9 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     # Now publish the signed transaction
     echo "🚀 Publishing EIP-2470 singleton factory transaction..."
-    tx_hash=$(cast publish $SIGNED_TRANSACTION --rpc-url "$RPC_URL")
-
+    tx=$(cast publish $SIGNED_TRANSACTION --rpc-url "$RPC_URL")
+    echo "Publishing EIP-2470 transaction: $tx"
+    tx_hash=$(echo "$tx" | grep "transactionHash" | awk '{print $2}')
     if [ -n "$tx_hash" ]; then
       echo "Transaction submitted: $tx_hash"
       echo "Waiting for confirmation..."
