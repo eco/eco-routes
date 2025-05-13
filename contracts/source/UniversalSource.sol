@@ -93,8 +93,18 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         _validatePublishState(intentHash, state);
         _emitUniversalIntentCreated(intent, intentHash);
 
-        address vault = _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
-        _fundUniversalIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
+        address vault = _getUniversalVaultAddress(
+            intentHash,
+            routeHash,
+            intent.reward
+        );
+        _fundUniversalIntent(
+            intentHash,
+            intent.reward,
+            vault,
+            msg.sender,
+            allowPartial
+        );
 
         _returnExcessEth(intentHash, address(this).balance);
 
@@ -123,7 +133,11 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         _emitUniversalIntentCreated(intent, intentHash);
         _validateSourceChain(intent.route.source, intentHash);
 
-        address vault = _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
+        address vault = _getUniversalVaultAddress(
+            intentHash,
+            routeHash,
+            intent.reward
+        );
 
         _fundUniversalIntentFor(
             state,
@@ -151,11 +165,13 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
 
-        address vault = _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
+        address vault = _getUniversalVaultAddress(
+            intentHash,
+            routeHash,
+            intent.reward
+        );
         return _isUniversalRewardFunded(intent.reward, vault);
     }
-
-
 
     /**
      * @notice Funds an existing universal intent
@@ -174,8 +190,18 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         _validateInitialFundingState(state, intentHash);
 
-        address vault = _getUniversalVaultAddress(intentHash, routeHash, reward);
-        _fundUniversalIntent(intentHash, reward, vault, msg.sender, allowPartial);
+        address vault = _getUniversalVaultAddress(
+            intentHash,
+            routeHash,
+            reward
+        );
+        _fundUniversalIntent(
+            intentHash,
+            reward,
+            vault,
+            msg.sender,
+            allowPartial
+        );
 
         _returnExcessEth(intentHash, address(this).balance);
 
@@ -202,7 +228,11 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
         VaultState memory state = vaults[intentHash].state;
 
-        address vault = _getUniversalVaultAddress(intentHash, routeHash, reward);
+        address vault = _getUniversalVaultAddress(
+            intentHash,
+            routeHash,
+            reward
+        );
 
         _fundUniversalIntentFor(
             state,
@@ -230,7 +260,9 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover.toAddress()).provenIntents(intentHash);
+        address claimant = BaseProver(reward.prover.toAddress()).provenIntents(
+            intentHash
+        );
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -250,11 +282,19 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
             // Use assembly to deploy Vault with the original reward struct
             bytes memory code = type(Vault).creationCode;
-            bytes memory initCode = abi.encodePacked(code, abi.encode(intentHash, reward));
+            bytes memory initCode = abi.encodePacked(
+                code,
+                abi.encode(intentHash, reward)
+            );
 
             address vaultAddress;
             assembly {
-                vaultAddress := create2(0, add(initCode, 0x20), mload(initCode), routeHash)
+                vaultAddress := create2(
+                    0,
+                    add(initCode, 0x20),
+                    mload(initCode),
+                    routeHash
+                )
             }
 
             return;
@@ -292,7 +332,10 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
      * @param routeHash The hash of the intent's route component
      * @param reward The universal reward specification
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external virtual {
+    function refund(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
@@ -302,9 +345,8 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            address claimant = BaseProver(reward.prover.toAddress()).provenIntents(
-                intentHash
-            );
+            address claimant = BaseProver(reward.prover.toAddress())
+                .provenIntents(intentHash);
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);
@@ -329,11 +371,19 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         // Use assembly to deploy Vault with the original reward struct
         bytes memory code = type(Vault).creationCode;
-        bytes memory initCode = abi.encodePacked(code, abi.encode(intentHash, reward));
+        bytes memory initCode = abi.encodePacked(
+            code,
+            abi.encode(intentHash, reward)
+        );
 
         address vaultAddress;
         assembly {
-            vaultAddress := create2(0, add(initCode, 0x20), mload(initCode), routeHash)
+            vaultAddress := create2(
+                0,
+                add(initCode, 0x20),
+                mload(initCode),
+                routeHash
+            )
         }
     }
 
@@ -386,11 +436,19 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         // Use assembly to deploy Vault with the original reward struct
         bytes memory code = type(Vault).creationCode;
-        bytes memory initCode = abi.encodePacked(code, abi.encode(intentHash, reward));
+        bytes memory initCode = abi.encodePacked(
+            code,
+            abi.encode(intentHash, reward)
+        );
 
         address vaultAddress;
         assembly {
-            vaultAddress := create2(0, add(initCode, 0x20), mload(initCode), routeHash)
+            vaultAddress := create2(
+                0,
+                add(initCode, 0x20),
+                mload(initCode),
+                routeHash
+            )
         }
     }
 
@@ -618,11 +676,19 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         // Use assembly to deploy Vault with the original reward struct
         // This will ensure that the abi encoding is consistent
         bytes memory code = type(Vault).creationCode;
-        bytes memory initCode = abi.encodePacked(code, abi.encode(intentHash, reward));
+        bytes memory initCode = abi.encodePacked(
+            code,
+            abi.encode(intentHash, reward)
+        );
 
         address vaultAddress;
         assembly {
-            vaultAddress := create2(0, add(initCode, 0x20), mload(initCode), routeHash)
+            vaultAddress := create2(
+                0,
+                add(initCode, 0x20),
+                mload(initCode),
+                routeHash
+            )
         }
 
         if (state.status == uint8(RewardStatus.Funded)) {

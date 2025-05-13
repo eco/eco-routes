@@ -216,9 +216,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             abi.encode(intent)
         );
 
-        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(
-            intent
-        );
+        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(intent);
         return
             ResolvedCrossChainOrder(
                 onchainCrosschainOrderData.creator,
@@ -311,9 +309,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             abi.encode(intent)
         );
 
-        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(
-            intent
-        );
+        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(intent);
         return
             ResolvedCrossChainOrder(
                 _order.user,
@@ -361,9 +357,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         address _user
     ) internal returns (bytes32 intentHash) {
         if (!INTENT_SOURCE.isIntentFunded(_intent)) {
-            address vault = INTENT_SOURCE.intentVaultAddress(
-                _intent
-            );
+            address vault = INTENT_SOURCE.intentVaultAddress(_intent);
 
             if (_intent.reward.nativeValue > 0) {
                 if (msg.value < _intent.reward.nativeValue) {

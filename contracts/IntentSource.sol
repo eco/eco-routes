@@ -8,7 +8,6 @@ import {Semver} from "./libs/Semver.sol";
 import {UniversalSource} from "./source/UniversalSource.sol";
 import {EvmSource} from "./source/EvmSource.sol";
 
-
 /**
  * @title IntentSource
  * @notice Source chain contract for the Eco Protocol's intent system

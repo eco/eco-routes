@@ -40,7 +40,9 @@ contract AddressConverterTest {
      * @param addrs The array of addresses to convert
      * @return result The array of bytes32 values
      */
-    function toBytes32Array(address[] calldata addrs) external pure returns (bytes32[] memory result) {
+    function toBytes32Array(
+        address[] calldata addrs
+    ) external pure returns (bytes32[] memory result) {
         return AddressConverter.toBytes32Array(addrs);
     }
 
@@ -49,7 +51,9 @@ contract AddressConverterTest {
      * @param bs The array of bytes32 values to convert
      * @return result The array of addresses
      */
-    function toAddressArray(bytes32[] calldata bs) external pure returns (address[] memory result) {
+    function toAddressArray(
+        bytes32[] calldata bs
+    ) external pure returns (address[] memory result) {
         return AddressConverter.toAddressArray(bs);
     }
 }

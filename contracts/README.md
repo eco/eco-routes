@@ -11,14 +11,17 @@ Eco Protocol enables secure, efficient cross-chain message passing via an intent
 The protocol has been refactored into a modular structure to better support cross-chain compatibility:
 
 1. **BaseSource**: Common functionality shared across all implementations
+
    - Essential helper functions and state storage
    - Common validation methods and error handling
 
 2. **EvmSource**: EVM-specific implementation using address (20 bytes) types
+
    - Handles all EVM-specific intent operations
    - Manages reward claiming and refunding
 
 3. **UniversalSource**: Cross-chain compatible implementation using bytes32 (32 bytes) types
+
    - Universal type support for non-EVM chains like Solana
    - Transparent type conversion for cross-chain compatibility
 
@@ -39,6 +42,7 @@ IntentSource
 The protocol supports both EVM chains and non-EVM chains like Solana through a dual-type system:
 
 1. **EVM Intent Types (Intent.sol)**
+
    - Uses Ethereum's native `address` type (20 bytes)
    - Maintains backward compatibility with existing integrations
    - Optimized for EVM-chain interactions
@@ -64,6 +68,7 @@ bytes32 universalAddressId = evmAddress.toBytes32();
 ### Technical Design
 
 The dual-type approach takes advantage of EVM's ABI encoding:
+
 - In EVM, address types are 20 bytes and are padded to 32 bytes when encoded
 - The bytes32 type exactly matches this encoding pattern
 - This allows both types to be used interchangeably at the binary level
@@ -75,11 +80,13 @@ The dual-type approach takes advantage of EVM's ABI encoding:
 If your application only needs to interact with EVM chains:
 
 1. Import and use the EVM-specific types:
+
    ```solidity
-   import {Intent, Route, Reward} from "./types/Intent.sol";
+   import { Intent, Route, Reward } from "./types/Intent.sol";
    ```
 
 2. Create intents using the familiar address types:
+
    ```solidity
    Intent memory intent = Intent({
        route: Route({
@@ -106,12 +113,14 @@ If your application only needs to interact with EVM chains:
 If your application needs to interact with both EVM and non-EVM chains:
 
 1. Import and use the universal types:
+
    ```solidity
-   import {Intent, Route, Reward} from "./types/UniversalIntent.sol";
-   import {AddressConverter} from "./libs/AddressConverter.sol";
+   import { Intent, Route, Reward } from "./types/UniversalIntent.sol";
+   import { AddressConverter } from "./libs/AddressConverter.sol";
    ```
 
 2. Create intents using bytes32 for address identifiers:
+
    ```solidity
    Intent memory universalIntent = Intent({
        route: Route({
@@ -145,10 +154,12 @@ If your application needs to interact with both EVM and non-EVM chains:
 The system consists of the following key components:
 
 1. **Intent Types**:
+
    - `Intent.sol`: EVM-specific types using address (20 bytes)
    - `UniversalIntent.sol`: Universal types using bytes32 (32 bytes)
 
 2. **Source Implementations**:
+
    - `BaseSource.sol`: Common functionality
    - `EvmSource.sol`: EVM-specific implementation
    - `UniversalSource.sol`: Cross-chain implementation
@@ -156,7 +167,7 @@ The system consists of the following key components:
 
 3. **Conversion Utilities**:
    - `AddressConverter.sol`: Convert between address and bytes32
- 
+
 # API Documentation
 
 Type references can be found in the (types directory)[/types].
