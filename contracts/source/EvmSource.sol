@@ -252,7 +252,10 @@ contract EvmSource is BaseSource, IIntentSource {
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
-    function withdrawRewards(bytes32 routeHash, Reward calldata reward) public virtual {
+    function withdrawRewards(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) public virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
@@ -311,7 +314,10 @@ contract EvmSource is BaseSource, IIntentSource {
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external virtual {
+    function refund(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 

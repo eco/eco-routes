@@ -37,11 +37,11 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Consolidates message dispatch parameters to reduce stack usage
      */
     struct DispatchParams {
-        uint32 destinationDomain;   // Hyperlane domain ID
-        bytes32 recipientAddress;   // Recipient address encoded as bytes32
-        bytes messageBody;          // Encoded message body with intent hashes and claimants
-        bytes metadata;             // Additional metadata for the message
-        IPostDispatchHook hook;     // Post-dispatch hook contract
+        uint32 destinationDomain; // Hyperlane domain ID
+        bytes32 recipientAddress; // Recipient address encoded as bytes32
+        bytes messageBody; // Encoded message body with intent hashes and claimants
+        bytes metadata; // Additional metadata for the message
+        IPostDispatchHook hook; // Post-dispatch hook contract
     }
 
     /**
@@ -259,11 +259,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes32[] calldata _hashes,
         address[] calldata _claimants,
         UnpackedData memory _unpacked
-    )
-        internal
-        view
-        returns (DispatchParams memory params)
-    {
+    ) internal view returns (DispatchParams memory params) {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
         if (_hashes.length != _claimants.length) {

@@ -88,7 +88,10 @@ describe('Origin Settler Test', (): void => {
     const intentSourceFactory = await ethers.getContractFactory('IntentSource')
     const intentSourceImpl = await intentSourceFactory.deploy()
     // Use the IIntentSource interface with the actual implementation
-    const intentSource = await ethers.getContractAt('IIntentSource', await intentSourceImpl.getAddress())
+    const intentSource = await ethers.getContractAt(
+      'IIntentSource',
+      await intentSourceImpl.getAddress(),
+    )
     inbox = await (await ethers.getContractFactory('Inbox')).deploy()
 
     // deploy prover

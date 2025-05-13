@@ -44,7 +44,9 @@ library AddressConverter {
      * @param addrs The array of addresses to convert
      * @return result The array of bytes32 values
      */
-    function toBytes32Array(address[] memory addrs) internal pure returns (bytes32[] memory result) {
+    function toBytes32Array(
+        address[] memory addrs
+    ) internal pure returns (bytes32[] memory result) {
         result = new bytes32[](addrs.length);
         for (uint256 i = 0; i < addrs.length; i++) {
             result[i] = toBytes32(addrs[i]);
@@ -57,7 +59,9 @@ library AddressConverter {
      * @param bs The array of bytes32 values to convert
      * @return result The array of addresses
      */
-    function toAddressArray(bytes32[] memory bs) internal pure returns (address[] memory result) {
+    function toAddressArray(
+        bytes32[] memory bs
+    ) internal pure returns (address[] memory result) {
         result = new address[](bs.length);
         for (uint256 i = 0; i < bs.length; i++) {
             result[i] = toAddress(bs[i]);

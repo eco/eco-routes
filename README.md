@@ -47,7 +47,7 @@ Eco Routes now supports both EVM chains and non-EVM chains like Solana through a
 1. **EVM Chains**: Use the original `Intent.sol` types with Ethereum's native `address` format
 2. **Universal Format**: Use the `UniversalIntent.sol` types with `bytes32` identifiers for cross-chain compatibility
 
-The protocol provides seamless conversion between these formats through the `IntentConverter` utility. 
+The protocol provides seamless conversion between these formats through the `IntentConverter` utility.
 For detailed information about cross-chain implementation, see [CROSS_CHAIN.md](./CROSS_CHAIN.md).
 
 ### Intent Publishing

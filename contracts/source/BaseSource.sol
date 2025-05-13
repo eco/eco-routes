@@ -116,7 +116,10 @@ abstract contract BaseSource is IBaseSource {
      * @param intentHash Hash of the intent
      * @param amount Amount of ETH to return
      */
-    function _returnExcessEth(bytes32 intentHash, uint256 amount) internal virtual {
+    function _returnExcessEth(
+        bytes32 intentHash,
+        uint256 amount
+    ) internal virtual {
         if (amount > 0) {
             (bool success, ) = payable(msg.sender).call{value: amount}("");
             if (!success) revert NativeRewardTransferFailed(intentHash);
