@@ -1,4 +1,4 @@
-# Eco Routes Cross-Chain Implementation
+# Eco Routes Cross-Chain Implementation Guide
 
 ## Overview
 
@@ -12,16 +12,9 @@ Eco Routes is designed to facilitate cross-chain messaging and intent execution.
 4. **Dual Signature Verification**: Support for verifying signatures against both type systems.
 5. **Identical Structure**: The Universal types mirror the EVM types exactly, just with different field types.
 
-## Implementation Details
+## Architecture Overview
 
-### Architecture
-
-The implementation uses a modular architecture for better code organization and reuse:
-
-1. **BaseSource**: Common functionality shared across implementations
-2. **EvmSource**: Implementation for EVM chains with `address` (20 bytes) types
-3. **UniversalSource**: Implementation for cross-chain with `bytes32` (32 bytes) types
-4. **IntentSource**: Main entry point combining both implementations
+Eco Routes implements a modular architecture that separates concerns while maintaining a unified interface:
 
 ```
 IntentSource
@@ -31,32 +24,150 @@ IntentSource
     └── BaseSource (common functionality)
 ```
 
-### Data Structures
+This design enables:
+1. **Clean Separation of Concerns**: Each contract handles a specific part of the system
+2. **Code Reuse**: Common functionality is shared in the BaseSource contract
+3. **Type Safety**: Each implementation handles its specific type system
+4. **Unified Interface**: Users interact with a single IntentSource contract
 
-The implementation maintains two parallel sets of data structures:
+## Type System Implementation
 
-1. **EVM-specific Types** (in `Intent.sol` and `EcoERC7683.sol`):
-   - Use `address` (20 bytes) for Ethereum addresses
-   - Maintain backward compatibility
+### EVM Types (20-byte addresses)
 
-2. **Universal Types** (in `UniversalIntent.sol` and `UniversalEcoERC7683.sol`):
-   - Use `bytes32` (32 bytes) for cross-chain account IDs
-   - Same structure and field names as EVM types
+The original Eco Routes implementation uses Ethereum's native `address` type (20 bytes):
+
+```solidity
+// From Intent.sol
+struct TokenAmount {
+    address token;
+    uint256 amount;
+}
+
+struct Call {
+    address target;
+    bytes data;
+    uint256 value;
+}
+
+struct Route {
+    bytes32 salt;
+    uint256 source;
+    uint256 destination;
+    address inbox;
+    TokenAmount[] tokens;
+    Call[] calls;
+}
+
+struct Reward {
+    address creator;
+    address prover;
+    uint256 deadline;
+    uint256 nativeValue;
+    TokenAmount[] tokens;
+}
+
+struct Intent {
+    Route route;
+    Reward reward;
+}
+```
+
+### Universal Types (32-byte identifiers)
+
+For cross-chain compatibility, we've introduced parallel types using `bytes32` instead of `address`:
+
+```solidity
+// From UniversalIntent.sol
+struct TokenAmount {
+    bytes32 token;  // 32 bytes for cross-chain compatibility
+    uint256 amount;
+}
+
+struct Call {
+    bytes32 target;  // 32 bytes for cross-chain compatibility
+    bytes data;
+    uint256 value;
+}
+
+struct Route {
+    bytes32 salt;
+    uint256 source;
+    uint256 destination;
+    bytes32 inbox;  // 32 bytes for cross-chain compatibility
+    TokenAmount[] tokens;
+    Call[] calls;
+}
+
+struct Reward {
+    bytes32 creator;  // 32 bytes for cross-chain compatibility
+    bytes32 prover;   // 32 bytes for cross-chain compatibility
+    uint256 deadline;
+    uint256 nativeValue;
+    TokenAmount[] tokens;
+}
+
+struct Intent {
+    Route route;
+    Reward reward;
+}
+```
+
+### Type Conversion
+
+The `AddressConverter` library provides utilities for converting between the two address formats:
+
+```solidity
+// From address (20 bytes) to bytes32 (32 bytes)
+function toBytes32(address _addr) public pure returns (bytes32) {
+    return bytes32(uint256(uint160(_addr)));
+}
+
+// From bytes32 (32 bytes) to address (20 bytes)
+function toAddress(bytes32 _bytes32) public pure returns (address) {
+    require(isValidEthereumAddress(_bytes32), "Invalid Ethereum address");
+    return address(uint160(uint256(_bytes32)));
+}
+
+// Check if a bytes32 value represents a valid Ethereum address
+function isValidEthereumAddress(bytes32 _bytes32) public pure returns (bool) {
+    // Top 12 bytes should be zero for a valid Ethereum address
+    return uint256(_bytes32) >> 160 == 0;
+}
+```
+
+## Implementation Details
 
 ### Core Components
 
-1. **AddressConverter Library**:
+1. **BaseSource Contract**:
+   - Shared state storage (`vaults` mapping)
+   - Common validation functions
+   - Error handling and events
+   - Abstract interfaces for intent operations
+
+2. **EvmSource Contract**:
+   - Uses native `address` type (20 bytes)
+   - Handles publishing, funding, and reward claiming
+   - Manages vault creation and interaction
+   - Implements EVM-specific validation
+
+3. **UniversalSource Contract**:
+   - Uses `bytes32` type (32 bytes) for addresses
+   - Provides the same operations as `EvmSource` but with universal types
+   - Converts between `bytes32` and `address` types as needed for vault interaction
+   - Emits cross-chain compatible events
+
+4. **IntentSource Contract**:
+   - Inherits from both `EvmSource` and `UniversalSource`
+   - Provides a unified interface for users
+   - Handles type conversion at the boundary
+
+5. **AddressConverter Library**:
    - Simple type conversion utilities between `address` and `bytes32`
    - Validation functions to ensure safe conversions
    - Array conversion functions for bulk operations
 
-2. **Source Contracts**:
-   - `BaseSource`: Shared logic for both implementations
-   - `EvmSource`: EVM-specific intent functionality
-   - `UniversalSource`: Cross-chain compatible functionality
-   - `IntentSource`: Entry point combining both approaches
-
-3. **DualSignatureVerifier Library**:
+6. **DualSignatureVerifier Library**:
    - Verifies EIP-712 signatures against either format
    - Supports both OnchainCrosschainOrderData and GaslessCrosschainOrderData structures
    - Computes correct typehashes for both formats
@@ -83,6 +194,7 @@ EVM-only applications can continue to use the original types and interfaces:
 ```solidity
 // Import EVM types
 import {Intent, Route, Call, TokenAmount, Reward} from "./types/Intent.sol";
+import {IIntentSource} from "./interfaces/IIntentSource.sol";
 
 // Create an intent
 Intent memory intent = Intent({
@@ -102,6 +214,10 @@ Intent memory intent = Intent({
         tokens: new TokenAmount[](0)
     })
 });
+
+// Use the IntentSource contract with IIntentSource interface
+IIntentSource intentSource = IIntentSource(intentSourceAddress);
+bytes32 intentHash = intentSource.publish(intent);
 ```
 
 ### For Cross-Chain Applications
@@ -111,6 +227,7 @@ Cross-chain applications should use the Universal types:
 ```solidity
 // Import Universal types
 import {Intent, Route, Call, TokenAmount, Reward} from "./types/UniversalIntent.sol";
+import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 
 // Create a universal intent
@@ -131,72 +248,10 @@ Intent memory intent = Intent({
         tokens: new TokenAmount[](0)
     })
 });
-```
 
-### Dual Implementation Architecture
-
-Eco Routes uses inheritance and composition to create a clean, modular architecture:
-
-```solidity
-// BaseSource provides common functionality
-abstract contract BaseSource {
-    // Common functionality used by both implementations
-    function _validateSourceChain(...) internal virtual { ... }
-    function _returnExcessEth(...) internal virtual { ... }
-    // ...other common functionality
-}
-
-// EvmSource implements EVM-specific functionality
-abstract contract EvmSource is IIntentSource, BaseSource {
-    // EVM-specific implementation
-    function getIntentHash(Intent calldata intent) external returns (...) { ... }
-    function publish(Intent calldata intent) external returns (...) { ... }
-    // ...other EVM-specific functions
-}
-
-// UniversalSource implements cross-chain functionality
-abstract contract UniversalSource is IUniversalIntentSource, BaseSource {
-    // Cross-chain implementation
-    function getIntentHash(Intent calldata intent) external returns (...) { ... }
-    function publish(Intent calldata intent) external returns (...) { ... }
-    // ...other universal functions
-}
-
-// IntentSource combines both implementations
-contract IntentSource is UniversalSource, EvmSource, Semver {
-    // Main entry point combining both implementations
-    // Function calls are routed to the appropriate parent implementation
-}
-```
-
-This architecture allows:
-1. Code reuse through shared functionality in BaseSource
-2. Clear separation of EVM and Universal implementations
-3. Combined interface in the IntentSource contract
-4. No need for type conversions in the main execution path
-
-### Using the Interfaces
-
-Clients can interact with either interface:
-
-```solidity
-// Import IIntentSource for EVM-only applications
-import {IIntentSource} from "./interfaces/IIntentSource.sol";
-import {Intent} from "./types/Intent.sol";
-
-// Use the EVM-specific interface and types
-IIntentSource intentSource = /* get contract address */;
-Intent memory evmIntent = /* create EVM intent */;
-bytes32 intentHash = intentSource.publish(evmIntent);
-
-// Import IUniversalIntentSource for cross-chain applications
-import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
-import {Intent as UniversalIntent} from "./types/UniversalIntent.sol";
-
-// Use the Universal-specific interface and types
-IUniversalIntentSource universalIntentSource = /* get contract address */;
-UniversalIntent memory universalIntent = /* create Universal intent */;
-bytes32 intentHash = universalIntentSource.publish(universalIntent);
+// Use the IntentSource contract with IUniversalIntentSource interface
+IUniversalIntentSource intentSource = IUniversalIntentSource(intentSourceAddress);
+bytes32 intentHash = intentSource.publish(intent);
 ```
 
 ## Type Handling for Non-EVM Chains
@@ -207,33 +262,71 @@ For non-EVM chains like Solana:
 2. When receiving data from an EVM chain, convert `address` types to `bytes32` by padding with zeros.
 3. When sending data to an EVM chain, ensure the bytes32 value is a valid Ethereum address by checking that the top 12 bytes are zero.
 
-## Safety Considerations
+## Security Considerations
 
-When working with cross-chain conversions:
+When implementing cross-chain functionality:
 
-1. **Type Validation**: Always check that a `bytes32` value is a valid Ethereum address before converting to `address`:
+1. **Type Validation**: Always validate address conversions
+   - Use `AddressConverter.isValidEthereumAddress()` before converting from `bytes32` to `address`
+   - Ensure addresses have correct format for the target chain
 
-   ```solidity
-   // Safe conversion from bytes32 to address
-   function safeToAddress(bytes32 b) internal pure returns (address) {
-       require(AddressConverter.isValidEthereumAddress(b), "Invalid Ethereum address");
-       return AddressConverter.toAddress(b);
-   }
-   ```
+2. **Chain ID Validation**:
+   - Check that intents are published on the correct chain using `_validateSourceChain`
+   - Enforce chain-specific security rules
 
-2. **Signature Verification**: For cross-chain applications, verify signatures against both EVM and Universal typehashes.
-3. **Backward Compatibility**: Maintain backward compatibility by keeping the original EVM types for existing applications.
+3. **Error Handling**:
+   - Use specific error types for different failure scenarios
+   - Maintain consistent error messages across implementations
+
+4. **Signature Verification**:
+   - For cross-chain applications, verify signatures against both EVM and Universal typehashes
+   - Maintain backward compatibility by keeping the original EVM types for existing applications
+
+## Event Emissions
+
+Events are emitted in both formats:
+
+1. `IntentCreated` for EVM-specific intents (with `address` fields)
+2. `UniversalIntentCreated` for Universal intents (with `bytes32` fields converted to `address` for the Ethereum event system)
 
 ## Testing
 
 The cross-chain utilities include comprehensive tests:
 
-1. **AddressConverter Tests**: Ensure address-bytes32 conversions work correctly.
-2. **IntentConverter Tests**: Verify that all fields are properly converted.
-3. **DualSignatureVerifier Tests**: Confirm signatures work with both type systems.
+1. **UniversalSource.spec.ts**:
+   - Tests Universal intent creation and hashing
+   - Tests address type conversion
+   - Tests funding and intent vault verification
+   - Tests edge cases and validations
+
+2. **CrossChainUtils.spec.ts**:
+   - Tests the AddressConverter library
+   - Validates address conversion safety
 
 Run the tests with:
 
 ```bash
 npx hardhat test test/CrossChainUtils.spec.ts
 ```
+
+## Best Practices
+
+1. **Choose the Right Format**:
+   - Use EVM types (`Intent.sol`) for EVM-only applications
+   - Use Universal types (`UniversalIntent.sol`) for cross-chain applications
+
+2. **Type Conversion**:
+   - Convert at the edge of your application, not in core logic
+   - Always validate address conversions
+
+3. **Error Handling**:
+   - Handle chain-specific error conditions
+   - Provide clear error messages
+
+4. **Testing**:
+   - Test with both EVM and simulated non-EVM addresses
+   - Verify type conversion in edge cases
+
+## Conclusion
+
+The dual-type system enables Eco Routes to work seamlessly across different blockchain environments while maintaining backward compatibility with existing integrations. By supporting both 20-byte Ethereum addresses and 32-byte universal identifiers, the protocol can connect users and liquidity across the entire blockchain ecosystem.
