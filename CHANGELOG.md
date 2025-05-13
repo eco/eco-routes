@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/eco/eco-routes/compare/v2.0.2...v2.0.3) (2025-05-13)
+
+
+### Bug Fixes
+
+* deployRoutes should pass mailbox correctly now ([fa19498](https://github.com/eco/eco-routes/commit/fa19498132c54159237a8a690db43b639eb2f1d7))
+
 ## [2.0.2](https://github.com/eco/eco-routes/compare/v2.0.1...v2.0.2) (2025-05-13)
 
 
