@@ -48,7 +48,7 @@ const execPromise = promisify(exec)
  */
 type AddressesJson = {
   [chainId: string]: {
-    [K in typeof CONTRACT_TYPES[number]]?: string
+    [contractName: string]: string
   }
 }
 
