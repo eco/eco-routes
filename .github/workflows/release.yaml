@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - semantic-release
+      - clean-semantic-release
   repository_dispatch:
     types: [manual-release-trigger]
 
