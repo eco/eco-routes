@@ -26,7 +26,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Interface ID for IProver used to detect prover contracts
      */
-    bytes4 public constant IPROVER_INTERFACE_ID = 0xd8e1f34f; //type(IProver).interfaceId
+    bytes4 public immutable IPROVER_INTERFACE_ID;
 
     /**
      * @notice Mapping of intent hashes to their claimant addresses
@@ -37,7 +37,9 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Initializes the Inbox contract
      */
-    constructor() {}
+    constructor() {
+        IPROVER_INTERFACE_ID = type(IProver).interfaceId;
+    }
 
     /**
      * @notice Fulfills an intent to be proven via storage proofs
