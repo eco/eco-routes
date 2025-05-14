@@ -31,16 +31,16 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         emit OrderFilled(_orderId, msg.sender);
 
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        (address claimant, bytes memory data) = abi.decode(
+        (address claimant, address localProver, bytes memory data) = abi.decode(
             _fillerData,
-            (address, bytes)
+            (address, address, bytes)
         );
         fulfillAndProve(
             intent.route,
             rewardHash,
             claimant,
             _orderId,
-            intent.reward.prover,
+            localProver,
             data
         );
     }
