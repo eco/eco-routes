@@ -116,7 +116,11 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
+          .handle(
+            12345,
+            ethers.zeroPadValue(owner.address, 32),
+            ethers.sha256('0x'),
+          ),
       ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
     })
 
