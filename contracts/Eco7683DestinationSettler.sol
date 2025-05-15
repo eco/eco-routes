@@ -4,11 +4,8 @@ pragma solidity ^0.8.26;
 
 import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
 import {Intent, Route} from "./types/Intent.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 abstract contract Eco7683DestinationSettler is IDestinationSettler {
-    using ECDSA for bytes32;
-
     /**
      * @notice Fills a single leg of a particular order on the destination chain
      * @dev _originData is of type OnchainCrossChainOrder
