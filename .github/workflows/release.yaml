@@ -14,18 +14,26 @@ on:
     types: [manual-release-trigger]
 
 jobs:
-  # First job: Fetch secrets from AWS Secrets Manager
-  fetch-aws-secrets:
-    name: Fetch AWS Secrets
+ # Second job: Run semantic-release to publish new version
+  release:
+    name: Create and Publish Release
     runs-on: ubuntu-latest
     environment: "mainnet"
     outputs:
-      secrets-ready: ${{ steps.fetch-secrets.outputs.success }}
+      new_version: ${{ steps.semantic-release.outputs.new_version }}
+      release_notes: ${{ steps.semantic-release.outputs.release_notes }}
     permissions:
-      id-token: write # Needed for AWS OIDC authentication
-      contents: read
+      contents: write # Needed for github release
+      issues: write # Needed for issue comments
+      pull-requests: write # Needed for PR comments
+      id-token: write # Needed for npm publishing with provenance
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0 # Needed for semantic-release to generate changelogs
+          token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
       # Set up AWS credentials using OIDC for secure authentication
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -53,29 +61,6 @@ jobs:
             exit 1
           fi
           echo "AWS Secrets loaded successfully"
-          echo "success=true" >> $GITHUB_OUTPUT
-
-  # Second job: Run semantic-release to publish new version
-  release:
-    name: Create and Publish Release
-    runs-on: ubuntu-latest
-    # This job depends on successful completion of fetch-aws-secrets
-    needs: fetch-aws-secrets
-    outputs:
-      new_version: ${{ steps.semantic-release.outputs.new_version }}
-      release_notes: ${{ steps.semantic-release.outputs.release_notes }}
-    permissions:
-      contents: write # Needed for github release
-      issues: write # Needed for issue comments
-      pull-requests: write # Needed for PR comments
-      id-token: write # Needed for npm publishing with provenance
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0 # Needed for semantic-release to generate changelogs
-          token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
@@ -128,6 +113,8 @@ jobs:
           CHAIN_DATA_URL: ${{ secrets.CHAIN_DATA_URL }}
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
-          # VERIFICATION_KEYS is already set by aws-secretsmanager-get-secrets
+          VERIFICATION_KEYS: ${{ env.VERIFICATION_KEYS }}
         run: |
           npx semantic-release --debug
+
+  
