@@ -826,7 +826,7 @@ describe('MetaProver Test', (): void => {
 
       const { intentHash, rewardHash } = hashIntent({ route, reward })
       const data = abiCoder.encode(
-        ['bytes32'],
+        ['uint32','bytes32'],///chainid for uint32
         [ethers.zeroPadValue(await metaProver.getAddress(), 32)],
       )
 

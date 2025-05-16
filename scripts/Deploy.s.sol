@@ -12,6 +12,7 @@ import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IntentSource} from "../contracts/IntentSource.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
+import {MetaProver} from "../contracts/prover/MetaProver.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -215,7 +216,7 @@ contract Deploy is Script {
         );
 
         bytes memory metaProverBytecode = abi.encodePacked(
-            type(HyperProver).creationCode,
+            type(MetaProver).creationCode,
             ctx.metaProverConstructorArgs
         );
 
