@@ -68,9 +68,11 @@ contract Deploy is Script {
         if (hasMailbox) {
             ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
         }
+
         if (hasRouter) {
             ctx.metaProverSalt = getContractSalt(ctx.salt, "META_PROVER");
         }
+
         vm.startBroadcast();
 
         // Deploy deployer if it hasn't been deployed

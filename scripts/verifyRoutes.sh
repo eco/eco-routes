@@ -22,6 +22,7 @@
 # CSV format expected:
 # ChainID,ContractAddress,ContractPath,ContractArguments
 
+
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils/load_env.sh"
@@ -31,17 +32,6 @@ load_env
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils/load_chain_data.sh"
 
-# Verify required environment variables
-if [ -z "$RESULTS_FILE" ]; then
-  echo "❌ Error: RESULTS_FILE is not set in .env!"
-  exit 1
-fi
-
-if [ -z "$VERIFICATION_KEYS_FILE" ]; then
-  echo "❌ Error: VERIFICATION_KEYS_FILE is not set in .env!"
-  exit 1
-fi
-
 # Verify deployment data exists
 if [ ! -f "$RESULTS_FILE" ]; then
   echo "❌ Error: Deployment data file not found at $RESULTS_FILE"
@@ -49,29 +39,23 @@ if [ ! -f "$RESULTS_FILE" ]; then
   exit 1
 fi
 
-# Verify verification keys file exists
-if [ ! -f "$VERIFICATION_KEYS_FILE" ]; then
-  echo "❌ Error: Verification keys file not found at $VERIFICATION_KEYS_FILE"
-  exit 1
-fi
-
 # Load verification keys from environment variable or file
-echo "📝 Loading verification keys from $VERIFICATION_KEYS_FILE"
-VERIFICATION_KEYS=""
-if [ \! -z "$VERIFICATION_KEYS" ]; then
+echo "📝 Loading verification keys"
+VERIFICATION_KEYS_JSON=""
+if [ ! -z "$VERIFICATION_KEYS" ]; then
   echo "📝 Using verification keys from VERIFICATION_KEYS environment variable"
-  VERIFICATION_KEYS="$VERIFICATION_KEYS"
+  VERIFICATION_KEYS_JSON="$VERIFICATION_KEYS"
 elif [ -f "$VERIFICATION_KEYS_FILE" ]; then
   echo "📝 Using verification keys from $VERIFICATION_KEYS_FILE"
-  VERIFICATION_KEYS=$(cat "$VERIFICATION_KEYS_FILE")
+  VERIFICATION_KEYS_JSON=$(cat "$VERIFICATION_KEYS_FILE")
 else
   echo "❌ Error: Neither VERIFICATION_KEYS environment variable nor $VERIFICATION_KEYS_FILE found."
   exit 1
 fi
 
 # Validate JSON format for verification keys
-if ! echo "$VERIFICATION_KEYS" | jq empty 2>/dev/null; then
-  echo "❌ Error: Invalid JSON format in verification keys file: $VERIFICATION_KEYS_FILE"
+if ! echo "$VERIFICATION_KEYS_JSON" | jq empty 2>/dev/null; then
+  echo "❌ Error: Invalid JSON format in verification keys"
   exit 1
 fi
 
@@ -123,7 +107,7 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   echo "   Contract Path: $CONTRACT_PATH"
   
   # Get the verification key using JQ with simple key access
-  VERIFY_KEY=$(echo "$VERIFICATION_KEYS" | jq -r --arg chain "$CHAIN_ID" '.[$chain] // empty')
+  VERIFY_KEY=$(echo "$VERIFICATION_KEYS_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain] // empty')
   
   # If we have a verification key for this chain
   if [ -n "$VERIFY_KEY" ] && [ "$VERIFY_KEY" != "null" ]; then
