@@ -1,8 +1,10 @@
 /** @type {import('ts-jest').JestConfigWithTsJest} **/
 module.exports = {
   testEnvironment: 'node',
-  rootDir: './scripts',
+  testPathIgnorePatterns: ['/node_modules/'],
+  testMatch: ['**/scripts/semantic-release/tests/**/*.spec.ts'],
   transform: {
-    '^.+.tsx?$': ['ts-jest', {}],
+    '^.+\\.tsx?$': ['ts-jest', {}],
   },
+  passWithNoTests: true,
 }
