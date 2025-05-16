@@ -435,7 +435,7 @@ describe('MetaProver Test', (): void => {
       expect(fee).to.equal(await testRouter.FEE())
     })
 
-    it('should correctly call dispatch in the sendProof method', async () => {
+    it('should correctly call dispatch in the sendProof method with no gas parameter', async () => {
       // Set up test data
       const sourceChainID = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -465,6 +465,118 @@ describe('MetaProver Test', (): void => {
       // Verify the router was called with correct parameters
       expect(await testRouter.dispatched()).to.be.true
       expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.gasLimit()).to.eq(
+        await metaProver.DEFAULT_GAS_LIMIT(),
+      )
+
+      // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
+      const expectedRecipientBytes32 = ethers.zeroPadValue(
+        sourceChainProver,
+        32,
+      )
+      expect(await testRouter.recipientAddress()).to.eq(
+        expectedRecipientBytes32,
+      )
+
+      // Verify message encoding is correct
+      const expectedBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [intentHashes, claimants],
+      )
+      expect(await testRouter.messageBody()).to.eq(expectedBody)
+    })
+    it('should correctly call dispatch in the sendProof method with too-low gas parameter', async () => {
+      // Set up test data
+      const sourceChainID = 123
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['uint32', 'bytes32', 'uint256'],
+        [
+          sourceChainID,
+          await ethers.zeroPadValue(sourceChainProver, 32),
+          (await metaProver.DEFAULT_GAS_LIMIT()) - BigInt(1),
+        ],
+      )
+
+      // Before sendProof, make sure the router hasn't been called
+      expect(await testRouter.dispatched()).to.be.false
+
+      await expect(
+        metaProver.connect(owner).prove(
+          solver.address,
+          sourceChainID,
+          intentHashes,
+          claimants,
+          data,
+          { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
+        ),
+      )
+        .to.emit(metaProver, 'BatchSent')
+        .withArgs(intentHashes[0], sourceChainID)
+
+      // Verify the router was called with correct parameters
+      expect(await testRouter.dispatched()).to.be.true
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.gasLimit()).to.eq(
+        await metaProver.DEFAULT_GAS_LIMIT(),
+      )
+
+      // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
+      const expectedRecipientBytes32 = ethers.zeroPadValue(
+        sourceChainProver,
+        32,
+      )
+      expect(await testRouter.recipientAddress()).to.eq(
+        expectedRecipientBytes32,
+      )
+
+      // Verify message encoding is correct
+      const expectedBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [intentHashes, claimants],
+      )
+      expect(await testRouter.messageBody()).to.eq(expectedBody)
+    })
+
+    it('should correctly call dispatch in the sendProof method with sufficiently high gas parameter', async () => {
+      // Set up test data
+      const sourceChainID = 123
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['uint32', 'bytes32', 'uint256'],
+        [
+          sourceChainID,
+          await ethers.zeroPadValue(sourceChainProver, 32),
+          (await metaProver.DEFAULT_GAS_LIMIT()) + BigInt(1),
+        ],
+      )
+
+      // Before sendProof, make sure the router hasn't been called
+      expect(await testRouter.dispatched()).to.be.false
+
+      await expect(
+        metaProver.connect(owner).prove(
+          solver.address,
+          sourceChainID,
+          intentHashes,
+          claimants,
+          data,
+          { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
+        ),
+      )
+        .to.emit(metaProver, 'BatchSent')
+        .withArgs(intentHashes[0], sourceChainID)
+
+      // Verify the router was called with correct parameters
+      expect(await testRouter.dispatched()).to.be.true
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.gasLimit()).to.eq(
+        (await metaProver.DEFAULT_GAS_LIMIT()) + BigInt(1),
+      )
 
       // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
       const expectedRecipientBytes32 = ethers.zeroPadValue(
