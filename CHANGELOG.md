@@ -1,9 +1,8 @@
 ## [2.0.5](https://github.com/eco/eco-routes/compare/v2.0.4...v2.0.5) (2025-05-13)
 
-
 ### Bug Fixes
 
-* delete file for results between runs ([cf263c1](https://github.com/eco/eco-routes/commit/cf263c155dade5a6017dcde815f6cf0de47d0140))
+- delete file for results between runs ([cf263c1](https://github.com/eco/eco-routes/commit/cf263c155dade5a6017dcde815f6cf0de47d0140))
 
 ## [2.0.4](https://github.com/eco/eco-routes/compare/v2.0.3...v2.0.4) (2025-05-13)
 
