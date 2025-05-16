@@ -29,6 +29,7 @@ contract TestMetaRouter {
     uint32 public destinationDomain;
     bytes32 public recipientAddress;
     bytes public messageBody;
+    uint256 public gasLimit;
 
     // Event emitted when a message is dispatched
     event MessageDispatched(
@@ -55,13 +56,14 @@ contract TestMetaRouter {
         ReadOperation[] calldata /* _operations */,
         bytes calldata _message,
         FinalityState /* _finality */,
-        uint256 /* _gasLimit */
+        uint256 _gasLimit
     ) external payable returns (bytes32 messageId) {
         // Store the message details for test verification
         dispatched = true;
         destinationDomain = _destinationDomain;
         recipientAddress = _recipient;
         messageBody = _message;
+        gasLimit = _gasLimit;
 
         // Generate a fake message ID for testing
         messageId = keccak256(
