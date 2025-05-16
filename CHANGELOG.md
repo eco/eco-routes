@@ -1,3 +1,12 @@
+## [2.0.6](https://github.com/eco/eco-routes/compare/v2.0.5...v2.0.6) (2025-05-16)
+
+
+### Bug Fixes
+
+* changelog ([7f2c360](https://github.com/eco/eco-routes/commit/7f2c360a8e945325459d4b981fd8cdb5ba813573))
+* deploy metaprover bytecode for that contract ([480e9c8](https://github.com/eco/eco-routes/commit/480e9c8951e3f63bb8fe6d37252c825edf78e625))
+* linter ([0ecc23a](https://github.com/eco/eco-routes/commit/0ecc23a54c8a490837c2ac69d5ed6dcc6d347097))
+
 ## [2.0.5](https://github.com/eco/eco-routes/compare/v2.0.4...v2.0.5) (2025-05-13)
 
 ### Bug Fixes
