@@ -1,3 +1,13 @@
+## [2.0.6](https://github.com/eco/eco-routes/compare/v2.0.5...v2.0.6) (2025-05-19)
+
+
+### Bug Fixes
+
+* changelog ([7f2c360](https://github.com/eco/eco-routes/commit/7f2c360a8e945325459d4b981fd8cdb5ba813573))
+* deploy metaprover bytecode for that contract ([480e9c8](https://github.com/eco/eco-routes/commit/480e9c8951e3f63bb8fe6d37252c825edf78e625))
+* linter ([0ecc23a](https://github.com/eco/eco-routes/commit/0ecc23a54c8a490837c2ac69d5ed6dcc6d347097))
+* merge aws config pull with release, and fix the scripts that read the env variable ([97c7905](https://github.com/eco/eco-routes/commit/97c7905b7bb479a891836615affa59d01a338498))
+
 ## [2.1.3](https://github.com/eco/eco-routes/compare/v2.1.2...v2.1.3) (2025-05-19)
 
 
