@@ -233,6 +233,7 @@ Parameters:
 
 Here are some of the things a prospective solver should do before fulfilling an intent:
 
+- Use multi-call to avoid your transaction being frontrun and your approved funds being stolen.
 - Check that the intent is funded: this can be verified by calling isIntentFunded on the IntentSource.
 - Verify the prover address provided in the intent: fulfilling an intent with a bad prover will result in loss of funds. Eco maintains a list of provers deployed by the team - use other provers at your own risk.
 - Check the intent's expiry time - intents that are not proven by the time they expire can have their rewards clawed back by their creator, regardless of if they are fulfilled. Build in a buffer that corresponds to the prover being used.
