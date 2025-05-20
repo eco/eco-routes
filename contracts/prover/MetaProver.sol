@@ -12,6 +12,7 @@ import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRo
 /**
  * @title MetaProver
  * @notice Prover implementation using Caldera Metalayer's cross-chain messaging system
+ * @notice the terms "source" and "destination" are used in reference to a given intent: created on source chain, fulfilled on destination chain
  * @dev Processes proof messages from Metalayer router and records proven intents
  */
 contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
@@ -48,8 +49,9 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Handles incoming Metalayer messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
-     * @param _origin Origin chain ID from the source chain
-     * @param _sender Address that dispatched the message on source chain
+     * @dev called by the Hyperlane mailbox on the source chain
+     * @param _origin Origin chain ID from the destination chain
+     * @param _sender Address that dispatched the message on destination chain
      * @param _message Encoded array of intent hashes and claimants
      */
     function handle(
@@ -75,6 +77,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Initiates proving of intents via Metalayer
      * @dev Sends message to source chain prover with intent data
+     * @dev called by the Inbox contract on the destination chain
      * @param _sender Address that initiated the proving request
      * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
@@ -94,14 +97,14 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         _validateProvingRequest(msg.sender);
 
         // Decode source chain prover address only once
-        (uint32 domain, bytes32 sourceChainProver) = abi.decode(
+        (uint32 sourceChainDomain, bytes32 sourceChainProver) = abi.decode(
             _data,
             (uint32, bytes32)
         );
 
         // Calculate fee with pre-decoded value
         uint256 fee = _fetchFee(
-            domain,
+            sourceChainDomain,
             _intentHashes,
             _claimants,
             sourceChainProver
@@ -142,7 +145,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
         // Call Metalayer router's send message function
         IMetalayerRouter(ROUTER).dispatch{value: fee}(
-            domain,
+            sourceChainDomain,
             recipient,
             new ReadOperation[](0),
             message,
@@ -157,6 +160,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Fetches fee required for message dispatch
      * @dev Queries Metalayer router for fee information
+     * @dev the terms "source" and "destination" are used in reference to the intent: created on source chain, fulfilled on destination chain
      * @param _sourceChainDomain Domain of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
@@ -184,14 +188,14 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Internal function to calculate fee with pre-decoded data
-     * @param _domain domain of source chain
+     * @param _sourceChainDomain domain of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _sourceChainProver Pre-decoded prover address on source chain
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint32 _domain,
+        uint32 _sourceChainDomain,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes32 _sourceChainProver
@@ -203,7 +207,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         );
 
         return
-            IMetalayerRouter(ROUTER).quoteDispatch(_domain, recipient, message);
+            IMetalayerRouter(ROUTER).quoteDispatch(_sourceChainDomain, recipient, message);
     }
 
     /**

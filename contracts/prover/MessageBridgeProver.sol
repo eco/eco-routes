@@ -9,6 +9,7 @@ import {Whitelist} from "../tools/Whitelist.sol";
 /**
  * @title MessageBridgeProver
  * @notice Abstract contract for cross-chain message-based proving mechanisms
+ * @notice the terms "source" and "destination" are used in reference to a given intent: created on source chain, fulfilled on destination chain
  * @dev Extends BaseProver with functionality for message bridge provers like Hyperlane and Metalayer
  */
 abstract contract MessageBridgeProver is
@@ -83,12 +84,12 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * param _sourceChainId Chain ID of the source chain (not used for whitelist validation)
-     * @param _messageSender Address that dispatched the message on source chain
+     * @param _destinationChainID Chain ID of the destination chain
+     * @param _messageSender Address that dispatched the message on destination chain
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 /* _sourceChainId */,
+        uint256 _destinationChainID,
         address _messageSender,
         bytes calldata _message
     ) internal {

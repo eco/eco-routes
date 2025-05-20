@@ -11,6 +11,7 @@ import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfa
 /**
  * @title HyperProver
  * @notice Prover implementation using Hyperlane's cross-chain messaging system
+ * @notice the terms "source" and "destination" are used in reference to a given intent: created on source chain, fulfilled on destination chain
  * @dev Processes proof messages from Hyperlane mailbox and records proven intents
  */
 contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
@@ -21,7 +22,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Only contains fields decoded from the _data parameter
      */
     struct UnpackedData {
-        uint32 sourceChainDomain; // more often than not this is the source chain ID
+        uint32 sourceChainDomain; // more often than not this is the source chain ID, but not always
         bytes32 sourceChainProver; // Address of prover on source chain
         bytes metadata; // Metadata for Hyperlane message
         address hookAddr; // Address of post-dispatch hook
@@ -53,9 +54,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Handles incoming Hyperlane messages containing proof data
+     * @dev called by the Hyperlane mailbox on the source chain
      * @dev Processes batch updates to proven intents from valid sources
-     * @param _origin Origin chain ID from the source chain
-     * @param _sender Address that dispatched the message on source chain
+     * @param _origin DomainID of the destination chain
+     * @param _sender Address that dispatched the message on destination chain
      * @param _messageBody Encoded array of intent hashes and claimants
      */
     function handle(
@@ -79,6 +81,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Initiates proving of intents via Hyperlane
      * @dev Sends message to source chain prover with intent data
+     * @dev called by the Inbox contract on the destination chain
      * @param _sender Address that initiated the proving request
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
@@ -196,14 +199,14 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Internal function to calculate the fee with pre-decoded data
-     * @param _destinationDomain Domain of the source chain
+     * @param _sourceChainDomain Domain of the source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param unpacked Struct containing decoded data from _data parameter
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint32 _destinationDomain,
+        uint32 _sourceChainDomain,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         UnpackedData memory unpacked
@@ -219,7 +222,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Query Hyperlane mailbox for accurate fee estimate
         return
             IMailbox(MAILBOX).quoteDispatch(
-                _destinationDomain,
+                _sourceChainDomain,
                 recipientAddress,
                 messageBody,
                 metadata,
