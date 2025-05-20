@@ -1,3 +1,12 @@
+## [1.6.2](https://github.com/eco/eco-routes/compare/v1.6.1...v1.6.2) (2025-05-20)
+
+
+### Bug Fixes
+
+* **config:** update foundry.toml with correct optimizer setting and solc version ([#222](https://github.com/eco/eco-routes/issues/222)) ([4895078](https://github.com/eco/eco-routes/commit/48950783fe5afa632ab790a0f66ed061e569c416))
+* **IntentSource:** check funders balance ([#208](https://github.com/eco/eco-routes/issues/208)) ([d797854](https://github.com/eco/eco-routes/commit/d79785448e6aa905c49d5c75252df3dd51daead4))
+* **IntentSource:** emit IntentPartiallyFunded ([#204](https://github.com/eco/eco-routes/issues/204)) ([726cf85](https://github.com/eco/eco-routes/commit/726cf851c66a21770d05441768178f556a818eab))
+
 ## [2.1.8](https://github.com/eco/eco-routes/compare/v2.1.7...v2.1.8) (2025-05-20)
 
 
