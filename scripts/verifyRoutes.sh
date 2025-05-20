@@ -22,6 +22,7 @@
 # CSV format expected:
 # ChainID,ContractAddress,ContractPath,ContractArguments
 
+
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils/load_env.sh"
