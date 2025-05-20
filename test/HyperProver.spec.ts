@@ -565,7 +565,7 @@ describe('HyperProver Test', (): void => {
       // Prepare message data
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'], ///chainid for uint32
+        ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),
           metadata,
