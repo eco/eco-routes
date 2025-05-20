@@ -1,4 +1,4 @@
-## [2.1.4](https://github.com/eco/eco-routes/compare/v2.0.5...22a9b9cb24527de3b5abb1f8d4779d0a674a776a) (2025-05-19)
+## [2.1.4](https://github.com/eco/eco-routes/compare/v2.0.5...v2.1.4) (2025-05-19)
 
 ### Feature
 - update verification github actions
