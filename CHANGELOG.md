@@ -1,4 +1,4 @@
-# [2.1.0](https://github.com/eco/eco-routes/compare/v2.0.5...v2.1.0) (2025-05-20)
+# [2.1.0](https://github.com/eco/eco-routes/compare/v2.0.5...v2.1.5) (2025-05-20)
 
 
 ### Bug Fixes
