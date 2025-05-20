@@ -226,17 +226,18 @@ Parameters:
 - `_route` (Route) The route of the intent
 - `_rewardHash` (bytes32) The hash of the reward details
 - `_claimant` (address) The address that will receive the reward on the source chain
-- `_expectedHash` (bytes32) The hash of the intent as created on the source chain 
+- `_expectedHash` (bytes32) The hash of the intent as created on the source chain
 - `_localProver` (address) The prover contract to use for verification
 
-<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - this can be perilous. The Inbox will be the msg.sender for these calls. 
+<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - this can be perilous. The Inbox will be the msg.sender for these calls.
 
-Here are some of the things a prospective solver should do before fulfilling an intent: 
+Here are some of the things a prospective solver should do before fulfilling an intent:
+
 - Check that the intent is funded: this can be verified by calling isIntentFunded on the IntentSource.
 - Verify the prover address provided in the intent: fulfilling an intent with a bad prover will result in loss of funds. Eco maintains a list of provers deployed by the team - use other provers at your own risk.
-- Check the intent's expiry time - intents that are not proven by the time they expire can have their rewards clawed back by their creator, regardless of if they are fulfilled. Build in a buffer that corresponds to the prover being used. 
+- Check the intent's expiry time - intents that are not proven by the time they expire can have their rewards clawed back by their creator, regardless of if they are fulfilled. Build in a buffer that corresponds to the prover being used.
 - Check that the intent is profitable - there is no internal check for this, it is on the solver to ensure that outputs are greater than inputs + gas cost of fulfillment
-- Go through the calls to ensure they aren't doing anything unexpected / won't fail and waste gas. Consider using a simulator. Avoid approving unnecessary funds to the Inbox. 
+- Go through the calls to ensure they aren't doing anything unexpected / won't fail and waste gas. Consider using a simulator. Avoid approving unnecessary funds to the Inbox.
 
 This is not a complete list. Exercise caution and vigilance.
 
@@ -265,6 +266,10 @@ Parameters:
 - `_data` (bytes) Additional data for message formatting
 
 <ins>Security:</ins> This method verifies that the intents have been fulfilled before attempting to prove them. It delegates the actual proving work to the specified prover contract.
+
+**The address of the localProver may not be the same as the prover address in the intent itself. See Eco's prover documentation to find the destination chain prover that corresponds to the source chain prover found in the intent.**
+
+Read the prover contract to see the data expected in the \_data field and how it should be formatted. It should be noted that initiateProving can be called multiple times for the same intent, so mistakes can be rectified by simply calling it again with the proper arguments.
 
 ## Prover Architecture
 
@@ -319,10 +324,10 @@ A concrete implementation of MessageBridgeProver that uses Hyperlane for cross-c
 Parameters:
 
 - `_origin` (uint32) Origin chain ID from the source chain
-- `_sender` (bytes32) Address that dispatched the message on source chain 
+- `_sender` (bytes32) Address that dispatched the message on source chain
 - `_messageBody` (bytes) Encoded array of intent hashes and claimants
 
-<ins>Security:</ins> This method is public but there are checks in place to ensure that it reverts unless msg.sender is the local hyperlane mailbox and _sender is the destination chain's inbox. This method has direct write access to the provenIntents mapping and, therefore, gates access to the rewards for hyperproven intents.
+<ins>Security:</ins> This method is public but there are checks in place to ensure that it reverts unless msg.sender is the local hyperlane mailbox and \_sender is the destination chain's inbox. This method has direct write access to the provenIntents mapping and, therefore, gates access to the rewards for hyperproven intents.
 
 <h4><ins>prove</ins></h4>
 <h5>Initiates proving of intents via Hyperlane</h5>
