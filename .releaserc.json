@@ -1,8 +1,7 @@
 {
   "branches": [
-    "main",
     {
-      "name": "semantic-release",
+      "name": "main",
       "channel": "beta"
     },
     {
@@ -11,21 +10,44 @@
     }
   ],
   "repositoryUrl": "git@github.com:eco/eco-routes.git",
-  "plugins": [
+  "tagFormat": "v${version}-${Date.now()}",
+  "plugins": 
     [
       "@semantic-release/commit-analyzer",
       {
         "preset": "angular",
         "releaseRules": [
-          { "type": "docs", "scope": "README", "release": "patch" },
-          { "type": "chain", "release": "patch" },
-          { "type": "fix", "release": "patch" },
-          { "type": "perf", "release": "patch" },
-          { "type": "feat", "release": "minor" },
-          { "type": "breaking", "release": "major" }
+          {
+            "type": "docs",
+            "scope": "README",
+            "release": "patch"
+          },
+          {
+            "type": "chain",
+            "release": "patch"
+          },
+          {
+            "type": "fix",
+            "release": "patch"
+          },
+          {
+            "type": "perf",
+            "release": "patch"
+          },
+          {
+            "type": "feat",
+            "release": "minor"
+          },
+          {
+            "type": "breaking",
+            "release": "major"
+          }
         ],
         "parserOpts": {
-          "noteKeywords": ["BREAKING CHANGE", "BREAKING CHANGES"]
+          "noteKeywords": [
+            "BREAKING CHANGE",
+            "BREAKING CHANGES"
+          ]
         }
       }
     ],
