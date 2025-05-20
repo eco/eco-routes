@@ -1,3 +1,10 @@
+## [2.1.7](https://github.com/eco/eco-routes/compare/v2.1.6...v2.1.7) (2025-05-20)
+
+
+### Bug Fixes
+
+* remove semantic changelog file from prettier ([f8b9faa](https://github.com/eco/eco-routes/commit/f8b9faa6263c48c8bea2e60bbd493c44d5b00815))
+
 ## [2.1.6](https://github.com/eco/eco-routes/compare/v2.1.5...v2.1.6) (2025-05-20)
 
 
