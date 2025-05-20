@@ -17,7 +17,7 @@ import {
   encodeIntent,
 } from '../utils/intent'
 
-describe.only('Destination Settler Test', (): void => {
+describe('Destination Settler Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
   let owner: SignerWithAddress
