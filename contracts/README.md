@@ -1,6 +1,6 @@
 # API Documentation
 
-Type references can be found in the [types directory](/types).
+Type references can be found in the [types directory](./types).
 
 ## IntentSource
 
