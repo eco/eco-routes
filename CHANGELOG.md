@@ -1,3 +1,10 @@
+## [2.1.10](https://github.com/eco/eco-routes/compare/v2.1.9...v2.1.10) (2025-05-20)
+
+
+### Bug Fixes
+
+* update to 2.1.9 for beta branch ([ff0ef95](https://github.com/eco/eco-routes/commit/ff0ef95f9857209a3755ad875b9d00bd182ee8c0))
+
 ## [2.1.9](https://github.com/eco/eco-routes/compare/v2.1.7...66531ff844339087beaf8be07f6958268278120c) (2025-05-20)
 
 
