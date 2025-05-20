@@ -50,7 +50,7 @@ contract IntentSource is IIntentSource, Semver {
     }
 
     /**
-     * @notice Retrieves the permitContact address funding an intent
+     * @notice Retrieves the permitContract address funding an intent
      */
     function getPermitContract(
         bytes32 intentHash
@@ -158,7 +158,7 @@ contract IntentSource is IIntentSource, Semver {
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param funder Address to fund the intent from
-     * @param permitContact Address of the permitContact instance
+     * @param permitContract Address of the permitContract instance
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the funded intent
      */
@@ -166,7 +166,7 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 routeHash,
         Reward calldata reward,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external returns (bytes32 intentHash) {
         bytes32 rewardHash = keccak256(abi.encode(reward));
@@ -182,7 +182,7 @@ contract IntentSource is IIntentSource, Semver {
             routeHash,
             vault,
             funder,
-            permitContact,
+            permitContract,
             allowPartial
         );
     }
@@ -191,14 +191,14 @@ contract IntentSource is IIntentSource, Semver {
      * @notice Creates and funds an intent using permit/allowance
      * @param intent The complete intent struct
      * @param funder Address to fund the intent from
-     * @param permitContact Address of the permitContact instance
+     * @param permitContract Address of the permitContract instance
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
      */
     function publishAndFundFor(
         Intent calldata intent,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external returns (bytes32 intentHash) {
         bytes32 routeHash;
@@ -221,7 +221,7 @@ contract IntentSource is IIntentSource, Semver {
             routeHash,
             vault,
             funder,
-            permitContact,
+            permitContract,
             allowPartial
         );
     }
@@ -660,7 +660,7 @@ contract IntentSource is IIntentSource, Semver {
         bytes32 routeHash,
         address vault,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) internal {
         _disableNativeReward(reward, vault, intentHash);
@@ -674,11 +674,11 @@ contract IntentSource is IIntentSource, Semver {
 
         state.mode = uint8(VaultMode.Fund);
         state.allowPartialFunding = allowPartial ? 1 : 0;
-        state.usePermit = permitContact != address(0) ? 1 : 0;
+        state.usePermit = permitContract != address(0) ? 1 : 0;
         state.target = funder;
 
-        if (permitContact != address(0)) {
-            vaults[intentHash].permitContract = permitContact;
+        if (permitContract != address(0)) {
+            vaults[intentHash].permitContract = permitContract;
         }
 
         vaults[intentHash].state = state;
