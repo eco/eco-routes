@@ -104,7 +104,13 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         hashes[0] = _expectedHash;
         claimants[0] = _claimant;
 
-        initiateProving(_route.source, hashes, _localProver, _data);
+        initiateProving(
+            _route.source,
+            _route.destination,
+            hashes,
+            _localProver,
+            _data
+        );
         return result;
     }
 
@@ -112,12 +118,14 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
      * @param _sourceChainId Chain ID of the source chain
+     * @param _destinationChainId Chain ID of the destination chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _localProver Address of prover on the destination chain
      * @param _data Additional data for message formatting
      */
     function initiateProving(
         uint256 _sourceChainId,
+        uint256 _destinationChainId,
         bytes32[] memory _intentHashes,
         address _localProver,
         bytes memory _data
@@ -139,6 +147,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         IProver(_localProver).prove{value: address(this).balance}(
             msg.sender,
             _sourceChainId,
+            _destinationChainId,
             _intentHashes,
             claimants,
             _data

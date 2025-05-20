@@ -133,7 +133,7 @@ Parameters:
 - `routeHash` (bytes32) The hash of the intent's route component
 - `reward` (Reward) Reward structure containing distribution details
 - `funder` (address) Address to fund the intent from
-- `permitContact` (address) Address of the permitContact instance
+- `permitContract` (address) Address of the permitContract instance
 - `allowPartial` (bool) Whether to allow partial funding
 
 <ins>Security:</ins> This method will fail if allowPartial is false but incomplete funding is provided. Additionally, this method cannot be called for intents with nonzero native rewards.
@@ -145,7 +145,7 @@ Parameters:
 
 - `intent` (Intent) The complete intent specification
 - `funder` (address) Address to fund the intent from
-- `permitContact` (address) Address of the permitContact instance
+- `permitContract` (address) Address of the permitContract instance
 - `allowPartial` (bool) Whether to allow partial funding
 
 <ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
@@ -202,7 +202,7 @@ Parameters:
 
 ## Inbox (Inbox.sol)
 
-The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains post-fulfillment proving-related logic and implements ERC-7683 compatibility through inheritance.
+The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. It implements ERC-7683 compatibility through inheritance. Lastly, the Inbox is also responsible for initiating proving on the destination side. It does not contain proving-specific logic, but is expected to be the caller to the methods on the prover that contains that logic.
 
 ### Events
 
@@ -254,7 +254,7 @@ Parameters:
 - `_localProver` (address) Address of prover on the destination chain
 - `_data` (bytes) Additional data for message formatting
 
-<ins>Security:</ins> This method inherits all the security features of the fulfill method. It also initiates the proving process in the same transaction, which helps ensure the intent is properly proven on the source chain.
+<ins>Security:</ins> This method inherits all the security features of the fulfill and initiateProving methods.
 
 <h4><ins>initiateProving</ins></h4>
 <h5>Initiates proving process for fulfilled intents</h5>

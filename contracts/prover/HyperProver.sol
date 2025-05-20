@@ -83,6 +83,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Sends message to source chain prover with intent data
      * @param _sender Address that initiated the proving request
      * @param _sourceChainId Chain ID of the source chain
+     * @param _destinationChainId Chain ID of the destination chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data used for proving.
@@ -93,6 +94,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function prove(
         address _sender,
         uint256 _sourceChainId,
+        uint256 _destinationChainId,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes calldata _data
