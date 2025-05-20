@@ -1,3 +1,10 @@
+## [2.1.12](https://github.com/eco/eco-routes/compare/v2.1.11...v2.1.12) (2025-05-20)
+
+
+### Bug Fixes
+
+* update default to beta ([23ad7c3](https://github.com/eco/eco-routes/commit/23ad7c3be4de7b5e2b5070040687bfdf034819cb))
+
 ## [2.1.11](https://github.com/eco/eco-routes/compare/v2.1.10...v2.1.11) (2025-05-20)
 
 
