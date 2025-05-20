@@ -54,11 +54,6 @@ interface IMessageBridgeProver is IProver {
     error InboxCannotBeZeroAddress();
 
     /**
-     * @notice Prover address cannot be zero
-     */
-    error ProverCannotBeZeroAddress();
-
-    /**
      * @notice Invalid chain ID for the origin
      */
     error InvalidOriginChainId();
