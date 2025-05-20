@@ -157,7 +157,7 @@ Parameters:
 
 - `intent` (Intent) Intent to validate
 
-<ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
+<ins>Security:</ins> Returns false if intent is not completely funded
 
 <h4><ins>withdrawRewards</ins></h4>
 <h5>Claims rewards for a successfully fulfilled and proven intent</h5>
@@ -229,7 +229,16 @@ Parameters:
 - `_expectedHash` (bytes32) The hash of the intent as created on the source chain 
 - `_localProver` (address) The prover contract to use for verification
 
-<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - it is important that the caller be aware of what they are executing. The Inbox will be the msg.sender for these calls.
+<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - this can be perilous. The Inbox will be the msg.sender for these calls. 
+
+Here are some of the things a prospective solver should do before fulfilling an intent: 
+- Check that the intent is funded: this can be verified by calling isIntentFunded on the IntentSource.
+- Verify the prover address provided in the intent: fulfilling an intent with a bad prover will result in loss of funds. Eco maintains a list of provers deployed by the team - use other provers at your own risk.
+- Check the intent's expiry time - intents that are not proven by the time they expire can have their rewards clawed back by their creator, regardless of if they are fulfilled. Build in a buffer that corresponds to the prover being used. 
+- Check that the intent is profitable - there is no internal check for this, it is on the solver to ensure that outputs are greater than inputs + gas cost of fulfillment
+- Go through the calls to ensure they aren't doing anything unexpected / won't fail and waste gas. Consider using a simulator. Avoid approving unnecessary funds to the Inbox. 
+
+This is not a complete list. Exercise caution and vigilance.
 
 <h4><ins>fulfillAndProve</ins></h4>
 <h5>Fulfills an intent and initiates proving in one transaction</h5>
