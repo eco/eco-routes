@@ -1,5 +1,6 @@
 import { Hex, keccak256, toHex } from 'viem'
 import { Logger } from '../semantic-release/helpers'
+import { ENV_VARS } from '../semantic-release/constants'
 
 /**
  * Determine salts for deployment based on version
@@ -13,10 +14,12 @@ export async function determineSalts(
 ): Promise<{ rootSalt: Hex; preprodRootSalt: Hex }> {
   // Extract version components
   const versionBase = getBaseVersion(version, logger)
-
+  const optionalSalt = process.env[ENV_VARS.SALT_OPTIONAL] || ''
   // major/minor version - calculate fresh salt
-  logger.log(`major/minor version (${versionBase}), calculating salt`)
-  const rootSalt = keccak256(toHex(versionBase))
+  logger.log(
+    `major/minor version (${versionBase}) with optional salt (${optionalSalt}), calculating salt`,
+  )
+  const rootSalt = keccak256(toHex(versionBase + optionalSalt))
   const preprodRootSalt = keccak256(toHex(`${versionBase}-preprod`))
 
   logger.log(`Using salt for production: ${rootSalt}`)
