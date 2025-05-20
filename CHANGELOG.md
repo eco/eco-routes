@@ -1,3 +1,10 @@
+## [2.1.8](https://github.com/eco/eco-routes/compare/v2.1.7...v2.1.8) (2025-05-20)
+
+
+### Bug Fixes
+
+* tests ([31be625](https://github.com/eco/eco-routes/commit/31be6250692c945049687c17ac72e1ea8badf5bb))
+
 ## [2.1.7](https://github.com/eco/eco-routes/compare/v2.1.6...v2.1.7) (2025-05-20)
 
 
