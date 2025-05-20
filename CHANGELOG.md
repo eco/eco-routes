@@ -1,3 +1,10 @@
+## [2.1.11](https://github.com/eco/eco-routes/compare/v2.1.10...v2.1.11) (2025-05-20)
+
+
+### Bug Fixes
+
+* adding optional salt to deploy salt generation ([208aa24](https://github.com/eco/eco-routes/commit/208aa24d1648befca90145a92ca9635bd2508ed0))
+
 ## [2.1.10](https://github.com/eco/eco-routes/compare/v2.1.9...v2.1.10) (2025-05-20)
 
 
