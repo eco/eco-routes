@@ -7,9 +7,7 @@ name: Release
 on:
   push:
     branches:
-      - main
-      - semantic-release
-      - clean-semantic-release
+      - beta
   repository_dispatch:
     types: [manual-release-trigger]
 
