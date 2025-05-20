@@ -3,11 +3,10 @@ pragma solidity ^0.8.26;
 
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IProver} from "./interfaces/IProver.sol";
 import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 
 import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
@@ -100,9 +99,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
-        claimants[0] = _claimant;
 
         initiateProving(
             _route.source,

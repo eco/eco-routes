@@ -41,14 +41,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _mailbox Address of local Hyperlane mailbox
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted prover addresses
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _mailbox,
         address _inbox,
-        address[] memory _provers,
-        uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+        address[] memory _provers
+    ) MessageBridgeProver(_inbox, _provers, 0) {
         if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
         MAILBOX = _mailbox;
     }
@@ -125,19 +123,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         }
 
         emit BatchSent(_intentHashes, _sourceChainId);
-
-        // Decode any additional gas limit data from the _data parameter
-        uint256 gasLimit = DEFAULT_GAS_LIMIT;
-
-        // For Hyperlane, we expect data to include sourceChainProver(32) + metadata(var) + hookAddr(20)
-        // If data is long enough, the gas limit is packed at position 32-64
-        if (_data.length >= 96) {
-            // At least enough bytes for all required fields plus gas limit
-            uint256 customGasLimit = uint256(bytes32(_data[64:96]));
-            if (customGasLimit > 0) {
-                gasLimit = customGasLimit;
-            }
-        }
 
         // Declare dispatch parameters for cross-chain message delivery
         bytes32 recipientAddress;
