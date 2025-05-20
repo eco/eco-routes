@@ -92,7 +92,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint256 /* _sourceChainId */,
+        uint32 /* _sourceChainId */,
         bytes32[] calldata /* _intentHashes */,
         address[] calldata /* _claimants */,
         bytes calldata /* _data */

@@ -21,6 +21,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Only contains fields decoded from the _data parameter
      */
     struct UnpackedData {
+        uint32 sourceChainDomain; // more often than not this is the source chain ID
         bytes32 sourceChainProver; // Address of prover on source chain
         bytes metadata; // Metadata for Hyperlane message
         address hookAddr; // Address of post-dispatch hook
@@ -40,14 +41,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _mailbox Address of local Hyperlane mailbox
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted prover addresses
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _mailbox,
         address _inbox,
-        address[] memory _provers,
-        uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+        address[] memory _provers
+    ) MessageBridgeProver(_inbox, _provers, 0) {
         if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
         MAILBOX = _mailbox;
     }
@@ -84,7 +83,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @param _data Additional data used for proving.
+     * @dev the _data parameter is expected to contain data that will unpack into the UnpackedData struct
+     * @dev The first 32 bytes of _data should be the sourceChainDomain, followed by the sourceChainProver address
+     * @dev The next bytes should be the metadata, and the last 20 bytes should be the hookAddr
      */
     function prove(
         address _sender,
@@ -101,7 +103,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Calculate fee
         uint256 fee = _fetchFee(
-            _sourceChainId,
+            unpacked.sourceChainDomain,
             _intentHashes,
             _claimants,
             unpacked
@@ -120,21 +122,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         emit BatchSent(_intentHashes, _sourceChainId);
 
-        // Decode any additional gas limit data from the _data parameter
-        uint256 gasLimit = DEFAULT_GAS_LIMIT;
-
-        // For Hyperlane, we expect data to include sourceChainProver(32) + metadata(var) + hookAddr(20)
-        // If data is long enough, the gas limit is packed at position 32-64
-        if (_data.length >= 96) {
-            // At least enough bytes for all required fields plus gas limit
-            uint256 customGasLimit = uint256(bytes32(_data[64:96]));
-            if (customGasLimit > 0) {
-                gasLimit = customGasLimit;
-            }
-        }
-
         // Declare dispatch parameters for cross-chain message delivery
-        uint32 destinationDomain;
         bytes32 recipientAddress;
         bytes memory messageBody;
         bytes memory metadata;
@@ -142,23 +130,17 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Prepare parameters for cross-chain message dispatch
         (
-            destinationDomain,
             recipientAddress,
             messageBody,
             metadata,
             hook
-        ) = _formatHyperlaneMessage(
-            _sourceChainId,
-            _intentHashes,
-            _claimants,
-            unpacked
-        );
+        ) = _formatHyperlaneMessage(_intentHashes, _claimants, unpacked);
 
         // Send the message through Hyperlane mailbox using local variables
         // Note: Some Hyperlane versions have different dispatch signatures.
         // This matches the expected signature for testing.
         IMailbox(MAILBOX).dispatch{value: fee}(
-            destinationDomain,
+            unpacked.sourceChainDomain,
             recipientAddress,
             messageBody,
             metadata,
@@ -172,14 +154,14 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Calculates the fee required for Hyperlane message dispatch
      * @dev Queries the Mailbox contract for accurate fee estimation
-     * @param _sourceChainId Chain ID of the source chain
+     * @param _sourceChainDomain Domain of the source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainId,
+        uint32 _sourceChainDomain,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes calldata _data
@@ -189,7 +171,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Process fee calculation using the decoded struct
         // This architecture separates decoding from core business logic
-        return _fetchFee(_sourceChainId, _intentHashes, _claimants, unpacked);
+        return
+            _fetchFee(_sourceChainDomain, _intentHashes, _claimants, unpacked);
     }
 
     /**
@@ -201,44 +184,42 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function _unpackData(
         bytes calldata _data
     ) internal pure returns (UnpackedData memory unpacked) {
-        (unpacked.sourceChainProver, unpacked.metadata, unpacked.hookAddr) = abi
-            .decode(_data, (bytes32, bytes, address));
+        (
+            unpacked.sourceChainDomain,
+            unpacked.sourceChainProver,
+            unpacked.metadata,
+            unpacked.hookAddr
+        ) = abi.decode(_data, (uint32, bytes32, bytes, address));
 
         return unpacked;
     }
 
     /**
      * @notice Internal function to calculate the fee with pre-decoded data
-     * @param _sourceChainId Chain ID of the source chain
+     * @param _destinationDomain Domain of the source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param unpacked Struct containing decoded data from _data parameter
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 _sourceChainId,
+        uint32 _destinationDomain,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
         (
-            uint32 destinationDomain,
             bytes32 recipientAddress,
             bytes memory messageBody,
             bytes memory metadata,
             IPostDispatchHook hook
-        ) = _formatHyperlaneMessage(
-                _sourceChainId,
-                _intentHashes,
-                _claimants,
-                unpacked
-            );
+        ) = _formatHyperlaneMessage(_intentHashes, _claimants, unpacked);
 
         // Query Hyperlane mailbox for accurate fee estimate
         return
             IMailbox(MAILBOX).quoteDispatch(
-                destinationDomain,
+                _destinationDomain,
                 recipientAddress,
                 messageBody,
                 metadata,
@@ -257,18 +238,15 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Formats data for Hyperlane message dispatch with pre-decoded values
      * @dev Prepares all parameters needed for the Mailbox dispatch call
-     * @param _sourceChainId Chain ID of the source chain
      * @param _hashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _unpacked Struct containing decoded data from _data parameter
-     * @return domain Hyperlane domain ID
      * @return recipient Recipient address encoded as bytes32
      * @return message Encoded message body with intent hashes and claimants
      * @return metadata Additional metadata for the message
      * @return hook Post-dispatch hook contract
      */
     function _formatHyperlaneMessage(
-        uint256 _sourceChainId,
         bytes32[] calldata _hashes,
         address[] calldata _claimants,
         UnpackedData memory _unpacked
@@ -276,7 +254,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         internal
         view
         returns (
-            uint32 domain,
             bytes32 recipient,
             bytes memory message,
             bytes memory metadata,
@@ -288,13 +265,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         if (_hashes.length != _claimants.length) {
             revert ArrayLengthMismatch();
         }
-
-        // Convert chain ID to Hyperlane domain ID format
-        // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_sourceChainId > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainId);
-        }
-        domain = uint32(_sourceChainId);
 
         // Use the source chain prover address as the message recipient
         recipient = _unpacked.sourceChainProver;
