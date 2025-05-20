@@ -80,7 +80,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data used for proving.
-     * @dev the _data parameter is expected to contain the sourceChain Domain (a uint32, usually the chainID) and the sourceChainProver (a bytes32)
+     * @dev the _data parameter is expected to contain the sourceChain Domain (a uint32, usually the chainID) and the sourceChainProver (a bytes32), plus an optional gas limit override
+     * @dev The gas limit override is expected to be a uint256 value, and will only be used if it is greater than the default gas limit
      */
     function prove(
         address _sender,
@@ -123,10 +124,11 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         uint256 gasLimit = DEFAULT_GAS_LIMIT;
 
         // For Metalayer, we expect data to include sourceChainProver(32 bytes)
-        // If data is long enough, the gas limit is packed at position 32-64
-        if (_data.length >= 64) {
-            uint256 customGasLimit = uint256(bytes32(_data[32:64]));
-            if (customGasLimit > 0) {
+        // If data is long enough, the gas limit is packed at position 64-96
+        // will only use custom gas limit if it is greater than the default
+        if (_data.length > 64) {
+            uint256 customGasLimit = uint256(bytes32(_data[64:96]));
+            if (customGasLimit > DEFAULT_GAS_LIMIT) {
                 gasLimit = customGasLimit;
             }
         }
