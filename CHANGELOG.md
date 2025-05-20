@@ -1,29 +1,3 @@
-## [2.1.3](https://github.com/eco/eco-routes/compare/v2.1.2...v2.1.3) (2025-05-19)
-
-### Bug Fixes
-
-- encrypt aws keys between jobs ([a21f464](https://github.com/eco/eco-routes/commit/a21f4641ee67dedcfaf11c8e5a037373c1b16a9f))
-- format payload before encryption ([8e1ccb1](https://github.com/eco/eco-routes/commit/8e1ccb1b553c0312b2c4e3d86ee73b0e92edb190))
-- the encryption now uses custom token ([a92ffb8](https://github.com/eco/eco-routes/commit/a92ffb8efa7f68a9ac0b6b4a932a7242e8320c01))
-
-## [2.1.2](https://github.com/eco/eco-routes/compare/v2.1.1...v2.1.2) (2025-05-19)
-
-### Bug Fixes
-
-- update verify script ([740426c](https://github.com/eco/eco-routes/commit/740426cf17987df143b70ef7b9a08db5ae46ac18))
-
-## [2.1.1](https://github.com/eco/eco-routes/compare/v2.1.0...v2.1.1) (2025-05-19)
-
-### Bug Fixes
-
-- add VERIFICATION_KEYS to follow on steps ([a950997](https://github.com/eco/eco-routes/commit/a9509973fa216c1142e52fb0fdef3b47050e5396))
-
-# [2.1.0](https://github.com/eco/eco-routes/compare/v2.0.6...v2.1.0) (2025-05-19)
-
-### Features
-
-- bump to 2.1 ([bc58c95](https://github.com/eco/eco-routes/commit/bc58c95a3a51df7f8d81d650bf68d8b3bebe1e62))
-
 ## [2.0.6](https://github.com/eco/eco-routes/compare/v2.0.5...v2.0.6) (2025-05-16)
 
 ### Bug Fixes
