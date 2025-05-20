@@ -1,0 +1,118 @@
+name: Release
+
+# This workflow creates a new release using semantic-release
+# It can be triggered in two ways:
+# 1. Manually via the GitHub UI with optional release type
+# 2. Automatically when commits are pushed to the main branch
+on:
+  push:
+    branches:
+      - main
+      - semantic-release
+      - clean-semantic-release
+  repository_dispatch:
+    types: [manual-release-trigger]
+
+jobs:
+  # Second job: Run semantic-release to publish new version
+  release:
+    name: Create and Publish Release
+    runs-on: ubuntu-latest
+    environment: "mainnet"
+    outputs:
+      new_version: ${{ steps.semantic-release.outputs.new_version }}
+      release_notes: ${{ steps.semantic-release.outputs.release_notes }}
+    permissions:
+      contents: write # Needed for github release
+      issues: write # Needed for issue comments
+      pull-requests: write # Needed for PR comments
+      id-token: write # Needed for npm publishing with provenance
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0 # Needed for semantic-release to generate changelogs
+          token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
+      # Set up AWS credentials using OIDC for secure authentication
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Fetch secrets from AWS Secrets Manager as a JSON string
+      # The secret will be available as an environment variable: VERIFICATION_KEYS
+      - name: Get secrets from AWS Secrets Manager
+        id: fetch-secrets
+        uses: aws-actions/aws-secretsmanager-get-secrets@v1
+        with:
+          secret-ids: |
+            VERIFICATION_KEYS, ${{ secrets.AWS_SECRET_NAME }}
+          parse-json-secrets: false # Keep as raw JSON string
+
+      # Verify that secrets were loaded successfully
+      - name: Verify secrets were loaded
+        id: check-secrets
+        run: |
+          # Check if the secret was loaded properly
+          if [ -z "$VERIFICATION_KEYS" ]; then
+            echo "Error: VERIFICATION_KEYS environment variable is empty"
+            exit 1
+          fi
+          echo "AWS Secrets loaded successfully"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "yarn"
+
+      - name: Install dependencies
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: install
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Build Project
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: build
+
+      - name: Setup npm token
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Log commit that triggered the workflow
+      - name: Display Trigger Commit
+        run: |
+          echo "Last commit message: $(git log -1 --pretty=%B)"
+          echo "Last commit author: $(git log -1 --pretty=%an)"
+          echo "Last commit date: $(git log -1 --pretty=%ad)"
+
+      # Build TypeScript files, this is for the semantic-release plugin we made
+      - name: Build TypeScript
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: tsc
+
+      # Run semantic-release with access to the AWS secrets
+      - name: Run Semantic Release
+        id: semantic-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+          CHAIN_DATA_URL: ${{ secrets.CHAIN_DATA_URL }}
+          BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
+          RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
+          VERIFICATION_KEYS: ${{ env.VERIFICATION_KEYS }}
+        run: |
+          npx semantic-release --debug
