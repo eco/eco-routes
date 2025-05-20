@@ -255,14 +255,14 @@ interface IIntentSource is ISemver, IVaultStorage {
      * @notice Creates and funds an intent on behalf of another address
      * @param intent The complete intent specification
      * @param funder The address providing the funding
-     * @param permitContract The permit contract for token approvals
+     * @param permitContact The permit contract for token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      */
     function publishAndFundFor(
         Intent calldata intent,
         address funder,
-        address permitContract,
+        address permitContact,
         bool allowPartial
     ) external returns (bytes32 intentHash);
 

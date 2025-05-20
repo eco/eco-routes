@@ -7,7 +7,7 @@ import {
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer, encodeTransferPayable } from '../utils/encode'
-import { BytesLike, AbiCoder, parseEther, keccak256 } from 'ethers'
+import { BytesLike, AbiCoder, parseEther } from 'ethers'
 import {
   hashIntent,
   Call,
@@ -160,12 +160,8 @@ describe('Destination Settler Test', (): void => {
     // approves the tokens to the settler so it can process the transaction
     await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['address', 'address', 'bytes'],
-      [
-        solver.address,
-        await prover.getAddress(),
-        keccak256(await prover.getAddress()), //doesnt matter, just bytes
-      ],
+      ['address', 'bytes'],
+      [solver.address, await prover.getAddress()],
     )
     expect(
       await inbox
@@ -177,12 +173,7 @@ describe('Destination Settler Test', (): void => {
       .to.emit(inbox, 'OrderFilled')
       .withArgs(intentHash, solver.address)
       .and.to.emit(inbox, 'Fulfillment')
-      .withArgs(
-        intentHash,
-        route.source,
-        await prover.getAddress(),
-        solver.address,
-      )
+      .withArgs(intentHash, route.source, solver.address)
 
     expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })
