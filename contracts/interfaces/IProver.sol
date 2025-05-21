@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
-
+import {Intent, MinimalRoute, Call, TokenAmount} from "../types/Intent.sol";
 /**
  * @title IProver
  * @notice Interface for proving intent fulfillment
@@ -47,7 +47,8 @@ interface IProver is ISemver {
     function prove(
         address _sender,
         uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
+        MinimalRoute[] calldata _minimalRoutes,
+        bytes32[] calldata _rewardHashes,
         address[] calldata _claimants,
         bytes calldata _data
     ) external payable;

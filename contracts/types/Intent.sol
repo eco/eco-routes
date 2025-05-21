@@ -45,6 +45,12 @@ struct Route {
     Call[] calls;
 }
 
+struct MinimalRoute {
+    bytes32 salt;
+    TokenAmount[] tokens;
+    Call[] calls;
+}
+
 /**
  * @notice Defines the reward and validation parameters for cross-chain execution
  * @dev Specifies who can execute the intent and what rewards they receive

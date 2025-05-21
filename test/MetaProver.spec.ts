@@ -315,20 +315,20 @@ describe('MetaProver Test', (): void => {
 
     it('should revert on underpayment', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -338,7 +338,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver.connect(owner).prove(
           solver.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -349,13 +349,13 @@ describe('MetaProver Test', (): void => {
 
     it('should correctly call dispatch in the sendProof method', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Before sendProof, make sure the router hasn't been called
@@ -364,7 +364,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver.connect(owner).prove(
           solver.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -372,11 +372,11 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(metaProver, 'BatchSent')
-        .withArgs(intentHashes[0], sourceChainID)
+        .withArgs(intentHashes[0], sourceChainId)
 
       // Verify the router was called with correct parameters
       expect(await testRouter.dispatched()).to.be.true
-      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainId)
 
       // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
       const expectedRecipientBytes32 = ethers.zeroPadValue(
@@ -400,8 +400,8 @@ describe('MetaProver Test', (): void => {
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [123, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       await expect(
@@ -414,18 +414,18 @@ describe('MetaProver Test', (): void => {
     })
 
     it('should correctly get fee via fetchFee', async () => {
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Call fetchFee
       const fee = await metaProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -437,13 +437,13 @@ describe('MetaProver Test', (): void => {
 
     it('should correctly call dispatch in the sendProof method with no gas parameter', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Before sendProof, make sure the router hasn't been called
@@ -452,7 +452,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver.connect(owner).prove(
           solver.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -460,11 +460,11 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(metaProver, 'BatchSent')
-        .withArgs(intentHashes[0], sourceChainID)
+        .withArgs(intentHashes[0], sourceChainId)
 
       // Verify the router was called with correct parameters
       expect(await testRouter.dispatched()).to.be.true
-      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainId)
       expect(await testRouter.gasLimit()).to.eq(
         await metaProver.DEFAULT_GAS_LIMIT(),
       )
@@ -492,9 +492,8 @@ describe('MetaProver Test', (): void => {
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32', 'uint256'],
+        ['bytes32', 'uint256'],
         [
-          sourceChainID,
           await ethers.zeroPadValue(sourceChainProver, 32),
           (await metaProver.DEFAULT_GAS_LIMIT()) - BigInt(1),
         ],
@@ -547,9 +546,8 @@ describe('MetaProver Test', (): void => {
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32', 'uint256'],
+        ['bytes32', 'uint256'],
         [
-          sourceChainID,
           await ethers.zeroPadValue(sourceChainProver, 32),
           (await metaProver.DEFAULT_GAS_LIMIT()) + BigInt(1),
         ],
@@ -597,20 +595,20 @@ describe('MetaProver Test', (): void => {
 
     it('should gracefully return funds to sender if they overpay', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Before sendProof, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -620,7 +618,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver.connect(owner).prove(
           solver.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -635,17 +633,17 @@ describe('MetaProver Test', (): void => {
 
     it('should handle exact fee payment with no refund needed', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       const fee = await metaProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -659,7 +657,7 @@ describe('MetaProver Test', (): void => {
       // Call with exact fee (no refund needed)
       await metaProver.connect(owner).prove(
         solver.address,
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -678,17 +676,17 @@ describe('MetaProver Test', (): void => {
 
     it('should handle empty arrays gracefully', async () => {
       // Set up test data with empty arrays
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes: string[] = []
       const claimants: string[] = []
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       const fee = await metaProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -698,7 +696,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .prove(solver.address, sourceChainID, intentHashes, claimants, data, {
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
             value: fee,
           }),
       ).to.not.be.reverted
@@ -744,20 +742,20 @@ describe('MetaProver Test', (): void => {
 
     it('should check that array lengths are consistent', async () => {
       // Set up test data with mismatched array lengths
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants: string[] = [] // Empty array to mismatch with intentHashes
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Our implementation correctly checks for array length mismatch
       await expect(
         metaProver
           .connect(owner)
-          .prove(solver.address, sourceChainID, intentHashes, claimants, data, {
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
             value: await testRouter.FEE(),
           }),
       ).to.be.revertedWithCustomError(metaProver, 'ArrayLengthMismatch')
@@ -768,20 +766,20 @@ describe('MetaProver Test', (): void => {
 
     it('should handle zero-length arrays safely', async () => {
       // Set up test data with empty arrays (but matched lengths)
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes: string[] = []
       const claimants: string[] = []
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Empty arrays should process without error
       await expect(
         metaProver
           .connect(owner)
-          .prove(solver.address, sourceChainID, intentHashes, claimants, data, {
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
             value: await testRouter.FEE(),
           }),
       ).to.not.be.reverted
@@ -792,7 +790,7 @@ describe('MetaProver Test', (): void => {
 
     it('should handle large arrays without gas issues', async () => {
       // Create large arrays (100 elements - which is reasonably large for gas testing)
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes: string[] = []
       const claimants: string[] = []
 
@@ -804,13 +802,13 @@ describe('MetaProver Test', (): void => {
 
       const sourceChainProver = await solver.getAddress()
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, await ethers.zeroPadValue(sourceChainProver, 32)],
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
       // Get fee for this large batch
       const fee = await metaProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -822,13 +820,41 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(owner)
-          .prove(solver.address, sourceChainID, intentHashes, claimants, data, {
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
             value: fee,
           }),
       ).to.not.be.reverted
 
       // Verify dispatch was called
       expect(await testRouter.dispatched()).to.be.true
+    })
+
+    it('should reject excessively large chain IDs', async () => {
+      // Test with a very large chain ID (near uint256 max)
+      const veryLargeChainId = ethers.MaxUint256 - 1n
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
+      )
+
+      // Should revert with ChainIdTooLarge error
+      await expect(
+        metaProver
+          .connect(owner)
+          .prove(
+            solver.address,
+            veryLargeChainId,
+            intentHashes,
+            claimants,
+            data,
+            { value: await testRouter.FEE() },
+          ),
+      )
+        .to.be.revertedWithCustomError(metaProver, 'ChainIdTooLarge')
+        .withArgs(veryLargeChainId)
     })
   })
 
@@ -910,8 +936,8 @@ describe('MetaProver Test', (): void => {
 
       const { intentHash, rewardHash } = hashIntent({ route, reward })
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [12345, ethers.zeroPadValue(await metaProver.getAddress(), 32)],
+        ['bytes32'],
+        [ethers.zeroPadValue(await metaProver.getAddress(), 32)],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -997,8 +1023,8 @@ describe('MetaProver Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
       const data = abiCoder.encode(
-        ['uint32', 'bytes32'],
-        [sourceChainID, ethers.zeroPadValue(await metaProver.getAddress(), 32)],
+        ['bytes32'],
+        [ethers.zeroPadValue(await metaProver.getAddress(), 32)],
       )
 
       // Create first intent

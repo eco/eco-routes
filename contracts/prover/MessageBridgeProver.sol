@@ -55,6 +55,47 @@ abstract contract MessageBridgeProver is
     }
 
     /**
+     * @notice Converts a chain ID to a domain ID
+     * @dev Used for compatibility with different chain ID formats
+     * @param _chainID Chain ID to convert
+     * @dev placeholder that works, but will be replaced in future versions
+     * @dev 1380012617 is the chain ID for Rarichain, but the domainID is 1000012617.
+     * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
+     * @return domain ID
+     */
+    function _convertChainIDToDomainID(
+        uint256 _chainID
+    ) internal pure returns (uint32) {
+        // Convert chain ID to Hyperlane domain ID format
+        // Validate the chain ID can fit in uint32 to prevent truncation issues
+        if (_chainID > type(uint32).max) {
+            revert ChainIdTooLarge(_chainID);
+        }
+        if (_chainID == uint256(1380012617)) {
+            return uint32(1000012617);
+        }
+        return uint32(_chainID);
+    }
+
+    /**
+     * @notice Converts a domain ID to a chian ID
+     * @dev Used for compatibility with different chain ID formats
+     * @param _domainID domain ID to convert
+     * @dev placeholder that works, but will be replaced in future versions
+     * @dev 1000012617 is the domain ID for Rarichain, but the chainID is 1380012617.
+     * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
+     * @return chain ID
+     */
+    function _convertDomainIDToChainID(
+        uint32 _domainID
+    ) internal pure returns (uint256) {
+        if (_domainID == uint32(1000012617)) {
+            return uint256(1380012617);
+        }
+        return uint256(_domainID);
+    }
+
+    /**
      * @notice Validates that the proving request is authorized
      * @param _sender Address that sent the proving request
      */
