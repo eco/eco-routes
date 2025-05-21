@@ -54,7 +54,8 @@ jobs:
           # Set remote URL using PAT instead of GITHUB_TOKEN
           git remote set-url origin https://semantic-release-bot:${PAT}@github.com/eco/eco-routes.git
           # Get default branch
-          DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+          #DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+          DEFAULT_BRANCH=beta
           echo "Default branch is: $DEFAULT_BRANCH"
 
           # Check out the default branch
