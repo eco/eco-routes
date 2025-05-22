@@ -83,9 +83,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Sends message to source chain prover with intent data
      * @dev called by the Inbox contract on the destination chain
      * @param _sender Address that initiated the proving request
-     * @param _routes Array of route information including source and destination chains
-     * @param _rewardHashes Array of reward hashes for the intents
-     * @param _intentHashes Array of intent hashes to prove
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes for the intents being proven
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      */
@@ -105,6 +105,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Calculate fee
         uint256 fee = _fetchFee(
+            _sourceChainID,
             _minimalRoutes,
             _rewardHashes,
             _claimants,
@@ -257,8 +258,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Calculates the fee required for Hyperlane message dispatch
      * @dev Queries the Mailbox contract for accurate fee estimation
-     * @param _routes Array of route information including source and destination chains
-     * @param _intentHashes Array of intent hashes to prove
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of minimal routes for the intents being proven
+     * @param _rewardHashes Array of reward hashes of intents being proven
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting
      * @return Fee amount required for message dispatch
@@ -302,8 +304,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Internal function to calculate the fee with pre-decoded data
-     * @param _routes Array of route information including source and destination chains
-     * @param _intentHashes Array of intent hashes to prove
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes of intents being proven
      * @param _claimants Array of claimant addresses
      * @param unpacked Struct containing decoded data from _data parameter
      * @return Fee amount required for message dispatch
@@ -352,7 +355,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Formats data for Hyperlane message dispatch with pre-decoded values
      * @dev Prepares all parameters needed for the Mailbox dispatch call
-     * @param _routes Array of route information including source and destination chains
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
      * @param _rewardHashes Array of reward hashes for the intents
      * @param _claimants Array of claimant addresses
      * @param _unpacked Struct containing decoded data from _data parameter

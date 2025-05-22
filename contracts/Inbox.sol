@@ -115,7 +115,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
             _route.source,
             minimalRoutes,
             rewardHashes,
-            hashes,
             _localProver,
             _data
         );

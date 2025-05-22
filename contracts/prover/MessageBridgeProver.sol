@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Whitelist} from "../tools/Whitelist.sol";
+import {MinimalRoute, Route} from "../types/Intent.sol";
 
 /**
  * @title MessageBridgeProver
@@ -125,12 +126,12 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param _destinationChainID Chain ID of the destination chain
+     * @param _destinationDomain domain ID of the destination chain
      * @param _messageSender Address that dispatched the message on destination chain
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 _destinationChainID,
+        uint32 _destinationDomain,
         address _messageSender,
         bytes calldata _message
     ) internal {
@@ -140,10 +141,30 @@ abstract contract MessageBridgeProver is
         }
 
         // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
-            _message,
-            (bytes32[], address[])
+        (
+            address inbox,
+            MinimalRoute[] memory minimalRoutes,
+            bytes32[] memory rewardHashes,
+            address[] memory claimants
+        ) = abi.decode(_message, (address, MinimalRoute[], bytes32[], address[]));
+
+        uint256 destinationChainID = _convertDomainIDToChainID(
+            (_destinationDomain)
         );
+        bytes32[] memory hashes = new bytes32[](minimalRoutes.length);
+        for (uint256 i = 0; i < minimalRoutes.length; i++) {
+            Route memory route = Route(
+                minimalRoutes[i].salt,
+                block.chainid,
+                destinationChainID,
+                inbox,
+                minimalRoutes[i].tokens,
+                minimalRoutes[i].calls
+            );
+            hashes[i] = keccak256(
+                abi.encodePacked(keccak256(abi.encode(route)), rewardHashes[i])
+            );
+        }
 
         // Process the intent proofs using shared implementation - array validation happens there
         _processIntentProofs(hashes, claimants);

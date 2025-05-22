@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IProver} from "./IProver.sol";
-import {Intent, Route, Call, TokenAmount} from "../types/Intent.sol";
+import {Intent, MinimalRoute, Call, TokenAmount} from "../types/Intent.sol";
 
 /**
  * @title IMessageBridgeProver
@@ -80,7 +80,8 @@ interface IMessageBridgeProver is IProver {
     /**
      * @notice Calculates the fee required for message dispatch
      * @param _sourceChainID Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes of intents being proven
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting.
      *        Specific format varies by implementation:
@@ -89,8 +90,9 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        Route[] calldata _routes,
-        bytes32[] calldata _intentHashes,
+        uint256 _sourceChainID,
+        MinimalRoute[] calldata _minimalRoutes,
+        bytes32[] calldata _rewardHashes,
         address[] calldata _claimants,
         bytes calldata _data
     ) external view returns (uint256);
