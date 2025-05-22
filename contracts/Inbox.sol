@@ -110,7 +110,6 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
             _route.calls
         );
 
-        // initiateProving(_route.source, hashes, _localProver, _data);
         initiateProving(
             _route.source,
             minimalRoutes,
@@ -121,8 +120,17 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         return result;
     }
 
+    /**
+     * @notice Initiates proving of intents
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes for the intents being proven
+     * @param _localProver Address of prover on the destination chain
+     * @param _data Additional data required for proving
+     * @dev See the prove method on the local Prover for expectations of the data field
+     */
     function initiateProving(
-        uint256 _sourceChainId,
+        uint256 _sourceChainID,
         MinimalRoute[] memory _minimalRoutes,
         bytes32[] memory _rewardHashes,
         address _localProver,
@@ -137,7 +145,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         for (uint256 i = 0; i < size; ++i) {
             Route memory route = Route(
                 _minimalRoutes[i].salt,
-                _sourceChainId,
+                _sourceChainID,
                 block.chainid,
                 address(this),
                 _minimalRoutes[i].tokens,
@@ -155,7 +163,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         }
         IProver(_localProver).prove{value: address(this).balance}(
             msg.sender,
-            _sourceChainId,
+            _sourceChainID,
             _minimalRoutes,
             _rewardHashes,
             claimants,
