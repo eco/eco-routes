@@ -7,3 +7,4 @@ libs = ["lib"]
 optimizer = true
 runs = 1000000
 via_ir = true
+retries = 2

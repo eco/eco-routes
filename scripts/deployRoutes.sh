@@ -104,7 +104,8 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
             --slow \
             --broadcast \
             --private-key \"$PRIVATE_KEY\" \
-            --verify"
+            --verify \
+            --verifier blockscout"
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
     if [[ -n "$GAS_MULTIPLIER" && "$GAS_MULTIPLIER" != "null" ]]; then
