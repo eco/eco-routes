@@ -21,6 +21,12 @@ export type Route = {
   calls: Call[]
 }
 
+export type MinimalRoute = {
+  salt: string
+  tokens: TokenAmount[]
+  calls: Call[]
+}
+
 export type Reward = {
   creator: string
   prover: string
@@ -39,6 +45,27 @@ const RouteStruct = [
   { name: 'source', type: 'uint256' },
   { name: 'destination', type: 'uint256' },
   { name: 'inbox', type: 'address' },
+  {
+    name: 'tokens',
+    type: 'tuple[]',
+    components: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+  },
+  {
+    name: 'calls',
+    type: 'tuple[]',
+    components: [
+      { name: 'target', type: 'address' },
+      { name: 'data', type: 'bytes' },
+      { name: 'value', type: 'uint256' },
+    ],
+  },
+]
+
+const MinimalRouteStruct = [
+  { name: 'salt', type: 'bytes32' },
   {
     name: 'tokens',
     type: 'tuple[]',

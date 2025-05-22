@@ -8,6 +8,7 @@ import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {MinimalRoute, Route} from "../types/Intent.sol";
+import {console} from "hardhat/console.sol";
 
 /**
  * @title HyperProver

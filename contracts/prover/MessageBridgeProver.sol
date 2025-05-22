@@ -6,6 +6,7 @@ import {BaseProver} from "./BaseProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Whitelist} from "../tools/Whitelist.sol";
 import {MinimalRoute, Route} from "../types/Intent.sol";
+import {console} from "hardhat/console.sol";
 
 /**
  * @title MessageBridgeProver
@@ -139,14 +140,22 @@ abstract contract MessageBridgeProver is
         if (!isWhitelisted(_messageSender)) {
             revert UnauthorizedIncomingProof(_messageSender);
         }
-
-        // Decode message containing intent hashes and claimants
+        // Decode message
         (
             address inbox,
             MinimalRoute[] memory minimalRoutes,
             bytes32[] memory rewardHashes,
             address[] memory claimants
-        ) = abi.decode(_message, (address, MinimalRoute[], bytes32[], address[]));
+        ) = abi.decode(
+                _message,
+                (address, MinimalRoute[], bytes32[], address[])
+            );
+
+        console.logAddress(inbox);
+        console.logBytes32(minimalRoutes[0].salt);
+        console.logBytes32(rewardHashes[0]);
+        console.logAddress(claimants[0]);
+        // Validate the message sender is authorized
 
         uint256 destinationChainID = _convertDomainIDToChainID(
             (_destinationDomain)
