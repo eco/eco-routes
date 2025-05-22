@@ -225,15 +225,15 @@ describe('HyperProver Test', (): void => {
 
     it('should revert on underpayment', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        // ['sourceChainProver', 'metadata', 'hookAddress'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
@@ -244,7 +244,7 @@ describe('HyperProver Test', (): void => {
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -253,7 +253,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver.connect(owner).prove(
           solver.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -280,16 +280,14 @@ describe('HyperProver Test', (): void => {
 
     it('should handle exact fee payment with no refund needed', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
@@ -297,7 +295,7 @@ describe('HyperProver Test', (): void => {
       )
 
       const fee = await hyperProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -311,7 +309,7 @@ describe('HyperProver Test', (): void => {
       // Call with exact fee (no refund needed)
       await hyperProver.connect(owner).prove(
         solver.address,
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -330,16 +328,15 @@ describe('HyperProver Test', (): void => {
 
     it('should handle custom hook address correctly', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const customHookAddress = await solver.getAddress() // Use solver as custom hook for testing
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           customHookAddress,
@@ -347,7 +344,7 @@ describe('HyperProver Test', (): void => {
       )
 
       const fee = await hyperProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -356,7 +353,7 @@ describe('HyperProver Test', (): void => {
       // Call with custom hook
       await hyperProver
         .connect(owner)
-        .prove(solver.address, sourceChainID, intentHashes, claimants, data, {
+        .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
           value: fee,
         })
 
@@ -367,15 +364,14 @@ describe('HyperProver Test', (): void => {
 
     it('should handle empty arrays gracefully', async () => {
       // Set up test data with empty arrays
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes: string[] = []
       const claimants: string[] = []
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
@@ -383,7 +379,7 @@ describe('HyperProver Test', (): void => {
       )
 
       const fee = await hyperProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -393,7 +389,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .prove(solver.address, sourceChainID, intentHashes, claimants, data, {
+          .prove(solver.address, sourceChainId, intentHashes, claimants, data, {
             value: fee,
           }),
       ).to.not.be.reverted
@@ -404,25 +400,20 @@ describe('HyperProver Test', (): void => {
 
     it('should correctly format parameters in processAndFormat via fetchFee', async () => {
       // Since processAndFormat is internal, we'll test through fetchFee
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
       const metadata = '0x1234'
       const hookAddress = ethers.ZeroAddress
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
-        [
-          sourceChainID,
-          ethers.zeroPadValue(sourceChainProver, 32),
-          metadata,
-          hookAddress,
-        ],
+        ['bytes32', 'bytes', 'address'],
+        [ethers.zeroPadValue(sourceChainProver, 32), metadata, hookAddress],
       )
 
       // Call fetchFee which uses processAndFormat internally
       const fee = await hyperProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -434,16 +425,15 @@ describe('HyperProver Test', (): void => {
 
     it('should correctly call dispatch in the prove method', async () => {
       // Set up test data
-      const sourceChainID = 123
-      const domain = 321
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        // ['sourceChainProver', 'metadata', 'hookAddress'],
+        ['bytes32', 'bytes', 'address'],
         [
-          domain,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
@@ -456,7 +446,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver.connect(owner).prove(
           owner.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -464,11 +454,11 @@ describe('HyperProver Test', (): void => {
         ),
       )
         .to.emit(hyperProver, 'BatchSent')
-        .withArgs(intentHashes[0], sourceChainID)
+        .withArgs(intentHashes[0], sourceChainId)
 
       // Verify the mailbox was called with correct parameters
       expect(await mailbox.dispatchedWithRelayer()).to.be.true
-      expect(await mailbox.destinationDomain()).to.eq(domain)
+      expect(await mailbox.destinationDomain()).to.eq(sourceChainId)
       expect(await mailbox.recipientAddress()).to.eq(
         ethers.zeroPadValue(sourceChainProver, 32),
       )
@@ -483,15 +473,15 @@ describe('HyperProver Test', (): void => {
 
     it('should gracefully return funds to sender if they overpay', async () => {
       // Set up test data
-      const sourceChainID = 123
+      const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        // ['sourceChainProver', 'metadata', 'hookAddress'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
@@ -502,7 +492,7 @@ describe('HyperProver Test', (): void => {
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
-        sourceChainID,
+        sourceChainId,
         intentHashes,
         claimants,
         data,
@@ -511,7 +501,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver.connect(owner).prove(
           solver.address,
-          sourceChainID,
+          sourceChainId,
           intentHashes,
           claimants,
           data,
@@ -571,9 +561,8 @@ describe('HyperProver Test', (): void => {
       // Prepare message data
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),
           metadata,
           ethers.ZeroAddress,
@@ -663,9 +652,8 @@ describe('HyperProver Test', (): void => {
       const timeStamp = (await time.latest()) + 1000
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['uint32', 'bytes32', 'bytes', 'address'],
+        ['bytes32', 'bytes', 'address'],
         [
-          sourceChainID,
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),
           metadata,
           ethers.ZeroAddress,
