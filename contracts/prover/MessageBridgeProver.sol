@@ -40,6 +40,47 @@ abstract contract MessageBridgeProver is
     }
 
     /**
+     * @notice Converts a chain ID to a domain ID
+     * @dev Used for compatibility with different chain ID formats
+     * @param _chainID Chain ID to convert
+     * @dev placeholder that works, but will be replaced in future versions
+     * @dev 1380012617 is the chain ID for Rarichain, but the domainID is 1000012617.
+     * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
+     * @return domain ID
+     */
+    function _convertChainID(
+        uint256 _chainID
+    ) internal pure returns (uint32) {
+        // Convert chain ID to Hyperlane domain ID format
+        // Validate the chain ID can fit in uint32 to prevent truncation issues
+        if (_chainID > type(uint32).max) {
+            revert ChainIdTooLarge(_chainID);
+        }
+        if (_chainID == uint256(1380012617)) {
+            return uint32(1000012617);
+        }
+        return uint32(_chainID);
+    }
+
+    /**
+     * @notice Converts a domain ID to a chian ID
+     * @dev Used for compatibility with different chain ID formats
+     * @param _domainID domain ID to convert
+     * @dev placeholder that works, but will be replaced in future versions
+     * @dev 1000012617 is the domain ID for Rarichain, but the chainID is 1380012617.
+     * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
+     * @return chain ID
+     */
+    function _convertDomainID(
+        uint32 _domainID
+    ) internal pure returns (uint96) {
+        if (_domainID == uint32(1000012617)) {
+            return uint96(1380012617);
+        }
+        return uint96(_domainID);
+    }
+
+    /**
      * @notice Validates that the message sender is authorized
      * @dev Template method for authorization check
      * @param _messageSender Address attempting to call handle()
@@ -84,12 +125,12 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param _destinationChainID Chain ID of the destination chain
+     * @param _destinationDomainID Domain ID of the destination chain
      * @param _messageSender Address that dispatched the message on destination chain
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 _destinationChainID,
+        uint32 _destinationDomainID,
         address _messageSender,
         bytes calldata _message
     ) internal {
@@ -98,6 +139,8 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(_messageSender);
         }
 
+        uint96 destinationChainID = _convertDomainID(_destinationDomainID);
+
         // Decode message containing intent hashes and claimants
         (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
             _message,
@@ -105,6 +148,6 @@ abstract contract MessageBridgeProver is
         );
 
         // Process the intent proofs using shared implementation - array validation happens there
-        _processIntentProofs(hashes, claimants);
+        _processIntentProofs(destinationChainID, hashes, claimants);
     }
 }

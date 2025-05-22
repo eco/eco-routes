@@ -23,8 +23,9 @@ contract TestProver is BaseProver {
         return "1.8.14-e2c12e7";
     }
 
-    function addProvenIntent(bytes32 _hash, address _claimant) public {
-        provenIntents[_hash] = _claimant;
+    function addProvenIntent(bytes32 _hash, address _claimant, uint96 _destinationChainID) public {
+        provenIntents[_hash].claimant = _claimant;
+        provenIntents[_hash].destinationChainID = _destinationChainID;
     }
 
     function getProofType() external pure override returns (string memory) {
