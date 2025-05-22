@@ -1,3 +1,14 @@
+## [2.1.14](https://github.com/eco/eco-routes/compare/v2.1.13...v2.1.14) (2025-05-22)
+
+
+### Bug Fixes
+
+* adding blockscout ([49e6ee6](https://github.com/eco/eco-routes/commit/49e6ee65681229f6d8ce6f83868ecf8cd03c74d4))
+* decrease retries and specify blockscout, set hardhat to compile on the same solc 0f 0.8.27 ([692e7fa](https://github.com/eco/eco-routes/commit/692e7faffc51077a18fa359e89d30413d1febc7a))
+* explicit beta branch checkout ([888ced5](https://github.com/eco/eco-routes/commit/888ced50c4c45b1440f5d37f43063e440c2e16fb))
+* trigger patch release ([17d2c57](https://github.com/eco/eco-routes/commit/17d2c57e5ca496e10c53e4be6af51ac80fe35b36))
+* trigger patch release ([c1e14bd](https://github.com/eco/eco-routes/commit/c1e14bdef886a2d533fe87f64987bbd9cbaab4b5))
+
 ## [2.1.13](https://github.com/eco/eco-routes/compare/v2.1.12...v2.1.13) (2025-05-22)
 
 
