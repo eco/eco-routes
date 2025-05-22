@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IProver} from "./IProver.sol";
-import {Intent, MinimalRoute, Call, TokenAmount} from "../types/Intent.sol";
+import {MinimalRoute} from "../types/Intent.sol";
 
 /**
  * @title IMessageBridgeProver
@@ -63,7 +63,7 @@ interface IMessageBridgeProver is IProver {
     /**
      * @notice Invalid chain ID for the origin
      */
-    error InvalidOriginChainId();
+    error InvalidOriginChainID();
 
     /**
      * @notice Sender address cannot be zero

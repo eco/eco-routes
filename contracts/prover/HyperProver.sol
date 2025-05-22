@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 import {MinimalRoute, Route} from "../types/Intent.sol";
@@ -70,7 +69,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         _validateMessageSender(msg.sender, MAILBOX);
 
         // Verify _origin and _sender are valid
-        if (_origin == 0) revert InvalidOriginChainId();
+        if (_origin == 0) revert InvalidOriginChainID();
 
         // Convert bytes32 sender to address and delegate to shared handler
         address sender = _sender.bytes32ToAddress();
@@ -176,85 +175,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Send refund if needed
         _sendRefund(_sender, _refundAmount);
     }
-    // /**
-    //  * @notice Initiates proving of intents via Hyperlane
-    //  * @dev Sends message to source chain prover with intent data
-    //  * @dev called by the Inbox contract on the destination chain
-    //  * @param _sender Address that initiated the proving request
-    //  * @param _sourceChainId Chain ID of the source chain
-    //  * @param _intentHashes Array of intent hashes to prove
-    //  * @param _claimants Array of claimant addresses
-    //  * @param _data Additional data for message formatting
-    //  */
-    // function prove(
-    //     address _sender,
-    //     uint256 _sourceChainId,
-    //     bytes32[] calldata _intentHashes,
-    //     address[] calldata _claimants,
-    //     bytes calldata _data
-    // ) external payable override {
-    //     // Validate the request is from Inbox
-    //     _validateProvingRequest(msg.sender);
-
-    //     // Parse incoming data into a structured format for processing
-    //     UnpackedData memory unpacked = _unpackData(_data);
-
-    //     // Calculate fee
-    //     uint256 fee = _fetchFee(
-    //         _sourceChainId,
-    //         _intentHashes,
-    //         _claimants,
-    //         unpacked
-    //     );
-
-    //     // Check if enough fee was provided
-    //     if (msg.value < fee) {
-    //         revert InsufficientFee(fee);
-    //     }
-
-    //     // Calculate refund amount if overpaid
-    //     uint256 _refundAmount = 0;
-    //     if (msg.value > fee) {
-    //         _refundAmount = msg.value - fee;
-    //     }
-
-    //     emit BatchSent(_intentHashes, _sourceChainId);
-
-    //     // Declare dispatch parameters for cross-chain message delivery
-    //     uint32 destinationDomain;
-    //     bytes32 recipientAddress;
-    //     bytes memory messageBody;
-    //     bytes memory metadata;
-    //     IPostDispatchHook hook;
-
-    //     // Prepare parameters for cross-chain message dispatch
-    //     (
-    //         destinationDomain,
-    //         recipientAddress,
-    //         messageBody,
-    //         metadata,
-    //         hook
-    //     ) = _formatHyperlaneMessage(
-    //         _sourceChainId,
-    //         _intentHashes,
-    //         _claimants,
-    //         unpacked
-    //     );
-
-    //     // Send the message through Hyperlane mailbox using local variables
-    //     // Note: Some Hyperlane versions have different dispatch signatures.
-    //     // This matches the expected signature for testing.
-    //     IMailbox(MAILBOX).dispatch{value: fee}(
-    //         destinationDomain,
-    //         recipientAddress,
-    //         messageBody,
-    //         metadata,
-    //         hook
-    //     );
-
-    //     // Send refund if needed
-    //     _sendRefund(_sender, _refundAmount);
-    // }
 
     /**
      * @notice Calculates the fee required for Hyperlane message dispatch

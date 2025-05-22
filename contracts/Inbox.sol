@@ -9,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 
-import {Intent, Route, MinimalRoute, Call, TokenAmount} from "./types/Intent.sol";
+import {Route, MinimalRoute, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -161,51 +161,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
             claimants,
             _data
         );
-        // IProver(_localProver).prove{value: address(this).balance}(
-        //     msg.sender,
-        //     _routes[0].source,
-        //     _intentHashes,
-        //     claimants,
-        //     _data
-        // );
     }
-
-    // /**
-    //  * @notice Initiates proving process for fulfilled intents
-    //  * @dev Sends message to source chain to verify intent execution
-    //  * @param _sourceChainId Chain ID of the source chain
-    //  * @param _intentHashes Array of intent hashes to prove
-    //  * @param _localProver Address of prover on the destination chain
-    //  * @param _data Additional data for message formatting
-    //  */
-    // function initiateProving(
-    //     uint256 _sourceChainId,
-    //     bytes32[] memory _intentHashes,
-    //     address _localProver,
-    //     bytes memory _data
-    // ) public payable {
-    //     if (_localProver == address(0)) {
-    //         // storage prover case, this method should do nothing
-    //         return;
-    //     }
-    //     uint256 size = _intentHashes.length;
-    //     address[] memory claimants = new address[](size);
-    //     for (uint256 i = 0; i < size; ++i) {
-    //         address claimant = fulfilled[_intentHashes[i]];
-
-    //         if (claimant == address(0)) {
-    //             revert IntentNotFulfilled(_intentHashes[i]);
-    //         }
-    //         claimants[i] = claimant;
-    //     }
-    //     IProver(_localProver).prove{value: address(this).balance}(
-    //         msg.sender,
-    //         _sourceChainId,
-    //         _intentHashes,
-    //         claimants,
-    //         _data
-    //     );
-    // }
 
     /**
      * @notice Internal function to fulfill intents
