@@ -5,37 +5,37 @@ pragma solidity ^0.8.26;
 import {ISemver} from "./ISemver.sol";
 import {IBaseSource} from "./IBaseSource.sol";
 
-import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
+import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
 
 /**
- * @title IIntentSource
- * @notice Interface for managing cross-chain intents and their associated rewards on the source chain
+ * @title IUniversalIntentSource
+ * @notice Interface for managing cross-chain intents with Universal types for cross-chain compatibility
  * @dev This contract works in conjunction with an inbox contract on the destination chain
  *      and a prover contract for verification. It handles intent creation, funding,
- *      and reward distribution.
+ *      and reward distribution using bytes32 identifiers for cross-chain compatibility.
  */
-interface IIntentSource is IBaseSource {
+interface IUniversalIntentSource is IBaseSource {
     /**
-     * @notice Signals the creation of a new cross-chain intent
+     * @notice Signals the creation of a new cross-chain intent with Universal types
      * @param hash Unique identifier of the intent
      * @param salt Creator-provided uniqueness factor
      * @param source Source chain identifier
      * @param destination Destination chain identifier
-     * @param inbox Address of the receiving contract on the destination chain
+     * @param inbox bytes32 identifier of the receiving contract on destination chain
      * @param routeTokens Required tokens for executing destination chain calls
      * @param calls Instructions to execute on the destination chain
      * @param creator Intent originator address
      * @param prover Prover contract address
      * @param deadline Timestamp for reward claim eligibility
      * @param nativeValue Native token reward amount
-     * @param rewardTokens ERC20 token rewards with amounts
+     * @param rewardTokens Token rewards with amounts
      */
-    event IntentCreated(
+    event UniversalIntentCreated(
         bytes32 indexed hash,
         bytes32 salt,
         uint256 source,
         uint256 destination,
-        address inbox,
+        bytes32 inbox,
         TokenAmount[] routeTokens,
         Call[] calls,
         address indexed creator,
@@ -45,32 +45,7 @@ interface IIntentSource is IBaseSource {
         TokenAmount[] rewardTokens
     );
 
-    /**
-     * @notice Retrieves the current reward claim status for an intent
-     * @param intentHash The hash of the intent
-     * @return status Current reward status
-     */
-    function getRewardStatus(
-        bytes32 intentHash
-    ) external view returns (RewardStatus status);
-
-    /**
-     * @notice Retrieves the current state of an intent's vault
-     * @param intentHash The hash of the intent
-     * @return Current vault state
-     */
-    function getVaultState(
-        bytes32 intentHash
-    ) external view returns (VaultState memory);
-
-    /**
-     * @notice Retrieves the permit contract for token transfers
-     * @param intentHash The hash of the intent
-     * @return Address of the permit contract
-     */
-    function getPermitContract(
-        bytes32 intentHash
-    ) external view returns (address);
+    // Common state access functions are inherited from IBaseSource
 
     /**
      * @notice Computes the hash components of an intent
@@ -89,7 +64,7 @@ interface IIntentSource is IBaseSource {
     /**
      * @notice Computes the deterministic vault address for an intent
      * @param intent The intent to calculate the vault address for
-     * @return Predicted vault address
+     * @return Predicted vault address (returns address since vault is on EVM)
      */
     function intentVaultAddress(
         Intent calldata intent
@@ -131,8 +106,8 @@ interface IIntentSource is IBaseSource {
      * @notice Funds an intent on behalf of another address using permit
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
-     * @param fundingAddress The address providing the funding
-     * @param permitContract The permit contract address for external token approvals
+     * @param fundingAddress The bytes32 identifier providing the funding
+     * @param permitContract The bytes32 identifier for external token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the funded intent
      */
@@ -147,8 +122,8 @@ interface IIntentSource is IBaseSource {
     /**
      * @notice Creates and funds an intent on behalf of another address
      * @param intent The complete intent specification
-     * @param funder The address providing the funding
-     * @param permitContact The permit contract for token approvals
+     * @param funder The bytes32 identifier providing the funding
+     * @param permitContact The bytes32 identifier for token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      */
@@ -200,7 +175,7 @@ interface IIntentSource is IBaseSource {
      * @dev Token must not be part of the intent's reward structure
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
-     * @param token The address of the token to recover
+     * @param token The bytes32 identifier of the token to recover
      */
     function recoverToken(
         bytes32 routeHash,
