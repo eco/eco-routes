@@ -164,18 +164,16 @@ Parameters:
 
 Parameters:
 
-- `routeHash` (bytes32) The hash of the intent's route component
-- `reward` (Reward) Reward structure containing distribution details
+- `_intent` (Intent) the Intent whose rewards are being withdrawn
 
-<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven and if the destination chainID in the intent matches the destination chainID recorded on the prover.
 
 <h4><ins>batchWithdraw</ins></h4>
 <h5>Claims rewards for multiple fulfilled and proven intents</h5>
 
 Parameters:
 
-- `routeHashes` (bytes32[]) Array of route component hashes
-- `reward` (Reward[]) Array of corresponding reward specifications
+- `_intents` (Intent[]) Array of Intents being withdrawn
 
 <ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
 
@@ -184,10 +182,9 @@ Parameters:
 
 Parameters:
 
-- `routeHash` (bytes32) Hash of the route component
-- `reward` (Reward) Reward structure containing distribution details
+- `_intent` (Intent) the Intent being refunded
 
-<ins>Security:</ins> Will fail if intent not expired.
+<ins>Security:</ins> Will fail if intent not expired, or if intent is proven but not yet claimed.
 
 <h4><ins>recoverToken</ins></h4>
 <h5>Recover tokens that were sent to the intent vault by mistake</h5>
