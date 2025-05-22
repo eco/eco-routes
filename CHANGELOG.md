@@ -1,3 +1,12 @@
+## [2.1.15](https://github.com/eco/eco-routes/compare/v2.1.14...v2.1.15) (2025-05-22)
+
+
+### Bug Fixes
+
+* redeploy worldcoin with correct rpc ([1453dd6](https://github.com/eco/eco-routes/commit/1453dd67091e71029d6035bbf93e5c0210a6b339))
+* trigger patch release ([5ee77a9](https://github.com/eco/eco-routes/commit/5ee77a947adce8040262da21a916e2c45cee0f85))
+* trigger patch release ([d593aa2](https://github.com/eco/eco-routes/commit/d593aa210ad97002fc194fb0483c281c72135bec))
+
 ## [2.1.14](https://github.com/eco/eco-routes/compare/v2.1.13...v2.1.14) (2025-05-22)
 
 
