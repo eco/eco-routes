@@ -50,9 +50,7 @@ abstract contract MessageBridgeProver is
      * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
      * @return domain ID
      */
-    function _convertChainID(
-        uint256 _chainID
-    ) internal pure returns (uint32) {
+    function _convertChainID(uint256 _chainID) internal pure returns (uint32) {
         // Convert chain ID to Hyperlane domain ID format
         // Validate the chain ID can fit in uint32 to prevent truncation issues
         if (_chainID > type(uint32).max) {
@@ -73,9 +71,7 @@ abstract contract MessageBridgeProver is
      * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
      * @return chain ID
      */
-    function _convertDomainID(
-        uint32 _domainID
-    ) internal pure returns (uint96) {
+    function _convertDomainID(uint32 _domainID) internal pure returns (uint96) {
         if (_domainID == uint32(RARICHAIN_DOMAIN_ID)) {
             return uint96(RARICHAIN_CHAIN_ID);
         }

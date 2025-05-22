@@ -23,7 +23,11 @@ contract TestProver is BaseProver {
         return "1.8.14-e2c12e7";
     }
 
-    function addProvenIntent(bytes32 _hash, address _claimant, uint96 _destinationChainID) public {
+    function addProvenIntent(
+        bytes32 _hash,
+        address _claimant,
+        uint96 _destinationChainID
+    ) public {
         provenIntents[_hash].claimant = _claimant;
         provenIntents[_hash].destinationChainID = _destinationChainID;
     }

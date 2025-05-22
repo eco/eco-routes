@@ -69,7 +69,8 @@ abstract contract BaseProver is IProver, ERC165 {
                 emit IntentAlreadyProven(intentHash);
             } else {
                 provenIntents[intentHash].claimant = claimant;
-                provenIntents[intentHash].destinationChainID = _destinationChainID;
+                provenIntents[intentHash]
+                    .destinationChainID = _destinationChainID;
                 emit IntentProven(intentHash, claimant);
             }
         }

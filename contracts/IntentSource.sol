@@ -258,14 +258,12 @@ contract IntentSource is IIntentSource, Semver {
         (address claimant, uint96 destinationChainID) = BaseProver(
             _intent.reward.prover
         ).provenIntents(intentHash);
-        if (destinationChainID != uint96(_intent.route.destination)) {
-            revert WrongDestinationChain(intentHash);
-        }
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
+            destinationChainID == uint96(_intent.route.destination) &&
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
@@ -285,6 +283,8 @@ contract IntentSource is IIntentSource, Semver {
 
         if (claimant == address(0)) {
             revert UnauthorizedWithdrawal(intentHash);
+        } else if (destinationChainID != uint96(_intent.route.destination)) {
+            revert WrongDestinationChain(intentHash);
         } else {
             revert RewardsAlreadyWithdrawn(intentHash);
         }

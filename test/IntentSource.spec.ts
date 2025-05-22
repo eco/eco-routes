@@ -328,7 +328,7 @@ describe('Intent Source Test', (): void => {
     context('before expiry, no proof', () => {
       it('cant be withdrawn', async () => {
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
+          intentSource.connect(otherPerson).withdrawRewards(intent),
         ).to.be.revertedWithCustomError(intentSource, `UnauthorizedWithdrawal`)
       })
     })
@@ -336,7 +336,7 @@ describe('Intent Source Test', (): void => {
       beforeEach(async (): Promise<void> => {
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress())
+          .addProvenIntent(intentHash, await claimant.getAddress(), 1)
       })
       it('gets withdrawn to claimant', async () => {
         const initialBalanceA = await tokenA.balanceOf(
@@ -352,9 +352,7 @@ describe('Intent Source Test', (): void => {
 
         expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-        await intentSource
-          .connect(otherPerson)
-          .withdrawRewards(routeHash, reward)
+        await intentSource.connect(otherPerson).withdrawRewards(intent)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -368,32 +366,22 @@ describe('Intent Source Test', (): void => {
         ).to.eq(initialBalanceNative + rewardNativeEth)
       })
       it('emits event', async () => {
-        await expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
-        )
+        await expect(intentSource.connect(otherPerson).withdrawRewards(intent))
           .to.emit(intentSource, 'Withdrawal')
           .withArgs(intentHash, await claimant.getAddress())
       })
       it('does not allow repeat withdrawal', async () => {
-        await intentSource
-          .connect(otherPerson)
-          .withdrawRewards(routeHash, reward)
+        await intentSource.connect(otherPerson).withdrawRewards(intent)
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, reward),
+          intentSource.connect(otherPerson).withdrawRewards(intent),
         ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
-        expect(
-          await intentSource
-            .connect(otherPerson)
-            .withdrawRewards(routeHash, reward),
-        )
+        expect(await intentSource.connect(otherPerson).withdrawRewards(intent))
           .to.emit(intentSource, 'Withdrawal')
           .withArgs(intentHash, await claimant.getAddress())
 
-        await expect(
-          intentSource.connect(otherPerson).refund(routeHash, reward),
-        )
+        await expect(intentSource.connect(otherPerson).refund(intent))
           .to.emit(intentSource, 'Refund')
           .withArgs(intentHash, reward.creator)
       })
@@ -411,7 +399,7 @@ describe('Intent Source Test', (): void => {
         )
         expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).refund(routeHash, reward)
+        await intentSource.connect(otherPerson).refund(intent)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
@@ -426,7 +414,7 @@ describe('Intent Source Test', (): void => {
       beforeEach(async (): Promise<void> => {
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress())
+          .addProvenIntent(intentHash, await claimant.getAddress(), 1)
         await time.increaseTo(expiry)
       })
       it('gets withdrawn to claimant', async () => {
@@ -438,9 +426,7 @@ describe('Intent Source Test', (): void => {
         )
         expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-        await intentSource
-          .connect(otherPerson)
-          .withdrawRewards(routeHash, reward)
+        await intentSource.connect(otherPerson).withdrawRewards(intent)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -499,9 +485,7 @@ describe('Intent Source Test', (): void => {
       })
       it('bricks if called before expiry by IntentCreator', async () => {
         await expect(
-          intentSource
-            .connect(otherPerson)
-            .batchWithdraw([routeHash], [reward]),
+          intentSource.connect(otherPerson).batchWithdraw([intent]),
         ).to.be.revertedWithCustomError(intentSource, 'UnauthorizedWithdrawal')
       })
     })
@@ -570,10 +554,8 @@ describe('Intent Source Test', (): void => {
 
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress())
-        await intentSource
-          .connect(otherPerson)
-          .batchWithdraw([routeHash], [reward])
+          .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+        await intentSource.connect(otherPerson).batchWithdraw([intent])
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -604,10 +586,8 @@ describe('Intent Source Test', (): void => {
 
         await prover
           .connect(otherPerson)
-          .addProvenIntent(intentHash, await creator.getAddress())
-        await intentSource
-          .connect(otherPerson)
-          .batchWithdraw([routeHash], [reward])
+          .addProvenIntent(intentHash, await creator.getAddress(), chainId)
+        await intentSource.connect(otherPerson).batchWithdraw([intent])
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
@@ -640,13 +620,15 @@ describe('Intent Source Test', (): void => {
       it('same token', async () => {
         let tx
         let salt = route.salt
-        const routeHashes: BytesLike[] = []
+        const routes: Route[] = []
         const rewards: Reward[] = []
+        const intents: Intent[] = []
         for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
           }
+          routes.push(route)
           rewards.push({
             ...reward,
             nativeValue: 0n,
@@ -654,13 +636,11 @@ describe('Intent Source Test', (): void => {
               { token: await tokenA.getAddress(), amount: mintAmount / 10 },
             ],
           })
-          routeHashes.push(
-            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-          )
 
+          intents.push({ route, reward: rewards.at(-1)! })
           tx = await intentSource
             .connect(creator)
-            .publishAndFund({ route, reward: rewards.at(-1)! }, false)
+            .publishAndFund(intents.at(-1)!, false)
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
@@ -673,11 +653,9 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 3; ++i) {
           await prover
             .connect(creator)
-            .addProvenIntent(hashes[i], await claimant.getAddress())
+            .addProvenIntent(hashes[i], await claimant.getAddress(), chainId)
         }
-        await intentSource
-          .connect(otherPerson)
-          .batchWithdraw(routeHashes, rewards)
+        await intentSource.connect(otherPerson).batchWithdraw(intents)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -686,13 +664,15 @@ describe('Intent Source Test', (): void => {
       it('multiple tokens', async () => {
         let tx
         let salt = route.salt
-        const routeHashes: BytesLike[] = []
+        const routes: Route[] = []
         const rewards: Reward[] = []
+        const intents: Intent[] = []
         for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
           }
+          routes.push(route)
           rewards.push({
             ...reward,
             nativeValue: 0n,
@@ -700,10 +680,8 @@ describe('Intent Source Test', (): void => {
               { token: await tokenA.getAddress(), amount: mintAmount / 10 },
             ],
           })
-          routeHashes.push(
-            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-          )
 
+          intents.push({ route, reward: rewards.at(-1)! })
           tx = await intentSource
             .connect(creator)
             .publishAndFund({ route, reward: rewards.at(-1)! }, false)
@@ -724,13 +702,10 @@ describe('Intent Source Test', (): void => {
               },
             ],
           })
-          routeHashes.push(
-            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-          )
-
+          intents.push({ route, reward: rewards.at(-1)! })
           tx = await intentSource
             .connect(creator)
-            .publishAndFund({ route, reward: rewards.at(-1)! }, false)
+            .publishAndFund(intents.at(-1)!, false)
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
@@ -744,11 +719,9 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 6; ++i) {
           await prover
             .connect(creator)
-            .addProvenIntent(hashes[i], await claimant.getAddress())
+            .addProvenIntent(hashes[i], await claimant.getAddress(), chainId)
         }
-        await intentSource
-          .connect(otherPerson)
-          .batchWithdraw(routeHashes, rewards)
+        await intentSource.connect(otherPerson).batchWithdraw(intents)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -760,13 +733,15 @@ describe('Intent Source Test', (): void => {
       it('multiple tokens plus native', async () => {
         let tx
         let salt = route.salt
-        const routeHashes: BytesLike[] = []
+        const routes: Route[] = []
         const rewards: Reward[] = []
+        const intents: Intent[] = []
         for (let i = 0; i < 3; ++i) {
           route = {
             ...route,
             salt: (salt = keccak256(salt)),
           }
+          routes.push(route)
           rewards.push({
             ...reward,
             nativeValue: 0n,
@@ -774,17 +749,10 @@ describe('Intent Source Test', (): void => {
               { token: await tokenA.getAddress(), amount: mintAmount / 10 },
             ],
           })
-          routeHashes.push(
-            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-          )
-
-          tx = await intentSource.connect(creator).publishAndFund(
-            {
-              route,
-              reward: rewards.at(-1)!,
-            },
-            false,
-          )
+          intents.push({ route, reward: rewards.at(-1)! })
+          tx = await intentSource
+            .connect(creator)
+            .publishAndFund(intents.at(-1)!, false)
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; ++i) {
@@ -792,6 +760,7 @@ describe('Intent Source Test', (): void => {
             ...route,
             salt: (salt = keccak256(salt)),
           }
+          routes.push(route)
           rewards.push({
             ...reward,
             nativeValue: 0n,
@@ -802,17 +771,10 @@ describe('Intent Source Test', (): void => {
               },
             ],
           })
-          routeHashes.push(
-            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-          )
-
-          tx = await intentSource.connect(creator).publishAndFund(
-            {
-              route,
-              reward: rewards.at(-1)!,
-            },
-            false,
-          )
+          intents.push({ route, reward: rewards.at(-1)! })
+          tx = await intentSource
+            .connect(creator)
+            .publishAndFund(intents.at(-1)!, false)
           tx = await tx.wait()
         }
         for (let i = 0; i < 3; ++i) {
@@ -820,18 +782,17 @@ describe('Intent Source Test', (): void => {
             ...route,
             salt: (salt = keccak256(salt)),
           }
+          routes.push(route)
           rewards.push({
             ...reward,
             nativeValue: rewardNativeEth,
             tokens: [],
           })
-          routeHashes.push(
-            hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-          )
 
+          intents.push({ route, reward: rewards.at(-1)! })
           tx = await intentSource
             .connect(creator)
-            .publishAndFund({ route, reward: rewards.at(-1)! }, false, {
+            .publishAndFund(intents.at(-1)!, false, {
               value: rewardNativeEth,
             })
           tx = await tx.wait()
@@ -851,12 +812,10 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 9; ++i) {
           await prover
             .connect(creator)
-            .addProvenIntent(hashes[i], await claimant.getAddress())
+            .addProvenIntent(hashes[i], await claimant.getAddress(), chainId)
         }
 
-        await intentSource
-          .connect(otherPerson)
-          .batchWithdraw(routeHashes, rewards)
+        await intentSource.connect(otherPerson).batchWithdraw(intents)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -895,13 +854,15 @@ describe('Intent Source Test', (): void => {
         calls: calls,
       }
       let tx
-      let routeHashes: BytesLike[] = []
+      let intents: Intent[] = []
+      let routes: Route[] = []
       let rewards: Reward[] = []
       for (let i = 0; i < 5; ++i) {
         route = {
           ...route,
           salt: (salt = keccak256(salt)),
         }
+        routes.push(route)
         rewards.push({
           ...reward,
           nativeValue: 0n,
@@ -912,17 +873,10 @@ describe('Intent Source Test', (): void => {
             },
           ],
         })
-        routeHashes.push(
-          hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-        )
-
-        tx = await intentSource.connect(creator).publishAndFund(
-          {
-            route,
-            reward: rewards.at(-1)!,
-          },
-          false,
-        )
+        intents.push({ route: routes.at(-1)!, reward: rewards.at(-1)! })
+        tx = await intentSource
+          .connect(creator)
+          .publishAndFund(intents.at(-1)!, false)
         tx = await tx.wait()
       }
       for (let i = 0; i < 5; ++i) {
@@ -930,6 +884,7 @@ describe('Intent Source Test', (): void => {
           ...route,
           salt: (salt = keccak256(salt)),
         }
+        routes.push(route)
         rewards.push({
           ...reward,
           tokens: [
@@ -943,18 +898,10 @@ describe('Intent Source Test', (): void => {
             },
           ],
         })
-        routeHashes.push(
-          hashIntent({ route, reward: rewards.at(-1)! }).routeHash,
-        )
-
-        tx = await intentSource.connect(creator).publishAndFund(
-          {
-            route,
-            reward: rewards.at(-1)!,
-          },
-          false,
-          { value: rewardNativeEth },
-        )
+        intents.push({ route: routes.at(-1)!, reward: rewards.at(-1)! })
+        tx = await intentSource
+          .connect(creator)
+          .publishAndFund(intents.at(-1)!, false, { value: rewardNativeEth })
         await tx.wait()
       }
       const logs = await intentSource.queryFilter(
@@ -972,11 +919,13 @@ describe('Intent Source Test', (): void => {
       for (let i = 0; i < hashes.length; ++i) {
         await prover
           .connect(creator)
-          .addProvenIntent(hashes[i], await claimant.getAddress())
+          .addProvenIntent(
+            hashes[i],
+            await claimant.getAddress(),
+            route.destination,
+          )
       }
-      await intentSource
-        .connect(otherPerson)
-        .batchWithdraw(routeHashes, rewards)
+      await intentSource.connect(otherPerson).batchWithdraw(intents)
 
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
         mintAmount,
@@ -1250,9 +1199,13 @@ describe('Intent Source Test', (): void => {
 
       //mark as proven
       const hash = (await intentSource.getIntentHash({ route, reward }))[0]
-      await prover.addProvenIntent(hash, await claimant.getAddress())
+      await prover.addProvenIntent(
+        hash,
+        await claimant.getAddress(),
+        route.destination,
+      )
 
-      await intentSource.connect(claimant).withdrawRewards(routeHash, reward)
+      await intentSource.connect(claimant).withdrawRewards({ route, reward })
     })
 
     it('should handle withdraws for rewards with malicious tokens', async () => {
@@ -1286,10 +1239,14 @@ describe('Intent Source Test', (): void => {
       const badHash = (
         await intentSource.getIntentHash({ route, reward: badReward })
       )[0]
-      await prover.addProvenIntent(badHash, await claimant.getAddress())
+      await prover.addProvenIntent(
+        badHash,
+        await claimant.getAddress(),
+        route.destination,
+      )
 
-      await expect(intentSource.withdrawRewards(routeHash, badReward)).to.not.be
-        .reverted
+      await expect(intentSource.withdrawRewards({ route, reward: badReward }))
+        .to.not.be.reverted
 
       expect(await tokenA.balanceOf(claimant.address)).to.eq(
         initialClaimantBalance + BigInt(mintAmount),
