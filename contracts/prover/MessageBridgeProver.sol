@@ -17,6 +17,8 @@ abstract contract MessageBridgeProver is
     IMessageBridgeProver,
     Whitelist
 {
+    uint256 public constant RARICHAIN_CHAIN_ID = 1380012617;
+    uint256 public constant RARICHAIN_DOMAIN_ID = 1000012617;
     /**
      * @notice Default gas limit for cross-chain message dispatch
      * @dev Set at deployment and cannot be changed afterward
@@ -56,8 +58,8 @@ abstract contract MessageBridgeProver is
         if (_chainID > type(uint32).max) {
             revert ChainIdTooLarge(_chainID);
         }
-        if (_chainID == uint256(1380012617)) {
-            return uint32(1000012617);
+        if (_chainID == uint256(RARICHAIN_CHAIN_ID)) {
+            return uint32(RARICHAIN_DOMAIN_ID);
         }
         return uint32(_chainID);
     }
@@ -74,8 +76,8 @@ abstract contract MessageBridgeProver is
     function _convertDomainID(
         uint32 _domainID
     ) internal pure returns (uint96) {
-        if (_domainID == uint32(1000012617)) {
-            return uint96(1380012617);
+        if (_domainID == uint32(RARICHAIN_DOMAIN_ID)) {
+            return uint96(RARICHAIN_CHAIN_ID);
         }
         return uint96(_domainID);
     }
