@@ -126,7 +126,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // For Metalayer, we expect data to include sourceChainProver(32 bytes)
         // If data is long enough, the gas limit is packed at position 64-96
         // will only use custom gas limit if it is greater than the default
-        if (_data.length == 64) {
+        if (_data.length >= 64) {
             uint256 customGasLimit = uint256(bytes32(_data[32:64]));
             if (customGasLimit > DEFAULT_GAS_LIMIT) {
                 gasLimit = customGasLimit;

@@ -319,16 +319,21 @@ contract IntentSource is IIntentSource, Semver {
             (address claimant, uint96 destinationChainID) = BaseProver(
                 _intent.reward.prover
             ).provenIntents(intentHash);
-            // Check if the intent has been proven to prevent unauthorized refunds
             if (
-                claimant != address(0) &&
+                claimant == address(0) ||
                 destinationChainID == uint96(_intent.route.destination)
             ) {
-                revert IntentNotClaimed(intentHash);
-            }
-            // Revert if intent has not expired
-            if (block.timestamp <= _intent.reward.deadline) {
-                revert IntentNotExpired(intentHash);
+                if (
+                    claimant != address(0) &&
+                    destinationChainID == uint96(_intent.route.destination)
+                ) // Check if the intent has been proven to prevent unauthorized refunds
+                {
+                    revert IntentNotClaimed(intentHash);
+                }
+                // Revert if intent has not expired
+                if (block.timestamp <= _intent.reward.deadline) {
+                    revert IntentNotExpired(intentHash);
+                }
             }
         }
 

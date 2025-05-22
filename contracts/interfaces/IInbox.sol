@@ -122,4 +122,19 @@ interface IInbox is ISemver {
         address _localProver,
         bytes calldata _data
     ) external payable returns (bytes[] memory);
+
+    /**
+     * @notice Initiates proving process for fulfilled intents
+     * @dev Sends message to source chain to verify intent execution
+     * @param _sourceChainId Chain ID of the source chain
+     * @param _intentHashes Array of intent hashes to prove
+     * @param _localProver Address of prover on the destination chain
+     * @param _data Additional data for message formatting
+     */
+    function initiateProving(
+        uint256 _sourceChainId,
+        bytes32[] memory _intentHashes,
+        address _localProver,
+        bytes memory _data
+    ) external payable;
 }

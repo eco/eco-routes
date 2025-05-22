@@ -385,6 +385,15 @@ describe('Intent Source Test', (): void => {
           .to.emit(intentSource, 'Refund')
           .withArgs(intentHash, reward.creator)
       })
+      it('allows refund if destinationChainID is wrong, even if proven', async () => {
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, await claimant.getAddress(), 2)
+
+        await expect(intentSource.connect(otherPerson).refund(intent))
+          .to.emit(intentSource, 'Refund')
+          .withArgs(intentHash, reward.creator)
+      })
     })
     context('after expiry, no proof', () => {
       beforeEach(async (): Promise<void> => {
@@ -435,6 +444,15 @@ describe('Intent Source Test', (): void => {
         expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(
           Number(initialBalanceB) + reward.tokens[1].amount,
         )
+      })
+      it('bricks if destinationChainID is wrong', async () => {
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, await claimant.getAddress(), 2)
+
+        await expect(intentSource.connect(otherPerson).withdrawRewards(intent))
+          .to.be.revertedWithCustomError(intentSource, 'WrongDestinationChain')
+          .withArgs(intentHash)
       })
     })
   })
