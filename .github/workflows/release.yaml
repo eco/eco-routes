@@ -32,7 +32,7 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-release to generate changelogs
           token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
-
+          ref: beta # Explicitly checkout the beta branch
       # Set up AWS credentials using OIDC for secure authentication
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
