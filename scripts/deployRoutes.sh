@@ -103,9 +103,9 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
             --rpc-url \"$RPC_URL\" \
             --slow \
             --broadcast \
-            --private-key \"$PRIVATE_KEY\" \
-            --verify \
-            --verifier blockscout"
+            --private-key \"$PRIVATE_KEY\""
+            # --verify \
+            # --verifier blockscout"
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
     if [[ -n "$GAS_MULTIPLIER" && "$GAS_MULTIPLIER" != "null" ]]; then
