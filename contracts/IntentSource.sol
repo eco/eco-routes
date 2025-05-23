@@ -248,19 +248,22 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Withdraws rewards associated with an intent to its claimant
-     * @param routeHash Hash of the intent's route
-     * @param reward Reward structure of the intent
+     * @param _intent The intent to withdraw rewards for
      */
-    function withdrawRewards(bytes32 routeHash, Reward calldata reward) public {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
+    function withdrawRewards(Intent calldata _intent) public {
+        bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover).provenIntents(intentHash);
+        (address claimant, uint96 destinationChainID) = BaseProver(
+            _intent.reward.prover
+        ).provenIntents(intentHash);
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
+            destinationChainID == uint96(_intent.route.destination) &&
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
@@ -273,13 +276,15 @@ contract IntentSource is IIntentSource, Semver {
 
             emit Withdrawal(intentHash, claimant);
 
-            new Vault{salt: routeHash}(intentHash, reward);
+            new Vault{salt: routeHash}(intentHash, _intent.reward);
 
             return;
         }
 
         if (claimant == address(0)) {
             revert UnauthorizedWithdrawal(intentHash);
+        } else if (destinationChainID != uint96(_intent.route.destination)) {
+            revert WrongDestinationChain(intentHash);
         } else {
             revert RewardsAlreadyWithdrawn(intentHash);
         }
@@ -287,31 +292,22 @@ contract IntentSource is IIntentSource, Semver {
 
     /**
      * @notice Batch withdraws multiple intents
-     * @param routeHashes Array of route hashes for the intents
-     * @param rewards Array of reward structures for the intents
+     * @param _intents The intents to withdraw rewards for
      */
-    function batchWithdraw(
-        bytes32[] calldata routeHashes,
-        Reward[] calldata rewards
-    ) external {
-        uint256 length = routeHashes.length;
-
-        if (length != rewards.length) {
-            revert ArrayLengthMismatch();
-        }
-
+    function batchWithdraw(Intent[] calldata _intents) external {
+        uint256 length = _intents.length;
         for (uint256 i = 0; i < length; ++i) {
-            withdrawRewards(routeHashes[i], rewards[i]);
+            withdrawRewards(_intents[i]);
         }
     }
 
     /**
      * @notice Refunds rewards to the intent creator
-     * @param routeHash Hash of the intent's route
-     * @param reward Reward structure of the intent
+     * @param _intent The intent to withdraw rewards for
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
+    function refund(Intent calldata _intent) external {
+        bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         VaultState memory state = vaults[intentHash].state;
@@ -320,16 +316,24 @@ contract IntentSource is IIntentSource, Semver {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            address claimant = BaseProver(reward.prover).provenIntents(
-                intentHash
-            );
-            // Check if the intent has been proven to prevent unauthorized refunds
-            if (claimant != address(0)) {
-                revert IntentNotClaimed(intentHash);
-            }
-            // Revert if intent has not expired
-            if (block.timestamp <= reward.deadline) {
-                revert IntentNotExpired(intentHash);
+            (address claimant, uint96 destinationChainID) = BaseProver(
+                _intent.reward.prover
+            ).provenIntents(intentHash);
+            if (
+                claimant == address(0) ||
+                destinationChainID == uint96(_intent.route.destination)
+            ) {
+                if (
+                    claimant != address(0) &&
+                    destinationChainID == uint96(_intent.route.destination)
+                ) // Check if the intent has been proven to prevent unauthorized refunds
+                {
+                    revert IntentNotClaimed(intentHash);
+                }
+                // Revert if intent has not expired
+                if (block.timestamp <= _intent.reward.deadline) {
+                    revert IntentNotExpired(intentHash);
+                }
             }
         }
 
@@ -343,9 +347,9 @@ contract IntentSource is IIntentSource, Semver {
         state.target = address(0);
         vaults[intentHash].state = state;
 
-        emit Refund(intentHash, reward.creator);
+        emit Refund(intentHash, _intent.reward.creator);
 
-        new Vault{salt: routeHash}(intentHash, reward);
+        new Vault{salt: routeHash}(intentHash, _intent.reward);
     }
 
     /**

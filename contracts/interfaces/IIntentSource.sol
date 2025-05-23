@@ -22,6 +22,13 @@ interface IIntentSource is ISemver, IVaultStorage {
     error WrongSourceChain(bytes32 intentHash);
 
     /**
+     * @notice Indicates an attempt to withdraw an intent fulfilled on a different chain
+     * @param intentHash The hash of the intent that was incorrectly targeted
+     * @dev this represents an edge case
+     */
+    error WrongDestinationChain(bytes32 intentHash);
+
+    /**
      * @notice Indicates a failed native token transfer during reward distribution
      * @param intentHash The hash of the intent whose reward transfer failed
      */
@@ -277,30 +284,21 @@ interface IIntentSource is ISemver, IVaultStorage {
 
     /**
      * @notice Claims rewards for a successfully fulfilled and proven intent
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
+     * @param _intent The intent to withdraw rewards for
      */
-    function withdrawRewards(
-        bytes32 routeHash,
-        Reward calldata reward
-    ) external;
+    function withdrawRewards(Intent calldata _intent) external;
 
     /**
      * @notice Claims rewards for multiple fulfilled and proven intents
-     * @param routeHashes Array of route component hashes
-     * @param rewards Array of corresponding reward specifications
+     * @param _intents The intents to withdraw rewards for
      */
-    function batchWithdraw(
-        bytes32[] calldata routeHashes,
-        Reward[] calldata rewards
-    ) external;
+    function batchWithdraw(Intent[] calldata _intents) external;
 
     /**
      * @notice Returns rewards to the intent creator
-     * @param routeHash The hash of the intent's route component
-     * @param reward The reward specification
+     * @param _intent The intent to refund
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external;
+    function refund(Intent calldata _intent) external;
 
     /**
      * @notice Recovers mistakenly transferred tokens from the intent vault

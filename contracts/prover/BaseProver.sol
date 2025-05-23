@@ -11,6 +11,11 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  * and their claimants
  */
 abstract contract BaseProver is IProver, ERC165 {
+    struct ProofData {
+        address claimant;
+        uint96 destinationChainID;
+    }
+
     /**
      * @notice Address of the Inbox contract
      * @dev Immutable to prevent unauthorized changes
@@ -19,9 +24,9 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Mapping from intent hash to address eligible to claim rewards
-     * @dev Zero address indicates intent hasn't been proven
+     * @dev Zero claimant address indicates intent hasn't been proven
      */
-    mapping(bytes32 => address) public provenIntents;
+    mapping(bytes32 => ProofData) public provenIntents;
 
     /**
      * @notice Initializes the BaseProver contract
@@ -33,10 +38,12 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Process intent proofs from a cross-chain message
+     * @param _destinationChainID ID of the destination chain
      * @param _hashes Array of intent hashes
      * @param _claimants Array of claimant addresses
      */
     function _processIntentProofs(
+        uint96 _destinationChainID,
         bytes32[] memory _hashes,
         address[] memory _claimants
     ) internal {
@@ -57,11 +64,26 @@ abstract contract BaseProver is IProver, ERC165 {
                 continue; // Skip invalid claimants
             }
 
+            // covers an edge case in the event of an attack
+            uint96 currentDestinationChainID = provenIntents[intentHash]
+                .destinationChainID;
+            if (
+                _destinationChainID != currentDestinationChainID &&
+                currentDestinationChainID != 0
+            ) {
+                revert BadDestinationChainID(
+                    intentHash,
+                    currentDestinationChainID,
+                    _destinationChainID
+                );
+            }
             // Skip rather than revert for already proven intents
-            if (provenIntents[intentHash] != address(0)) {
+            if (provenIntents[intentHash].claimant != address(0)) {
                 emit IntentAlreadyProven(intentHash);
             } else {
-                provenIntents[intentHash] = claimant;
+                provenIntents[intentHash].claimant = claimant;
+                provenIntents[intentHash]
+                    .destinationChainID = _destinationChainID;
                 emit IntentProven(intentHash, claimant);
             }
         }
