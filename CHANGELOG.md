@@ -1,3 +1,11 @@
+## [2.1.18](https://github.com/eco/eco-routes/compare/v2.1.17...v2.1.18) (2025-05-23)
+
+
+### Bug Fixes
+
+* deploy to not include failed chains ([e3fd165](https://github.com/eco/eco-routes/commit/e3fd16547dc580609abd4d9c85fef5e250aad58a))
+* trigger patch release ([625915f](https://github.com/eco/eco-routes/commit/625915fdb5d7b6ace386accb929b0ffb52572f7b))
+
 ## [2.1.17](https://github.com/eco/eco-routes/compare/v2.1.16...v2.1.17) (2025-05-23)
 
 
