@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IProver} from "./IProver.sol";
+import {MinimalRoute} from "../types/Intent.sol";
 
 /**
  * @title IMessageBridgeProver
@@ -19,6 +20,12 @@ interface IMessageBridgeProver is IProver {
      * @notice Native token transfer failed
      */
     error NativeTransferFailed();
+
+    /**
+     * @notice Chain ID is too large for destination chain format
+     * @param _chainId The chain ID that couldn't be converted
+     */
+    error ChainIdTooLarge(uint256 _chainId);
 
     /**
      * @notice Unauthorized call to handle() detected
@@ -56,7 +63,7 @@ interface IMessageBridgeProver is IProver {
     /**
      * @notice Invalid chain ID for the origin
      */
-    error InvalidOriginChainId();
+    error InvalidOriginChainID();
 
     /**
      * @notice Sender address cannot be zero
@@ -72,8 +79,9 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Calculates the fee required for message dispatch
-     * @param _domain Domain of source chain
-     * @param _intentHashes Array of intent hashes to prove
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes of intents being proven
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting.
      *        Specific format varies by implementation:
@@ -82,8 +90,9 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint32 _domain,
-        bytes32[] calldata _intentHashes,
+        uint256 _sourceChainID,
+        MinimalRoute[] calldata _minimalRoutes,
+        bytes32[] calldata _rewardHashes,
         address[] calldata _claimants,
         bytes calldata _data
     ) external view returns (uint256);

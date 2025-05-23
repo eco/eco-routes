@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
 
-import {Route} from "../types/Intent.sol";
+import {MinimalRoute, Route} from "../types/Intent.sol";
 
 /**
  * @title IInbox
@@ -122,4 +122,21 @@ interface IInbox is ISemver {
         address _localProver,
         bytes calldata _data
     ) external payable returns (bytes[] memory);
+
+    /**
+     * @notice Initiates proving of intents
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes for the intents being proven
+     * @param _localProver Address of prover on the destination chain
+     * @param _data Additional data required for proving
+     * @dev See the prove method on the local Prover for expectations of the data field
+     */
+    function initiateProving(
+        uint256 _sourceChainID,
+        MinimalRoute[] memory _minimalRoutes,
+        bytes32[] memory _rewardHashes,
+        address _localProver,
+        bytes memory _data
+    ) external payable;
 }

@@ -5,6 +5,7 @@ import {BaseProver} from "../prover/BaseProver.sol";
 import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
 import {IProver} from "../interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
+import {MinimalRoute} from "../types/Intent.sol";
 
 /**
  * @title TestMessageBridgeProver
@@ -13,8 +14,9 @@ import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
  */
 contract TestMessageBridgeProver is MessageBridgeProver {
     bool public dispatched = false;
-    uint256 public lastSourceChainId;
-    bytes32[] public lastIntentHashes;
+    uint256 public lastSourceChainID;
+    MinimalRoute[] public lastMinimalRoutes;
+    bytes32[] public lastRewardHashes;
     address[] public lastClaimants;
     bytes32 public lastSourceChainProver;
     bytes public lastData;
@@ -63,24 +65,29 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function prove(
         address /* _sender */,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
+        uint256 _sourceChainID,
+        MinimalRoute[] calldata _minimalRoutes,
+        bytes32[] calldata _rewardHashes,
         address[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
         dispatched = true;
-        lastSourceChainId = _sourceChainId;
+        lastSourceChainID = _sourceChainID;
 
         // Store arrays for later verification
-        delete lastIntentHashes;
+        delete lastRewardHashes;
         delete lastClaimants;
 
-        for (uint256 i = 0; i < _intentHashes.length; i++) {
-            lastIntentHashes.push(_intentHashes[i]);
+        for (uint256 i = 0; i < _rewardHashes.length; i++) {
+            lastRewardHashes.push(_rewardHashes[i]);
         }
 
         for (uint256 i = 0; i < _claimants.length; i++) {
             lastClaimants.push(_claimants[i]);
+        }
+
+        for (uint256 i = 0; i < _minimalRoutes.length; i++) {
+            lastMinimalRoutes.push(_minimalRoutes[i]);
         }
 
         lastSourceChainProver = abi.decode(_data, (bytes32));
@@ -92,8 +99,9 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint32 /* _sourceChainId */,
-        bytes32[] calldata /* _intentHashes */,
+        uint256 /* _sourceChainID */,
+        MinimalRoute[] calldata /* _minimalRoutes */,
+        bytes32[] calldata /* _rewardHashes */,
         address[] calldata /* _claimants */,
         bytes calldata /* _data */
     ) public view override returns (uint256) {

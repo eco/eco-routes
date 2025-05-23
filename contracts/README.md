@@ -320,18 +320,18 @@ Parameters:
 A concrete implementation of MessageBridgeProver that uses Hyperlane for cross-chain messaging.
 
 <h4><ins>handle</ins></h4>
-<h5>Handles incoming Hyperlane messages containing proof data</h5>
+<h5>Handles incoming Hyperlane messages containing proof data. Called by the Hyperlane mailbox on the source chain</h5>
 
 Parameters:
 
-- `_origin` (uint32) Origin chain ID from the source chain
-- `_sender` (bytes32) Address that dispatched the message on source chain
+- `_origin` (uint32) DomainID of the destination chain
+- `_sender` (bytes32) Address that dispatched the message on destination chain
 - `_messageBody` (bytes) Encoded array of intent hashes and claimants
 
 <ins>Security:</ins> This method is public but there are checks in place to ensure that it reverts unless msg.sender is the local hyperlane mailbox and \_sender is the destination chain's inbox. This method has direct write access to the provenIntents mapping and, therefore, gates access to the rewards for hyperproven intents.
 
 <h4><ins>prove</ins></h4>
-<h5>Initiates proving of intents via Hyperlane</h5>
+<h5>Initiates proving of intents via Hyperlane. Called by the Inbox contract on the destination chain</h5>
 
 Parameters:
 

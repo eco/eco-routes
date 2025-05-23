@@ -9,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 
-import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
+import {Route, MinimalRoute, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -99,23 +99,40 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        hashes[0] = _expectedHash;
+        bytes32[] memory rewardHashes = new bytes32[](1);
+        MinimalRoute[] memory minimalRoutes = new MinimalRoute[](1);
 
-        initiateProving(_route.source, hashes, _localProver, _data);
+        hashes[0] = _expectedHash;
+        rewardHashes[0] = _rewardHash;
+        minimalRoutes[0] = MinimalRoute(
+            _route.salt,
+            _route.tokens,
+            _route.calls
+        );
+
+        initiateProving(
+            _route.source,
+            minimalRoutes,
+            rewardHashes,
+            _localProver,
+            _data
+        );
         return result;
     }
 
     /**
-     * @notice Initiates proving process for fulfilled intents
-     * @dev Sends message to source chain to verify intent execution
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
+     * @notice Initiates proving of intents
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes for the intents being proven
      * @param _localProver Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param _data Additional data required for proving
+     * @dev See the prove method on the local Prover for expectations of the data field
      */
     function initiateProving(
-        uint256 _sourceChainId,
-        bytes32[] memory _intentHashes,
+        uint256 _sourceChainID,
+        MinimalRoute[] memory _minimalRoutes,
+        bytes32[] memory _rewardHashes,
         address _localProver,
         bytes memory _data
     ) public payable {
@@ -123,20 +140,32 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
             // storage prover case, this method should do nothing
             return;
         }
-        uint256 size = _intentHashes.length;
+        uint256 size = _rewardHashes.length;
         address[] memory claimants = new address[](size);
         for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]];
+            Route memory route = Route(
+                _minimalRoutes[i].salt,
+                _sourceChainID,
+                block.chainid,
+                address(this),
+                _minimalRoutes[i].tokens,
+                _minimalRoutes[i].calls
+            );
+            bytes32 intentHash = keccak256(
+                abi.encodePacked(keccak256(abi.encode(route)), _rewardHashes[i])
+            );
+            address claimant = fulfilled[intentHash];
 
             if (claimant == address(0)) {
-                revert IntentNotFulfilled(_intentHashes[i]);
+                revert IntentNotFulfilled(intentHash);
             }
             claimants[i] = claimant;
         }
         IProver(_localProver).prove{value: address(this).balance}(
             msg.sender,
-            _sourceChainId,
-            _intentHashes,
+            _sourceChainID,
+            _minimalRoutes,
+            _rewardHashes,
             claimants,
             _data
         );

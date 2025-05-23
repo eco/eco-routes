@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
-
+import {Intent, MinimalRoute, Call, TokenAmount} from "../types/Intent.sol";
 /**
  * @title IProver
  * @notice Interface for proving intent fulfillment
@@ -38,16 +38,18 @@ interface IProver is ISemver {
     /**
      * @notice Initiates the proving process for intents from the destination chain
      * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
-     * @param _sender Address of the original transaction sender
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
+     * @param _sender Address that initiated the proving request
+     * @param _sourceChainID Chain ID of source chain
+     * @param _minimalRoutes Array of MinimalRoute structs for the intents being proven
+     * @param _rewardHashes Array of reward hashes for the intents being proven
      * @param _claimants Array of claimant addresses
-     * @param _data Additional data specific to the proving implementation
+     * @param _data Additional data for message formattingn
      */
     function prove(
         address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
+        uint256 _sourceChainID,
+        MinimalRoute[] calldata _minimalRoutes,
+        bytes32[] calldata _rewardHashes,
         address[] calldata _claimants,
         bytes calldata _data
     ) external payable;
