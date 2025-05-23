@@ -16,6 +16,18 @@ interface IProver is ISemver {
     error ArrayLengthMismatch();
 
     /**
+     * @notice Destination chain ID associated with intent does not match that in proof.
+     * @param _hash Hash of the intent
+     * @param _expectedDestinationChainID Expected destination chain ID for the intent
+     * @param _actualDestinationChainID Actual destination chain ID for the intent
+     */
+    error BadDestinationChainID(
+        bytes32 _hash,
+        uint96 _expectedDestinationChainID,
+        uint96 _actualDestinationChainID
+    );
+
+    /**
      * @notice Emitted when an intent is successfully proven
      * @param _hash Hash of the proven intent
      * @param _claimant Address eligible to claim the intent's rewards

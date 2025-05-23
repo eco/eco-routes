@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Whitelist} from "../tools/Whitelist.sol";
+import {Intent} from "../types/Intent.sol";
 
 /**
  * @title MessageBridgeProver
@@ -26,6 +27,12 @@ abstract contract MessageBridgeProver is
     uint256 public immutable DEFAULT_GAS_LIMIT;
 
     /**
+     * @notice Emitted when an intentProof is successfully challenged
+     * @param _intentHash Hash of the intent whose proof was challenged
+     */
+    event BadProofCleared(bytes32 indexed _intentHash);
+
+    /**
      * @notice Initializes the MessageBridgeProver contract
      * @param _inbox Address of the Inbox contract
      * @param _provers Array of trusted prover addresses
@@ -39,6 +46,29 @@ abstract contract MessageBridgeProver is
         if (_inbox == address(0)) revert InboxCannotBeZeroAddress();
 
         DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
+    }
+
+    /**
+     * @notice Challenges a recorded proof
+     * @param _intent Intent to challenge
+     * @dev Clears the proof if the destination chain ID in the intent does not match the one in the proof
+     * @dev even if not challenged, an incorrect proof cannot be used to claim rewards.
+     */
+    function challengeIntentProof(Intent calldata _intent) public {
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(
+                keccak256(abi.encode(_intent.route)),
+                keccak256(abi.encode(_intent.reward))
+            )
+        );
+        uint96 trueDestinationChainID = uint96(_intent.route.destination);
+
+        if (trueDestinationChainID != _intent.route.destination) {
+            delete provenIntents[intentHash].claimant;
+            provenIntents[intentHash]
+                .destinationChainID = trueDestinationChainID;
+            emit BadProofCleared(intentHash);
+        }
     }
 
     /**

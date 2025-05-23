@@ -64,6 +64,19 @@ abstract contract BaseProver is IProver, ERC165 {
                 continue; // Skip invalid claimants
             }
 
+            // covers an edge case in the event of an attack
+            uint96 currentDestinationChainID = provenIntents[intentHash]
+                .destinationChainID;
+            if (
+                _destinationChainID != currentDestinationChainID &&
+                currentDestinationChainID != 0
+            ) {
+                revert BadDestinationChainID(
+                    intentHash,
+                    currentDestinationChainID,
+                    _destinationChainID
+                );
+            }
             // Skip rather than revert for already proven intents
             if (provenIntents[intentHash].claimant != address(0)) {
                 emit IntentAlreadyProven(intentHash);
