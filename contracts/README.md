@@ -312,6 +312,15 @@ Parameters:
 - `_claimants` (address[]) Array of claimant addresses
 - `_data` (bytes) Additional data for message formatting
 
+<h4><ins>challengeIntentProof</ins></h4>
+<h5>allows for the challenging and subsequent clearing of an intent proof if the chainID is incorrect</h5>
+
+Parameters:
+
+- `_intent` (Intent) The intent whose proof is being challenged
+
+<ins>Security:</ins> This method does nothing if the hash and chainID marked in the prover match to the input intent. In the event that they do not match, the ProofData's claimant field will be set to the zero address, and the chainID will be set to \_intent.route.destination. Subsequent calls to prove this intent from a chain with an incorrect chainID will be reverted.
+
 ### HyperProver (HyperProver.sol)
 
 A concrete implementation of MessageBridgeProver that uses Hyperlane for cross-chain messaging.

@@ -7,7 +7,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount } from '../utils/intent'
+import { hashIntent, TokenAmount, Intent } from '../utils/intent'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -17,6 +17,7 @@ describe('HyperProver Test', (): void => {
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
+  let intent: Intent
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
@@ -263,6 +264,177 @@ describe('HyperProver Test', (): void => {
       expect(
         (await hyperProver.provenIntents(intentHash)).destinationChainID,
       ).to.eq(await hyperProver.RARICHAIN_CHAIN_ID())
+    })
+  })
+
+  describe('edge case: challengeIntentProof', () => {
+    beforeEach(async () => {
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(owner.address, await inbox.getAddress(), [
+        await inbox.getAddress(),
+      ])
+
+      const sourceChainID = 12345
+      const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      const timeStamp = (await time.latest()) + 1000
+      const metadata = '0x1234'
+      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['bytes32', 'bytes', 'address'],
+        [
+          ethers.zeroPadValue(await hyperProver.getAddress(), 32),
+          metadata,
+          ethers.ZeroAddress,
+        ],
+      )
+
+      let salt = ethers.encodeBytes32String('0x987')
+      const routeTokens: TokenAmount[] = [
+        { token: await token.getAddress(), amount: amount },
+      ]
+      const route = {
+        salt: salt,
+        source: sourceChainID,
+        destination: 54321,
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [] as TokenAmount[],
+      }
+      intent = { route, reward }
+    })
+    it('deletes claimant and sets chainID for a bad proof, emits, and cant prove again incorrectly after that', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+      await hyperProver.handle(
+        badChainID,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(badChainID)
+
+      expect(await hyperProver.challengeIntentProof(intent))
+        .to.emit(hyperProver, 'BadProofCleared')
+        .withArgs(intentHash)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      const badderChainID = 777
+      await expect(
+        hyperProver.handle(
+          badderChainID,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      )
+        .to.be.revertedWithCustomError(hyperProver, 'BadDestinationChainID')
+        .withArgs(intentHash, intent.route.destination, badderChainID)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+
+      await expect(
+        hyperProver.handle(
+          intent.route.destination,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      ).to.not.be.reverted
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+    })
+    it('lets you protect intents from being maliciously proven in the future', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+
+      await hyperProver.challengeIntentProof(intent)
+
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      await expect(
+        hyperProver.handle(
+          badChainID,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      )
+        .to.be.revertedWithCustomError(hyperProver, 'BadDestinationChainID')
+        .withArgs(intentHash, intent.route.destination, badChainID)
+
+      await hyperProver.handle(
+        intent.route.destination,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+    })
+    it('doesnt do anything if chainID is correct', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+
+      await hyperProver.handle(
+        intent.route.destination,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      await hyperProver.challengeIntentProof(intent)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
     })
   })
 

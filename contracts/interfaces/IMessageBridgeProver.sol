@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IProver} from "./IProver.sol";
+import {Intent} from "../types/Intent.sol";
 
 /**
  * @title IMessageBridgeProver
@@ -93,4 +94,13 @@ interface IMessageBridgeProver is IProver {
         address[] calldata _claimants,
         bytes calldata _data
     ) external view returns (uint256);
+
+    /**
+     * @notice Challenges a recorded proof
+     * @param _intent Intent to challenge
+     * @dev Clears the proof if the destination chain ID in the intent does not match the one in the proof
+     * @dev even if not challenged, an incorrect proof cannot be used to claim rewards.
+     * @dev does nothing if chainID is correct
+     */
+    function challengeIntentProof(Intent calldata _intent) external;
 }

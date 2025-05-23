@@ -53,6 +53,7 @@ abstract contract MessageBridgeProver is
      * @param _intent Intent to challenge
      * @dev Clears the proof if the destination chain ID in the intent does not match the one in the proof
      * @dev even if not challenged, an incorrect proof cannot be used to claim rewards.
+     * @dev does nothing if chainID is correct.
      */
     function challengeIntentProof(Intent calldata _intent) public {
         bytes32 intentHash = keccak256(
@@ -63,11 +64,15 @@ abstract contract MessageBridgeProver is
         );
         uint96 trueDestinationChainID = uint96(_intent.route.destination);
 
-        if (trueDestinationChainID != _intent.route.destination) {
-            delete provenIntents[intentHash].claimant;
-            provenIntents[intentHash]
-                .destinationChainID = trueDestinationChainID;
-            emit BadProofCleared(intentHash);
+        ProofData storage proofData = provenIntents[intentHash];
+
+        if (trueDestinationChainID != proofData.destinationChainID) {
+            if (proofData.destinationChainID != 0) {
+                proofData.claimant = address(0);
+                emit BadProofCleared(intentHash);
+            }
+
+            proofData.destinationChainID = trueDestinationChainID;
         }
     }
 
