@@ -7,13 +7,13 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount, MinimalRoute } from '../utils/intent'
+import { hashIntent, TokenAmount, MinimalRoute, Intent } from '../utils/intent'
 import {
   MessageBridgeMessage,
   encodeMessageBridgeMessage,
 } from '../utils/MessageBridge'
 
-describe('HyperProver Test', (): void => {
+describe.only('HyperProver Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
   let hyperProver: HyperProver
@@ -21,6 +21,11 @@ describe('HyperProver Test', (): void => {
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
+  let intent: Intent
+  let intentHash: string
+  let rewardHash: string
+  let destinationChainID: number
+  let messageBridgeMessage: MessageBridgeMessage
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
@@ -101,35 +106,11 @@ describe('HyperProver Test', (): void => {
       ).deploy(owner.address, await inbox.getAddress(), [
         await inbox.getAddress(),
       ])
-    })
-
-    it('should revert when msg.sender is not the mailbox', async () => {
-      await expect(
-        hyperProver
-          .connect(claimant)
-          .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
-      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedHandle')
-    })
-
-    it('should revert when sender field is not authorized', async () => {
-      await expect(
-        hyperProver
-          .connect(owner)
-          .handle(
-            12345,
-            ethers.zeroPadValue(owner.address, 32),
-            ethers.sha256('0x'),
-          ),
-      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
-    })
-
-    it.only('should record a single proven intent when called correctly', async () => {
-      // Create a minimal route
 
       // Set up common data
       const network = await ethers.provider.getNetwork()
       const sourceChainID = Number(network.chainId)
-      const destinationChainID = 12345
+      destinationChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
       const metadata = '0x1234'
@@ -169,10 +150,12 @@ describe('HyperProver Test', (): void => {
         tokens: [] as TokenAmount[],
       }
 
-      const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
+      const { intentHash: IH, rewardHash: RH } = hashIntent({
         route,
         reward,
       })
+      intentHash = IH
+      rewardHash = RH
 
       const minimalRoute: MinimalRoute = {
         salt,
@@ -183,29 +166,107 @@ describe('HyperProver Test', (): void => {
       // Generate claimant address
       const claimantAddress = await claimant.getAddress()
 
-      const messageBridgeMessage: MessageBridgeMessage = {
+      messageBridgeMessage = {
         inbox: await inbox.getAddress(),
         minimalRoutes: [minimalRoute],
-        rewardHashes: [rewardHash0],
+        rewardHashes: [rewardHash],
         claimants: [claimantAddress],
       }
 
       const msgBody = encodeMessageBridgeMessage(messageBridgeMessage)
+    })
 
-      //   const msgBody = encodeMessageBridgeMessage(
-      //     await inbox.getAddress(),
-      //     [minimalRoute],
-      //     [rewardHash0],
-      //     [claimantAddress],
+    it('should revert when msg.sender is not the mailbox', async () => {
+      await expect(
+        hyperProver
+          .connect(claimant)
+          .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedHandle')
+    })
+
+    it('should revert when sender field is not authorized', async () => {
+      await expect(
+        hyperProver
+          .connect(owner)
+          .handle(
+            12345,
+            ethers.zeroPadValue(owner.address, 32),
+            ethers.sha256('0x'),
+          ),
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
+    })
+
+    it('should record a single proven intent when called correctly', async () => {
+      //   // Create a minimal route
+
+      //   // Set up common data
+      //   const network = await ethers.provider.getNetwork()
+      //   const sourceChainID = Number(network.chainId)
+      //   const destinationChainID = 12345
+      //   const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      //   const timeStamp = (await time.latest()) + 1000
+      //   const metadata = '0x1234'
+      //   const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      //     ['bytes32', 'bytes', 'address'],
+      //     [
+      //       ethers.zeroPadValue(await hyperProver.getAddress(), 32),
+      //       metadata,
+      //       ethers.ZeroAddress,
+      //     ],
       //   )
-      //   const msgBody = abiCoder.encode(
-      //     ['address', 'MinimalRoute[]', 'bytes32[]', 'address[]'],
-      //     [inbox, [minimalRoute], [rewardHash0], [claimantAddress]],
-      //   )
-      console.log(msgBody)
+
+      //   // Create first intent
+      //   let salt = ethers.encodeBytes32String('0x987')
+      //   const routeTokens: TokenAmount[] = [
+      //     { token: await token.getAddress(), amount: amount },
+      //   ]
+      //   const route = {
+      //     salt: salt,
+      //     source: sourceChainID,
+      //     destination: destinationChainID,
+      //     inbox: await inbox.getAddress(),
+      //     tokens: routeTokens,
+      //     calls: [
+      //       {
+      //         target: await token.getAddress(),
+      //         data: calldata,
+      //         value: 0,
+      //       },
+      //     ],
+      //   }
+      //   const reward = {
+      //     creator: await owner.getAddress(),
+      //     prover: await hyperProver.getAddress(),
+      //     deadline: timeStamp + 1000,
+      //     nativeValue: 1n,
+      //     tokens: [] as TokenAmount[],
+      //   }
+
+      //   const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
+      //     route,
+      //     reward,
+      //   })
+
+      //   const minimalRoute: MinimalRoute = {
+      //     salt,
+      //     tokens: route.tokens,
+      //     calls: route.calls,
+      //   }
+
+      //   // Generate claimant address
+      //   const claimantAddress = await claimant.getAddress()
+
+      //   const messageBridgeMessage: MessageBridgeMessage = {
+      //     inbox: await inbox.getAddress(),
+      //     minimalRoutes: [minimalRoute],
+      //     rewardHashes: [rewardHash0],
+      //     claimants: [claimantAddress],
+      //   }
+
+      const msgBody = encodeMessageBridgeMessage(messageBridgeMessage)
 
       // Verify the intent hasn't been proven yet
-      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
+      expect(await hyperProver.provenIntents(intentHash)).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -220,11 +281,11 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(intentHash0, claimantAddress)
+        .withArgs(intentHash, claimant.address)
 
       // Verify the intent is now proven
-      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
-        claimantAddress,
+      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+        claimant.address,
       )
     })
 
@@ -308,6 +369,32 @@ describe('HyperProver Test', (): void => {
       )
         .to.emit(hyperProver, 'IntentAlreadyProven')
         .withArgs(intentHash)
+
+
+      const msgBody = encodeMessageBridgeMessage(messageBridgeMessage)
+
+      // Verify the intent hasn't been proven yet
+      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+        ethers.ZeroAddress,
+      )
+
+      // Call handle with the new message format
+      await expect(
+        hyperProver
+          .connect(owner)
+          .handle(
+            destinationChainID,
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+          ),
+      )
+        .to.emit(hyperProver, 'IntentProven')
+        .withArgs(intentHash, claimant.address)
+
+      // Verify the intent is now proven
+      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+        claimant.address,
+      )
     })
 
     it('should handle batch proving of multiple intents', async () => {

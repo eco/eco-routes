@@ -19,6 +19,12 @@ abstract contract MessageBridgeProver is
     IMessageBridgeProver,
     Whitelist
 {
+    struct DecodedCrossChainMessage {
+        address inbox;
+        MinimalRoute[] minimalRoutes;
+        bytes32[] rewardHashes;
+        address[] claimants;
+    }
     /**
      * @notice Default gas limit for cross-chain message dispatch
      * @dev Set at deployment and cannot be changed afterward
@@ -141,41 +147,41 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(_messageSender);
         }
         // Decode message
-        (
-            address inbox,
-            MinimalRoute[] memory minimalRoutes,
-            bytes32[] memory rewardHashes,
-            address[] memory claimants
-        ) = abi.decode(
-                _message,
-                (address, MinimalRoute[], bytes32[], address[])
-            );
+        DecodedCrossChainMessage memory decodedMessage = abi.decode(
+            _message,
+            (DecodedCrossChainMessage)
+        );
 
-        console.logAddress(inbox);
-        console.logBytes32(minimalRoutes[0].salt);
-        console.logBytes32(rewardHashes[0]);
-        console.logAddress(claimants[0]);
+        console.logAddress(decodedMessage.inbox);
+        console.logBytes32(decodedMessage.minimalRoutes[0].salt);
+        console.logBytes32(decodedMessage.rewardHashes[0]);
+        console.logAddress(decodedMessage.claimants[0]);
         // Validate the message sender is authorized
 
         uint256 destinationChainID = _convertDomainIDToChainID(
             (_destinationDomain)
         );
-        bytes32[] memory hashes = new bytes32[](minimalRoutes.length);
-        for (uint256 i = 0; i < minimalRoutes.length; i++) {
+        bytes32[] memory hashes = new bytes32[](
+            decodedMessage.minimalRoutes.length
+        );
+        for (uint256 i = 0; i < decodedMessage.minimalRoutes.length; i++) {
             Route memory route = Route(
-                minimalRoutes[i].salt,
+                decodedMessage.minimalRoutes[i].salt,
                 block.chainid,
                 destinationChainID,
-                inbox,
-                minimalRoutes[i].tokens,
-                minimalRoutes[i].calls
+                decodedMessage.inbox,
+                decodedMessage.minimalRoutes[i].tokens,
+                decodedMessage.minimalRoutes[i].calls
             );
             hashes[i] = keccak256(
-                abi.encodePacked(keccak256(abi.encode(route)), rewardHashes[i])
+                abi.encodePacked(
+                    keccak256(abi.encode(route)),
+                    decodedMessage.rewardHashes[i]
+                )
             );
         }
 
         // Process the intent proofs using shared implementation - array validation happens there
-        _processIntentProofs(hashes, claimants);
+        _processIntentProofs(hashes, decodedMessage.claimants);
     }
 }
