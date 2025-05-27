@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {BaseProver} from "./prover/BaseProver.sol";
+import {IMessageBridgeProver} from "./interfaces/IMessageBridgeProver.sol";
 import {Intent, Route, Reward, Call} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
@@ -251,19 +252,24 @@ contract IntentSource is IIntentSource, Semver {
      * @param _intent The intent to withdraw rewards for
      */
     function withdrawRewards(Intent calldata _intent) public {
-        bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
-        bytes32 routeHash = keccak256(abi.encode(_intent.route));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(_intent);
 
-        (address claimant, uint96 destinationChainID) = BaseProver(
+        (uint96 destinationChainID, address claimant) = BaseProver(
             _intent.reward.prover
         ).provenIntents(intentHash);
+
+        if (destinationChainID != uint96(_intent.route.destination) && claimant != address(0)) {
+            // If the intent has been proven on a different chain, challenge the proof
+            IMessageBridgeProver(_intent.reward.prover).challengeIntentProof(
+                _intent
+            );
+            return;
+        }
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
-            destinationChainID == uint96(_intent.route.destination) &&
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
@@ -283,8 +289,6 @@ contract IntentSource is IIntentSource, Semver {
 
         if (claimant == address(0)) {
             revert UnauthorizedWithdrawal(intentHash);
-        } else if (destinationChainID != uint96(_intent.route.destination)) {
-            revert WrongDestinationChain(intentHash);
         } else {
             revert RewardsAlreadyWithdrawn(intentHash);
         }
@@ -316,7 +320,7 @@ contract IntentSource is IIntentSource, Semver {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            (address claimant, uint96 destinationChainID) = BaseProver(
+            (uint96 destinationChainID, address claimant) = BaseProver(
                 _intent.reward.prover
             ).provenIntents(intentHash);
             if (

@@ -102,8 +102,8 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     function addProvenIntent(
         bytes32 _hash,
-        address _claimant,
-        uint96 _destinationChainID
+        uint96 _destinationChainID,
+        address _claimant
     ) public {
         provenIntents[_hash].claimant = _claimant;
         provenIntents[_hash].destinationChainID = _destinationChainID;

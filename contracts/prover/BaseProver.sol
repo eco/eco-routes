@@ -12,8 +12,8 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  */
 abstract contract BaseProver is IProver, ERC165 {
     struct ProofData {
-        address claimant;
         uint96 destinationChainID;
+        address claimant;
     }
 
     /**

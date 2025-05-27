@@ -22,13 +22,6 @@ interface IIntentSource is ISemver, IVaultStorage {
     error WrongSourceChain(bytes32 intentHash);
 
     /**
-     * @notice Indicates an attempt to withdraw an intent fulfilled on a different chain
-     * @param intentHash The hash of the intent that was incorrectly targeted
-     * @dev this represents an edge case
-     */
-    error WrongDestinationChain(bytes32 intentHash);
-
-    /**
      * @notice Indicates a failed native token transfer during reward distribution
      * @param intentHash The hash of the intent whose reward transfer failed
      */

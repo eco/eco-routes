@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
 import {IProver} from "../interfaces/IProver.sol";
+import {Intent} from "../types/Intent.sol";
 
 contract TestProver is BaseProver {
     struct ArgsCheck {
@@ -17,6 +18,8 @@ contract TestProver is BaseProver {
     bytes32[] public argIntentHashes;
     address[] public argClaimants;
 
+    bytes32 public hashOfChallengedIntent;
+
     constructor(address _inbox) BaseProver(_inbox) {}
 
     function version() external pure returns (string memory) {
@@ -25,8 +28,8 @@ contract TestProver is BaseProver {
 
     function addProvenIntent(
         bytes32 _hash,
-        address _claimant,
-        uint96 _destinationChainID
+        uint96 _destinationChainID,
+        address _claimant
     ) public {
         provenIntents[_hash].claimant = _claimant;
         provenIntents[_hash].destinationChainID = _destinationChainID;
@@ -51,5 +54,14 @@ contract TestProver is BaseProver {
         });
         argIntentHashes = _intentHashes;
         argClaimants = _claimants;
+    }
+
+    function challengeIntentProof(Intent calldata _intent) external {
+        hashOfChallengedIntent = keccak256(
+            abi.encodePacked(
+                keccak256(abi.encode(_intent.route)),
+                keccak256(abi.encode(_intent.reward))
+            )
+        );
     }
 }

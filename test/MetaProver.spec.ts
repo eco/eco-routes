@@ -1193,8 +1193,8 @@ describe('MetaProver Test', (): void => {
       // Manually set the proven intent in TestMessageBridgeProver to simulate proving
       await testMsgProver.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
         12345,
+        await claimant.getAddress(),
       )
 
       // Verify the intent is now proven
@@ -1384,13 +1384,13 @@ describe('MetaProver Test', (): void => {
       // Manually add the proven intents to simulate the cross-chain mechanism
       await testMsgProver.addProvenIntent(
         intentHash0,
-        await claimant.getAddress(),
         123,
+        await claimant.getAddress(),
       )
       await testMsgProver.addProvenIntent(
         intentHash1,
-        await claimant.getAddress(),
         456,
+        await claimant.getAddress(),
       )
 
       // Verify both intents were marked as proven

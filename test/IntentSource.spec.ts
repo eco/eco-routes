@@ -336,7 +336,7 @@ describe('Intent Source Test', (): void => {
       beforeEach(async (): Promise<void> => {
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress(), 1)
+          .addProvenIntent(intentHash, 1, await claimant.getAddress())
       })
       it('gets withdrawn to claimant', async () => {
         const initialBalanceA = await tokenA.balanceOf(
@@ -388,7 +388,7 @@ describe('Intent Source Test', (): void => {
       it('allows refund if destinationChainID is wrong, even if proven', async () => {
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress(), 2)
+          .addProvenIntent(intentHash, 2, await claimant.getAddress())
 
         await expect(intentSource.connect(otherPerson).refund(intent))
           .to.emit(intentSource, 'Refund')
@@ -423,7 +423,7 @@ describe('Intent Source Test', (): void => {
       beforeEach(async (): Promise<void> => {
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress(), 1)
+          .addProvenIntent(intentHash, 1, await claimant.getAddress())
         await time.increaseTo(expiry)
       })
       it('gets withdrawn to claimant', async () => {
@@ -445,14 +445,20 @@ describe('Intent Source Test', (): void => {
           Number(initialBalanceB) + reward.tokens[1].amount,
         )
       })
-      it('bricks if destinationChainID is wrong', async () => {
+      it(' calls challengeIntentProof if destinationChainID is wrong, and does not withdraw', async () => {
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress(), 2)
+          .addProvenIntent(intentHash, 2, await claimant.getAddress())
 
-        await expect(intentSource.connect(otherPerson).withdrawRewards(intent))
-          .to.be.revertedWithCustomError(intentSource, 'WrongDestinationChain')
-          .withArgs(intentHash)
+        expect(await prover.hashOfChallengedIntent()).to.not.eq(intentHash)
+
+        await expect(
+          intentSource.connect(otherPerson).withdrawRewards(intent),
+        ).to.not.emit(intentSource, 'Withdrawal')
+
+        expect(await prover.hashOfChallengedIntent()).to.eq(intentHash)
+
+        expect(await intentSource.isIntentFunded(intent)).to.be.true
       })
     })
   })
@@ -572,7 +578,7 @@ describe('Intent Source Test', (): void => {
 
         await prover
           .connect(creator)
-          .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+          .addProvenIntent(intentHash, chainId, await claimant.getAddress())
         await intentSource.connect(otherPerson).batchWithdraw([intent])
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
@@ -604,7 +610,7 @@ describe('Intent Source Test', (): void => {
 
         await prover
           .connect(otherPerson)
-          .addProvenIntent(intentHash, await creator.getAddress(), chainId)
+          .addProvenIntent(intentHash, chainId, await creator.getAddress())
         await intentSource.connect(otherPerson).batchWithdraw([intent])
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
@@ -671,7 +677,7 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 3; ++i) {
           await prover
             .connect(creator)
-            .addProvenIntent(hashes[i], await claimant.getAddress(), chainId)
+            .addProvenIntent(hashes[i], chainId, await claimant.getAddress())
         }
         await intentSource.connect(otherPerson).batchWithdraw(intents)
 
@@ -737,7 +743,7 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 6; ++i) {
           await prover
             .connect(creator)
-            .addProvenIntent(hashes[i], await claimant.getAddress(), chainId)
+            .addProvenIntent(hashes[i], chainId, await claimant.getAddress())
         }
         await intentSource.connect(otherPerson).batchWithdraw(intents)
 
@@ -830,7 +836,7 @@ describe('Intent Source Test', (): void => {
         for (let i = 0; i < 9; ++i) {
           await prover
             .connect(creator)
-            .addProvenIntent(hashes[i], await claimant.getAddress(), chainId)
+            .addProvenIntent(hashes[i], chainId, await claimant.getAddress())
         }
 
         await intentSource.connect(otherPerson).batchWithdraw(intents)
@@ -939,8 +945,8 @@ describe('Intent Source Test', (): void => {
           .connect(creator)
           .addProvenIntent(
             hashes[i],
-            await claimant.getAddress(),
             route.destination,
+            await claimant.getAddress(),
           )
       }
       await intentSource.connect(otherPerson).batchWithdraw(intents)
@@ -1219,8 +1225,8 @@ describe('Intent Source Test', (): void => {
       const hash = (await intentSource.getIntentHash({ route, reward }))[0]
       await prover.addProvenIntent(
         hash,
-        await claimant.getAddress(),
         route.destination,
+        await claimant.getAddress(),
       )
 
       await intentSource.connect(claimant).withdrawRewards({ route, reward })
@@ -1259,8 +1265,8 @@ describe('Intent Source Test', (): void => {
       )[0]
       await prover.addProvenIntent(
         badHash,
-        await claimant.getAddress(),
         route.destination,
+        await claimant.getAddress(),
       )
 
       await expect(intentSource.withdrawRewards({ route, reward: badReward }))
