@@ -11,11 +11,6 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
  * and their claimants
  */
 abstract contract BaseProver is IProver, ERC165 {
-    struct ProofData {
-        uint96 destinationChainID;
-        address claimant;
-    }
-
     /**
      * @notice Address of the Inbox contract
      * @dev Immutable to prevent unauthorized changes
@@ -26,7 +21,7 @@ abstract contract BaseProver is IProver, ERC165 {
      * @notice Mapping from intent hash to address eligible to claim rewards
      * @dev Zero claimant address indicates intent hasn't been proven
      */
-    mapping(bytes32 => ProofData) public provenIntents;
+    mapping(bytes32 => ProofData) internal _provenIntents;
 
     /**
      * @notice Initializes the BaseProver contract
@@ -34,6 +29,17 @@ abstract contract BaseProver is IProver, ERC165 {
      */
     constructor(address _inbox) {
         INBOX = _inbox;
+    }
+
+    /**
+     * @notice Fetches a ProofData from the provenIntents mapping
+     * @param _intentHash the hash of the intent whose proof data is being queried
+     * @return ProofData struct containing the destination chain ID and claimant address
+     */
+    function provenIntents(
+        bytes32 _intentHash
+    ) public view returns (ProofData memory) {
+        return _provenIntents[_intentHash];
     }
 
     /**
@@ -65,7 +71,7 @@ abstract contract BaseProver is IProver, ERC165 {
             }
 
             // covers an edge case in the event of an attack
-            uint96 currentDestinationChainID = provenIntents[intentHash]
+            uint96 currentDestinationChainID = provenIntents(intentHash)
                 .destinationChainID;
             if (
                 _destinationChainID != currentDestinationChainID &&
@@ -78,12 +84,12 @@ abstract contract BaseProver is IProver, ERC165 {
                 );
             }
             // Skip rather than revert for already proven intents
-            if (provenIntents[intentHash].claimant != address(0)) {
+            ProofData storage proofData = _provenIntents[intentHash];
+            if (proofData.claimant != address(0)) {
                 emit IntentAlreadyProven(intentHash);
             } else {
-                provenIntents[intentHash].claimant = claimant;
-                provenIntents[intentHash]
-                    .destinationChainID = _destinationChainID;
+                proofData.claimant = claimant;
+                proofData.destinationChainID = _destinationChainID;
                 emit IntentProven(intentHash, claimant);
             }
         }

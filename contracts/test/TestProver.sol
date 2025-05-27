@@ -31,8 +31,8 @@ contract TestProver is BaseProver {
         uint96 _destinationChainID,
         address _claimant
     ) public {
-        provenIntents[_hash].claimant = _claimant;
-        provenIntents[_hash].destinationChainID = _destinationChainID;
+        _provenIntents[_hash].claimant = _claimant;
+        _provenIntents[_hash].destinationChainID = _destinationChainID;
     }
 
     function getProofType() external pure override returns (string memory) {

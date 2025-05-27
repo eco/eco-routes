@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 
@@ -122,7 +121,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         emit BatchSent(_intentHashes, _sourceChainId);
 
         // Declare dispatch parameters for cross-chain message delivery
-        uint32 destinationDomain;
+        uint32 sourceChainDomain;
         bytes32 recipientAddress;
         bytes memory messageBody;
         bytes memory metadata;
@@ -130,7 +129,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Prepare parameters for cross-chain message dispatch
         (
-            destinationDomain,
+            sourceChainDomain,
             recipientAddress,
             messageBody,
             metadata,
@@ -146,7 +145,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Note: Some Hyperlane versions have different dispatch signatures.
         // This matches the expected signature for testing.
         IMailbox(MAILBOX).dispatch{value: fee}(
-            destinationDomain,
+            sourceChainDomain,
             recipientAddress,
             messageBody,
             metadata,

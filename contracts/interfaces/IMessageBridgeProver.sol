@@ -78,6 +78,12 @@ interface IMessageBridgeProver is IProver {
     event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
 
     /**
+     * @notice Emitted when an intentProof is successfully challenged
+     * @param _intentHash Hash of the intent whose proof was challenged
+     */
+    event BadProofCleared(bytes32 indexed _intentHash);
+
+    /**
      * @notice Calculates the fee required for message dispatch
      * @param _sourceChainID Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove

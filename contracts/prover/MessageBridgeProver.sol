@@ -27,12 +27,6 @@ abstract contract MessageBridgeProver is
     uint256 public immutable DEFAULT_GAS_LIMIT;
 
     /**
-     * @notice Emitted when an intentProof is successfully challenged
-     * @param _intentHash Hash of the intent whose proof was challenged
-     */
-    event BadProofCleared(bytes32 indexed _intentHash);
-
-    /**
      * @notice Initializes the MessageBridgeProver contract
      * @param _inbox Address of the Inbox contract
      * @param _provers Array of trusted prover addresses
@@ -64,7 +58,7 @@ abstract contract MessageBridgeProver is
         );
         uint96 trueDestinationChainID = uint96(_intent.route.destination);
 
-        ProofData storage proofData = provenIntents[intentHash];
+        ProofData storage proofData = _provenIntents[intentHash];
 
         if (trueDestinationChainID != proofData.destinationChainID) {
             if (proofData.destinationChainID != 0) {

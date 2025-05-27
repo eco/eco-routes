@@ -6,7 +6,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
-import {BaseProver} from "./prover/BaseProver.sol";
 import {IProver} from "./interfaces/IProver.sol";
 import {Intent, Reward} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
@@ -254,13 +253,12 @@ contract IntentSource is IIntentSource, Semver {
     function withdrawRewards(Intent calldata _intent) public {
         (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(_intent);
 
-        (uint96 destinationChainID, address claimant) = BaseProver(
-            _intent.reward.prover
-        ).provenIntents(intentHash);
+        IProver.ProofData memory proofData = IProver(_intent.reward.prover)
+            .provenIntents(intentHash);
 
         if (
-            destinationChainID != uint96(_intent.route.destination) &&
-            claimant != address(0)
+            proofData.destinationChainID != uint96(_intent.route.destination) &&
+            proofData.claimant != address(0)
         ) {
             // If the intent has been proven on a different chain, challenge the proof
             IProver(_intent.reward.prover).challengeIntentProof(_intent);
@@ -271,7 +269,7 @@ contract IntentSource is IIntentSource, Semver {
 
         // Claim the rewards if the intent has not been claimed
         if (
-            claimant != address(0) &&
+            proofData.claimant != address(0) &&
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
@@ -279,17 +277,17 @@ contract IntentSource is IIntentSource, Semver {
             state.mode = uint8(VaultMode.Claim);
             state.allowPartialFunding = 0;
             state.usePermit = 0;
-            state.target = claimant;
+            state.target = proofData.claimant;
             vaults[intentHash].state = state;
 
-            emit Withdrawal(intentHash, claimant);
+            emit Withdrawal(intentHash, proofData.claimant);
 
             new Vault{salt: routeHash}(intentHash, _intent.reward);
 
             return;
         }
 
-        if (claimant == address(0)) {
+        if (proofData.claimant == address(0)) {
             revert UnauthorizedWithdrawal(intentHash);
         } else {
             revert RewardsAlreadyWithdrawn(intentHash);
@@ -322,16 +320,17 @@ contract IntentSource is IIntentSource, Semver {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            (uint96 destinationChainID, address claimant) = BaseProver(
-                _intent.reward.prover
-            ).provenIntents(intentHash);
+            IProver.ProofData memory proofData = IProver(_intent.reward.prover)
+                .provenIntents(intentHash);
             if (
-                claimant == address(0) ||
-                destinationChainID == uint96(_intent.route.destination)
+                proofData.claimant == address(0) ||
+                proofData.destinationChainID ==
+                uint96(_intent.route.destination)
             ) {
                 if (
-                    claimant != address(0) &&
-                    destinationChainID == uint96(_intent.route.destination)
+                    proofData.claimant != address(0) &&
+                    proofData.destinationChainID ==
+                    uint96(_intent.route.destination)
                 ) // Check if the intent has been proven to prevent unauthorized refunds
                 {
                     revert IntentNotClaimed(intentHash);

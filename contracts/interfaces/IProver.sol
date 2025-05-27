@@ -11,6 +11,11 @@ import {Intent} from "../types/Intent.sol";
  * proof mechanisms (storage or Hyperlane)
  */
 interface IProver is ISemver {
+    struct ProofData {
+        uint96 destinationChainID;
+        address claimant;
+    }
+
     /**
      * @notice Arrays of intent hashes and claimants must have the same length
      */
@@ -41,6 +46,15 @@ interface IProver is ISemver {
      * @param _intentHash Hash of the already proven intent
      */
     event IntentAlreadyProven(bytes32 _intentHash);
+
+    /**
+     * @notice Fetches a ProofData from the provenIntents mapping
+     * @param _intentHash the hash of the intent whose proof data is being queried
+     * @return ProofData struct containing the destination chain ID and claimant address
+     */
+    function provenIntents(
+        bytes32 _intentHash
+    ) external view returns (ProofData memory);
 
     /**
      * @notice Gets the proof mechanism type used by this prover
