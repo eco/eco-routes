@@ -153,6 +153,12 @@ interface IIntentSource is ISemver, IVaultStorage {
     event Refund(bytes32 hash, address indexed recipient);
 
     /**
+     * @notice Indicates an intent proof being challenged
+     * @param intentHash The hash of the intent that was incorrectly proven
+     */
+    event IntentProofChallenged(bytes32 intentHash);
+
+    /**
      * @notice Retrieves the current reward claim status for an intent
      * @param intentHash The hash of the intent
      * @return status Current reward status

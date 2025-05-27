@@ -7,8 +7,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {BaseProver} from "./prover/BaseProver.sol";
-import {IMessageBridgeProver} from "./interfaces/IMessageBridgeProver.sol";
-import {Intent, Route, Reward, Call} from "./types/Intent.sol";
+import {IProver} from "./interfaces/IProver.sol";
+import {Intent, Reward} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 import {Vault} from "./Vault.sol";
@@ -258,11 +258,13 @@ contract IntentSource is IIntentSource, Semver {
             _intent.reward.prover
         ).provenIntents(intentHash);
 
-        if (destinationChainID != uint96(_intent.route.destination) && claimant != address(0)) {
+        if (
+            destinationChainID != uint96(_intent.route.destination) &&
+            claimant != address(0)
+        ) {
             // If the intent has been proven on a different chain, challenge the proof
-            IMessageBridgeProver(_intent.reward.prover).challengeIntentProof(
-                _intent
-            );
+            IProver(_intent.reward.prover).challengeIntentProof(_intent);
+            emit IntentProofChallenged(intentHash);
             return;
         }
         VaultState memory state = vaults[intentHash].state;

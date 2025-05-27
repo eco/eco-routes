@@ -445,16 +445,17 @@ describe('Intent Source Test', (): void => {
           Number(initialBalanceB) + reward.tokens[1].amount,
         )
       })
-      it(' calls challengeIntentProof if destinationChainID is wrong, and does not withdraw', async () => {
+      it(' calls challengeIntentProof if destinationChainID is wrong, emits, and does not withdraw', async () => {
         await prover
           .connect(creator)
           .addProvenIntent(intentHash, 2, await claimant.getAddress())
 
         expect(await prover.hashOfChallengedIntent()).to.not.eq(intentHash)
 
-        await expect(
-          intentSource.connect(otherPerson).withdrawRewards(intent),
-        ).to.not.emit(intentSource, 'Withdrawal')
+        await expect(intentSource.connect(otherPerson).withdrawRewards(intent))
+          .to.emit(intentSource, 'IntentProofChallenged')
+          .withArgs(intentHash)
+          .and.to.not.emit(intentSource, 'Withdrawal')
 
         expect(await prover.hashOfChallengedIntent()).to.eq(intentHash)
 
