@@ -385,15 +385,6 @@ describe('Intent Source Test', (): void => {
           .to.emit(intentSource, 'Refund')
           .withArgs(intentHash, reward.creator)
       })
-      it('allows refund if destinationChainID is wrong, even if proven', async () => {
-        await prover
-          .connect(creator)
-          .addProvenIntent(intentHash, 2, await claimant.getAddress())
-
-        await expect(intentSource.connect(otherPerson).refund(intent))
-          .to.emit(intentSource, 'Refund')
-          .withArgs(intentHash, reward.creator)
-      })
     })
     context('after expiry, no proof', () => {
       beforeEach(async (): Promise<void> => {
@@ -460,6 +451,15 @@ describe('Intent Source Test', (): void => {
         expect(await prover.hashOfChallengedIntent()).to.eq(intentHash)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.true
+      })
+      it('allows refund if destinationChainID is wrong, even if proven', async () => {
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, 2, await claimant.getAddress())
+
+        await expect(intentSource.connect(otherPerson).refund(intent))
+          .to.emit(intentSource, 'Refund')
+          .withArgs(intentHash, reward.creator)
       })
     })
   })

@@ -323,22 +323,16 @@ contract IntentSource is IIntentSource, Semver {
             IProver.ProofData memory proofData = IProver(_intent.reward.prover)
                 .provenIntents(intentHash);
             if (
-                proofData.claimant == address(0) ||
+                proofData.claimant != address(0) &&
                 proofData.destinationChainID ==
                 uint96(_intent.route.destination)
-            ) {
-                if (
-                    proofData.claimant != address(0) &&
-                    proofData.destinationChainID ==
-                    uint96(_intent.route.destination)
-                ) // Check if the intent has been proven to prevent unauthorized refunds
-                {
-                    revert IntentNotClaimed(intentHash);
-                }
-                // Revert if intent has not expired
-                if (block.timestamp <= _intent.reward.deadline) {
-                    revert IntentNotExpired(intentHash);
-                }
+            ) // Check if the intent has been proven to prevent unauthorized refunds
+            {
+                revert IntentNotClaimed(intentHash);
+            }
+            // Revert if intent has not expired
+            if (block.timestamp <= _intent.reward.deadline) {
+                revert IntentNotExpired(intentHash);
             }
         }
 

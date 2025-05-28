@@ -612,6 +612,29 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.messageBody()).to.eq(expectedBody)
     })
 
+    it('handles rari edgecase correctly', async () => {
+      const sourceChainId = await metaProver.RARICHAIN_CHAIN_ID()
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
+      )
+
+      await metaProver.connect(owner).prove(
+        solver.address,
+        sourceChainId,
+        intentHashes,
+        claimants,
+        data,
+        { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
+      )
+      expect(await testRouter.destinationDomain()).to.eq(
+        await metaProver.RARICHAIN_DOMAIN_ID(),
+      )
+    })
+
     it('should reject initiateProving from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]

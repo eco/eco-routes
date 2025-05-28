@@ -441,7 +441,6 @@ describe('HyperProver Test', (): void => {
   describe('3. initiateProving', () => {
     beforeEach(async () => {
       // use owner as inbox so we can test initiateProving
-      const chainId = 12345 // Use test chainId
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(await mailbox.getAddress(), owner.address, [
@@ -648,6 +647,49 @@ describe('HyperProver Test', (): void => {
 
       // Verify we get a valid fee (implementation dependent, so just check it's non-zero)
       expect(fee).to.be.gt(0)
+    })
+
+    it('handles rari edgecase correctly', async () => {
+      // Set up test data
+      const sourceChainId = await hyperProver.RARICHAIN_CHAIN_ID()
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await hyperProver.getAddress()
+      const metadata = '0x1234'
+      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+        // ['sourceChainProver', 'metadata', 'hookAddress'],
+        ['bytes32', 'bytes', 'address'],
+        [
+          ethers.zeroPadValue(sourceChainProver, 32),
+          metadata,
+          ethers.ZeroAddress,
+        ],
+      )
+
+      const fee = await hyperProver.fetchFee(
+        sourceChainId,
+        intentHashes,
+        claimants,
+        data,
+      )
+
+      await expect(
+        hyperProver.connect(owner).prove(
+          owner.address,
+          sourceChainId,
+          intentHashes,
+          claimants,
+          data,
+          { value: fee }, // Send some value to cover fees
+        ),
+      )
+        .to.emit(hyperProver, 'BatchSent')
+        .withArgs(intentHashes[0], sourceChainId)
+
+      // Verify the mailbox was called with correct parameters
+      expect(await mailbox.destinationDomain()).to.eq(
+        await hyperProver.RARICHAIN_DOMAIN_ID(),
+      )
     })
 
     it('should correctly call dispatch in the prove method', async () => {

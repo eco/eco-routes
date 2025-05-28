@@ -230,7 +230,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Formats data for Metalayer message dispatch with pre-decoded values
-     * @param _sourceChainId Chain ID of the source chain
+     * @param _sourceChainID Chain ID of the source chain
      * @param _hashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _sourceChainProver Pre-decoded prover address on source chain
@@ -239,7 +239,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @return message Encoded message body with intent hashes and claimants
      */
     function _formatMetalayerMessage(
-        uint256 _sourceChainId,
+        uint256 _sourceChainID,
         bytes32[] calldata _hashes,
         address[] calldata _claimants,
         bytes32 _sourceChainProver
@@ -255,10 +255,10 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
         // Convert chain ID to Metalayer domain format
         // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_sourceChainId > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainId);
+        if (_sourceChainID > type(uint32).max) {
+            revert ChainIdTooLarge(_sourceChainID);
         }
-        domain = uint32(_sourceChainId);
+        domain = _convertChainID(_sourceChainID);
 
         // Use pre-decoded source chain prover address as recipient
         recipient = _sourceChainProver;
