@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IProver} from "./IProver.sol";
+import {Intent} from "../types/Intent.sol";
 
 /**
  * @title IMessageBridgeProver
@@ -19,6 +20,12 @@ interface IMessageBridgeProver is IProver {
      * @notice Native token transfer failed
      */
     error NativeTransferFailed();
+
+    /**
+     * @notice Chain ID is too large for destination chain format
+     * @param _chainId The chain ID that couldn't be converted
+     */
+    error ChainIdTooLarge(uint256 _chainId);
 
     /**
      * @notice Unauthorized call to handle() detected
@@ -71,8 +78,14 @@ interface IMessageBridgeProver is IProver {
     event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
 
     /**
+     * @notice Emitted when an intentProof is successfully challenged
+     * @param _intentHash Hash of the intent whose proof was challenged
+     */
+    event BadProofCleared(bytes32 indexed _intentHash);
+
+    /**
      * @notice Calculates the fee required for message dispatch
-     * @param _domain Domain of source chain
+     * @param _sourceChainID Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting.
@@ -82,7 +95,7 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint32 _domain,
+        uint256 _sourceChainID,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes calldata _data
