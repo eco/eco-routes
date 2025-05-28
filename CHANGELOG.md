@@ -1,3 +1,10 @@
+## [2.1.19](https://github.com/eco/eco-routes/compare/v2.1.18...v2.1.19) (2025-05-23)
+
+
+### Bug Fixes
+
+* dont attempt verify on deploy ([aaa3cf0](https://github.com/eco/eco-routes/commit/aaa3cf0e4e1a9000dd40d0819aa759820c761431))
+
 ## [2.1.18](https://github.com/eco/eco-routes/compare/v2.1.17...v2.1.18) (2025-05-23)
 
 
