@@ -1,3 +1,10 @@
+## [2.1.20](https://github.com/eco/eco-routes/compare/v2.1.19...v2.1.20) (2025-05-28)
+
+
+### Bug Fixes
+
+* move versioning into the preprack step ([03485e8](https://github.com/eco/eco-routes/commit/03485e8b6ec605d4ade21c45a63c670bdc36765e))
+
 ## [2.1.19](https://github.com/eco/eco-routes/compare/v2.1.18...v2.1.19) (2025-05-23)
 
 
