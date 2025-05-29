@@ -275,12 +275,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         if (_hashes.length != _claimants.length) {
             revert ArrayLengthMismatch();
         }
-
-        // Convert chain ID to Hyperlane domain ID format
-        // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_sourceChainID > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainID);
-        }
+        // Convert chain ID to domain
         domain = _convertChainID(_sourceChainID);
 
         // Use the source chain prover address as the message recipient

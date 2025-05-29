@@ -22,12 +22,6 @@ interface IMessageBridgeProver is IProver {
     error NativeTransferFailed();
 
     /**
-     * @notice Chain ID is too large for destination chain format
-     * @param _chainId The chain ID that couldn't be converted
-     */
-    error ChainIdTooLarge(uint256 _chainId);
-
-    /**
      * @notice Unauthorized call to handle() detected
      * @param _sender Address that attempted the call
      */
