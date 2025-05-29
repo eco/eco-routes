@@ -253,11 +253,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Convert chain ID to Metalayer domain format
-        // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_sourceChainID > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainID);
-        }
+        // Convert chain ID to domain
         domain = _convertChainID(_sourceChainID);
 
         // Use pre-decoded source chain prover address as recipient
