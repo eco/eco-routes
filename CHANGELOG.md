@@ -1,3 +1,11 @@
+## [2.1.21](https://github.com/eco/eco-routes/compare/v2.1.20...v2.1.21) (2025-05-29)
+
+
+### Bug Fixes
+
+* update tests ([6ce4a57](https://github.com/eco/eco-routes/commit/6ce4a572c4ff39825c705ff4ff7f16c7c87eb3c5))
+* update the contracts to main ([20b3b9f](https://github.com/eco/eco-routes/commit/20b3b9f2529dcff23cd62049190cbbe638c7768b))
+
 ## [2.1.20](https://github.com/eco/eco-routes/compare/v2.1.19...v2.1.20) (2025-05-28)
 
 
