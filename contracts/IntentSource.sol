@@ -259,8 +259,8 @@ contract IntentSource is IIntentSource, Semver {
             .provenIntents(intentHash);
 
         if (
-            proofData.destinationChainID !=
-            _intent.route.destination.toUint96() &&
+            uint256(proofData.destinationChainID) !=
+            _intent.route.destination &&
             proofData.claimant != address(0)
         ) {
             // If the intent has been proven on a different chain, challenge the proof
@@ -327,8 +327,8 @@ contract IntentSource is IIntentSource, Semver {
                 .provenIntents(intentHash);
             if (
                 proofData.claimant != address(0) &&
-                proofData.destinationChainID ==
-                _intent.route.destination.toUint96()
+                uint256(proofData.destinationChainID) ==
+                _intent.route.destination
             ) // Check if the intent has been proven to prevent unauthorized refunds
             {
                 revert IntentNotClaimed(intentHash);
