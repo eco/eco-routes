@@ -31,15 +31,17 @@ abstract contract MessageBridgeProver is
 
     /**
      * @notice Initializes the MessageBridgeProver contract
+     * @param _intentSource Address of the intent source contract
      * @param _inbox Address of the Inbox contract
      * @param _provers Array of trusted prover addresses
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
+        address _intentSource,
         address _inbox,
         address[] memory _provers,
         uint256 _defaultGasLimit
-    ) BaseProver(_inbox) Whitelist(_provers) {
+    ) BaseProver(_intentSource, _inbox) Whitelist(_provers) {
         if (_inbox == address(0)) revert InboxCannotBeZeroAddress();
 
         DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;

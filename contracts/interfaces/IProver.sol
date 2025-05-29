@@ -87,4 +87,14 @@ interface IProver is ISemver {
      * @dev does nothing if chainID is correct
      */
     function challengeIntentProof(Intent calldata _intent) external;
+
+    /**
+     * @notice Pre-sets the destinationChainID associated with an intentHash
+     * @param _intentHash The hash of the intent
+     * @param _destinationChainID The destination chain ID of the intent
+     */
+    function prepProof(
+        bytes32 _intentHash,
+        uint96 _destinationChainID
+    ) external;
 }

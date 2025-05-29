@@ -18,6 +18,12 @@ abstract contract BaseProver is IProver, ERC165 {
     address public immutable INBOX;
 
     /**
+     * @notice Address of the IntentSource contract
+     * @dev Immutable to prevent unauthorized changes
+     */
+    address public immutable INTENT_SOURCE;
+
+    /**
      * @notice Mapping from intent hash to address eligible to claim rewards
      * @dev Zero claimant address indicates intent hasn't been proven
      */
@@ -25,9 +31,11 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Initializes the BaseProver contract
+     * @param _intentSource Address of the IntentSource contract
      * @param _inbox Address of the Inbox contract
      */
-    constructor(address _inbox) {
+    constructor(address _intentSource, address _inbox) {
+        INTENT_SOURCE = _intentSource;
         INBOX = _inbox;
     }
 
@@ -107,5 +115,13 @@ abstract contract BaseProver is IProver, ERC165 {
         return
             interfaceId == type(IProver).interfaceId ||
             super.supportsInterface(interfaceId);
+    }
+
+    function prepProof(
+        bytes32 _intentHash,
+        uint96 _destinationChainID
+    ) external {
+        require(msg.sender == INTENT_SOURCE, "Unauthorized");
+        _provenIntents[_intentHash].destinationChainID = _destinationChainID;
     }
 }

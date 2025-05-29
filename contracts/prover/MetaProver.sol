@@ -32,16 +32,18 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Initializes the MetaProver contract
      * @param _router Address of local Metalayer router
+     * @param _intentSource Address of the intent source contract
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted prover addresses
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _router,
+        address _intentSource,
         address _inbox,
         address[] memory _provers,
         uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+    ) MessageBridgeProver(_intentSource, _inbox, _provers, _defaultGasLimit) {
         if (_router == address(0)) revert RouterCannotBeZeroAddress();
         ROUTER = _router;
     }

@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IProver} from "./interfaces/IProver.sol";
@@ -22,6 +23,7 @@ import {Vault} from "./Vault.sol";
  */
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
+    using SafeCast for uint256;
 
     mapping(bytes32 intentHash => VaultStorage) public vaults;
 
@@ -482,6 +484,11 @@ contract IntentSource is IIntentSource, Semver {
         ) {
             revert IntentAlreadyExists(intentHash);
         }
+
+        IProver(intent.reward.prover).prepProof(
+            intentHash,
+            intent.route.destination.toUint96()
+        );
 
         // Use a separate function to emit event to avoid stack-too-deep errors
         _emitIntentCreated(intent, intentHash);
