@@ -6,6 +6,7 @@ import {BaseProver} from "./BaseProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Whitelist} from "../tools/Whitelist.sol";
 import {Intent} from "../types/Intent.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title MessageBridgeProver
@@ -18,6 +19,8 @@ abstract contract MessageBridgeProver is
     IMessageBridgeProver,
     Whitelist
 {
+    using SafeCast for uint256;
+
     uint256 public constant RARICHAIN_CHAIN_ID = 1380012617;
     uint256 public constant RARICHAIN_DOMAIN_ID = 1000012617;
     /**
@@ -80,15 +83,10 @@ abstract contract MessageBridgeProver is
      * @return domain ID
      */
     function _convertChainID(uint256 _chainID) internal pure returns (uint32) {
-        // Convert chain ID to Hyperlane domain ID format
-        // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_chainID > type(uint32).max) {
-            revert ChainIdTooLarge(_chainID);
-        }
-        if (_chainID == uint256(RARICHAIN_CHAIN_ID)) {
+        if (_chainID == RARICHAIN_CHAIN_ID) {
             return uint32(RARICHAIN_DOMAIN_ID);
         }
-        return uint32(_chainID);
+        return _chainID.toUint32();
     }
 
     /**

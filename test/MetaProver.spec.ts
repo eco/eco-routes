@@ -1082,7 +1082,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Should revert with ChainIdTooLarge error
+      // Should revert with SafeCast error
       await expect(
         metaProver
           .connect(owner)
@@ -1095,8 +1095,8 @@ describe('MetaProver Test', (): void => {
             { value: await testRouter.FEE() },
           ),
       )
-        .to.be.revertedWithCustomError(metaProver, 'ChainIdTooLarge')
-        .withArgs(veryLargeChainId)
+        .to.be.revertedWithCustomError(metaProver, 'SafeCastOverflowedUintDowncast')
+        .withArgs(32, veryLargeChainId)
     })
   })
 
