@@ -49,7 +49,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Handles incoming Metalayer messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
-     * @dev called by the Hyperlane mailbox on the source chain
+     * @dev called by the Metalayer Router on the source chain
      * @param _origin Origin chain ID from the destination chain
      * @param _sender Address that dispatched the message on destination chain
      * @param _message Encoded array of intent hashes and claimants
