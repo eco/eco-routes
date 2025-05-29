@@ -21,6 +21,12 @@ interface IMessageBridgeProver is IProver {
     error NativeTransferFailed();
 
     /**
+     * @notice Chain ID is too large for destination chain format
+     * @param _chainId The chain ID that couldn't be converted
+     */
+    error ChainIdTooLarge(uint256 _chainId);
+
+    /**
      * @notice Unauthorized call to handle() detected
      * @param _sender Address that attempted the call
      */
@@ -54,6 +60,11 @@ interface IMessageBridgeProver is IProver {
     error InboxCannotBeZeroAddress();
 
     /**
+     * @notice Prover address cannot be zero
+     */
+    error ProverCannotBeZeroAddress();
+
+    /**
      * @notice Invalid chain ID for the origin
      */
     error InvalidOriginChainId();
@@ -72,7 +83,7 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Calculates the fee required for message dispatch
-     * @param _domain Domain of source chain
+     * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
      * @param _claimants Array of claimant addresses
      * @param _data Additional data for message formatting.
@@ -82,7 +93,7 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint32 _domain,
+        uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
         address[] calldata _claimants,
         bytes calldata _data
