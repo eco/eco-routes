@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IProver} from "./interfaces/IProver.sol";
@@ -22,6 +23,7 @@ import {Vault} from "./Vault.sol";
  */
 contract IntentSource is IIntentSource, Semver {
     using SafeERC20 for IERC20;
+    using SafeCast for uint256;
 
     mapping(bytes32 intentHash => VaultStorage) public vaults;
 
@@ -257,7 +259,8 @@ contract IntentSource is IIntentSource, Semver {
             .provenIntents(intentHash);
 
         if (
-            proofData.destinationChainID != uint96(_intent.route.destination) &&
+            proofData.destinationChainID !=
+            _intent.route.destination.toUint96() &&
             proofData.claimant != address(0)
         ) {
             // If the intent has been proven on a different chain, challenge the proof
@@ -325,7 +328,7 @@ contract IntentSource is IIntentSource, Semver {
             if (
                 proofData.claimant != address(0) &&
                 proofData.destinationChainID ==
-                uint96(_intent.route.destination)
+                _intent.route.destination.toUint96()
             ) // Check if the intent has been proven to prevent unauthorized refunds
             {
                 revert IntentNotClaimed(intentHash);
@@ -481,6 +484,11 @@ contract IntentSource is IIntentSource, Semver {
         ) {
             revert IntentAlreadyExists(intentHash);
         }
+
+        IProver(intent.reward.prover).prepProof(
+            intentHash,
+            intent.route.destination.toUint96()
+        );
 
         // Use a separate function to emit event to avoid stack-too-deep errors
         _emitIntentCreated(intent, intentHash);

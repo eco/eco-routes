@@ -38,14 +38,16 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     /**
      * @param _mailbox Address of local Hyperlane mailbox
+     * @param _intentSource Address of the intent source contract
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted prover addresses
      */
     constructor(
         address _mailbox,
+        address _intentSource,
         address _inbox,
         address[] memory _provers
-    ) MessageBridgeProver(_inbox, _provers, 0) {
+    ) MessageBridgeProver(_intentSource, _inbox, _provers, 0) {
         if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
         MAILBOX = _mailbox;
     }

@@ -1095,7 +1095,10 @@ describe('MetaProver Test', (): void => {
             { value: await testRouter.FEE() },
           ),
       )
-        .to.be.revertedWithCustomError(metaProver, 'SafeCastOverflowedUintDowncast')
+        .to.be.revertedWithCustomError(
+          metaProver,
+          'SafeCastOverflowedUintDowncast',
+        )
         .withArgs(32, veryLargeChainId)
     })
   })
