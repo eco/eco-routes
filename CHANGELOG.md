@@ -1,3 +1,11 @@
+## [2.2.1](https://github.com/eco/eco-routes/compare/v2.2.0...v2.2.1) (2025-06-02)
+
+
+### Bug Fixes
+
+* increase minor version to redeploy ([cc888b3](https://github.com/eco/eco-routes/commit/cc888b376fc22a56d1248889fe3138f5938549cd))
+* trigger patch release ([ddaa9cf](https://github.com/eco/eco-routes/commit/ddaa9cf130e7b724a556489facba272c42edffd5))
+
 # [2.2.0](https://github.com/eco/eco-routes/compare/v2.1.22...v2.2.0) (2025-05-31)
 
 
