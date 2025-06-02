@@ -1,3 +1,11 @@
+# [2.4.0](https://github.com/eco/eco-routes/compare/v2.3.0...v2.4.0) (2025-06-02)
+
+
+### Features
+
+* trigger minor release ([2d7b2b8](https://github.com/eco/eco-routes/commit/2d7b2b8dafbbee0fdae57921d2282fe29c044e40))
+* trigger minor release ([b18d10a](https://github.com/eco/eco-routes/commit/b18d10accdb6c99e21a2eaf3436c6844056d35ed))
+
 ## [2.2.1](https://github.com/eco/eco-routes/compare/v2.2.0...v2.2.1) (2025-06-02)
 
 
