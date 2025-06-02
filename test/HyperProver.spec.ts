@@ -7,7 +7,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount } from '../utils/intent'
+import { hashIntent, TokenAmount, Intent } from '../utils/intent'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -17,6 +17,7 @@ describe('HyperProver Test', (): void => {
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
+  let intent: Intent
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
@@ -59,7 +60,7 @@ describe('HyperProver Test', (): void => {
     it('should initialize with the correct mailbox and inbox addresses', async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 0)
 
       expect(await hyperProver.MAILBOX()).to.equal(await mailbox.getAddress())
       expect(await hyperProver.INBOX()).to.equal(await inbox.getAddress())
@@ -73,7 +74,7 @@ describe('HyperProver Test', (): void => {
         await mailbox.getAddress(),
         await inbox.getAddress(),
         [additionalProver, await hyperProver.getAddress()],
-        200000,
+        0,
       )
 
       // Check if the prover address is in the whitelist
@@ -87,7 +88,7 @@ describe('HyperProver Test', (): void => {
       // use owner as mailbox so we can test handle
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 0)
       expect(await hyperProver.getProofType()).to.equal('Hyperlane')
     })
   })
@@ -100,7 +101,7 @@ describe('HyperProver Test', (): void => {
         owner.address,
         await inbox.getAddress(),
         [await inbox.getAddress(), await hyperProver.getAddress()],
-        200000,
+        0,
       )
     })
 
@@ -116,7 +117,11 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(owner)
-          .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
+          .handle(
+            12345,
+            ethers.zeroPadValue(owner.address, 32),
+            ethers.sha256('0x'),
+          ),
       ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedIncomingProof')
     })
 
@@ -128,9 +133,12 @@ describe('HyperProver Test', (): void => {
         [[intentHash], [claimantAddress]],
       )
 
-      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
         ethers.ZeroAddress,
       )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(0)
 
       await expect(
         hyperProver
@@ -144,7 +152,12 @@ describe('HyperProver Test', (): void => {
         .to.emit(hyperProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
 
-      expect(await hyperProver.provenIntents(intentHash)).to.eq(claimantAddress)
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(12345)
     })
 
     it('should emit an event when intent is already proven', async () => {
@@ -205,23 +218,243 @@ describe('HyperProver Test', (): void => {
         .withArgs(intentHash, claimantAddress)
         .to.emit(hyperProver, 'IntentProven')
         .withArgs(otherHash, otherAddress)
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
+      expect((await hyperProver.provenIntents(otherHash)).claimant).to.eq(
+        otherAddress,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(12345)
+      expect(
+        (await hyperProver.provenIntents(otherHash)).destinationChainID,
+      ).to.eq(12345)
+    })
+    it('accounts for Rari edge case where chainID != domainID', async () => {
+      const intentHash = ethers.sha256('0x')
+      const claimantAddress = await claimant.getAddress()
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimantAddress]],
+      )
 
-      expect(await hyperProver.provenIntents(intentHash)).to.eq(claimantAddress)
-      expect(await hyperProver.provenIntents(otherHash)).to.eq(otherAddress)
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(0)
+
+      expect(await hyperProver.RARICHAIN_DOMAIN_ID()).to.not.eq(
+        await hyperProver.RARICHAIN_CHAIN_ID(),
+      )
+
+      await expect(
+        hyperProver
+          .connect(owner)
+          .handle(
+            await hyperProver.RARICHAIN_DOMAIN_ID(),
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+          ),
+      )
+        .to.emit(hyperProver, 'IntentProven')
+        .withArgs(intentHash, claimantAddress)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(await hyperProver.RARICHAIN_CHAIN_ID())
     })
   })
 
-  describe('3. SendProof', () => {
+  describe('edge case: challengeIntentProof', () => {
     beforeEach(async () => {
-      // use owner as inbox so we can test sendProof
-      const chainId = 12345 // Use test chainId
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
+        owner.address,
+        await inbox.getAddress(),
+        [await inbox.getAddress()],
+        0,
+      )
+
+      const sourceChainID = 12345
+      const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      const timeStamp = (await time.latest()) + 1000
+      const metadata = '0x1234'
+      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['bytes32', 'bytes', 'address'],
+        [
+          ethers.zeroPadValue(await hyperProver.getAddress(), 32),
+          metadata,
+          ethers.ZeroAddress,
+        ],
+      )
+
+      let salt = ethers.encodeBytes32String('0x987')
+      const routeTokens: TokenAmount[] = [
+        { token: await token.getAddress(), amount: amount },
+      ]
+      const route = {
+        salt: salt,
+        source: sourceChainID,
+        destination: 54321,
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [] as TokenAmount[],
+      }
+      intent = { route, reward }
+    })
+    it('deletes claimant and sets chainID for a bad proof, emits, and cant prove again incorrectly after that', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+      await hyperProver.handle(
+        badChainID,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(badChainID)
+
+      expect(await hyperProver.challengeIntentProof(intent))
+        .to.emit(hyperProver, 'BadProofCleared')
+        .withArgs(intentHash)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      const badderChainID = 777
+      await expect(
+        hyperProver.handle(
+          badderChainID,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      )
+        .to.be.revertedWithCustomError(hyperProver, 'BadDestinationChainID')
+        .withArgs(intentHash, intent.route.destination, badderChainID)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+
+      await expect(
+        hyperProver.handle(
+          intent.route.destination,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      ).to.not.be.reverted
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+    })
+    it('lets you protect intents from being maliciously proven in the future', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+
+      await hyperProver.challengeIntentProof(intent)
+
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      await expect(
+        hyperProver.handle(
+          badChainID,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      )
+        .to.be.revertedWithCustomError(hyperProver, 'BadDestinationChainID')
+        .withArgs(intentHash, intent.route.destination, badChainID)
+
+      await hyperProver.handle(
+        intent.route.destination,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+    })
+    it('doesnt do anything if chainID is correct', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+
+      await hyperProver.handle(
+        intent.route.destination,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      await hyperProver.challengeIntentProof(intent)
+
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+    })
+  })
+
+  describe('3. initiateProving', () => {
+    beforeEach(async () => {
+      // use owner as inbox so we can test initiateProving
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(
         await mailbox.getAddress(),
         owner.address,
         [await inbox.getAddress(), await hyperProver.getAddress()],
-        200000,
+        0,
       )
     })
 
@@ -242,7 +475,7 @@ describe('HyperProver Test', (): void => {
         ],
       )
 
-      // Before sendProof, make sure the mailbox hasn't been called
+      // Before initiateProving, make sure the mailbox hasn't been called
       expect(await mailbox.dispatchedWithRelayer()).to.be.false
 
       const fee = await hyperProver.fetchFee(
@@ -264,7 +497,7 @@ describe('HyperProver Test', (): void => {
       ).to.be.revertedWithCustomError(hyperProver, 'InsufficientFee')
     })
 
-    it('should reject sendProof from unauthorized source', async () => {
+    it('should reject initiateProving from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
@@ -425,6 +658,49 @@ describe('HyperProver Test', (): void => {
       expect(fee).to.be.gt(0)
     })
 
+    it('handles rari edgecase correctly', async () => {
+      // Set up test data
+      const sourceChainId = await hyperProver.RARICHAIN_CHAIN_ID()
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await hyperProver.getAddress()
+      const metadata = '0x1234'
+      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+        // ['sourceChainProver', 'metadata', 'hookAddress'],
+        ['bytes32', 'bytes', 'address'],
+        [
+          ethers.zeroPadValue(sourceChainProver, 32),
+          metadata,
+          ethers.ZeroAddress,
+        ],
+      )
+
+      const fee = await hyperProver.fetchFee(
+        sourceChainId,
+        intentHashes,
+        claimants,
+        data,
+      )
+
+      await expect(
+        hyperProver.connect(owner).prove(
+          owner.address,
+          sourceChainId,
+          intentHashes,
+          claimants,
+          data,
+          { value: fee }, // Send some value to cover fees
+        ),
+      )
+        .to.emit(hyperProver, 'BatchSent')
+        .withArgs(intentHashes[0], sourceChainId)
+
+      // Verify the mailbox was called with correct parameters
+      expect(await mailbox.destinationDomain()).to.eq(
+        await hyperProver.RARICHAIN_DOMAIN_ID(),
+      )
+    })
+
     it('should correctly call dispatch in the prove method', async () => {
       // Set up test data
       const sourceChainId = 123
@@ -526,7 +802,7 @@ describe('HyperProver Test', (): void => {
         await mailbox.getAddress(),
         await inbox.getAddress(),
         [await inbox.getAddress(), await hyperProver.getAddress()],
-        200000,
+        0,
       )
       await token.mint(solver.address, amount)
 
@@ -575,7 +851,7 @@ describe('HyperProver Test', (): void => {
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
-      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -601,9 +877,12 @@ describe('HyperProver Test', (): void => {
         )
 
       //the testMailbox's dispatch method directly calls the hyperProver's handle method
-      expect(await hyperProver.provenIntents(intentHash)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash)).claimant).to.eq(
         await claimant.getAddress(),
       )
+      expect(
+        (await hyperProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(31337)
 
       //but lets simulate it fully anyway
 
@@ -621,7 +900,7 @@ describe('HyperProver Test', (): void => {
         await owner.getAddress(),
         await inbox.getAddress(),
         [await inbox.getAddress()],
-        200000,
+        0,
       )
 
       // Handle the message and verify the intent is proven
@@ -637,9 +916,13 @@ describe('HyperProver Test', (): void => {
         .to.emit(simulatedHyperProver, 'IntentProven')
         .withArgs(intentHash, await claimant.getAddress())
 
-      expect(await simulatedHyperProver.provenIntents(intentHash)).to.eq(
-        await claimant.getAddress(),
-      )
+      expect(
+        (await simulatedHyperProver.provenIntents(intentHash)).claimant,
+      ).to.eq(await claimant.getAddress())
+      expect(
+        (await simulatedHyperProver.provenIntents(intentHash))
+          .destinationChainID,
+      ).to.eq(12345)
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
@@ -649,7 +932,7 @@ describe('HyperProver Test', (): void => {
         await mailbox.getAddress(),
         await inbox.getAddress(),
         [await inbox.getAddress(), await hyperProver.getAddress()],
-        200000,
+        0,
       )
 
       // Set up token and mint
@@ -705,7 +988,7 @@ describe('HyperProver Test', (): void => {
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash0)).claimant).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -763,7 +1046,7 @@ describe('HyperProver Test', (): void => {
         )
 
       // Check intent hasn't been proven yet
-      expect(await hyperProver.provenIntents(intentHash1)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash1)).claimant).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -798,10 +1081,10 @@ describe('HyperProver Test', (): void => {
       ).to.changeEtherBalance(solver, -Number(fee))
 
       //the testMailbox's dispatch method directly calls the hyperProver's handle method
-      expect(await hyperProver.provenIntents(intentHash0)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash0)).claimant).to.eq(
         await claimant.getAddress(),
       )
-      expect(await hyperProver.provenIntents(intentHash1)).to.eq(
+      expect((await hyperProver.provenIntents(intentHash1)).claimant).to.eq(
         await claimant.getAddress(),
       )
 
@@ -815,7 +1098,7 @@ describe('HyperProver Test', (): void => {
         await owner.getAddress(),
         await inbox.getAddress(),
         [await inbox.getAddress()],
-        200000,
+        0,
       )
 
       // Simulate handling of the batch message
@@ -834,12 +1117,12 @@ describe('HyperProver Test', (): void => {
         .withArgs(intentHash1, await claimant.getAddress())
 
       // Verify both intents were proven
-      expect(await simulatedHyperProver.provenIntents(intentHash0)).to.eq(
-        await claimant.getAddress(),
-      )
-      expect(await simulatedHyperProver.provenIntents(intentHash1)).to.eq(
-        await claimant.getAddress(),
-      )
+      expect(
+        (await simulatedHyperProver.provenIntents(intentHash0)).claimant,
+      ).to.eq(await claimant.getAddress())
+      expect(
+        (await simulatedHyperProver.provenIntents(intentHash1)).claimant,
+      ).to.eq(await claimant.getAddress())
     })
   })
 })

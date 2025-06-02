@@ -100,13 +100,13 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         return feeAmount;
     }
 
-    /**
-     * @notice Helper method to manually add proven intents for testing
-     * @param _hash Intent hash
-     * @param _claimant Claimant address
-     */
-    function addProvenIntent(bytes32 _hash, address _claimant) public {
-        provenIntents[_hash] = _claimant;
+    function addProvenIntent(
+        bytes32 _hash,
+        uint96 _destinationChainID,
+        address _claimant
+    ) public {
+        _provenIntents[_hash].claimant = _claimant;
+        _provenIntents[_hash].destinationChainID = _destinationChainID;
     }
 
     /**
