@@ -49,7 +49,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Handles incoming Metalayer messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
-     * @dev called by the Hyperlane mailbox on the source chain
+     * @dev called by the Metalayer Router on the source chain
      * @param _origin Origin chain ID from the destination chain
      * @param _sender Address that dispatched the message on destination chain
      * @param _message Encoded array of intent hashes and claimants
@@ -253,11 +253,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Convert chain ID to Metalayer domain format
-        // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_sourceChainID > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainID);
-        }
+        // Convert chain ID to domain
         domain = _convertChainID(_sourceChainID);
 
         // Use pre-decoded source chain prover address as recipient
