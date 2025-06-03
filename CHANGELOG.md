@@ -1,3 +1,10 @@
+## [2.4.1](https://github.com/eco/eco-routes/compare/v2.4.0...v2.4.1) (2025-06-03)
+
+
+### Bug Fixes
+
+* trigger patch release ([5b8d0ef](https://github.com/eco/eco-routes/commit/5b8d0ef006e8ebefa005198f862e0ab7c600199a))
+
 # [2.4.0](https://github.com/eco/eco-routes/compare/v2.3.0...v2.4.0) (2025-06-02)
 
 
