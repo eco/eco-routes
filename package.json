@@ -1,6 +1,6 @@
 {
   "name": "@eco-foundation/routes",
-  "version": "1.8.14",
+  "version": "2.1.12",
   "description": "The Eco Routes Protocol is a decentralized intent based system that allows users to submit their intent to the network and have it fulfilled by a solver on the destination rollup of their choise.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,10 +17,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eco/eco-routes.git"
+    "url": "git+ssh://git@github.com/eco/eco-routes.git"
   },
   "author": "Eco Engineering <eng@eco.com>",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "keywords": [
     "solidity",
     "ethereum",
@@ -31,6 +31,9 @@
     "rollup",
     "solver"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "format": "concurrently 'npm:format:*'",
     "format:eslint": "eslint --fix --ext .js,.ts,.tsx .",
@@ -44,21 +47,23 @@
     "test:ts": "jest",
     "clean": "hardhat clean && yarn pub:clean",
     "versionPackage": "npx tsx scripts/publish/version.ts",
-    "prepack": "rimraf build && rimraf buildTs && yarn run versionPackage && bash scripts/publish/prepack.sh",
     "deployCI": "npx tsx scripts/deploy/deployCI.ts",
     "deployForgeCI": "npx tsx scripts/deploy/deployForgeCI.ts",
-    "pub:clean": "rimraf build/dist",
+    "semantic:pub": "npx tsx scripts/semantic-release/eco-routes-local.ts",
+    "pub:clean": "rimraf build && rimraf out",
     "pub:build": "cd build && tsc",
     "pub:prepack": "yarn pub:clean && yarn pub:build",
     "pub:tag": "npx tsx scripts/publish/tag.ts",
-    "pub:publish": "npx tsx scripts/publish/publish.ts"
+    "pub:publish": "npx tsx scripts/publish/publish.ts",
+    "deploy:plugin": "npx tsx scripts/semantic-release/deploy-contracts.ts",
+    "genBytecode": "npx tsx scripts/semantic-release/gen-bytecode.ts",
+    "build:semantic-plugin": "tsc",
+    "release": "semantic-release"
   },
   "devDependencies": {
     "@actions/core": "^1.11.1",
     "@alchemy/aa-core": "^3.19.0",
     "@eth-optimism/contracts-bedrock": "^0.17.2",
-    "@hyperlane-xyz/registry": "^4.2.0",
-    "@hyperlane-xyz/sdk": "^5.1.0",
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
     "@nomicfoundation/hardhat-ethers": "^3.0.5",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
@@ -68,9 +73,12 @@
     "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@nomiclabs/hardhat-etherscan": "^3.1.8",
     "@nomiclabs/hardhat-waffle": "^2.0.6",
-    "@openzeppelin/contracts": "^5.0.2",
-    "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "@openzeppelin/hardhat-upgrades": "^3.2.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.1",
+    "@semantic-release/npm": "^12.0.1",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.2.0",
@@ -85,6 +93,8 @@
     "@wagmi/cli": "^2.0.0-rc.3",
     "chai": "^4.3.10",
     "concurrently": "^8.2.2",
+    "csv-parse": "^5.6.0",
+    "csv-stringify": "^6.5.2",
     "depcheck": "^1.4.7",
     "dotenv": "^16.3.1",
     "eslint": "^8.55.0",
@@ -104,8 +114,12 @@
     "jest": "^29.7.0",
     "lodash": "^4.17.21",
     "p-queue": "^8.0.1",
+    "pacote": "^17.0.5",
     "prettier": "^3.1.1",
     "prettier-plugin-solidity": "^1.4.1",
+    "rimraf": "^5.0.5",
+    "semantic-release": "^23.0.0",
+    "semver": "^7.7.1",
     "semver-utils": "^1.1.4",
     "solhint": "^4.0.0",
     "solhint-plugin-eco": "^0.1.0",
@@ -125,6 +139,5 @@
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "viem": "^2.22.21"
-  },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  }
 }
