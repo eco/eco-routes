@@ -5,7 +5,7 @@
       "channel": "beta"
     }
   ],
-  "repositoryUrl": "git@github.com:eco/eco-routes.git",
+  "repositoryUrl": "https://github.com/eco/eco-routes.git",
   "lastRelease": {
     "version": "2.1.5",
     "gitTag": "v2.1.5",
