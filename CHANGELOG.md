@@ -1,3 +1,16 @@
+# [2.5.0](https://github.com/eco/eco-routes/compare/v2.4.1...v2.5.0) (2025-06-04)
+
+
+### Bug Fixes
+
+* use https url as the repository url ([9070f21](https://github.com/eco/eco-routes/commit/9070f21c8e21a8c591c830bdc1b2ceaa09847b89))
+
+
+### Features
+
+* trigger minor release ([da057d0](https://github.com/eco/eco-routes/commit/da057d0aa4af95fafb65a52d9e72ba5966e2feaf))
+* trigger preminor release ([c478f79](https://github.com/eco/eco-routes/commit/c478f79f4f28f7009be99f6c31a20d61d97dbdff))
+
 ## [2.4.1](https://github.com/eco/eco-routes/compare/v2.4.0...v2.4.1) (2025-06-03)
 
 
