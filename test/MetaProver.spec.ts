@@ -12,7 +12,7 @@ import {
   TestMetaRouter,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount } from '../utils/intent'
+import { hashIntent, Intent, TokenAmount } from '../utils/intent'
 
 /**
  * TEST SCENARIOS:
@@ -59,6 +59,7 @@ describe('MetaProver Test', (): void => {
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
+  let intent: Intent
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
@@ -209,7 +210,7 @@ describe('MetaProver Test', (): void => {
         [[intentHash], [claimantAddress]],
       )
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -227,7 +228,12 @@ describe('MetaProver Test', (): void => {
         .to.emit(metaProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(claimantAddress)
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(12345)
     })
 
     it('should emit an event when intent is already proven', async () => {
@@ -295,14 +301,225 @@ describe('MetaProver Test', (): void => {
         .to.emit(metaProver, 'IntentProven')
         .withArgs(otherHash, otherAddress)
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(claimantAddress)
-      expect(await metaProver.provenIntents(otherHash)).to.eq(otherAddress)
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
+      expect((await metaProver.provenIntents(otherHash)).claimant).to.eq(
+        otherAddress,
+      )
+    })
+    it('accounts for Rari edgecase', async () => {
+      const intentHash = ethers.sha256('0x')
+      const claimantAddress = await claimant.getAddress()
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimantAddress]],
+      )
+      expect(await metaProver.RARICHAIN_DOMAIN_ID()).to.not.eq(
+        await metaProver.RARICHAIN_CHAIN_ID(),
+      )
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+
+      await expect(
+        metaProver
+          .connect(owner)
+          .handle(
+            await metaProver.RARICHAIN_DOMAIN_ID(),
+            ethers.zeroPadValue(await inbox.getAddress(), 32),
+            msgBody,
+            [],
+            [],
+          ),
+      )
+        .to.emit(metaProver, 'IntentProven')
+        .withArgs(intentHash, claimantAddress)
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(await metaProver.RARICHAIN_CHAIN_ID())
     })
   })
 
-  describe('3. SendProof', () => {
+  describe('edge case: challengeIntentProof', () => {
     beforeEach(async () => {
-      // Use owner as inbox so we can test SendProof
+      metaProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(owner.address, await inbox.getAddress(), [
+        await inbox.getAddress(),
+      ])
+
+      const sourceChainID = 12345
+      const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      const timeStamp = (await time.latest()) + 1000
+      const metadata = '0x1234'
+      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['bytes32', 'bytes', 'address'],
+        [
+          ethers.zeroPadValue(await metaProver.getAddress(), 32),
+          metadata,
+          ethers.ZeroAddress,
+        ],
+      )
+
+      let salt = ethers.encodeBytes32String('0x987')
+      const routeTokens: TokenAmount[] = [
+        { token: await token.getAddress(), amount: amount },
+      ]
+      const route = {
+        salt: salt,
+        source: sourceChainID,
+        destination: 54321,
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await metaProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [] as TokenAmount[],
+      }
+      intent = { route, reward }
+    })
+    it('deletes claimant and sets chainID for a bad proof, emits, and cant prove again incorrectly after that', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+      await metaProver.handle(
+        badChainID,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(badChainID)
+
+      expect(await metaProver.challengeIntentProof(intent))
+        .to.emit(metaProver, 'BadProofCleared')
+        .withArgs(intentHash)
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      const badderChainID = 777
+      await expect(
+        metaProver.handle(
+          badderChainID,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      )
+        .to.be.revertedWithCustomError(metaProver, 'BadDestinationChainID')
+        .withArgs(intentHash, intent.route.destination, badderChainID)
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        ethers.ZeroAddress,
+      )
+
+      await expect(
+        metaProver.handle(
+          intent.route.destination,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      ).to.not.be.reverted
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+    })
+    it('lets you protect intents from being maliciously proven in the future', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+
+      await metaProver.challengeIntentProof(intent)
+
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      await expect(
+        metaProver.handle(
+          badChainID,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+        ),
+      )
+        .to.be.revertedWithCustomError(metaProver, 'BadDestinationChainID')
+        .withArgs(intentHash, intent.route.destination, badChainID)
+
+      await metaProver.handle(
+        intent.route.destination,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+    })
+    it('doesnt do anything if chainID is correct', async () => {
+      const { intentHash, routeHash } = hashIntent(intent)
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [[intentHash], [claimant.address]],
+      )
+      const badChainID = 666
+
+      await metaProver.handle(
+        intent.route.destination,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBody,
+      )
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+
+      await metaProver.challengeIntentProof(intent)
+
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimant.address,
+      )
+      expect(
+        (await metaProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(intent.route.destination)
+    })
+  })
+
+  describe('3. initiateProving', () => {
+    beforeEach(async () => {
+      // Use owner as inbox so we can test initiateProving
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
       ).deploy(
@@ -324,7 +541,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before sendProof, make sure the router hasn't been called
+      // Before initiateProving, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
@@ -347,7 +564,7 @@ describe('MetaProver Test', (): void => {
       ).to.be.reverted
     })
 
-    it('should correctly call dispatch in the sendProof method', async () => {
+    it('should correctly call dispatch in the initiateProving method', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -358,7 +575,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before sendProof, make sure the router hasn't been called
+      // Before initiateProving, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
@@ -395,7 +612,30 @@ describe('MetaProver Test', (): void => {
       expect(await testRouter.messageBody()).to.eq(expectedBody)
     })
 
-    it('should reject sendProof from unauthorized source', async () => {
+    it('handles rari edgecase correctly', async () => {
+      const sourceChainId = await metaProver.RARICHAIN_CHAIN_ID()
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32'],
+        [await ethers.zeroPadValue(sourceChainProver, 32)],
+      )
+
+      await metaProver.connect(owner).prove(
+        solver.address,
+        sourceChainId,
+        intentHashes,
+        claimants,
+        data,
+        { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
+      )
+      expect(await testRouter.destinationDomain()).to.eq(
+        await metaProver.RARICHAIN_DOMAIN_ID(),
+      )
+    })
+
+    it('should reject initiateProving from unauthorized source', async () => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [await claimant.getAddress()]
       const sourceChainProver = await solver.getAddress()
@@ -435,7 +675,7 @@ describe('MetaProver Test', (): void => {
       expect(fee).to.equal(await testRouter.FEE())
     })
 
-    it('should correctly call dispatch in the sendProof method', async () => {
+    it('should correctly call dispatch in the initiateProving method with no gas parameter', async () => {
       // Set up test data
       const sourceChainId = 123
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -446,7 +686,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before sendProof, make sure the router hasn't been called
+      // Before initiateProving, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       await expect(
@@ -465,6 +705,116 @@ describe('MetaProver Test', (): void => {
       // Verify the router was called with correct parameters
       expect(await testRouter.dispatched()).to.be.true
       expect(await testRouter.destinationDomain()).to.eq(sourceChainId)
+      expect(await testRouter.gasLimit()).to.eq(
+        await metaProver.DEFAULT_GAS_LIMIT(),
+      )
+
+      // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
+      const expectedRecipientBytes32 = ethers.zeroPadValue(
+        sourceChainProver,
+        32,
+      )
+      expect(await testRouter.recipientAddress()).to.eq(
+        expectedRecipientBytes32,
+      )
+
+      // Verify message encoding is correct
+      const expectedBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [intentHashes, claimants],
+      )
+      expect(await testRouter.messageBody()).to.eq(expectedBody)
+    })
+    it('should correctly call dispatch in the initiateProving method with too-low gas parameter', async () => {
+      // Set up test data
+      const sourceChainID = 123
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32', 'uint256'],
+        [
+          await ethers.zeroPadValue(sourceChainProver, 32),
+          (await metaProver.DEFAULT_GAS_LIMIT()) - BigInt(1),
+        ],
+      )
+
+      // Before initiateProving, make sure the router hasn't been called
+      expect(await testRouter.dispatched()).to.be.false
+
+      await expect(
+        metaProver.connect(owner).prove(
+          solver.address,
+          sourceChainID,
+          intentHashes,
+          claimants,
+          data,
+          { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
+        ),
+      )
+        .to.emit(metaProver, 'BatchSent')
+        .withArgs(intentHashes[0], sourceChainID)
+
+      // Verify the router was called with correct parameters
+      expect(await testRouter.dispatched()).to.be.true
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.gasLimit()).to.eq(
+        await metaProver.DEFAULT_GAS_LIMIT(),
+      )
+
+      // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
+      const expectedRecipientBytes32 = ethers.zeroPadValue(
+        sourceChainProver,
+        32,
+      )
+      expect(await testRouter.recipientAddress()).to.eq(
+        expectedRecipientBytes32,
+      )
+
+      // Verify message encoding is correct
+      const expectedBody = abiCoder.encode(
+        ['bytes32[]', 'address[]'],
+        [intentHashes, claimants],
+      )
+      expect(await testRouter.messageBody()).to.eq(expectedBody)
+    })
+
+    it('should correctly call dispatch in the initiateProving method with sufficiently high gas parameter', async () => {
+      // Set up test data
+      const sourceChainID = 123
+      const intentHashes = [ethers.keccak256('0x1234')]
+      const claimants = [await claimant.getAddress()]
+      const sourceChainProver = await solver.getAddress()
+      const data = abiCoder.encode(
+        ['bytes32', 'uint256'],
+        [
+          await ethers.zeroPadValue(sourceChainProver, 32),
+          (await metaProver.DEFAULT_GAS_LIMIT()) + BigInt(1),
+        ],
+      )
+
+      // Before initiateProving, make sure the router hasn't been called
+      expect(await testRouter.dispatched()).to.be.false
+
+      await expect(
+        metaProver.connect(owner).prove(
+          solver.address,
+          sourceChainID,
+          intentHashes,
+          claimants,
+          data,
+          { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
+        ),
+      )
+        .to.emit(metaProver, 'BatchSent')
+        .withArgs(intentHashes[0], sourceChainID)
+
+      // Verify the router was called with correct parameters
+      expect(await testRouter.dispatched()).to.be.true
+      expect(await testRouter.destinationDomain()).to.eq(sourceChainID)
+      expect(await testRouter.gasLimit()).to.eq(
+        (await metaProver.DEFAULT_GAS_LIMIT()) + BigInt(1),
+      )
 
       // Verify recipient address (now bytes32) - TestMetaRouter stores it as bytes32
       const expectedRecipientBytes32 = ethers.zeroPadValue(
@@ -494,7 +844,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Before sendProof, make sure the router hasn't been called
+      // Before initiateProving, make sure the router hasn't been called
       expect(await testRouter.dispatched()).to.be.false
 
       const fee = await metaProver.fetchFee(
@@ -627,7 +977,9 @@ describe('MetaProver Test', (): void => {
         .to.emit(metaProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(claimantAddress)
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
+        claimantAddress,
+      )
     })
 
     it('should check that array lengths are consistent', async () => {
@@ -730,7 +1082,7 @@ describe('MetaProver Test', (): void => {
         [await ethers.zeroPadValue(sourceChainProver, 32)],
       )
 
-      // Should revert with ChainIdTooLarge error
+      // Should revert with SafeCast error
       await expect(
         metaProver
           .connect(owner)
@@ -743,8 +1095,11 @@ describe('MetaProver Test', (): void => {
             { value: await testRouter.FEE() },
           ),
       )
-        .to.be.revertedWithCustomError(metaProver, 'ChainIdTooLarge')
-        .withArgs(veryLargeChainId)
+        .to.be.revertedWithCustomError(
+          metaProver,
+          'SafeCastOverflowedUintDowncast',
+        )
+        .withArgs(32, veryLargeChainId)
     })
   })
 
@@ -832,9 +1187,12 @@ describe('MetaProver Test', (): void => {
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
-      expect(await testMsgProver.provenIntents(intentHash)).to.eq(
+      expect((await testMsgProver.provenIntents(intentHash)).claimant).to.eq(
         ethers.ZeroAddress,
       )
+      expect(
+        (await testMsgProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(0)
 
       // Get fee for fulfillment - using TestMessageBridgeProver
       const fee = await testMsgProver.fetchFee(
@@ -861,13 +1219,20 @@ describe('MetaProver Test', (): void => {
       // Manually set the proven intent in TestMessageBridgeProver to simulate proving
       await testMsgProver.addProvenIntent(
         intentHash,
+        12345,
         await claimant.getAddress(),
       )
 
       // Verify the intent is now proven
-      expect(await testMsgProver.provenIntents(intentHash)).to.eq(
+      expect((await testMsgProver.provenIntents(intentHash)).claimant).to.eq(
         await claimant.getAddress(),
       )
+      expect((await testMsgProver.provenIntents(intentHash)).claimant).to.eq(
+        await claimant.getAddress(),
+      )
+      expect(
+        (await testMsgProver.provenIntents(intentHash)).destinationChainID,
+      ).to.eq(12345)
 
       // Meanwhile, our TestMetaRouter with auto-processing should also prove intents
       // Test that our MetaProver works correctly with TestMetaRouter
@@ -900,7 +1265,7 @@ describe('MetaProver Test', (): void => {
         )
 
       // Verify that MetaProver marked the intent as proven
-      expect(await metaProver.provenIntents(intentHash)).to.eq(
+      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
         await claimant.getAddress(),
       )
     })
@@ -953,7 +1318,7 @@ describe('MetaProver Test', (): void => {
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      expect(await testMsgProver.provenIntents(intentHash0)).to.eq(
+      expect((await testMsgProver.provenIntents(intentHash0)).claimant).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -1007,7 +1372,7 @@ describe('MetaProver Test', (): void => {
       )
 
       // Check intent hasn't been proven yet
-      expect(await testMsgProver.provenIntents(intentHash1)).to.eq(
+      expect((await testMsgProver.provenIntents(intentHash1)).claimant).to.eq(
         ethers.ZeroAddress,
       )
 
@@ -1045,20 +1410,28 @@ describe('MetaProver Test', (): void => {
       // Manually add the proven intents to simulate the cross-chain mechanism
       await testMsgProver.addProvenIntent(
         intentHash0,
+        123,
         await claimant.getAddress(),
       )
       await testMsgProver.addProvenIntent(
         intentHash1,
+        456,
         await claimant.getAddress(),
       )
 
       // Verify both intents were marked as proven
-      expect(await testMsgProver.provenIntents(intentHash0)).to.eq(
+      expect((await testMsgProver.provenIntents(intentHash0)).claimant).to.eq(
         await claimant.getAddress(),
       )
-      expect(await testMsgProver.provenIntents(intentHash1)).to.eq(
+      expect(
+        (await testMsgProver.provenIntents(intentHash0)).destinationChainID,
+      ).to.eq(123)
+      expect((await testMsgProver.provenIntents(intentHash1)).claimant).to.eq(
         await claimant.getAddress(),
       )
+      expect(
+        (await testMsgProver.provenIntents(intentHash1)).destinationChainID,
+      ).to.eq(456)
     })
   })
 })
