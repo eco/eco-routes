@@ -201,20 +201,22 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
-            if (call.target.code.length == 0 && call.data.length > 0) {
-                // no code at this address
-                revert CallToEOA(call.target);
-            }
-
-            try
-                IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)
-            returns (bool isProverCall) {
-                if (isProverCall) {
-                    // call to prover
-                    revert CallToProver();
+            if (call.target.code.length == 0) {
+                if (call.data.length > 0) {
+                    // no code at this address
+                    revert CallToEOA(call.target);
                 }
-            } catch {
-                // If target doesn't support ERC-165, continue.
+            } else {
+                try
+                    IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)
+                returns (bool isProverCall) {
+                    if (isProverCall) {
+                        // call to prover
+                        revert CallToProver();
+                    }
+                } catch {
+                    // If target doesn't support ERC-165, continue.
+                }
             }
 
             (bool success, bytes memory result) = call.target.call{

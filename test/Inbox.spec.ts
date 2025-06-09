@@ -332,6 +332,52 @@ describe('Inbox Test', (): void => {
         .withArgs(solver.address)
     })
 
+    it('should send ETH if one of the targets is an EOA', async () => {
+      const ethAmount = 10000
+      const _route: Route = {
+        ...route,
+        tokens: [],
+        calls: [
+          {
+            target: dstAddr.address,
+            data: '0x',
+            value: ethAmount,
+          },
+        ],
+      }
+
+      // Send ETH to Inbox
+      const tx = await owner.sendTransaction({
+        to: await inbox.getAddress(),
+        value: ethAmount,
+      })
+      await tx.wait()
+
+      const { intentHash: _intentHash, rewardHash: _rewardHash } = hashIntent({
+        route: _route,
+        reward,
+      })
+
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            _route,
+            _rewardHash,
+            dstAddr.address,
+            _intentHash,
+            ethers.ZeroAddress,
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(
+          _intentHash,
+          sourceChainID,
+          ethers.ZeroAddress,
+          dstAddr.address,
+        )
+    })
+
     it('should succeed with storage proving', async () => {
       let claimant = await inbox.fulfilled(intentHash)
       expect(claimant).to.equal(ethers.ZeroAddress)
