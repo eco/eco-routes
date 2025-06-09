@@ -304,7 +304,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     function _convertChainID(uint256 _chainID) internal pure returns (uint32) {
         if (_chainID == RARICHAIN_CHAIN_ID) {
-            return uint32(RARICHAIN_DOMAIN_ID);
+            return RARICHAIN_DOMAIN_ID;
         }
         return _chainID.toUint32();
     }
