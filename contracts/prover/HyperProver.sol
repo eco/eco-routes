@@ -28,6 +28,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         address hookAddr; // Address of post-dispatch hook
     }
 
+    // Rarichain uses a different domain ID than its chain ID, representing an edge case
     uint32 public constant RARICHAIN_CHAIN_ID = 1380012617;
     uint32 public constant RARICHAIN_DOMAIN_ID = 1000012617;
 
