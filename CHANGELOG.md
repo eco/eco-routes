@@ -1,3 +1,12 @@
+## [2.6.1](https://github.com/eco/eco-routes/compare/v2.6.0...v2.6.1) (2025-06-09)
+
+
+### Bug Fixes
+
+* retry deployment ([3561da8](https://github.com/eco/eco-routes/commit/3561da855aa9287873714ed0d7668a2943136620))
+* trigger patch release ([f012a3c](https://github.com/eco/eco-routes/commit/f012a3c0695b78299d7c091f9c104eddabdca564))
+* trigger patch release ([3922894](https://github.com/eco/eco-routes/commit/3922894f79680dab1bf96126033a9acf35cf1a1b))
+
 # [2.6.0](https://github.com/eco/eco-routes/compare/v2.5.0...v2.6.0) (2025-06-09)
 
 
