@@ -308,54 +308,15 @@ describe('MetaProver Test', (): void => {
         otherAddress,
       )
     })
-    it('accounts for Rari edgecase', async () => {
-      const intentHash = ethers.sha256('0x')
-      const claimantAddress = await claimant.getAddress()
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'address[]'],
-        [[intentHash], [claimantAddress]],
-      )
-      expect(await metaProver.RARICHAIN_DOMAIN_ID()).to.not.eq(
-        await metaProver.RARICHAIN_CHAIN_ID(),
-      )
-
-      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
-        ethers.ZeroAddress,
-      )
-
-      await expect(
-        metaProver
-          .connect(owner)
-          .handle(
-            await metaProver.RARICHAIN_DOMAIN_ID(),
-            ethers.zeroPadValue(await inbox.getAddress(), 32),
-            msgBody,
-            [],
-            [],
-          ),
-      )
-        .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
-
-      expect((await metaProver.provenIntents(intentHash)).claimant).to.eq(
-        claimantAddress,
-      )
-      expect(
-        (await metaProver.provenIntents(intentHash)).destinationChainID,
-      ).to.eq(await metaProver.RARICHAIN_CHAIN_ID())
-    })
   })
 
   describe('edge case: challengeIntentProof', () => {
     beforeEach(async () => {
       metaProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        owner.address,
+      ).deploy(owner.address, await inbox.getAddress(), [
         await inbox.getAddress(),
-        [await inbox.getAddress()],
-        0,
-      )
+      ])
 
       const sourceChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
@@ -613,29 +574,6 @@ describe('MetaProver Test', (): void => {
         [intentHashes, claimants],
       )
       expect(await testRouter.messageBody()).to.eq(expectedBody)
-    })
-
-    it('handles rari edgecase correctly', async () => {
-      const sourceChainId = await metaProver.RARICHAIN_CHAIN_ID()
-      const intentHashes = [ethers.keccak256('0x1234')]
-      const claimants = [await claimant.getAddress()]
-      const sourceChainProver = await solver.getAddress()
-      const data = abiCoder.encode(
-        ['bytes32'],
-        [await ethers.zeroPadValue(sourceChainProver, 32)],
-      )
-
-      await metaProver.connect(owner).prove(
-        solver.address,
-        sourceChainId,
-        intentHashes,
-        claimants,
-        data,
-        { value: await testRouter.FEE() }, // Send TestMetaRouter.FEE amount
-      )
-      expect(await testRouter.destinationDomain()).to.eq(
-        await metaProver.RARICHAIN_DOMAIN_ID(),
-      )
     })
 
     it('should reject initiateProving from unauthorized source', async () => {

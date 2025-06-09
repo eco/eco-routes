@@ -6,6 +6,7 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title HyperProver
@@ -15,6 +16,7 @@ import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfa
  */
 contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     using TypeCasts for bytes32;
+    using SafeCast for uint256;
 
     /**
      * @notice Struct for unpacked data from _data parameter
@@ -25,6 +27,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes metadata; // Metadata for Hyperlane message
         address hookAddr; // Address of post-dispatch hook
     }
+
+    // Rarichain uses a different domain ID than its chain ID, representing an edge case
+    uint32 public constant RARICHAIN_CHAIN_ID = 1380012617;
+    uint32 public constant RARICHAIN_DOMAIN_ID = 1000012617;
 
     /**
      * @notice Constant indicating this contract uses Hyperlane for proving
@@ -40,14 +46,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _mailbox Address of local Hyperlane mailbox
      * @param _inbox Address of Inbox contract
      * @param _provers Array of trusted prover addresses
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _mailbox,
         address _inbox,
-        address[] memory _provers,
-        uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+        address[] memory _provers
+    ) MessageBridgeProver(_inbox, _provers, 0) {
         if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
         MAILBOX = _mailbox;
     }
@@ -75,7 +79,11 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         address sender = _sender.bytes32ToAddress();
         if (sender == address(0)) revert SenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(_origin, sender, _messageBody);
+        if (_origin == RARICHAIN_DOMAIN_ID) {
+            _handleCrossChainMessage(RARICHAIN_CHAIN_ID, sender, _messageBody);
+        } else {
+            _handleCrossChainMessage(_origin, sender, _messageBody);
+        }
     }
 
     /**
@@ -293,5 +301,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         hook = (_unpacked.hookAddr == address(0))
             ? IMailbox(MAILBOX).defaultHook()
             : IPostDispatchHook(_unpacked.hookAddr);
+    }
+
+    function _convertChainID(uint256 _chainID) internal pure returns (uint32) {
+        if (_chainID == RARICHAIN_CHAIN_ID) {
+            return RARICHAIN_DOMAIN_ID;
+        }
+        return _chainID.toUint32();
     }
 }

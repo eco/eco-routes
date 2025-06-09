@@ -8,6 +8,7 @@ import {MessageBridgeProver} from "./MessageBridgeProver.sol";
 // Import Semver for versioning support
 import {Semver} from "../libs/Semver.sol";
 import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title MetaProver
@@ -18,6 +19,7 @@ import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRo
 contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     using TypeCasts for bytes32;
     using TypeCasts for address;
+    using SafeCast for uint256;
 
     /**
      * @notice Constant indicating this contract uses Metalayer for proving
@@ -254,7 +256,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         }
 
         // Convert chain ID to domain
-        domain = _convertChainID(_sourceChainID);
+        domain = _sourceChainID.toUint32();
 
         // Use pre-decoded source chain prover address as recipient
         recipient = _sourceChainProver;
