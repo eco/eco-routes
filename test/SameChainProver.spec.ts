@@ -4,7 +4,7 @@ import { loadFixture } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { SameChainProver, TestERC20 } from '../typechain-types'
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 
-describe.only('SameChainProver Test', () => {
+describe('SameChainProver Test', () => {
   let sameChainProver: SameChainProver
   let testInbox: any // TestInbox contract
   let testToken: TestERC20
