@@ -6,7 +6,6 @@ import {BaseProver} from "./BaseProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Whitelist} from "../tools/Whitelist.sol";
 import {Intent} from "../types/Intent.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title MessageBridgeProver
@@ -19,10 +18,6 @@ abstract contract MessageBridgeProver is
     IMessageBridgeProver,
     Whitelist
 {
-    using SafeCast for uint256;
-
-    uint256 public constant RARICHAIN_CHAIN_ID = 1380012617;
-    uint256 public constant RARICHAIN_DOMAIN_ID = 1000012617;
     /**
      * @notice Default gas limit for cross-chain message dispatch
      * @dev Set at deployment and cannot be changed afterward
@@ -71,38 +66,6 @@ abstract contract MessageBridgeProver is
 
             proofData.destinationChainID = trueDestinationChainID;
         }
-    }
-
-    /**
-     * @notice Converts a chain ID to a domain ID
-     * @dev Used for compatibility with different chain ID formats
-     * @param _chainID Chain ID to convert
-     * @dev placeholder that works, but will be replaced in future versions
-     * @dev 1380012617 is the chain ID for Rarichain, but the domainID is 1000012617.
-     * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
-     * @return domain ID
-     */
-    function _convertChainID(uint256 _chainID) internal pure returns (uint32) {
-        if (_chainID == RARICHAIN_CHAIN_ID) {
-            return uint32(RARICHAIN_DOMAIN_ID);
-        }
-        return _chainID.toUint32();
-    }
-
-    /**
-     * @notice Converts a domain ID to a chian ID
-     * @dev Used for compatibility with different chain ID formats
-     * @param _domainID domain ID to convert
-     * @dev placeholder that works, but will be replaced in future versions
-     * @dev 1000012617 is the domain ID for Rarichain, but the chainID is 1380012617.
-     * @dev all other chains that will be supported in the immediate future will have the same chain ID and domain ID
-     * @return chain ID
-     */
-    function _convertDomainID(uint32 _domainID) internal pure returns (uint96) {
-        if (_domainID == uint32(RARICHAIN_DOMAIN_ID)) {
-            return uint96(RARICHAIN_CHAIN_ID);
-        }
-        return uint96(_domainID);
     }
 
     /**
@@ -164,8 +127,7 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(_messageSender);
         }
 
-        uint96 destinationChainID = _convertDomainID(_destinationDomainID);
-
+        uint96 destinationChainID = uint96(_destinationDomainID);
         // Decode message containing intent hashes and claimants
         (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
             _message,
