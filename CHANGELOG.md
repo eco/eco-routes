@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/eco/eco-routes/compare/v2.5.0...v2.6.0) (2025-06-09)
+
+
+### Features
+
+* move domain id logic to HyperProver ([54e1f05](https://github.com/eco/eco-routes/commit/54e1f05907767e33f526bf95241df72375a93e41))
+
 # [2.5.0](https://github.com/eco/eco-routes/compare/v2.4.1...v2.5.0) (2025-06-04)
 
 
