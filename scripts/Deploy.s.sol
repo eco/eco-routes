@@ -56,8 +56,8 @@ contract Deploy is Script {
         // Initialize the deployment context struct with environment variables
         DeploymentContext memory ctx;
         ctx.salt = vm.envBytes32("SALT");
-        ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
-        ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
+        ctx.mailbox = vm.envOr("MAILBOX", address(0));
+        ctx.router = vm.envOr("ROUTER", address(0));
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         bool hasMailbox = ctx.mailbox != address(0);
@@ -97,7 +97,7 @@ contract Deploy is Script {
         vm.stopBroadcast();
 
         // Write deployment results to file
-        writeDeploymentData(ctx);
+        // writeDeploymentData(ctx);
     }
 
     // Separate function to handle writing deployment data to file
