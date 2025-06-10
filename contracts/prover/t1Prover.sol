@@ -20,6 +20,7 @@ contract T1Prover is BaseProver, Semver {
     //constants
     uint32 public immutable LOCAL_DOMAIN;
     IT1XChainReader public immutable X_CHAIN_READER;
+    address public immutable PROVER;
 
     //structs
     struct IntentRequest {
@@ -27,12 +28,19 @@ contract T1Prover is BaseProver, Semver {
         bytes32 intentHash;
     }
 
+    struct IntentBatchRequest {
+        uint32 destinationDomain;
+        bytes32[] intentHashes;
+    }
+
     // state variables
     mapping(bytes32 => IntentRequest) public readRequestToIntentRequest;
+    mapping(bytes32 => IntentBatchRequest) public readRequestToIntentBatchRequest;
 
     //events
     event IntentProofRequested(bytes32 indexed orderId, bytes32 indexed requestId);
-    event IntentProofVerified(bytes32 indexed intentHash, address indexed claimant);
+    event IntentBatchProofRequested(bytes32[] indexed intentHashes, bytes32 indexed requestId);
+    event IntentProofVerified(bytes32 indexed requestId);
     event BadProofCleared(bytes32 indexed intentHash);
 
     //errors
@@ -74,6 +82,38 @@ contract T1Prover is BaseProver, Semver {
         emit IntentProofRequested(intentHash, requestId);
     }
 
+    function requestIntentProofBatch(
+        uint32 destinationDomain,
+        uint256 gasLimit,
+        bytes32[] calldata intentHashes
+    ) external payable {
+        
+        // create crosschain call data to check if intent is fulfilled
+        bytes memory callData = abi.encodeWithSelector(
+            this.fulfilledBatch.selector,
+            intentHashes
+        );
+
+        // create read request
+        IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader.ReadRequest({
+            destinationDomain: destinationDomain,
+            targetContract: PROVER,
+            gasLimit: gasLimit,
+            minBlock: 0,
+            callData: callData
+        });
+
+        bytes32 requestId = X_CHAIN_READER.requestRead{ value: msg.value }(readRequest);
+
+        // fix this to handle multiple intents
+        readRequestToIntentBatchRequest[requestId] = IntentBatchRequest({
+            destinationDomain: destinationDomain,
+            intentHashes: intentHashes
+        });
+
+        emit IntentBatchProofRequested(intentHashes, requestId);
+    }
+
     // can be extended to handle multiple proofs at once eventually like Polymer
     function handleReadResultWithProof(bytes calldata encodedProofOfRead) external {
         // decode proof of read
@@ -101,7 +141,31 @@ contract T1Prover is BaseProver, Semver {
 
         _processIntentProofs(uint96(intentRequest.destinationDomain), hashes, claimants);
 
-        emit IntentProofVerified(intentRequest.intentHash, claimant);
+        emit IntentProofVerified(requestId);
+    }
+
+    function handleReadResultWithProofBatch(bytes calldata encodedProofOfRead) external {
+
+        // decode proof of read
+        (bytes32 requestId, bytes memory result) = X_CHAIN_READER.verifyProofOfRead(encodedProofOfRead);
+
+        // get intent hashes from requestId
+        IntentBatchRequest memory intentBatchRequest = readRequestToIntentBatchRequest[requestId];
+
+        // delete intent hashes
+        delete readRequestToIntentBatchRequest[requestId];
+
+        // decode result
+        (address[] memory claimants) = abi.decode(result, (address[]));
+
+        // for each intent hash, check if the claimant is zero address and if so, revert
+        for (uint256 i = 0; i < intentBatchRequest.intentHashes.length; i++) {
+            if (claimants[i] == address(0)) {
+                revert IntentNotFufilled();
+            }
+        }
+        
+        _processIntentProofs(uint96(intentBatchRequest.destinationDomain), intentBatchRequest.intentHashes, claimants);
     }
 
     function challengeIntentProof(Intent calldata _intent) public {
@@ -128,6 +192,29 @@ contract T1Prover is BaseProver, Semver {
     function getProofType() public pure override returns (string memory) {
         return "t1";
     }
+
+    // destination side of the proof //
+
+    /**
+     * @notice Gets claimant addresses for a batch of intents from local inbox
+     * @param _intentHashes Array of intent hashes to check
+     * @return claimants Array of claimant addresses (zero address if not fulfilled)
+     */
+    function fulfilledBatch(bytes32[] calldata _intentHashes) 
+        external 
+        view 
+        returns (address[] memory claimants) 
+    {
+        uint256 size = _intentHashes.length;
+        claimants = new address[](size);
+
+        for (uint256 i = 0; i < size; i++) {
+            claimants[i] = Inbox(payable(INBOX)).fulfilled(_intentHashes[i]); 
+        }
+
+        return claimants;
+    }
+
 
     function prove(
         address _sender,
