@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {T1XChainReader} from "t1/contracts/src/libraries/xChain/T1XChainReader.sol";
+import {IT1XChainReader} from "../interfaces/t1/IT1XChainReader.sol";
 import {Inbox} from "../Inbox.sol";
+import {BaseProver} from "./BaseProver.sol";
 
 /**
  * @title T1Prover
@@ -16,18 +17,27 @@ contract T1Prover is BaseProver {
 
     //constants
     uint32 public immutable LOCAL_DOMAIN;
-    T1XChainReader public immutable X_CHAIN_READER;
+    IT1XChainReader public immutable X_CHAIN_READER;
+
+    //structs
+    struct IntentRequest {
+        uint32 destinationDomain;
+        bytes32 intentHash;
+    }
 
     // state variables
-    mapping(bytes32 => bytes32) public readRequestToOrderId;
+    mapping(bytes32 => IntentRequest) public readRequestToIntentRequest;
 
     //events
     event IntentProofRequested(bytes32 indexed orderId, bytes32 indexed requestId);
+    event IntentProofVerified(bytes32 indexed intentHash, address indexed claimant);
 
+    //errors
+    error IntentNotFufilled();
 
     constructor(address _inbox, uint32 _localDomain, address _xChainReader) BaseProver(_inbox) {
         LOCAL_DOMAIN = _localDomain;
-        X_CHAIN_READER = T1XChainReader(_xChainReader);
+        X_CHAIN_READER = IT1XChainReader(_xChainReader);
     }
 
     function requestIntentProof(
@@ -43,7 +53,7 @@ contract T1Prover is BaseProver {
         );
 
         // create read request
-        T1XChainReader.ReadRequest memory readRequest = T1XChainReader.ReadRequest({
+        IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader.ReadRequest({
             destinationDomain: destinationDomain,
             targetContract: INBOX,
             gasLimit: gasLimit,
@@ -53,9 +63,41 @@ contract T1Prover is BaseProver {
 
         bytes32 requestId = X_CHAIN_READER.requestRead{ value: msg.value }(readRequest);
 
-        readRequestToOrderId[requestId] = intentHash;
+        readRequestToIntentRequest[requestId] = IntentRequest({
+            destinationDomain: destinationDomain,
+            intentHash: intentHash
+        });
 
         emit IntentProofRequested(intentHash, requestId);
     }
 
+    // can be extended to handle multiple proofs at once eventually like Polymer
+    function handleReadResultWithProof(bytes calldata encodedProofOfRead) external {
+        // decode proof of read
+        (bytes32 requestId, bytes memory result) = X_CHAIN_READER.verifyProofOfRead(encodedProofOfRead);
+
+        // get intent hash from requestId
+        IntentRequest memory intentRequest = readRequestToIntentRequest[requestId];
+
+        // delete intent request
+        delete readRequestToIntentRequest[requestId];
+
+        // check if intent is fufilled by decoding the result 
+        (address claimant) = abi.decode(result, (address));
+
+        // check if intent is fufilled
+        if (claimant == address(0)) {
+            revert IntentNotFufilled();
+        }
+
+        // Create arrays for single intent proof processing
+        bytes32[] memory hashes = new bytes32[](1);
+        address[] memory claimants = new address[](1);
+        hashes[0] = intentRequest.intentHash;
+        claimants[0] = claimant;
+
+        _processIntentProofs(uint96(intentRequest.destinationDomain), hashes, claimants);
+
+        emit IntentProofVerified(intentRequest.intentHash, claimant);
+    }
 }
