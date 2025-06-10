@@ -4,6 +4,8 @@ pragma solidity ^0.8.19;
 import {IT1XChainReader} from "../interfaces/t1/IT1XChainReader.sol";
 import {Inbox} from "../Inbox.sol";
 import {BaseProver} from "./BaseProver.sol";
+import {Intent} from "../types/Intent.sol";
+import {Semver} from "../libs/Semver.sol";
 
 /**
  * @title T1Prover
@@ -13,7 +15,7 @@ import {BaseProver} from "./BaseProver.sol";
  * @dev Enables efficient verification of cross-chain intents via pull based verification
  */
 
-contract T1Prover is BaseProver {
+contract T1Prover is BaseProver, Semver {
 
     //constants
     uint32 public immutable LOCAL_DOMAIN;
@@ -31,6 +33,7 @@ contract T1Prover is BaseProver {
     //events
     event IntentProofRequested(bytes32 indexed orderId, bytes32 indexed requestId);
     event IntentProofVerified(bytes32 indexed intentHash, address indexed claimant);
+    event BadProofCleared(bytes32 indexed intentHash);
 
     //errors
     error IntentNotFufilled();
@@ -44,11 +47,11 @@ contract T1Prover is BaseProver {
         uint32 destinationDomain,
         uint256 gasLimit,
         bytes32 intentHash
-    ) external {
+    ) external payable {
 
-        // create crosschain call data
-        bytes memory callData = abi.encodeWithSelector(
-            Inbox.fulfilled.selector,
+        // create crosschain call data to check if intent is fulfilled
+        bytes memory callData = abi.encodeWithSignature(
+            "fulfilled(bytes32)",
             intentHash
         );
 
@@ -100,4 +103,41 @@ contract T1Prover is BaseProver {
 
         emit IntentProofVerified(intentRequest.intentHash, claimant);
     }
+
+    function challengeIntentProof(Intent calldata _intent) public {
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(
+                keccak256(abi.encode(_intent.route)),
+                keccak256(abi.encode(_intent.reward))
+            )
+        );
+        uint96 trueDestinationChainID = uint96(_intent.route.destination);
+
+        ProofData storage proofData = _provenIntents[intentHash];
+
+        if (trueDestinationChainID != proofData.destinationChainID) {
+            if (proofData.destinationChainID != 0) {
+                proofData.claimant = address(0);
+                emit BadProofCleared(intentHash);
+            }
+
+            proofData.destinationChainID = trueDestinationChainID;
+        }
+    }
+
+    function getProofType() public pure override returns (string memory) {
+        return "t1";
+    }
+
+    function prove(
+        address _sender,
+        uint256 _sourceChainId,
+        bytes32[] calldata _intentHashes,
+        address[] calldata _claimants,
+        bytes calldata _data
+    ) external payable override {
+        // we don't need to do anything here because we are using pull based verification
+        // we will just request the proof and then handle the result in the handleReadResultWithProof function
+    }
+    
 }
