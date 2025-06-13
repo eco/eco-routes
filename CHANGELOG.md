@@ -1,3 +1,15 @@
+## [2.6.2](https://github.com/eco/eco-routes/compare/v2.6.1...v2.6.2) (2025-06-13)
+
+
+### Bug Fixes
+
+* deploy MetaProver to more chains ([17bbf90](https://github.com/eco/eco-routes/commit/17bbf90cdf309b5f98f754fe7b0d7743ad3667c3))
+* trigger patch release ([073c416](https://github.com/eco/eco-routes/commit/073c416e1d08d1ef3940786a8258bb07e6f01db0))
+* trigger patch release ([a5dceac](https://github.com/eco/eco-routes/commit/a5dceac2b0bf046ce7b853a1faffd65abed7ff0c))
+* trigger patch release ([045dfe8](https://github.com/eco/eco-routes/commit/045dfe82aab65db8482528eea7abde5c79033864))
+* trigger patch release ([137fe62](https://github.com/eco/eco-routes/commit/137fe62d5afd08d15fa815e626fc9702ecbb16fa))
+* trigger patch release ([48ec9cc](https://github.com/eco/eco-routes/commit/48ec9cc4a6f3cb229dcd336f99fff256b838d18f))
+
 ## [2.6.1](https://github.com/eco/eco-routes/compare/v2.6.0...v2.6.1) (2025-06-09)
 
 
