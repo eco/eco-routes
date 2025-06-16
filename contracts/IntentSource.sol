@@ -690,6 +690,9 @@ contract IntentSource is IIntentSource, Semver {
         new Vault{salt: routeHash}(intentHash, reward);
 
         if (state.status == uint8(RewardStatus.Funded)) {
+            if (vault.balance < reward.nativeValue) {
+                revert InsufficientNativeReward(intentHash);
+            }
             emit IntentFunded(intentHash, funder);
         } else if (
             state.status == uint8(RewardStatus.PartiallyFunded) &&
