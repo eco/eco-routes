@@ -256,6 +256,8 @@ contract Vault is IVault {
         uint256 amount
     ) internal returns (uint256 remainingAmount) {
         // Check how many tokens this contract is allowed to transfer from funding source
+        uint256 initialBalance = IERC20(token).balanceOf(address(this));
+
         (uint160 allowance, , ) = permit.allowance(
             funder,
             token,
@@ -284,6 +286,12 @@ contract Vault is IVault {
                 uint160(transferAmount),
                 token
             );
+        }
+        if (
+            IERC20(token).balanceOf(address(this)) <
+            initialBalance + transferAmount
+        ) {
+            revert PermitTransferFailed(address(permit), token, transferAmount);
         }
     }
 }

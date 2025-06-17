@@ -1277,6 +1277,66 @@ describe('Intent Source Test', (): void => {
         initialClaimantBalance + BigInt(mintAmount),
       )
     })
+    it('should handle bad permit contracts for good tokens', async () => {
+      // Deploy FakePermit contract
+      const FakePermitFactory = await ethers.getContractFactory('FakePermit')
+      const fakePermit = await FakePermitFactory.deploy()
+
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      // Setup: creator has tokens but DOES NOT approve the IntentSource
+      // The fake permit will lie and say it has unlimited allowance
+      expect(await tokenA.balanceOf(creator.address)).to.equal(mintAmount)
+
+      // Do NOT approve IntentSource - this is key for the test
+      // The fake permit will claim unlimited allowance but won't transfer tokens
+
+      const intentHash = (
+        await intentSource.getIntentHash({ route, reward })
+      )[0]
+
+      // Try to fund using the fake permit contract
+      // This should revert because the fake permit doesn't actually transfer tokens
+      await expect(
+        intentSource
+          .connect(creator)
+          .fundFor(
+            routeHash,
+            reward,
+            creator.address,
+            await fakePermit.getAddress(),
+            false,
+          ),
+      ).to.be.reverted
+
+      //no emissions of the IntentFunded event
+      const logs = await intentSource.queryFilter(
+        intentSource.getEvent('IntentFunded'),
+      )
+      expect(logs.length).to.equal(0)
+
+      // and the intent is not funded
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.false
+
+      // Verify the fake permit didn't steal tokens or mark intent as funded
+      expect(await tokenA.balanceOf(creator.address)).to.equal(mintAmount)
+
+      // The vault address should have no tokens
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(0)
+    })
+
     it('marks a native-token reward intent as Funded without receiving any ETH', async () => {
       // fresh deployment
       const { intentSource, prover, creator, otherPerson } =
