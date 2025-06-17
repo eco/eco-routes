@@ -23,7 +23,7 @@ import {
   Intent,
 } from '../utils/intent'
 
-describe.only('Intent Source Test', (): void => {
+describe('Intent Source Test', (): void => {
   let intentSource: IntentSource
   let prover: TestProver
   let inbox: Inbox
