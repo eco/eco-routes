@@ -5,6 +5,6 @@ out = "out"
 fs_permissions = [{ access = "read-write", path = "./out"}]
 libs = ["lib"]
 optimizer = true
-runs = 1000000
+optimizer_runs = 200
 via_ir = true
 retries = 2
