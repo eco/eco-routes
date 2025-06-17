@@ -1,3 +1,15 @@
+# [2.8.0](https://github.com/eco/eco-routes/compare/v2.7.0...v2.8.0) (2025-06-17)
+
+
+### Bug Fixes
+
+* deterministic bytecode ([#267](https://github.com/eco/eco-routes/issues/267)) ([e280493](https://github.com/eco/eco-routes/commit/e280493742cc25b417edc19d81f78365f457fb50))
+
+
+### Features
+
+* release new version ([133e495](https://github.com/eco/eco-routes/commit/133e495527501490094c325711361a6e17ce552f))
+
 # [2.7.0](https://github.com/eco/eco-routes/compare/v2.6.3...v2.7.0) (2025-06-17)
 
 
