@@ -1,3 +1,15 @@
+# [2.7.0](https://github.com/eco/eco-routes/compare/v2.6.3...v2.7.0) (2025-06-17)
+
+
+### Bug Fixes
+
+* stop updating the Semver version when releasing the NPM package ([32458c9](https://github.com/eco/eco-routes/commit/32458c9fb111f42768de5288e1d12e69db2e8e28))
+
+
+### Features
+
+* deterministic bytecode ([fa20eeb](https://github.com/eco/eco-routes/commit/fa20eeb697e290e87feae3e0114b4ebcc6576ca3))
+
 ## [2.6.3](https://github.com/eco/eco-routes/compare/v2.6.2...v2.6.3) (2025-06-13)
 
 
