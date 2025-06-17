@@ -22,6 +22,18 @@ interface IVault is IVaultStorage {
     );
 
     /**
+     * @notice Thrown when the permit contract fails to actually permit the transfer
+     * @param permitContract The permit contract address
+     * @param token The token address
+     * @param amount The amount of tokens attempted for transfer
+     */
+    error PermitTransferFailed(
+        address permitContract,
+        address token,
+        uint256 amount
+    );
+
+    /**
      * @notice Thrown when the vault has zero balance of the refund token
      * @param token The token address
      */
