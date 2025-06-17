@@ -40,9 +40,9 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Unauthorized incoming proof from source chain
-     * @param _sender Address that initiated the proof
+     * @param _sender Address that initiated the proof (as bytes32 for cross-VM compatibility)
      */
-    error UnauthorizedIncomingProof(address _sender);
+    error UnauthorizedIncomingProof(bytes32 _sender);
 
     /**
      * @notice Mailbox address cannot be zero

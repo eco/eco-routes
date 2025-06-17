@@ -72,14 +72,14 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [additionalProver, await hyperProver.getAddress()],
+        [ethers.zeroPadValue(additionalProver, 32), ethers.zeroPadValue(await hyperProver.getAddress(), 32)],
         200000,
       )
 
       // Check if the prover address is in the whitelist
-      expect(await hyperProver.isWhitelisted(additionalProver)).to.be.true
+      expect(await hyperProver.isWhitelisted(ethers.zeroPadValue(additionalProver, 32))).to.be.true
       // Check if the hyperProver itself is also whitelisted
-      expect(await hyperProver.isWhitelisted(await hyperProver.getAddress())).to
+      expect(await hyperProver.isWhitelisted(ethers.zeroPadValue(await hyperProver.getAddress(), 32))).to
         .be.true
     })
 
@@ -99,7 +99,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [await inbox.getAddress(), await hyperProver.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), ethers.zeroPadValue(await hyperProver.getAddress(), 32)],
         200000,
       )
     })
@@ -220,7 +220,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         owner.address,
-        [await inbox.getAddress(), await hyperProver.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), ethers.zeroPadValue(await hyperProver.getAddress(), 32)],
         200000,
       )
     })
@@ -525,7 +525,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress(), await hyperProver.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), ethers.zeroPadValue(await hyperProver.getAddress(), 32)],
         200000,
       )
       await token.mint(solver.address, amount)
@@ -620,7 +620,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       )
 
@@ -648,7 +648,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress(), await hyperProver.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), ethers.zeroPadValue(await hyperProver.getAddress(), 32)],
         200000,
       )
 
@@ -814,7 +814,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       )
 
