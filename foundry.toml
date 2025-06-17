@@ -7,3 +7,7 @@ libs = ["lib"]
 optimizer = true
 optimizer_runs = 200
 via_ir = true
+retries = 2
+evm_version = "cancun"
+cbor_metadata = false
+bytecode_hash = "none"
