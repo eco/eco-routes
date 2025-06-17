@@ -25,7 +25,6 @@
 
 import { prepare } from './sr-prepare'
 import { verifyConditions } from './sr-verify-conditions'
-import { version } from './sr-version'
 import { publish } from './sr-publish'
 
 // Export functions for each semantic-release lifecycle hook using CommonJS format
@@ -40,10 +39,6 @@ module.exports = {
 
   // First step: verify all conditions are met for a release
   verifyConditions,
-
-  // Version step: update version info in Solidity files and package.json
-  // This runs after analyzeCommits and before prepare
-  version,
 
   // Prepare step: deploy contracts and build package
   prepare,
