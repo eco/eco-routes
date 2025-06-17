@@ -183,7 +183,27 @@ $ yarn coverage
 
 ### Deployment
 
-Deploy using `deploy.ts` in the `scripts` directory. This script draws from the configs (found in the `config` directory) as well as a local .env file. See `.env.example`.
+Deploy using the deployment scripts in the `scripts` directory. The deployment system supports both EVM-only and cross-VM deployments (Solana, Cosmos, Sui, etc.). 
+
+For production releases, use the semantic release system:
+```bash
+yarn semantic:pub  # Local testing
+# Or trigger via GitHub Actions for production
+```
+
+For direct deployment, use the shell scripts:
+```bash
+# Standard EVM deployment
+./scripts/deployRoutes.sh
+
+# Cross-VM deployment with Solana support  
+CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" ./scripts/deployRoutes.sh
+
+# Multiple cross-VM chains (Solana + Cosmos)
+CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
+```
+
+See `.env.example` and `scripts/README.md` for comprehensive deployment documentation.
 
 ### End-To-End Testing
 

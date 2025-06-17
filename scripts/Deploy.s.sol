@@ -38,6 +38,7 @@ contract Deploy is Script {
         address mailbox;
         address router;
         string deployFilePath;
+        bytes32[] crossVmProvers;
         address deployer;
         bytes32 intentSourceSalt;
         bytes32 inboxSalt;
@@ -58,6 +59,13 @@ contract Deploy is Script {
         ctx.salt = vm.envBytes32("SALT");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
+        
+        // Load cross-VM provers from environment variable (optional)
+        try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (bytes32[] memory provers) {
+            ctx.crossVmProvers = provers;
+        } catch {
+            ctx.crossVmProvers = new bytes32[](0);
+        }
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         bool hasMailbox = ctx.mailbox != address(0);
@@ -174,8 +182,11 @@ contract Deploy is Script {
         );
 
         // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
-        bytes32[] memory provers = new bytes32[](1);
-        provers[0] = bytes32(bytes20(hyperProverPreviewAddr));
+        bytes32[] memory provers = new bytes32[](1 + ctx.crossVmProvers.length);
+        provers[0] = bytes32(bytes20(hyperProverPreviewAddr)); // Self-reference for EVM
+        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
+            provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
+        }
 
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
@@ -208,8 +219,11 @@ contract Deploy is Script {
         );
 
         // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
-        bytes32[] memory provers = new bytes32[](1);
-        provers[0] = bytes32(bytes20(metaProverPreviewAddr));
+        bytes32[] memory provers = new bytes32[](1 + ctx.crossVmProvers.length);
+        provers[0] = bytes32(bytes20(metaProverPreviewAddr)); // Self-reference for EVM
+        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
+            provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
+        }
 
         ctx.metaProverConstructorArgs = abi.encode(
             ctx.router,
