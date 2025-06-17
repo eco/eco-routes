@@ -173,9 +173,9 @@ contract Deploy is Script {
             ctx.hyperProverSalt
         );
 
-        // Initialize provers array properly with inbox address
-        address[] memory provers = new address[](1);
-        provers[0] = hyperProverPreviewAddr;
+        // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = bytes32(bytes20(hyperProverPreviewAddr));
 
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
@@ -207,9 +207,9 @@ contract Deploy is Script {
             ctx.metaProverSalt
         );
 
-        // Initialize provers array properly with inbox address
-        address[] memory provers = new address[](1);
-        provers[0] = metaProverPreviewAddr;
+        // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = bytes32(bytes20(metaProverPreviewAddr));
 
         ctx.metaProverConstructorArgs = abi.encode(
             ctx.router,

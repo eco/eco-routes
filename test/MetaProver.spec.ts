@@ -128,12 +128,12 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await testRouter.getAddress(),
         await inbox.getAddress(),
-        [additionalProver],
+        [ethers.zeroPadValue(additionalProver, 32)],
         200000,
       ) // 200k gas limit
 
       // Check if the prover address is in the whitelist
-      expect(await newMetaProver.isWhitelisted(additionalProver)).to.be.true
+      expect(await newMetaProver.isWhitelisted(ethers.zeroPadValue(additionalProver, 32))).to.be.true
     })
 
     it('should have the correct default gas limit', async () => {
@@ -170,7 +170,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       )
     })
@@ -489,7 +489,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await testRouter.getAddress(),
         owner.address,
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       )
     })
@@ -893,7 +893,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       )
 
@@ -1055,7 +1055,7 @@ describe('MetaProver Test', (): void => {
     ]
     const testMsgProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
-    ).deploy(await inbox.getAddress(), whitelistedAddresses, 200000) // Add default gas limit
+    ).deploy(await inbox.getAddress(), whitelistedAddresses.map(addr => ethers.zeroPadValue(addr, 32)), 200000) // Add default gas limit
 
     return { testMsgProver }
   }
@@ -1079,7 +1079,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await metaTestRouter.getAddress(),
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       ) // Add default gas limit
 
@@ -1190,7 +1190,7 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         owner.address,
         await inbox.getAddress(),
-        [await inbox.getAddress()],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
       )
 

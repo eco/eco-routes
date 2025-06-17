@@ -27,12 +27,12 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Initializes the MessageBridgeProver contract
      * @param _inbox Address of the Inbox contract
-     * @param _provers Array of trusted prover addresses
+     * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _inbox,
-        address[] memory _provers,
+        bytes32[] memory _provers,
         uint256 _defaultGasLimit
     ) BaseProver(_inbox) Whitelist(_provers) {
         if (_inbox == address(0)) revert InboxCannotBeZeroAddress();
@@ -113,13 +113,13 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param _destinationDomainID Domain ID of the destination chain
-     * @param _messageSender Address that dispatched the message on destination chain
+     * @param _sourceChainId Chain ID of the source chain (not used for whitelist validation)
+     * @param _messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
      * @param _message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint32 _destinationDomainID,
-        address _messageSender,
+        uint256 _sourceChainId,
+        bytes32 _messageSender,
         bytes calldata _message
     ) internal {
         // Verify dispatch originated from a whitelisted prover address
@@ -127,7 +127,7 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(_messageSender);
         }
 
-        uint96 destinationChainID = uint96(_destinationDomainID);
+        uint96 destinationChainID = uint96(_sourceChainId);
         // Decode message containing intent hashes and claimants
         (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
             _message,

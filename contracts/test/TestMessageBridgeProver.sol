@@ -25,7 +25,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     constructor(
         address _inbox,
-        address[] memory _provers,
+        bytes32[] memory _provers,
         uint256 _gasLimit
     ) MessageBridgeProver(_inbox, _provers, _gasLimit) {}
 
@@ -40,7 +40,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     function isAddressWhitelisted(
         address _prover
     ) external view returns (bool) {
-        return isWhitelisted(_prover);
+        return isWhitelisted(bytes32(uint256(uint160(_prover))));
     }
 
     /**
@@ -52,7 +52,14 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         view
         returns (address[] memory)
     {
-        return getWhitelist();
+        bytes32[] memory whitelistBytes32 = getWhitelist();
+        address[] memory whitelistAddresses = new address[](whitelistBytes32.length);
+        
+        for (uint256 i = 0; i < whitelistBytes32.length; i++) {
+            whitelistAddresses[i] = address(bytes20(whitelistBytes32[i]));
+        }
+        
+        return whitelistAddresses;
     }
 
     // No custom events needed for testing
