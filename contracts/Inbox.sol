@@ -28,10 +28,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     bytes4 public constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
 
     /**
-     * @notice Mapping of intent hashes to their claimant addresses
-     * @dev Stores the address eligible to claim rewards for each fulfilled intent
+     * @notice Mapping of intent hashes to their claimant identifiers
+     * @dev Stores the cross-VM compatible claimant identifier for each fulfilled intent
      */
-    mapping(bytes32 => address) public fulfilled;
+    mapping(bytes32 => bytes32) public fulfilled;
 
     /**
      * @notice Initializes the Inbox contract
@@ -43,7 +43,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @dev Validates intent hash, executes calls, and marks as fulfilled
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward details
-     * @param _claimant The address that will receive the reward on the source chain
+     * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash The hash of the intent as created on the source chain
      * @param _localProver The prover contract to use for verification
      * @return Array of execution results from each call
@@ -51,7 +51,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     function fulfill(
         Route memory _route,
         bytes32 _rewardHash,
-        address _claimant,
+        bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver
     ) external payable override returns (bytes[] memory) {
@@ -71,7 +71,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @dev Executes intent actions and sends proof message to source chain
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward details
-     * @param _claimant The address that will receive the reward on the source chain
+     * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash The hash of the intent as created on the source chain
      * @param _localProver Address of prover on the destination chain
      * @param _data Additional data for message formatting
@@ -80,7 +80,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     function fulfillAndProve(
         Route memory _route,
         bytes32 _rewardHash,
-        address _claimant,
+        bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver,
         bytes memory _data
@@ -126,12 +126,12 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         uint256 size = _intentHashes.length;
         address[] memory claimants = new address[](size);
         for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]];
+            bytes32 claimantBytes = fulfilled[_intentHashes[i]];
 
-            if (claimant == address(0)) {
+            if (claimantBytes == bytes32(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
-            claimants[i] = claimant;
+            claimants[i] = TypeCasts.bytes32ToAddress(claimantBytes);
         }
         IProver(_localProver).prove{value: address(this).balance}(
             msg.sender,
@@ -147,7 +147,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @dev Validates intent and executes calls
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
-     * @param _claimant The reward recipient address
+     * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash The expected intent hash
      * @param _localProver The prover contract to use
      * @return Array of execution results
@@ -155,7 +155,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     function _fulfill(
         Route memory _route,
         bytes32 _rewardHash,
-        address _claimant,
+        bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver
     ) internal returns (bytes[] memory) {
@@ -174,10 +174,10 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
         }
-        if (fulfilled[intentHash] != address(0)) {
+        if (fulfilled[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
-        if (_claimant == address(0)) {
+        if (_claimant == bytes32(0)) {
             revert ZeroClaimant();
         }
 

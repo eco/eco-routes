@@ -863,7 +863,7 @@ describe('HyperProver Test', (): void => {
         .fulfillAndProve(
           route,
           rewardHash,
-          await claimant.getAddress(),
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
           intentHash,
           await hyperProver.getAddress(),
           data,
@@ -987,7 +987,7 @@ describe('HyperProver Test', (): void => {
         .fulfill(
           route,
           rewardHash0,
-          await claimant.getAddress(),
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
           intentHash0,
           await hyperProver.getAddress(),
         )
@@ -1029,7 +1029,7 @@ describe('HyperProver Test', (): void => {
         .fulfill(
           route1,
           rewardHash1,
-          await claimant.getAddress(),
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
           intentHash1,
           await hyperProver.getAddress(),
         )

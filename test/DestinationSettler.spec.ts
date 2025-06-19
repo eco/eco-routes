@@ -144,8 +144,8 @@ describe('Destination Settler Test', (): void => {
     await time.increaseTo(intent.reward.deadline + 1)
     await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
     fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['address'],
-      [solver.address],
+      ['bytes32'],
+      [ethers.zeroPadValue(solver.address, 32)],
     )
     await expect(
       inbox.connect(solver).fill(intentHash, encodeIntent(intent), fillerData, {
@@ -154,7 +154,7 @@ describe('Destination Settler Test', (): void => {
     ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
   })
   it('successfully calls fulfill with testprover', async (): Promise<void> => {
-    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroHash)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction
