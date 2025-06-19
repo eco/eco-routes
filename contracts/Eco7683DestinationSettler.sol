@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
 import {Intent, Route} from "./types/Intent.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 abstract contract Eco7683DestinationSettler is IDestinationSettler {
     using ECDSA for bytes32;
@@ -37,7 +38,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         fulfillAndProve(
             intent.route,
             rewardHash,
-            claimant,
+            TypeCasts.addressToBytes32(claimant),
             _orderId,
             intent.reward.prover,
             data
@@ -47,7 +48,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
     function fulfillAndProve(
         Route memory _route,
         bytes32 _rewardHash,
-        address _claimant,
+        bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver,
         bytes memory _data

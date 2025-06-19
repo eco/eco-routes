@@ -17,13 +17,13 @@ interface IInbox is ISemver {
      * @param _hash Hash of the fulfilled intent
      * @param _sourceChainID ID of the source chain
      * @param _prover Address of the prover that fulfilled the intent
-     * @param _claimant Address eligible to claim rewards
+     * @param _claimant Cross-VM compatible claimant identifier
      */
     event Fulfillment(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
         address indexed _prover,
-        address _claimant
+        bytes32 _claimant
     );
 
     /**
@@ -51,7 +51,7 @@ interface IInbox is ISemver {
     error InvalidHash(bytes32 _expectedHash);
 
     /**
-     * @notice Zero address provided as claimant
+     * @notice Zero claimant identifier provided
      */
     error ZeroClaimant();
 
@@ -91,14 +91,14 @@ interface IInbox is ISemver {
      * @dev Validates intent hash, executes calls, and marks as fulfilled
      * @param _route Route information for the intent
      * @param _rewardHash Hash of the reward details
-     * @param _claimant Address eligible to claim rewards
+     * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash Expected hash for validation
      * @return Array of execution results
      */
     function fulfill(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
-        address _claimant,
+        bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver
     ) external payable returns (bytes[] memory);
@@ -108,18 +108,18 @@ interface IInbox is ISemver {
      * @dev Validates intent hash, executes calls, and marks as fulfilled
      * @param _route Route information for the intent
      * @param _rewardHash Hash of the reward details
-     * @param _claimant Address eligible to claim rewards
+     * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash Expected hash for validation
      * @param _localProver Address of prover on the destination chain
      * @param _data Additional data for message formatting
      * @return Array of execution results
      */
     function fulfillAndProve(
-        Route calldata _route,
+        Route memory _route,
         bytes32 _rewardHash,
-        address _claimant,
+        bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver,
-        bytes calldata _data
+        bytes memory _data
     ) external payable returns (bytes[] memory);
 }

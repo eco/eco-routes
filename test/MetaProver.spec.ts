@@ -848,7 +848,7 @@ describe('MetaProver Test', (): void => {
       await inbox.connect(solver).fulfillAndProve(
         route,
         rewardHash,
-        await claimant.getAddress(),
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
         intentHash,
         await testMsgProver.getAddress(), // Use TestMessageBridgeProver
         data,
@@ -961,7 +961,7 @@ describe('MetaProver Test', (): void => {
       await inbox.connect(solver).fulfill(
         route,
         rewardHash0,
-        await claimant.getAddress(),
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
         intentHash0,
         await testMsgProver.getAddress(), // Use TestMessageBridgeProver
       )
@@ -1001,7 +1001,7 @@ describe('MetaProver Test', (): void => {
       await inbox.connect(solver).fulfill(
         route1,
         rewardHash1,
-        await claimant.getAddress(),
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
         intentHash1,
         await testMsgProver.getAddress(), // Use TestMessageBridgeProver
       )
