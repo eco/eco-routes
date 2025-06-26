@@ -74,9 +74,9 @@ export async function version(
   logger.log(`Updating version information to ${version}`)
 
   try {
-    // 1. Update version in Solidity files
-    const updatedFiles = updateSolidityVersions(cwd, version, logger)
-    logger.log(`Updated version in ${updatedFiles} Solidity files`)
+    // // 1. Update version in Solidity files
+    // const updatedFiles = updateSolidityVersions(cwd, version, logger)
+    // logger.log(`Updated version in ${updatedFiles} Solidity files`)
 
     // 2. Update version in package.json
     updatePackageJsonVersion(cwd, version, logger)

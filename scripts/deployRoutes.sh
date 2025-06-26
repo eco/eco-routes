@@ -104,6 +104,8 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
             --slow \
             --broadcast \
             --private-key \"$PRIVATE_KEY\""
+            # --verify \
+            # --verifier blockscout"
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
     if [[ -n "$GAS_MULTIPLIER" && "$GAS_MULTIPLIER" != "null" ]]; then
@@ -111,8 +113,14 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
         FOUNDRY_CMD+=" --gas-estimate-multiplier \"$GAS_MULTIPLIER\""
     fi
 
-    # Run the command
+    # Run the command and capture exit code
     eval $FOUNDRY_CMD
+    DEPLOY_EXIT_CODE=$?
+
+    if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+        echo "❌ Deployment on Chain ID: $CHAIN_ID failed with exit code $DEPLOY_EXIT_CODE"
+        continue  # Skip to next chain instead of exiting entirely
+    fi
 
     echo "✅ Deployment on Chain ID: $CHAIN_ID completed!"
 done
