@@ -100,9 +100,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
-        claimants[0] = TypeCasts.bytes32ToAddress(_claimant);
 
         initiateProving(_route.source, hashes, _localProver, _data);
         return result;
