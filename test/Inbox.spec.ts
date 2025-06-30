@@ -522,26 +522,34 @@ describe('Inbox Test', (): void => {
       expect(await mockProver.args()).to.deep.equal(theArgs)
     })
 
-    it('works with bytes32 claimant', async () => {
-      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+    it('should handle fulfillAndProve with non-address bytes32 claimant for cross-VM compatibility', async () => {
       // arbitrary claimant which doesn't fit into a evm address
-      const claimant = "0x01e70aedffd376afe33cebdf51ed5365131dccb2a5b2cb36d02b785442912b9b"
+      const nonAddressClaimant = ethers.keccak256(ethers.toUtf8Bytes("non-evm-claimant-identifier"))
 
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
       await expect(
         inbox
           .connect(solver)
           .fulfillAndProve(
             route,
             rewardHash,
-            claimant,
+            nonAddressClaimant,
             intentHash,
             await mockProver.getAddress(),
             intentHash,
           ),
-      ).to.not.be.reverted
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(
+          intentHash,
+          sourceChainID,
+          await mockProver.getAddress(),
+          nonAddressClaimant,
+        )
 
-      const actualClaimant = await inbox.fulfilled(intentHash)
-      expect(actualClaimant).to.equal(claimant)
+      // Verify the non-address claimant was stored correctly
+      const storedClaimant = await inbox.fulfilled(intentHash)
+      expect(storedClaimant).to.equal(nonAddressClaimant)
     })
   })
 })
