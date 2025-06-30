@@ -101,7 +101,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
         // Validate the request is from Inbox
@@ -180,7 +180,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function fetchFee(
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) public view override returns (uint256) {
         // Decode structured data from the raw input
@@ -217,7 +217,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function _fetchFee(
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
@@ -259,7 +259,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function _formatHyperlaneMessage(
         uint256 _sourceChainId,
         bytes32[] calldata _hashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         UnpackedData memory _unpacked
     ) internal view returns (DispatchParams memory params) {
         // Centralized validation ensures arrays match exactly once in the call flow
