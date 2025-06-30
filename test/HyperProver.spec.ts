@@ -517,7 +517,101 @@ describe('HyperProver Test', (): void => {
     })
   })
 
-  describe('4. End-to-End', () => {
+  describe('4. Cross-VM Claimant Compatibility', () => {
+    it('should handle fulfillAndProve with non-address bytes32 claimant', async () => {
+      const chainId = 12345
+      hyperProver = await (
+        await ethers.getContractFactory('HyperProver')
+      ).deploy(
+        await mailbox.getAddress(),
+        await inbox.getAddress(),
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), ethers.zeroPadValue(await hyperProver.getAddress(), 32)],
+        200000,
+      )
+      
+      // Set processor to 0x0 for non-EVM test to prevent automatic processing since handle will be on non-EVM chain
+      await mailbox.setProcessor(ethers.ZeroAddress)
+      
+      await token.mint(solver.address, amount)
+
+      // Set up intent data
+      const sourceChainID = 12345
+      const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      const timeStamp = (await time.latest()) + 1000
+      const salt = ethers.encodeBytes32String('0x987')
+      const routeTokens = [{ token: await token.getAddress(), amount: amount }]
+      const route = {
+        salt: salt,
+        source: sourceChainID,
+        destination: Number(
+          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+        ),
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0,
+          },
+        ],
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await hyperProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: [] as TokenAmount[],
+      }
+
+      const { intentHash, rewardHash } = hashIntent({ route, reward })
+
+      // Use a bytes32 claimant that doesn't represent a valid address
+      // This simulates a cross-VM scenario where the claimant identifier
+      // is not an Ethereum address but some other VM's identifier like Solana
+      const nonAddressClaimant = ethers.keccak256(ethers.toUtf8Bytes("non-evm-claimant-identifier"))
+
+      // Prepare message data
+      const metadata = '0x1234'
+      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['bytes32', 'bytes', 'address'],
+        [
+          ethers.zeroPadValue(await hyperProver.getAddress(), 32),
+          metadata,
+          ethers.ZeroAddress,
+        ],
+      )
+
+      await token.connect(solver).approve(await inbox.getAddress(), amount)
+      
+      const fee = await hyperProver.fetchFee(
+        sourceChainID,
+        [intentHash],
+        [nonAddressClaimant],
+        data,
+      )
+
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillAndProve(
+            route,
+            rewardHash,
+            nonAddressClaimant,
+            intentHash,
+            await hyperProver.getAddress(),
+            data,
+            { value: fee },
+          )
+      ).to.not.be.reverted
+
+      // Verify the intent was fulfilled with the non-address claimant
+      expect(await inbox.fulfilled(intentHash)).to.eq(nonAddressClaimant)
+      // NOTE: we don't check provenIntents here because we're not skipping the handle call
+    })
+  })
+
+  describe('5. End-to-End', () => {
     it('works end to end with message bridge', async () => {
       const chainId = 12345 // Use test chainId
       hyperProver = await (

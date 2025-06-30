@@ -87,4 +87,8 @@ contract TestMailbox {
     function defaultHook() public pure returns (IPostDispatchHook) {
         return IPostDispatchHook(address(0));
     }
+
+    function setProcessor(address _processor) public {
+        processor = _processor;
+    }
 }
