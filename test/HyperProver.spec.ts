@@ -803,14 +803,6 @@ describe('HyperProver Test', (): void => {
         ethers.ZeroAddress,
       )
 
-      // Get fee for first intent
-      const fee = await hyperProver.fetchFee(
-        sourceChainID,
-        [intentHash0],
-        [ethers.zeroPadValue(await claimant.getAddress(), 32)],
-        data,
-      )
-
       // Fulfill first intent in batch
       await inbox
         .connect(solver)
