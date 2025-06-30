@@ -91,7 +91,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
         // Validate the request is from Inbox
@@ -172,7 +172,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     function fetchFee(
         uint256 _sourceChainID,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) public view override returns (uint256) {
         // Decode source chain prover once at the entry point
@@ -199,7 +199,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     function _fetchFee(
         uint256 _sourceChainID,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes32 _sourceChainProver
     ) internal view returns (uint256) {
         (
@@ -242,7 +242,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     function _formatMetalayerMessage(
         uint256 _sourceChainID,
         bytes32[] calldata _hashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes32 _sourceChainProver
     )
         internal
