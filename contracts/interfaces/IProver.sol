@@ -48,7 +48,7 @@ interface IProver is ISemver {
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable;
 }

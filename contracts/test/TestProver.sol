@@ -15,7 +15,7 @@ contract TestProver is BaseProver {
 
     ArgsCheck public args;
     bytes32[] public argIntentHashes;
-    address[] public argClaimants;
+    bytes32[] public argClaimants;
 
     constructor(address _inbox) BaseProver(_inbox) {}
 
@@ -35,7 +35,7 @@ contract TestProver is BaseProver {
         address _sender,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
         args = ArgsCheck({

@@ -15,7 +15,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     bool public dispatched = false;
     uint256 public lastSourceChainId;
     bytes32[] public lastIntentHashes;
-    address[] public lastClaimants;
+    bytes32[] public lastClaimants;
     bytes32 public lastSourceChainProver;
     bytes public lastData;
 
@@ -72,7 +72,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         address /* _sender */,
         uint256 _sourceChainId,
         bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
         dispatched = true;
@@ -101,9 +101,9 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     function fetchFee(
         uint256 /* _sourceChainId */,
         bytes32[] calldata /* _intentHashes */,
-        address[] calldata /* _claimants */,
+        bytes32[] calldata /* _claimants */,
         bytes calldata /* _data */
-    ) public view override returns (uint256) {
+    ) external view override returns (uint256) {
         return feeAmount;
     }
 

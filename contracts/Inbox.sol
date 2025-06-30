@@ -100,9 +100,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
-        claimants[0] = TypeCasts.bytes32ToAddress(_claimant);
 
         initiateProving(_route.source, hashes, _localProver, _data);
         return result;
@@ -127,14 +125,14 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
             return;
         }
         uint256 size = _intentHashes.length;
-        address[] memory claimants = new address[](size);
+        bytes32[] memory claimants = new bytes32[](size);
         for (uint256 i = 0; i < size; ++i) {
             bytes32 claimantBytes = fulfilled[_intentHashes[i]];
 
             if (claimantBytes == bytes32(0)) {
                 revert IntentNotFulfilled(_intentHashes[i]);
             }
-            claimants[i] = TypeCasts.bytes32ToAddress(claimantBytes);
+            claimants[i] = claimantBytes;
         }
         IProver(_localProver).prove{value: address(this).balance}(
             msg.sender,

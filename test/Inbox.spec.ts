@@ -445,5 +445,35 @@ describe('Inbox Test', (): void => {
         )
       expect(await mockProver.args()).to.deep.equal(theArgs)
     })
+
+    it('should handle fulfillAndProve with non-address bytes32 claimant for cross-VM compatibility', async () => {
+      // arbitrary claimant which doesn't fit into a evm address
+      const nonAddressClaimant = ethers.keccak256(ethers.toUtf8Bytes("non-evm-claimant-identifier"))
+
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfillAndProve(
+            route,
+            rewardHash,
+            nonAddressClaimant,
+            intentHash,
+            await mockProver.getAddress(),
+            intentHash,
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(
+          intentHash,
+          sourceChainID,
+          await mockProver.getAddress(),
+          nonAddressClaimant,
+        )
+
+      // Verify the non-address claimant was stored correctly
+      const storedClaimant = await inbox.fulfilled(intentHash)
+      expect(storedClaimant).to.equal(nonAddressClaimant)
+    })
   })
 })
