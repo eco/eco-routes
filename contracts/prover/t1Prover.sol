@@ -54,7 +54,6 @@ contract T1Prover is BaseProver, Semver {
 
     function requestIntentProof(
         uint32 destinationDomain,
-        uint256 gasLimit,
         bytes32 intentHash
     ) external payable {
 
@@ -68,7 +67,6 @@ contract T1Prover is BaseProver, Semver {
         IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader.ReadRequest({
             destinationDomain: destinationDomain,
             targetContract: INBOX,
-            gasLimit: gasLimit,
             minBlock: 0,
             callData: callData
         });
@@ -85,7 +83,6 @@ contract T1Prover is BaseProver, Semver {
 
     function requestIntentProofBatch(
         uint32 destinationDomain,
-        uint256 gasLimit,
         bytes32[] calldata intentHashes
     ) external payable {
         
@@ -99,7 +96,6 @@ contract T1Prover is BaseProver, Semver {
         IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader.ReadRequest({
             destinationDomain: destinationDomain,
             targetContract: PROVER,
-            gasLimit: gasLimit,
             minBlock: 0,
             callData: callData
         });

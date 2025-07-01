@@ -6,7 +6,6 @@ interface IT1XChainReader {
         uint32 destinationDomain;
         address targetContract;
         uint256 gasLimit;
-        uint64 minBlock;
         bytes callData;
     }
 
@@ -21,23 +20,22 @@ interface IT1XChainReader {
     event ReadRequested(
         bytes32 indexed requestId,
         uint32 indexed destinationDomain,
-        address targetContract,
+        address indexed targetContract,
         address requester,
-        uint256 gasLimit,
         uint64 minBlock,
         bytes callData,
         uint256 nonce
     );
 
     function MESSENGER() external view returns (address);
-    function commitProofOfReadRoot(uint256 batchIndex, bytes32 newRoot) external payable;
+    function commitProofOfReadRoot(uint256 batchIndex, bytes32 newRoot) external;
     function nextBatchIndex() external view returns (uint256);
     function nonce() external view returns (uint256);
     function owner() external view returns (address);
     function proofOfReadRoots(uint256 batchIndex) external view returns (bytes32 root);
     function prover() external view returns (address);
     function renounceOwnership() external;
-    function requestRead(ReadRequest memory request) external payable returns (bytes32 requestId);
+    function requestRead(ReadRequest memory request) external returns (bytes32 requestId);
     function transferOwnership(address newOwner) external;
     function verifyProofOfRead(bytes memory encodedProofOfRead) external view returns (bytes32, bytes memory);
 }
