@@ -46,9 +46,10 @@ contract T1Prover is BaseProver, Semver {
     //errors
     error IntentNotFufilled();
 
-    constructor(address _inbox, uint32 _localDomain, address _xChainReader) BaseProver(_inbox) {
+    constructor(address _inbox, uint32 _localDomain, address _xChainReader, address _prover) BaseProver(_inbox) {
         LOCAL_DOMAIN = _localDomain;
         X_CHAIN_READER = IT1XChainReader(_xChainReader);
+        PROVER = _prover;
     }
 
     function requestIntentProof(
