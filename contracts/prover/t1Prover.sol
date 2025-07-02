@@ -16,7 +16,6 @@ import {Semver} from "../libs/Semver.sol";
  */
 
 contract T1Prover is BaseProver, Semver {
-
     //constants
     uint32 public immutable LOCAL_DOMAIN;
     IT1XChainReader public immutable X_CHAIN_READER;
@@ -35,18 +34,30 @@ contract T1Prover is BaseProver, Semver {
 
     // state variables
     mapping(bytes32 => IntentRequest) public readRequestToIntentRequest;
-    mapping(bytes32 => IntentBatchRequest) public readRequestToIntentBatchRequest;
+    mapping(bytes32 => IntentBatchRequest)
+        public readRequestToIntentBatchRequest;
 
     //events
-    event IntentProofRequested(bytes32 indexed orderId, bytes32 indexed requestId);
-    event IntentBatchProofRequested(bytes32[] indexed intentHashes, bytes32 indexed requestId);
+    event IntentProofRequested(
+        bytes32 indexed orderId,
+        bytes32 indexed requestId
+    );
+    event IntentBatchProofRequested(
+        bytes32[] indexed intentHashes,
+        bytes32 indexed requestId
+    );
     event IntentProofVerified(bytes32 indexed requestId);
     event BadProofCleared(bytes32 indexed intentHash);
 
     //errors
     error IntentNotFufilled();
 
-    constructor(address _inbox, uint32 _localDomain, address _xChainReader, address _prover) BaseProver(_inbox) {
+    constructor(
+        address _inbox,
+        uint32 _localDomain,
+        address _xChainReader,
+        address _prover
+    ) BaseProver(_inbox) {
         LOCAL_DOMAIN = _localDomain;
         X_CHAIN_READER = IT1XChainReader(_xChainReader);
         PROVER = _prover;
@@ -56,7 +67,6 @@ contract T1Prover is BaseProver, Semver {
         uint32 destinationDomain,
         bytes32 intentHash
     ) external {
-
         // create crosschain call data to check if intent is fulfilled
         bytes memory callData = abi.encodeWithSignature(
             "fulfilled(bytes32)",
@@ -64,12 +74,13 @@ contract T1Prover is BaseProver, Semver {
         );
 
         // create read request
-        IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader.ReadRequest({
-            destinationDomain: destinationDomain,
-            targetContract: INBOX,
-            minBlock: 0,
-            callData: callData
-        });
+        IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader
+            .ReadRequest({
+                destinationDomain: destinationDomain,
+                targetContract: INBOX,
+                minBlock: 0,
+                callData: callData
+            });
 
         bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
 
@@ -85,7 +96,6 @@ contract T1Prover is BaseProver, Semver {
         uint32 destinationDomain,
         bytes32[] calldata intentHashes
     ) external {
-        
         // create crosschain call data to check if intent is fulfilled
         bytes memory callData = abi.encodeWithSelector(
             this.fulfilledBatch.selector,
@@ -93,12 +103,13 @@ contract T1Prover is BaseProver, Semver {
         );
 
         // create read request
-        IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader.ReadRequest({
-            destinationDomain: destinationDomain,
-            targetContract: PROVER,
-            minBlock: 0,
-            callData: callData
-        });
+        IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader
+            .ReadRequest({
+                destinationDomain: destinationDomain,
+                targetContract: PROVER,
+                minBlock: 0,
+                callData: callData
+            });
 
         bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
 
@@ -112,18 +123,23 @@ contract T1Prover is BaseProver, Semver {
     }
 
     // can be extended to handle multiple proofs at once eventually like Polymer
-    function handleReadResultWithProof(bytes calldata encodedProofOfRead) external {
+    function handleReadResultWithProof(
+        bytes calldata encodedProofOfRead
+    ) external {
         // decode proof of read
-        (bytes32 requestId, bytes memory result) = X_CHAIN_READER.verifyProofOfRead(encodedProofOfRead);
+        (bytes32 requestId, bytes memory result) = X_CHAIN_READER
+            .verifyProofOfRead(encodedProofOfRead);
 
         // get intent hash from requestId
-        IntentRequest memory intentRequest = readRequestToIntentRequest[requestId];
+        IntentRequest memory intentRequest = readRequestToIntentRequest[
+            requestId
+        ];
 
         // delete intent request
         delete readRequestToIntentRequest[requestId];
 
-        // check if intent is fufilled by decoding the result 
-        (address claimant) = abi.decode(result, (address));
+        // check if intent is fufilled by decoding the result
+        address claimant = abi.decode(result, (address));
 
         // check if intent is fufilled
         if (claimant == address(0)) {
@@ -136,24 +152,33 @@ contract T1Prover is BaseProver, Semver {
         hashes[0] = intentRequest.intentHash;
         claimants[0] = claimant;
 
-        _processIntentProofs(uint96(intentRequest.destinationDomain), hashes, claimants);
+        _processIntentProofs(
+            uint96(intentRequest.destinationDomain),
+            hashes,
+            claimants
+        );
 
         emit IntentProofVerified(requestId);
     }
 
-    function handleReadResultWithProofBatch(bytes calldata encodedProofOfRead) external {
-
+    function handleReadResultWithProofBatch(
+        bytes calldata encodedProofOfRead
+    ) external {
         // decode proof of read
-        (bytes32 requestId, bytes memory result) = X_CHAIN_READER.verifyProofOfRead(encodedProofOfRead);
+        (bytes32 requestId, bytes memory result) = X_CHAIN_READER
+            .verifyProofOfRead(encodedProofOfRead);
 
         // get intent hashes from requestId
-        IntentBatchRequest memory intentBatchRequest = readRequestToIntentBatchRequest[requestId];
+        IntentBatchRequest
+            memory intentBatchRequest = readRequestToIntentBatchRequest[
+                requestId
+            ];
 
         // delete intent hashes
         delete readRequestToIntentBatchRequest[requestId];
 
         // decode result
-        (address[] memory claimants) = abi.decode(result, (address[]));
+        address[] memory claimants = abi.decode(result, (address[]));
 
         // for each intent hash, check if the claimant is zero address and if so, revert
         for (uint256 i = 0; i < intentBatchRequest.intentHashes.length; i++) {
@@ -161,8 +186,12 @@ contract T1Prover is BaseProver, Semver {
                 revert IntentNotFufilled();
             }
         }
-        
-        _processIntentProofs(uint96(intentBatchRequest.destinationDomain), intentBatchRequest.intentHashes, claimants);
+
+        _processIntentProofs(
+            uint96(intentBatchRequest.destinationDomain),
+            intentBatchRequest.intentHashes,
+            claimants
+        );
     }
 
     function challengeIntentProof(Intent calldata _intent) public {
@@ -197,21 +226,18 @@ contract T1Prover is BaseProver, Semver {
      * @param _intentHashes Array of intent hashes to check
      * @return claimants Array of claimant addresses (zero address if not fulfilled)
      */
-    function fulfilledBatch(bytes32[] calldata _intentHashes) 
-        external 
-        view 
-        returns (address[] memory claimants) 
-    {
+    function fulfilledBatch(
+        bytes32[] calldata _intentHashes
+    ) external view returns (address[] memory claimants) {
         uint256 size = _intentHashes.length;
         claimants = new address[](size);
 
         for (uint256 i = 0; i < size; i++) {
-            claimants[i] = Inbox(payable(INBOX)).fulfilled(_intentHashes[i]); 
+            claimants[i] = Inbox(payable(INBOX)).fulfilled(_intentHashes[i]);
         }
 
         return claimants;
     }
-
 
     function prove(
         address _sender,
@@ -223,5 +249,4 @@ contract T1Prover is BaseProver, Semver {
         // we don't need to do anything here because we are using pull based verification
         // we will just request the proof and then handle the result in the handleReadResultWithProof function
     }
-    
 }
