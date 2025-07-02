@@ -55,7 +55,7 @@ contract T1Prover is BaseProver, Semver {
     function requestIntentProof(
         uint32 destinationDomain,
         bytes32 intentHash
-    ) external payable {
+    ) external {
 
         // create crosschain call data to check if intent is fulfilled
         bytes memory callData = abi.encodeWithSignature(
@@ -71,7 +71,7 @@ contract T1Prover is BaseProver, Semver {
             callData: callData
         });
 
-        bytes32 requestId = X_CHAIN_READER.requestRead{ value: msg.value }(readRequest);
+        bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
 
         readRequestToIntentRequest[requestId] = IntentRequest({
             destinationDomain: destinationDomain,
@@ -84,7 +84,7 @@ contract T1Prover is BaseProver, Semver {
     function requestIntentProofBatch(
         uint32 destinationDomain,
         bytes32[] calldata intentHashes
-    ) external payable {
+    ) external {
         
         // create crosschain call data to check if intent is fulfilled
         bytes memory callData = abi.encodeWithSelector(
@@ -100,7 +100,7 @@ contract T1Prover is BaseProver, Semver {
             callData: callData
         });
 
-        bytes32 requestId = X_CHAIN_READER.requestRead{ value: msg.value }(readRequest);
+        bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
 
         // fix this to handle multiple intents
         readRequestToIntentBatchRequest[requestId] = IntentBatchRequest({
