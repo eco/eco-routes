@@ -1277,6 +1277,117 @@ describe('Intent Source Test', (): void => {
         initialClaimantBalance + BigInt(mintAmount),
       )
     })
+    it('should handle bad permit contracts for good tokens', async () => {
+      // Deploy FakePermit contract
+      const FakePermitFactory = await ethers.getContractFactory('FakePermit')
+      const fakePermit = await FakePermitFactory.deploy()
+
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+
+      reward = {
+        creator: creator.address,
+        prover: otherPerson.address,
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+
+      // Setup: creator has tokens but DOES NOT approve the IntentSource
+      // The fake permit will lie and say it has unlimited allowance
+      expect(await tokenA.balanceOf(creator.address)).to.equal(mintAmount)
+
+      // Do NOT approve IntentSource - this is key for the test
+      // The fake permit will claim unlimited allowance but won't transfer tokens
+
+      const intentHash = (
+        await intentSource.getIntentHash({ route, reward })
+      )[0]
+
+      // Try to fund using the fake permit contract
+      // This should revert because the fake permit doesn't actually transfer tokens
+      await expect(
+        intentSource
+          .connect(creator)
+          .fundFor(
+            routeHash,
+            reward,
+            creator.address,
+            await fakePermit.getAddress(),
+            false,
+          ),
+      ).to.be.reverted
+
+      //no emissions of the IntentFunded event
+      const logs = await intentSource.queryFilter(
+        intentSource.getEvent('IntentFunded'),
+      )
+      expect(logs.length).to.equal(0)
+
+      // and the intent is not funded
+      expect(await intentSource.isIntentFunded({ route, reward })).to.be.false
+
+      // Verify the fake permit didn't steal tokens or mark intent as funded
+      expect(await tokenA.balanceOf(creator.address)).to.equal(mintAmount)
+
+      // The vault address should have no tokens
+      const vaultAddress = await intentSource.intentVaultAddress({
+        route,
+        reward,
+      })
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(0)
+    })
+
+    it('marks a native-token reward intent as Funded without receiving any ETH', async () => {
+      // fresh deployment
+      const { intentSource, prover, creator, otherPerson } =
+        await loadFixture(deploySourceFixture)
+
+      // construct minimal intent that offers native ETH as reward
+      const nativeReward = ethers.parseEther('1')
+      const now = await time.latest()
+      const chainId = Number((await ethers.provider.getNetwork()).chainId)
+      const salt = ethers.encodeBytes32String('POC')
+
+      const route: Route = {
+        salt,
+        source: chainId,
+        destination: chainId,
+        inbox: ZeroAddress, // irrelevant for this test
+        tokens: [], // no ERC-20 requirements
+        calls: [], // no calls
+      }
+
+      const reward: Reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: now + 3600,
+        nativeValue: nativeReward, // <-- promises 1 ETH
+        tokens: [], // no ERC-20 rewards
+      }
+
+      const intent: Intent = { route, reward }
+      const [intentHash, routeHash] = await intentSource.getIntentHash(intent)
+
+      // attacker calls publishAndFundFor with zero msg.value
+      // allowPartial = false -> status will be set to Funded
+      await expect(
+        intentSource
+          .connect(otherPerson)
+          .publishAndFundFor(intent, creator.address, ZeroAddress, false), // msg.value == 0
+      ).to.be.revertedWithCustomError(intentSource, 'InsufficientNativeReward')
+      // RewardStatus == Funded (enum = 2)
+      const status = await intentSource.getRewardStatus(intentHash)
+
+      // Vault has zero balance (no ETH actually deposited)
+      const vaultAddr = await intentSource.intentVaultAddress(intent)
+      expect(await ethers.provider.getBalance(vaultAddr)).to.equal(
+        0n,
+        'vault received no ETH',
+      )
+
+      // Real balances returns false
+      expect(await intentSource.isIntentFunded(intent)).to.equal(false)
+    })
   })
 
   describe('balance check for partial funding', async () => {
