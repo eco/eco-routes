@@ -15,7 +15,10 @@ interface IT1XChainReader {
     error ZeroAddress();
 
     event Initialized(uint8 version);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
     event ProofOfReadRootCommitted(uint256 batchIndex);
     event ReadRequested(
         bytes32 indexed requestId,
@@ -28,14 +31,23 @@ interface IT1XChainReader {
     );
 
     function MESSENGER() external view returns (address);
-    function commitProofOfReadRoot(uint256 batchIndex, bytes32 newRoot) external;
+    function commitProofOfReadRoot(
+        uint256 batchIndex,
+        bytes32 newRoot
+    ) external;
     function nextBatchIndex() external view returns (uint256);
     function nonce() external view returns (uint256);
     function owner() external view returns (address);
-    function proofOfReadRoots(uint256 batchIndex) external view returns (bytes32 root);
+    function proofOfReadRoots(
+        uint256 batchIndex
+    ) external view returns (bytes32 root);
     function prover() external view returns (address);
     function renounceOwnership() external;
-    function requestRead(ReadRequest memory request) external returns (bytes32 requestId);
+    function requestRead(
+        ReadRequest memory request
+    ) external returns (bytes32 requestId);
     function transferOwnership(address newOwner) external;
-    function verifyProofOfRead(bytes memory encodedProofOfRead) external view returns (bytes32, bytes memory);
+    function verifyProofOfRead(
+        bytes memory encodedProofOfRead
+    ) external view returns (bytes32, bytes memory);
 }
