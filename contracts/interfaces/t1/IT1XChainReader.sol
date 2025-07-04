@@ -5,8 +5,10 @@ interface IT1XChainReader {
     struct ReadRequest {
         uint32 destinationDomain;
         address targetContract;
+        uint256 gasLimit;
         uint64 minBlock;
         bytes callData;
+        address requester;
     }
 
     error InvalidBatchIndex();
@@ -34,7 +36,7 @@ interface IT1XChainReader {
     function commitProofOfReadRoot(
         uint256 batchIndex,
         bytes32 newRoot
-    ) external;
+    ) external payable;
     function nextBatchIndex() external view returns (uint256);
     function nonce() external view returns (uint256);
     function owner() external view returns (address);
@@ -45,7 +47,7 @@ interface IT1XChainReader {
     function renounceOwnership() external;
     function requestRead(
         ReadRequest memory request
-    ) external returns (bytes32 requestId);
+    ) external payable returns (bytes32 requestId);
     function transferOwnership(address newOwner) external;
     function verifyProofOfRead(
         bytes memory encodedProofOfRead
