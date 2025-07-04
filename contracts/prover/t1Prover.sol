@@ -78,8 +78,10 @@ contract T1Prover is BaseProver, Semver {
             .ReadRequest({
                 destinationDomain: destinationDomain,
                 targetContract: INBOX,
+                gasLimit: 0,
                 minBlock: 0,
-                callData: callData
+                callData: callData,
+                requester: msg.sender
             });
 
         bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
@@ -107,8 +109,10 @@ contract T1Prover is BaseProver, Semver {
             .ReadRequest({
                 destinationDomain: destinationDomain,
                 targetContract: PROVER,
+                gasLimit: 0,
                 minBlock: 0,
-                callData: callData
+                callData: callData,
+                requester: msg.sender
             });
 
         bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
