@@ -138,6 +138,7 @@
     "@metalayer/contracts": "^0.0.7",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "t1": "https://github.com/t1protocol/t1.git",
     "viem": "^2.22.21"
   }
 }
