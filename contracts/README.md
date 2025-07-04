@@ -368,6 +368,81 @@ Returns "Hyperlane" to identify the proving mechanism.
 
 A concrete implementation of MessageBridgeProver that uses Caldera Metalayer for cross-chain messaging. Similar interface to HyperProver but adapted for Metalayer's messaging system.
 
+### T1Prover
+
+A concrete implementation of BaseProver that uses t1's pull-based verification system for cross-chain intent proving.
+
+<h4><ins>requestIntentProof</ins></h4>
+<h5>Requests a single intent proof from the destination chain using t1's cross-chain read system</h5>
+
+Parameters:
+- `destinationDomain` (uint32) Domain ID of the destination chain
+- `intentHash` (bytes32) Hash of the intent to prove
+
+<ins>Security:</ins> Creates a cross-chain read request to check if the intent is fulfilled on the destination chain. The request is tracked using a requestId for later verification.
+
+<h4><ins>requestIntentProofBatch</ins></h4>
+<h5>Requests batch intent proofs from the destination chain using t1's cross-chain read system</h5>
+
+Parameters:
+- `destinationDomain` (uint32) Domain ID of the destination chain  
+- `intentHashes` (bytes32[]) Array of intent hashes to prove
+
+<ins>Security:</ins> Creates a cross-chain read request to check if multiple intents are fulfilled on the destination chain. More efficient than individual requests for multiple intents.
+
+<h4><ins>handleReadResultWithProof</ins></h4>
+<h5>Handles the result of a single intent proof request with cryptographic proof</h5>
+
+Parameters:
+- `encodedProofOfRead` (bytes) Encoded proof data from t1's cross-chain read system. Fetchable from the [t1 API](https://docs.t1protocol.com/integration/xChainRead/api-reference).
+
+<ins>Security:</ins> Verifies the cryptographic proof using t1's X_CHAIN_READER, and processes the intent proof if the intent is fulfilled. Reverts if the intent is not fulfilled.
+
+<h4><ins>handleReadResultWithProofBatch</ins></h4>
+<h5>Handles the result of a batch intent proof request with cryptographic proof</h5>
+
+Parameters:
+- `encodedProofOfRead` (bytes) Encoded proof data from t1's cross-chain read system
+
+<ins>Security:</ins> Verifies the cryptographic proof and processes multiple intent proofs simultaneously. Reverts if any intent in the batch is not fulfilled.
+
+<h4><ins>challengeIntentProof</ins></h4>
+<h5>Challenges an existing intent proof if the destination chain ID doesn't match</h5>
+
+Parameters:
+- `_intent` (Intent) The intent to challenge
+
+<ins>Security:</ins> Allows challenging incorrect proofs by clearing the claimant if the destination chain ID doesn't match the intent's true destination. This prevents malicious proofs from incorrect chains.
+
+<h4><ins>fulfilledBatch</ins></h4>
+<h5>Gets claimant addresses for a batch of intents from the local inbox</h5>
+
+Parameters:
+- `_intentHashes` (bytes32[]) Array of intent hashes to check
+
+Returns:
+- `claimants` (address[]) Array of claimant addresses (zero address if not fulfilled)
+
+<ins>Security:</ins> Called by the destination chain's t1 system to verify intent fulfillment status. Returns zero addresses for unfulfilled intents.
+
+<h4><ins>getProofType</ins></h4>
+<h5>Returns the proof type used by this prover</h5>
+
+Returns "t1" to identify the proving mechanism.
+
+<h4><ins>prove</ins></h4>
+<h5>Initiates proving of intents via t1's pull-based verification system</h5>
+
+Parameters:
+- `_sender` (address) Address that initiated the proving request
+- `_sourceChainId` (uint256) Chain ID of the source chain
+- `_intentHashes` (bytes32[]) Array of intent hashes to prove
+- `_claimants` (address[]) Array of claimant addresses
+- `_data` (bytes) Additional data used for proving
+
+<ins>Security:</ins> This method is intentionally minimal since t1 uses pull-based verification. The actual proving happens through the request/handle flow rather than direct message passing.
+
+
 ## ERC-7683 Integration
 
 Eco Protocol has integrated ERC-7683 compatibility directly into the core protocol. The Inbox contract inherits from Eco7683DestinationSettler, providing ERC-7683 settlement functionality while leveraging the modular message bridge architecture for cross-chain communication.
