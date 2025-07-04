@@ -13,6 +13,7 @@ import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
+import {T1Prover} from "../contracts/prover/t1Prover.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -46,13 +47,21 @@ contract Deploy is Script {
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
         bytes32 layerZeroProverSalt;
+        bytes32 t1ProverSalt;
+        bytes32 localDomain;
         address portal;
         address hyperProver;
         address metaProver;
+        address t1Prover;
+        address xChainReader;
         address layerZeroProver;
+        address intentSource;
+        address inbox;
         bytes hyperProverConstructorArgs;
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
+        bytes t1ProverConstructorArgs;
+        bytes inboxConstructorArgs;
     }
 
     function run() external {
@@ -61,6 +70,7 @@ contract Deploy is Script {
         ctx.salt = vm.envBytes32("SALT");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
+        ctx.xChainReader = vm.envOr("X_CHAIN_READER_CONTRACT", address(0));
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
         ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
 
@@ -77,6 +87,7 @@ contract Deploy is Script {
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
+        bool hasXChainReader = ctx.xChainReader != address(0);
         // Compute salts for each contract
         ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
         if (hasMailbox) {
@@ -92,6 +103,10 @@ contract Deploy is Script {
                 ctx.salt,
                 "LAYERZERO_PROVER"
             );
+        }
+        
+        if (hasXChainReader) {
+            ctx.t1ProverSalt = getContractSalt(ctx.salt, "T1_PROVER");
         }
 
         vm.startBroadcast();
@@ -115,6 +130,10 @@ contract Deploy is Script {
         // Deploy LayerZeroProver
         if (hasLayerZero) {
             deployLayerZeroProver(ctx);
+        
+        // Deploy T1Prover
+        if (hasXChainReader) {
+            deployT1Prover(ctx);
         }
 
         vm.stopBroadcast();
@@ -129,9 +148,11 @@ contract Deploy is Script {
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
+        bool hasXChainReader = ctx.xChainReader != address(0);
         num = hasMailbox ? num + 1 : num;
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
+        num = hasXChainReader ? num + 1 : num;
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
         contracts[count++] = VerificationData({
@@ -162,6 +183,13 @@ contract Deploy is Script {
                 contractAddress: ctx.layerZeroProver,
                 contractPath: "contracts/prover/LayerZeroProver.sol:LayerZeroProver",
                 constructorArgs: ctx.layerZeroProverConstructorArgs,
+            });
+        }
+        if (hasXChainReader) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.t1Prover,
+                contractPath: "contracts/prover/t1Prover.sol:T1Prover",
+                constructorArgs: ctx.t1ProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -218,6 +246,39 @@ contract Deploy is Script {
         );
 
         console.log("HyperProver :", ctx.hyperProver);
+    }
+    
+    function deployT1Prover(
+        DeploymentContext memory ctx
+    ) internal returns (address t1Prover) {
+        address t1ProverPreviewAddr = create3Deployer.deployedAddress(
+            bytes(""), // Bytecode isn't used to determine the deployed address
+            ctx.deployer,
+            ctx.t1ProverSalt
+        );
+
+        ctx.localDomain = bytes32(uint256(block.chainid));
+
+        ctx.t1ProverConstructorArgs = abi.encode(
+            ctx.inbox,
+            ctx.localDomain,
+            ctx.xChainReader,
+            t1ProverPreviewAddr
+        );
+
+        bytes memory t1ProverBytecode = abi.encodePacked(
+            type(T1Prover).creationCode,
+            ctx.t1ProverConstructorArgs
+        );
+
+        bool deployed;
+        (ctx.t1Prover, deployed) = deployWithCreate3(
+            t1ProverBytecode,
+            ctx.deployer,
+            ctx.t1ProverSalt
+        );
+
+        console.log("T1Prover :", ctx.t1Prover);
     }
 
     function deployMetaProver(
