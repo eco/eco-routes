@@ -148,7 +148,7 @@ describe('SameChainProver Test', () => {
   })
 
   describe('4. challengeIntentProof', () => {
-    it('should always revert with CannotchallengeSameChainIntentProof error', async () => {
+    it('should always revert with CannotChallengeSameChainIntentProof error', async () => {
       // Create a dummy intent struct
       const intent = {
         route: {
@@ -172,7 +172,7 @@ describe('SameChainProver Test', () => {
         sameChainProver.challengeIntentProof(intent),
       ).to.be.revertedWithCustomError(
         sameChainProver,
-        'CannotchallengeSameChainIntentProof',
+        'CannotChallengeSameChainIntentProof',
       )
     })
   })

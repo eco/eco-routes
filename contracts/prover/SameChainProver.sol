@@ -16,7 +16,7 @@ import {Semver} from "../libs/Semver.sol";
 contract SameChainProver is IProver, Semver {
     using SafeCast for uint256;
 
-    error CannotchallengeSameChainIntentProof();
+    error CannotChallengeSameChainIntentProof();
 
     /**
      * @notice Address of the Inbox contract
