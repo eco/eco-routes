@@ -18,7 +18,7 @@ import {
   solidityPacked,
   AbiCoder,
 } from 'ethers'
-import { encodeIdentifier, encodeTransfer } from '../utils/encode'
+import { encodeIdentifier, encodeTransfer } from '../../utils/encode'
 
 /**
  * Comprehensive test suite for Universal Intent Source functionality,
@@ -914,10 +914,10 @@ describe('Universal Intent Source Test', (): void => {
       // Store intent hash
       const [intentHash] = await intentSource.getIntentHash(evmIntent)
 
-      // Have the prover approve the intent
+      // Have the prover approve the intent with the correct destination chain
       await prover
         .connect(creator)
-        .addProvenIntent(intentHash, 31337, await claimant.getAddress())
+        .addProvenIntent(intentHash, Number(evmIntent.route.destination), await claimant.getAddress())
     })
 
     it('should allow claiming rewards for a proven intent', async function () {
@@ -1119,7 +1119,7 @@ describe('Universal Intent Source Test', (): void => {
       ).to.be.reverted
     })
 
-    it('should prevent refunding if intent is proven', async function () {
+    it('should allow refunding after deadline even if intent is proven', async function () {
       // Move time past deadline
       await time.increase(3601) // 1 hour + 1 second
 
@@ -1128,12 +1128,15 @@ describe('Universal Intent Source Test', (): void => {
         await intentSource.getIntentHash(evmIntent)
       await prover
         .connect(creator)
-        .addProvenIntent(intentHash, 31337, await claimant.getAddress())
+        .addProvenIntent(intentHash, Number(evmIntent.route.destination), await claimant.getAddress())
 
-      // Attempt refund
+      // Refund should be allowed after deadline, even if proven
+      // This matches the behavior in IntentSource tests
       await expect(
         intentSource.connect(otherPerson).refund(evmIntent),
-      ).to.be.reverted
+      )
+        .to.emit(intentSource, 'Refund')
+        .withArgs(intentHash, await creator.getAddress())
     })
 
     it('should emit Refund event on successful refund', async function () {

@@ -6,7 +6,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { encodeTransfer, encodeTransferPayable } from '../utils/encode'
+import { encodeTransfer, encodeTransferPayable } from '../../utils/encode'
 import { BytesLike, AbiCoder, parseEther, keccak256 } from 'ethers'
 import {
   hashIntent,
@@ -15,7 +15,7 @@ import {
   Reward,
   Intent,
   encodeIntent,
-} from '../utils/intent'
+} from '../../utils/intent'
 
 describe('Destination Settler Test', (): void => {
   let inbox: Inbox

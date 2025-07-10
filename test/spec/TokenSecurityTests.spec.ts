@@ -6,7 +6,7 @@ import {
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
-import { hashIntent, TokenAmount } from '../utils/intent'
+import { hashIntent, TokenAmount } from '../../utils/intent'
 
 /**
  * This test suite focuses on testing the protocol's resilience against token security issues

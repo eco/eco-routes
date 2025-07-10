@@ -10,7 +10,7 @@ import {
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, ZeroAddress } from 'ethers'
-import { encodeIdentifier, encodeTransfer } from '../utils/encode'
+import { encodeIdentifier, encodeTransfer } from '../../utils/encode'
 import {
   encodeReward,
   encodeRoute,
@@ -21,7 +21,7 @@ import {
   Route,
   Reward,
   Intent,
-} from '../utils/intent'
+} from '../../utils/intent'
 
 describe('Intent Source Test', (): void => {
   let intentSource: IntentSource
@@ -974,9 +974,33 @@ describe('Intent Source Test', (): void => {
       // Mint tokens to funding source
       await tokenA.connect(creator).mint(creator.address, mintAmount * 2)
       await tokenB.connect(creator).mint(creator.address, mintAmount * 4)
-      await tokenA
-        .connect(creator)
-        .mint(await intentSource.getAddress(), mintAmount)
+      // Note: Not minting to intentSource directly to test partial funding properly
+
+      // Initialize route data
+      expiry = (await time.latest()) + 123
+      salt = await encodeIdentifier(
+        0,
+        (await ethers.provider.getNetwork()).chainId,
+      )
+      chainId = 1
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+      calls = [
+        {
+          target: await tokenA.getAddress(),
+          data: await encodeTransfer(creator.address, mintAmount),
+          value: 0,
+        },
+      ]
+      route = {
+        salt: salt,
+        source: Number(
+          (await intentSource.runner?.provider?.getNetwork())?.chainId,
+        ),
+        destination: chainId,
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: calls,
+      }
 
       rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
 
@@ -1098,8 +1122,8 @@ describe('Intent Source Test', (): void => {
         reward,
       })
 
-      // Approve partial amount
-      await tokenA.connect(creator).approve(intentFunder, mintAmount / 2)
+      // Approve partial amount to intentSource (not the vault)
+      await tokenA.connect(creator).approve(await intentSource.getAddress(), mintAmount / 2)
 
       // Get vault address
       const vaultAddress = await intentSource.intentVaultAddress({
@@ -1112,6 +1136,8 @@ describe('Intent Source Test', (): void => {
         .connect(creator)
         .fundFor(routeHash, reward, creator.address, ZeroAddress, true)
 
+      // When using fundFor with allowPartial=true and only partial funds are transferred,
+      // the intent should NOT be marked as fully funded
       expect(await intentSource.isIntentFunded({ route, reward })).to.be.false
 
       // Check vault balance reflects partial funding

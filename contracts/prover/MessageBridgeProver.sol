@@ -129,10 +129,17 @@ abstract contract MessageBridgeProver is
 
         uint96 destinationChainID = uint96(_sourceChainId);
         // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
+        // Claimants are encoded as bytes32 for cross-VM compatibility
+        (bytes32[] memory hashes, bytes32[] memory claimantBytes) = abi.decode(
             _message,
-            (bytes32[], address[])
+            (bytes32[], bytes32[])
         );
+
+        // Convert bytes32 claimants to addresses
+        address[] memory claimants = new address[](claimantBytes.length);
+        for (uint256 i = 0; i < claimantBytes.length; i++) {
+            claimants[i] = address(uint160(uint256(claimantBytes[i])));
+        }
 
         // Process the intent proofs using shared implementation - array validation happens there
         _processIntentProofs(destinationChainID, hashes, claimants);

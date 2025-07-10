@@ -6,8 +6,8 @@ import {
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
-import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount, Intent } from '../utils/intent'
+import { encodeTransfer } from '../../utils/encode'
+import { hashIntent, TokenAmount, Intent } from '../../utils/intent'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -281,8 +281,8 @@ describe('HyperProver Test', (): void => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
       ).deploy(
-        await mailbox.getAddress(),
-        owner.address,
+        owner.address,  // Use owner as the mailbox for testing
+        await inbox.getAddress(),
         [
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         ],
@@ -293,7 +293,7 @@ describe('HyperProver Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),
@@ -336,7 +336,7 @@ describe('HyperProver Test', (): void => {
         [[intentHash], [claimant.address]],
       )
       const badChainID = 666
-      await hyperProver.handle(
+      await hyperProver.connect(owner).handle(
         badChainID,
         ethers.zeroPadValue(await inbox.getAddress(), 32),
         msgBody,
@@ -349,7 +349,7 @@ describe('HyperProver Test', (): void => {
         (await hyperProver.provenIntents(intentHash)).destinationChainID,
       ).to.eq(badChainID)
 
-      expect(await hyperProver.challengeIntentProof(intent))
+      await expect(hyperProver.challengeIntentProof(intent))
         .to.emit(hyperProver, 'BadProofCleared')
         .withArgs(intentHash)
 
@@ -362,7 +362,7 @@ describe('HyperProver Test', (): void => {
 
       const badderChainID = 777
       await expect(
-        hyperProver.handle(
+        hyperProver.connect(owner).handle(
           badderChainID,
           ethers.zeroPadValue(await inbox.getAddress(), 32),
           msgBody,
@@ -376,7 +376,7 @@ describe('HyperProver Test', (): void => {
       )
 
       await expect(
-        hyperProver.handle(
+        hyperProver.connect(owner).handle(
           intent.route.destination,
           ethers.zeroPadValue(await inbox.getAddress(), 32),
           msgBody,
@@ -402,7 +402,7 @@ describe('HyperProver Test', (): void => {
       ).to.eq(intent.route.destination)
 
       await expect(
-        hyperProver.handle(
+        hyperProver.connect(owner).handle(
           badChainID,
           ethers.zeroPadValue(await inbox.getAddress(), 32),
           msgBody,
@@ -411,7 +411,7 @@ describe('HyperProver Test', (): void => {
         .to.be.revertedWithCustomError(hyperProver, 'BadDestinationChainID')
         .withArgs(intentHash, intent.route.destination, badChainID)
 
-      await hyperProver.handle(
+      await hyperProver.connect(owner).handle(
         intent.route.destination,
         ethers.zeroPadValue(await inbox.getAddress(), 32),
         msgBody,
@@ -428,7 +428,7 @@ describe('HyperProver Test', (): void => {
       )
       const badChainID = 666
 
-      await hyperProver.handle(
+      await hyperProver.connect(owner).handle(
         intent.route.destination,
         ethers.zeroPadValue(await inbox.getAddress(), 32),
         msgBody,
@@ -455,16 +455,25 @@ describe('HyperProver Test', (): void => {
   describe('3. initiateProving', () => {
     beforeEach(async () => {
       // use owner as inbox so we can test initiateProving
-      hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
-      ).deploy(
+      // First deploy to get the address
+      const HyperProver = await ethers.getContractFactory('HyperProver')
+      const hyperProverAddress = await ethers.getCreateAddress({
+        from: (await ethers.getSigners())[0].address,
+        nonce: await ethers.provider.getTransactionCount((await ethers.getSigners())[0].address)
+      })
+      
+      hyperProver = await HyperProver.deploy(
         await mailbox.getAddress(),
         owner.address,
         [
           ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(hyperProverAddress, 32), // Include self in whitelist
         ],
         200000,
       )
+      
+      // Set processor to hyperProver so mailbox can call handle on it
+      await mailbox.setProcessor(await hyperProver.getAddress())
     })
 
     it('should revert on underpayment', async () => {
@@ -474,7 +483,7 @@ describe('HyperProver Test', (): void => {
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         // ['sourceChainProver', 'metadata', 'hookAddress'],
         ['bytes32', 'bytes', 'address'],
         [
@@ -510,7 +519,7 @@ describe('HyperProver Test', (): void => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await solver.getAddress()
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [ethers.zeroPadValue(sourceChainProver, 32), '0x', ethers.ZeroAddress],
       )
@@ -529,7 +538,7 @@ describe('HyperProver Test', (): void => {
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(sourceChainProver, 32),
@@ -544,6 +553,9 @@ describe('HyperProver Test', (): void => {
         claimants,
         data,
       )
+
+      // Fee should be at least the mailbox minimum
+      expect(fee).to.be.gte(100000)
 
       // Track balances before and after
       const solverBalanceBefore = await solver.provider.getBalance(
@@ -578,7 +590,7 @@ describe('HyperProver Test', (): void => {
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const customHookAddress = await solver.getAddress() // Use solver as custom hook for testing
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(sourceChainProver, 32),
@@ -613,7 +625,7 @@ describe('HyperProver Test', (): void => {
       const claimants: string[] = []
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(sourceChainProver, 32),
@@ -650,7 +662,7 @@ describe('HyperProver Test', (): void => {
       const sourceChainProver = await solver.getAddress()
       const metadata = '0x1234'
       const hookAddress = ethers.ZeroAddress
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [ethers.zeroPadValue(sourceChainProver, 32), metadata, hookAddress],
       )
@@ -671,10 +683,10 @@ describe('HyperProver Test', (): void => {
       // Set up test data
       const sourceChainId = await hyperProver.RARICHAIN_CHAIN_ID()
       const intentHashes = [ethers.keccak256('0x1234')]
-      const claimants = [await claimant.getAddress()]
+      const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         // ['sourceChainProver', 'metadata', 'hookAddress'],
         ['bytes32', 'bytes', 'address'],
         [
@@ -717,7 +729,7 @@ describe('HyperProver Test', (): void => {
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         // ['sourceChainProver', 'metadata', 'hookAddress'],
         ['bytes32', 'bytes', 'address'],
         [
@@ -751,7 +763,7 @@ describe('HyperProver Test', (): void => {
       )
 
       // Verify message encoding is correct
-      const expectedBody = ethers.AbiCoder.defaultAbiCoder().encode(
+      const expectedBody = abiCoder.encode(
         ['bytes32[]', 'bytes32[]'],
         [intentHashes, claimants],
       )
@@ -765,7 +777,7 @@ describe('HyperProver Test', (): void => {
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         // ['sourceChainProver', 'metadata', 'hookAddress'],
         ['bytes32', 'bytes', 'address'],
         [
@@ -862,7 +874,7 @@ describe('HyperProver Test', (): void => {
 
       // Prepare message data
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),
@@ -903,16 +915,26 @@ describe('HyperProver Test', (): void => {
   describe('5. End-to-End', () => {
     it('works end to end with message bridge', async () => {
       const chainId = 12345 // Use test chainId
-      hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
-      ).deploy(
+      // First deploy to get the address
+      const HyperProver = await ethers.getContractFactory('HyperProver')
+      const hyperProverAddress = await ethers.getCreateAddress({
+        from: (await ethers.getSigners())[0].address,
+        nonce: await ethers.provider.getTransactionCount((await ethers.getSigners())[0].address)
+      })
+      
+      hyperProver = await HyperProver.deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
         [
           ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(hyperProverAddress, 32), // Include self in whitelist
         ],
         200000,
       )
+      
+      // Set processor to hyperProver for message handling
+      await mailbox.setProcessor(await hyperProver.getAddress())
+      
       await token.mint(solver.address, amount)
 
       // Set up intent data
@@ -949,7 +971,7 @@ describe('HyperProver Test', (): void => {
 
       // Prepare message data
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),
@@ -991,7 +1013,7 @@ describe('HyperProver Test', (): void => {
       )
       expect(
         (await hyperProver.provenIntents(intentHash)).destinationChainID,
-      ).to.eq(31337)
+      ).to.eq(sourceChainID)
 
       //but lets simulate it fully anyway
 
@@ -1035,16 +1057,25 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
-      hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
-      ).deploy(
+      // First deploy to get the address
+      const HyperProver = await ethers.getContractFactory('HyperProver')
+      const hyperProverAddress = await ethers.getCreateAddress({
+        from: (await ethers.getSigners())[0].address,
+        nonce: await ethers.provider.getTransactionCount((await ethers.getSigners())[0].address)
+      })
+      
+      hyperProver = await HyperProver.deploy(
         await mailbox.getAddress(),
         await inbox.getAddress(),
         [
           ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(hyperProverAddress, 32), // Include self in whitelist
         ],
         200000,
       )
+      
+      // Set processor to hyperProver for message handling
+      await mailbox.setProcessor(await hyperProver.getAddress())
 
       // Set up token and mint
       await token.mint(solver.address, 2 * amount)
@@ -1054,7 +1085,7 @@ describe('HyperProver Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
       const metadata = '0x1234'
-      const data = ethers.AbiCoder.defaultAbiCoder().encode(
+      const data = abiCoder.encode(
         ['bytes32', 'bytes', 'address'],
         [
           ethers.zeroPadValue(await hyperProver.getAddress(), 32),

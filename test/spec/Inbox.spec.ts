@@ -6,7 +6,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
-import { encodeTransfer } from '../utils/encode'
+import { encodeTransfer } from '../../utils/encode'
 import { keccak256 } from 'ethers'
 import {
   encodeReward,
@@ -16,7 +16,7 @@ import {
   Route,
   Reward,
   TokenAmount,
-} from '../utils/intent'
+} from '../../utils/intent'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
@@ -297,7 +297,7 @@ describe('Inbox Test', (): void => {
           .fulfill(
             _route,
             rewardHash,
-            dstAddr.address,
+            ethers.zeroPadValue(dstAddr.address, 32),
             _intentHash,
             ethers.ZeroAddress,
           ),
@@ -364,7 +364,7 @@ describe('Inbox Test', (): void => {
           .fulfill(
             _route,
             _rewardHash,
-            dstAddr.address,
+            ethers.zeroPadValue(dstAddr.address, 32),
             _intentHash,
             ethers.ZeroAddress,
           ),
@@ -374,7 +374,7 @@ describe('Inbox Test', (): void => {
           _intentHash,
           sourceChainID,
           ethers.ZeroAddress,
-          dstAddr.address,
+          ethers.zeroPadValue(dstAddr.address, 32),
         )
     })
 

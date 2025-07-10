@@ -11,8 +11,8 @@ import {
   TestERC20,
   TestMetaRouter,
 } from '../typechain-types'
-import { encodeTransfer } from '../utils/encode'
-import { hashIntent, Intent, TokenAmount } from '../utils/intent'
+import { encodeTransfer } from '../../utils/encode'
+import { hashIntent, Intent, TokenAmount } from '../../utils/intent'
 
 /**
  * TEST SCENARIOS:
