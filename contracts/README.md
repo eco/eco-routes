@@ -1,6 +1,6 @@
 # API Documentation
 
-Type references can be found in the (types directory)[/types].
+Type references can be found in the [types directory](./types).
 
 ## IntentSource
 
@@ -110,6 +110,7 @@ Parameters:
 Parameters:
 
 - `intent` (Intent) The complete intent specification
+- `allowPartial` (bool) Whether to allow partial funding
 
 <ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
 
@@ -118,8 +119,9 @@ Parameters:
 
 Parameters:
 
-- `intent` (Intent) The complete intent specification
+- `routeHash` (bytes32) The hash of the route component
 - `reward` (Reward) Reward structure containing distribution details
+- `allowPartial` (bool) Whether to allow partial funding
 
 <ins>Security:</ins> This method is called by the user to completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
 
@@ -155,25 +157,23 @@ Parameters:
 
 - `intent` (Intent) Intent to validate
 
-<ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
+<ins>Security:</ins> Returns false if intent is not completely funded
 
 <h4><ins>withdrawRewards</ins></h4>
 <h5>Claims rewards for a successfully fulfilled and proven intent</h5>
 
 Parameters:
 
-- `routeHash` (bytes32) The hash of the intent's route component
-- `reward` (Reward) Reward structure containing distribution details
+- `_intent` (Intent) the Intent whose rewards are being withdrawn
 
-<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven and if the destination chainID in the intent matches the destination chainID recorded on the prover.
 
 <h4><ins>batchWithdraw</ins></h4>
 <h5>Claims rewards for multiple fulfilled and proven intents</h5>
 
 Parameters:
 
-- `routeHashes` (bytes32[]) Array of route component hashes
-- `reward` (Reward[]) Array of corresponding reward specifications
+- `_intents` (Intent[]) Array of Intents being withdrawn
 
 <ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
 
@@ -182,25 +182,24 @@ Parameters:
 
 Parameters:
 
-- `routeHashes` (bytes32[]) Array of route component hashes
-- `reward` (Reward[]) Array of corresponding reward specifications
+- `_intent` (Intent) the Intent being refunded
 
-<ins>Security:</ins> Will fail if intent not expired.
+<ins>Security:</ins> Will fail if intent not expired, or if intent is proven but not yet claimed.
 
 <h4><ins>recoverToken</ins></h4>
 <h5>Recover tokens that were sent to the intent vault by mistake</h5>
 
 Parameters:
 
-- `routeHashes` (bytes32[]) Array of route component hashes
-- `reward` (Reward[]) Array of corresponding reward specifications
+- `routeHash` (bytes32) Hash of the route component
+- `reward` (Reward) Reward structure containing distribution details
 - `token` (address) Token address for handling incorrect vault transfers
 
 <ins>Security:</ins> Will fail if token is the zero address or the address of any of the reward tokens. Will also fail if intent has nonzero native token rewards and has not yet been claimed or refunded.
 
 ## Inbox (Inbox.sol)
 
-The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic.
+The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. It implements ERC-7683 compatibility through inheritance. Lastly, the Inbox is also responsible for initiating proving on the destination side. It does not contain proving-specific logic, but is expected to be the caller to the methods on the prover that contains that logic.
 
 ### Events
 
@@ -209,299 +208,178 @@ The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbo
 
 Parameters:
 
-- `_hash` (bytes32) the hash of the intent
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
-
-<h4><ins>ToBeProven</ins></h4>
-<h5>Emitted when an intent is ready to be proven via a storage prover</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
-
-<h4><ins>HyperInstantFulfillment</ins></h4>
-<h5>Emitted when an intent is fulfilled with the instant hyperprover path</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
-
-<h4><ins>AddToBatch</ins></h4>
-<h5>Emitted when an intent is added to a batch to be proven with the hyperprover</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_claimant` (address) the address (on the source chain) that will receive the fulfilled intent's reward
-- `_prover` (address) the address of the HyperProver these intents will be proven on
-
-<h4><ins>AddToBatch</ins></h4>
-<h5>Emitted when an intent is added to a Hyperlane batch</h5>
-
-Parameters:
-
-- `_hash` (bytes32) the hash of the intent
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_claimant` (address) the address (on the source chain) that will receive the fulfilled
-  intent's reward
-- `_prover` (address) the address of the Hyperlane prover
-
-<h4><ins>SolvingIsPublic</ins></h4>
-<h5>Emitted when solving is made public</h5>
-
-<h4><ins>MailboxSet</ins></h4>
-<h5>Emitted when Hyperlane mailbox address is set</h5>
-
-Parameters:
-
-- `_mailbox` (address) address of the mailbox contract
-
-<h4><ins>SolverWhitelistChanged</ins></h4>
-<h5>Emitted when the solver whitelist permissions are changed</h5>
-
-Parameters:
-
-- `_solver` (address) the address of the solver whose permissions are being changed
-- `_canSolve`(bool) whether or not \_solver will be able to solve after this method is called
+- `_hash` (bytes32) The hash of the intent
+- `_sourceChainID` (uint256) The ID of the chain where the fulfilled intent originated
+- `_localProver` (address) Address of the prover on the destination chain
+- `_claimant` (address) The address (on the source chain) that will receive the fulfilled intent's reward
 
 ### Methods
 
-<h4><ins>fulfillStorage</ins></h4>
-<h5> Allows a filler to fulfill an intent on its destination chain to be proven by the StorageProver specified in the intent. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens.</h5>
+<h4><ins>fulfill</ins></h4>
+<h5>Fulfills an intent to be proven via storage proofs</h5>
 
 Parameters:
 
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
-- `_data` (bytes[]) the instructions to be executed on \_targets
-- `_expiryTime` (uint256) the timestamp at which the intent expires
-- `_nonce` (bytes32) the nonce of the calldata. Composed of the hash on the source chain of the global nonce and chainID
-- `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
-- `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
+- `_route` (Route) The route of the intent
+- `_rewardHash` (bytes32) The hash of the reward details
+- `_claimant` (address) The address that will receive the reward on the source chain
+- `_expectedHash` (bytes32) The hash of the intent as created on the source chain
+- `_localProver` (address) The prover contract to use for verification
 
-<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - it is important that the caller be aware of what they are executing. The Inbox will be the msg.sender for these calls. \_sourceChainID, the destination's chainID, the inbox address, \_targets, \_data, \_expiryTime, and \_nonce are hashed together to form the intent's hash on the IntentSource - any incorrect inputs will result in a hash that differs from the original, and will prevent the intent's reward from being withdrawn (as this means the intent fulfilled differed from the one created). The \_expectedHash input exists only to help prevent this before fulfillment.
+<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - this can be perilous. The Inbox will be the msg.sender for these calls.
 
-<h4><ins>fulfillHyperInstant</ins></h4>
-<h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method packs the intentHash and claimant into a message and sends it over the Hyperlane bridge to the HyperProver on the source chain. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens.</h5>
+Here are some of the things a prospective solver should do before fulfilling an intent:
 
-Parameters:
+- Use multi-call to avoid your transaction being frontrun and your approved funds being stolen.
+- Check that the intent is funded: this can be verified by calling isIntentFunded on the IntentSource.
+- Verify the prover address provided in the intent: fulfilling an intent with a bad prover will result in loss of funds. Eco maintains a list of provers deployed by the team - use other provers at your own risk.
+- Check the intent's expiry time - intents that are not proven by the time they expire can have their rewards clawed back by their creator, regardless of if they are fulfilled. Build in a buffer that corresponds to the prover being used.
+- Check that the intent is profitable - there is no internal check for this, it is on the solver to ensure that outputs are greater than inputs + gas cost of fulfillment
+- Go through the calls to ensure they aren't doing anything unexpected / won't fail and waste gas. Consider using a simulator. Avoid approving unnecessary funds to the Inbox.
 
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
-- `_data` (bytes[]) the instructions to be executed on \_targets
-- `_expiryTime` (uint256) the timestamp at which the intent expires
-- `_nonce` (bytes32) the nonce of the calldata. Composed of the hash on the source chain of the global nonce and chainID
-- `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
-- `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
-- `_prover` (address) the address of the hyperProver on the source chain
+This is not a complete list. Exercise caution and vigilance.
 
-<ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
-
-<h4><ins>fulfillHyperInstantWithRelayer</ins></h4>
-<h5> Performs the same functionality as fulfillHyperInstant, but allows the user to use a custom HyperLane relayer and pass in the corresponding metadata</h5>
+<h4><ins>fulfillAndProve</ins></h4>
+<h5>Fulfills an intent and initiates proving in one transaction</h5>
 
 Parameters:
 
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
-- `_data` (bytes[]) the instructions to be executed on \_targets
-- `_expiryTime` (uint256) the timestamp at which the intent expires
-- `_nonce` (bytes32) the nonce of the calldata. Composed of the hash on the source chain of the global nonce and chainID
-- `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
-- `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
-- `_prover` (address) the address of the hyperProver on the source chain
-- `_metadata` (bytes) Metadata for postDispatchHook (empty bytes if not applicable)
-- `_postDispatchHook` (address) Address of postDispatchHook (zero address if not applicable)
+- `_route` (Route) The route of the intent
+- `_rewardHash` (bytes32) The hash of the reward details
+- `_claimant` (address) The address that will receive the reward on the source chain
+- `_expectedHash` (bytes32) The hash of the intent as created on the source chain
+- `_localProver` (address) Address of prover on the destination chain
+- `_data` (bytes) Additional data for message formatting
 
-<ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge. Additionally, the user is charged with the responsibility of ensuring that the passed in metadata and relayer perform according to their expectations
+<ins>Security:</ins> This method inherits all the security features of the fulfill and initiateProving methods.
 
-<h4><ins>fulfillHyperBatched</ins></h4>`
-<h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method emits an event that indicates which intent was fulfilled. Fillers of hyperprover-destined intents will listen to these events and batch process them later on. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens. Note: this method is currently not supported by Eco's solver services, but has been included for completeness. Work on services for this method is ongoing.</h5>
+<h4><ins>initiateProving</ins></h4>
+<h5>Initiates proving process for fulfilled intents</h5>
 
 Parameters:
 
-- `_sourceChainID` (uint256) the ID of the chain where the fulfilled intent originated
-- `_targets` (address[]) the address on the destination chain at which the instruction sets need to be executed
-- `_data` (bytes[]) the instructions to be executed on \_targets
-- `_expiryTime` (uint256) the timestamp at which the intent expires
-- `_nonce` (bytes32) the nonce of the calldata. Composed of the hash on the source chain of the global nonce and chainID
-- `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
-- `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
-- `_prover` (address) the address of the hyperProver on the source chain
+- `_sourceChainId` (uint256) Chain ID of the source chain
+- `_intentHashes` (bytes32[]) Array of intent hashes to prove
+- `_localProver` (address) Address of prover on the destination chain
+- `_data` (bytes) Additional data for message formatting
 
-<ins>Security:</ins> This method inherits all of the security features in fulfillstorage.
+<ins>Security:</ins> This method verifies that the intents have been fulfilled before attempting to prove them. It delegates the actual proving work to the specified prover contract.
 
-<h4><ins>sendBatch</ins></h4>
+**The address of the localProver may not be the same as the prover address in the intent itself. See Eco's prover documentation to find the destination chain prover that corresponds to the source chain prover found in the intent.**
 
-<h5> Allows a filler to send a batch of HyperProver-destined intents over the HyperLane bridge. This reduces the cost per intent proven, as intents that would have had to be sent in separate messages are now consolidated into one. </h5>
+Read the prover contract to see the data expected in the \_data field and how it should be formatted. It should be noted that initiateProving can be called multiple times for the same intent, so mistakes can be rectified by simply calling it again with the proper arguments.
 
-Parameters:
+## Prover Architecture
 
-- `_sourceChainID` (uint256) the chainID of the source chain
-- `_prover` (address) the address of the hyperprover on the source chain
-- `_intentHashes` (bytes32[]) the hashes of the intents to be proven
+The Eco Protocol implements a modular prover architecture to support different cross-chain messaging systems while sharing common functionality. The hierarchy of provers is as follows:
 
-<ins>Security:</ins> This method ensures that all passed-in hashes correspond to intents that have been fulfilled according to the inbox. It contains a low-level call to send native tokens, but will only do this in the event that the call to this method has a nonzero msg.value. The method is payable because the HyperLane relayer requires fees in native token in order to function.
+### BaseProver (BaseProver.sol)
 
-<h4><ins>sendBatchWithRelayer</ins></h4>
+The abstract base contract that defines core proving functionality shared by all prover implementations.
 
-<h5> Performs the same functionality as sendBatch, but allows the user to use a custom HyperLane relayer and pass in the corresponding metadata. </h5>
+<h4><ins>provenIntents</ins></h4>
+<h5>Mapping of intent hashes to their claimant addresses</h5>
 
 Parameters:
 
-- `_sourceChainID` (uint256) the chainID of the source chain
-- `_prover` (address) the address of the hyperprover on the source chain
-- `_intentHashes` (bytes32[]) the hashes of the intents to be proven
-- `_metadata` (bytes) Metadata for postDispatchHook (empty bytes if not applicable)
-- `_postDispatchHook` (address) Address of postDispatchHook (zero address if not applicable)
+- `intentHash` (bytes32) The hash of the intent to query
 
-<ins>Security:</ins> This method inherits all of the security features in sendBatch. Additionally, the user is charged with the responsibility of ensuring that the passed in metadata and relayer perform according to their expectations.
+<h4><ins>getProofType</ins></h4>
+<h5>Returns the type of proof used by the prover implementation</h5>
+
+### MessageBridgeProver (MessageBridgeProver.sol)
+
+An abstract contract that extends BaseProver with functionality for message-based proving across different bridge systems.
+
+<h4><ins>prove</ins></h4>
+<h5>Initiates the proving process for fulfilled intents</h5>
+
+Parameters:
+
+- `_sender` (address) Address that initiated the proving request
+- `_sourceChainId` (uint256) Chain ID of the source chain
+- `_intentHashes` (bytes32[]) Array of intent hashes to prove
+- `_claimants` (address[]) Array of claimant addresses
+- `_data` (bytes) Additional data used for proving (bridge-specific)
 
 <h4><ins>fetchFee</ins></h4>
-
-<h5> A passthrough method that calls the HyperLane Mailbox and fetches the cost of sending a given message. This method is used inside both the fulfillHyperInstant and sendBatch methods to ensure that the user has enough gas to send the message over HyperLane's bridge.</h5>
-
-Parameters:
-
-- `_sourceChainID` (uint256) the chainID of the source chain
-- `_messageBody` (bytes) the message body being sent over the bridge
-- `_prover` (address) the address of the hyperprover on the source chain
-
-<ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
-
-<h4><ins>makeSolvingPublic</ins></h4>
-
-<h5>Opens up solving functionality to all addresses if it is currently restricted to a whitelist.</h5>
-
-<ins>Security:</ins> This method can only be called by the owner of the Inbox, and can only be called if solving is not currently public. There is no function to re-restrict solving - once it is public it cannot become private again.
-
-<h4><ins>changeSolverWhitelist</ins></h4>
-
-<h5>Changes the solving permissions for a given address.</h5>
+<h5>Calculates the fee required for cross-chain message dispatch</h5>
 
 Parameters:
 
-- `_solver` (address) the address of the solver whose permissions are being changed
-- `_canSolve`(bool) whether or not \_solver will be able to solve after this method is called
+- `_sourceChainDomain` (uint32) Domain of the source chain
+- `_intentHashes` (bytes32[]) Array of intent hashes to prove
+- `_claimants` (address[]) Array of claimant addresses
+- `_data` (bytes) Additional data for message formatting
 
-<ins>Security:</ins> This method can only be called by the owner of the Inbox. This method has no tangible effect if isSolvingPublic is true.
-
-<h4><ins>drain</ins></h4>
-
-<h5>Transfers excess gas token out of the contract.</h5>
-
-Parameters:
-
-- `_destination` (address) the destination of the transferred funds
-
-<ins>Security:</ins> This method can only be called by the owner of the Inbox. This method is primarily for testing purposes.
-
-## HyperProver (HyperProver.sol)
-
-A message-based implementation of BaseProver that consumes data coming from HyperLane's message bridge sent by the Inbox on the destination chain. intentHash - claimant address pairs sent across the chain are written to the HyperProver's provenIntents mapping and are later read by the IntentSource when reward withdrawals are attempted.
-
-### Events
-
-<h4><ins>IntentProven</ins></h4>
-<h5> emitted when an intent has been successfully proven</h5>
+<h4><ins>challengeIntentProof</ins></h4>
+<h5>allows for the challenging and subsequent clearing of an intent proof if the chainID is incorrect</h5>
 
 Parameters:
 
-- `_hash` (bytes32) the hash of the intent
-- `_claimant` (address) the address that can claim this intent's rewards
+- `_intent` (Intent) The intent whose proof is being challenged
 
-<h4><ins>IntentAlreadyProven</ins></h4>
-<h5> emitted when an attempt is made to re-prove an already-proven intent</h5>
+<ins>Security:</ins> This method does nothing if the hash and chainID marked in the prover match to the input intent. In the event that they do not match, the ProofData's claimant field will be set to the zero address, and the chainID will be set to \_intent.route.destination. Subsequent calls to prove this intent from a chain with an incorrect chainID will be reverted.
 
-Parameters:
+### HyperProver (HyperProver.sol)
 
-- `_hash` (bytes32) the hash of the intent
-
-### Methods
+A concrete implementation of MessageBridgeProver that uses Hyperlane for cross-chain messaging.
 
 <h4><ins>handle</ins></h4>
-<h5>Called by the HyperLane Mailbox contract to finish the HyperProving process. This method parses the message sent via HyperLane into intent hashes and their corresponding claimant addresses, then writes them to the provenIntents mapping so that the IntentSource can read from them when a reward withdrawal is attempted.</h5>
+<h5>Handles incoming Hyperlane messages containing proof data. Called by the Hyperlane mailbox on the source chain</h5>
 
 Parameters:
 
-- ` ` (uint32) this variable is not used, but is required by the interface. it is the chain ID of the intent's origin chain.
-- `_sender` (bytes32) the address that called dispatch() on the HyperLane Mailbox on the destination chain
-- `_messageBody` (bytes) the message body containing intent hashes and their corresponding claimants
+- `_origin` (uint32) DomainID of the destination chain
+- `_sender` (bytes32) Address that dispatched the message on destination chain
+- `_messageBody` (bytes) Encoded array of intent hashes and claimants
 
 <ins>Security:</ins> This method is public but there are checks in place to ensure that it reverts unless msg.sender is the local hyperlane mailbox and \_sender is the destination chain's inbox. This method has direct write access to the provenIntents mapping and, therefore, gates access to the rewards for hyperproven intents.
 
-## Storage Prover (Prover.sol)
-
-A storage-based implementation of BaseProver that utilizes the digests posted between rollups and mainnet to verify fulfilled status of intents on the destination chain.
-
-### Events
-
-<h4><ins>L1WorldStateProven</ins></h4>
-<h5> emitted when L1 world state is proven</h5>
+<h4><ins>prove</ins></h4>
+<h5>Initiates proving of intents via Hyperlane. Called by the Inbox contract on the destination chain</h5>
 
 Parameters:
 
-- `_blocknumber` (uint256) the block number corresponding to this L1 world state
-- `_L1WorldStateRoot` (bytes32) the world state root at \_blockNumber
+- `_sender` (address) Address that initiated the proving request
+- `_sourceChainId` (uint256) Chain ID of the source chain
+- `_intentHashes` (bytes32[]) Array of intent hashes to prove
+- `_claimants` (address[]) Array of claimant addresses
+- `_data` (bytes) Additional data used for proving
 
-<h4><ins>L2WorldStateProven</ins></h4>
-<h5> emitted when L2 world state is proven</h5>
+<ins>Security:</ins> Validates that the request comes from the Inbox contract and ensures sufficient fees are provided for cross-chain message transmission.
 
-Parameters:
-
-- `_destinationChainID` (uint256) the chainID of the destination chain
-- `_blocknumber` (uint256) the block number corresponding to this L2 world state
-- `_L2WorldStateRoot` (bytes32) the world state root at \_blockNumber
-
-<h4><ins>IntentProven</ins></h4>
-<h5> emitted when an intent has been successfully proven</h5>
+<h4><ins>fetchFee</ins></h4>
+<h5>Calculates the fee required for Hyperlane message dispatch</h5>
 
 Parameters:
 
-- `_hash` (bytes32) the hash of the intent
-- `_claimant` (address) the address that can claim this intent's rewards
+- `_sourceChainDomain` (uint32) Domain of the source chain
+- `_intentHashes` (bytes32[]) Array of intent hashes to prove
+- `_claimants` (address[]) Array of claimant addresses
+- `_data` (bytes) Additional data for message formatting
 
-### Methods
+<h4><ins>getProofType</ins></h4>
+<h5>Returns the proof type used by this prover</h5>
 
-<h4><ins>proveSettlementLayerState</ins></h4>
-<h5> validates input L1 block state against the L1 oracle contract. This method does not need to be called per intent, but the L2 batch containing the intent must have been settled to L1 on or before this block.</h5>
+Returns "Hyperlane" to identify the proving mechanism.
 
-Parameters:
+### MetaProver
 
-- `rlpEncodedBlockData` (bytes) properly encoded L1 block data
+A concrete implementation of MessageBridgeProver that uses Caldera Metalayer for cross-chain messaging. Similar interface to HyperProver but adapted for Metalayer's messaging system.
 
-<ins>Security:</ins> This method can be called by anyone. Inputting the correct block's data encoded as expected will result in its hash matching the blockhash found on the L1 oracle contract. This means that the world state root found in that block corresponds to the block on the oracle contract, and that it represents a valid state. Notably, only one block's data is present on the oracle contract at a time, so the input data must match that block specifically, or the method will revert.
+## ERC-7683 Integration
 
-<h4><ins>proveWorldStateBedrock</ins></h4>
-<h5> Validates World state by ensuring that the passed in world state root corresponds to value in the L2 output oracle on the Settlement Layer.  We submit a `StorageProof` proving that the L2 Block is included in a batch that has been settled to L1 and an `AccountProof` proving that the `StorageProof` submitted is linked to a `WorldState` for the contract that the `StorageProof` is for.</h5>
+Eco Protocol has integrated ERC-7683 compatibility directly into the core protocol. The Inbox contract inherits from Eco7683DestinationSettler, providing ERC-7683 settlement functionality while leveraging the modular message bridge architecture for cross-chain communication.
 
-For Optimisms BedRock release we submit an `outputRoot` storage proof created by concatenating
+This integration offers several benefits:
 
-```solidity
-output_root = kecakk256( version_byte || state_root || withdrawal_storage_root || latest_block_hash)
-```
+- More consistent codebase with less duplication
+- Better security through shared validation logic
+- More flexible proving mechanisms
+- Easier integration of new cross-chain messaging solutions
 
-## Cross-Chain Message Bridge Architecture
-
-Eco Protocol has been refactored to use a modular message bridge architecture for cross-chain communication. This allows the protocol to leverage different messaging systems like Hyperlane and Metalayer while maintaining a consistent interface.
-
-### Message Bridge Provers
-
-The protocol now follows a flexible architecture with a hierarchy of prover implementations:
-
-1. **BaseProver**: Abstract base contract that defines core proving functionality
-2. **MessageBridgeProver**: Abstract contract that extends BaseProver with common functionality for message-based proving
-3. **Concrete Provers**: Specific implementations for different messaging systems:
-   - **HyperProver**: Uses Hyperlane for cross-chain messaging
-   - **MetaProver**: Uses Caldera Metalayer for cross-chain messaging
-
-### Security Features
+## Security Features
 
 All message bridge provers implement these security features:
 
@@ -510,43 +388,3 @@ All message bridge provers implement these security features:
 - **Message Sender Validation**: Prevents unauthorized message handling
 - **Payment Processing**: Secure handling of native token payments for bridge fees
 - **Prover Whitelisting**: Only authorized addresses can initiate proving
-
-### Integration Patterns
-
-To use a message bridge prover with the Eco Protocol:
-
-1. **Deploy the Prover**: Deploy the specific prover (HyperProver or MetaProver) with configuration for your chosen message bridge
-2. **Register with Inbox**: Add the prover to the Inbox's approved provers list
-3. **Create Intents**: Create intents specifying the prover to use for cross-chain proof transmission
-4. **Solve Intents**: When solving intents, specify the appropriate proof type in the fulfillment call
-
-### Supported Message Bridges
-
-#### Hyperlane
-
-The HyperProver uses Hyperlane's IMessageRecipient interface to receive and process cross-chain messages. It interacts with the Hyperlane Mailbox contract to send and receive messages.
-
-Configuration parameters:
-
-- Mailbox address: Address of the Hyperlane Mailbox on the current chain
-- Trusted provers: List of addresses authorized to send proof messages
-
-#### Metalayer
-
-The MetaProver uses Caldera Metalayer's IMetalayerRecipient interface to receive and process cross-chain messages. It interacts with the Metalayer Router contract to send and receive messages.
-
-Configuration parameters:
-
-- Router address: Address of the Metalayer Router on the current chain
-- Trusted provers: List of addresses authorized to send proof messages
-
-### ERC-7683 Support
-
-The previous standalone ERC-7683 implementation has been refactored into the core protocol. Instead of separate settler contracts, ERC-7683 compatibility is now integrated within the Inbox contract using the message bridge provers for cross-chain communication.
-
-This refactoring offers several benefits:
-
-- More consistent codebase with less duplication
-- Better security through shared validation logic
-- More flexible proving mechanisms
-- Easier integration of new cross-chain messaging solutions

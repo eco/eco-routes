@@ -1,7 +1,7 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestProver } from '../typechain-types'
+import { TestERC20, TestUSDT, Inbox, TestProver } from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -21,6 +21,7 @@ import {
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
+  let erc20Usdt: TestUSDT
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let dstAddr: SignerWithAddress
@@ -41,6 +42,7 @@ describe('Inbox Test', (): void => {
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
     erc20: TestERC20
+    erc20Usdt: TestUSDT
     owner: SignerWithAddress
     solver: SignerWithAddress
     dstAddr: SignerWithAddress
@@ -50,13 +52,16 @@ describe('Inbox Test', (): void => {
     const inbox = await inboxFactory.deploy()
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
+    const testUSDTFactory = await ethers.getContractFactory('TestUSDT')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
+    const erc20Usdt = await testUSDTFactory.deploy('eco', 'eco')
     await erc20.mint(solver.address, mintAmount)
     await erc20.mint(owner.address, mintAmount)
 
     return {
       inbox,
       erc20,
+      erc20Usdt,
       owner,
       solver,
       dstAddr,
@@ -120,7 +125,7 @@ describe('Inbox Test', (): void => {
     }
   }
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, erc20, owner, solver, dstAddr } =
+    ;({ inbox, erc20, erc20Usdt, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
     ;({ route, reward, rewardHash, intentHash } = await createIntentData(
       mintAmount,
@@ -273,6 +278,31 @@ describe('Inbox Test', (): void => {
           ),
       ).to.be.revertedWithCustomError(inbox, 'CallToProver')
     })
+    it('should continue if any of the targets supports EIP165 and returns false', async () => {
+      const _route = {
+        ...route,
+        calls: [
+          {
+            target: await erc20Usdt.getAddress(),
+            data: '0x',
+            value: 0,
+          },
+        ],
+      }
+      const _intentHash = hashIntent({ route: _route, reward }).intentHash
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            _route,
+            rewardHash,
+            dstAddr.address,
+            _intentHash,
+            ethers.ZeroAddress,
+          ),
+      ).to.not.be.revertedWithCustomError(inbox, 'CallToProver')
+    })
     it('should revert if one of the targets is an EOA', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
@@ -300,6 +330,52 @@ describe('Inbox Test', (): void => {
       )
         .to.be.revertedWithCustomError(inbox, 'CallToEOA')
         .withArgs(solver.address)
+    })
+
+    it('should send ETH if one of the targets is an EOA', async () => {
+      const ethAmount = 10000
+      const _route: Route = {
+        ...route,
+        tokens: [],
+        calls: [
+          {
+            target: dstAddr.address,
+            data: '0x',
+            value: ethAmount,
+          },
+        ],
+      }
+
+      // Send ETH to Inbox
+      const tx = await owner.sendTransaction({
+        to: await inbox.getAddress(),
+        value: ethAmount,
+      })
+      await tx.wait()
+
+      const { intentHash: _intentHash, rewardHash: _rewardHash } = hashIntent({
+        route: _route,
+        reward,
+      })
+
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            _route,
+            _rewardHash,
+            dstAddr.address,
+            _intentHash,
+            ethers.ZeroAddress,
+          ),
+      )
+        .to.emit(inbox, 'Fulfillment')
+        .withArgs(
+          _intentHash,
+          sourceChainID,
+          ethers.ZeroAddress,
+          dstAddr.address,
+        )
     })
 
     it('should succeed with storage proving', async () => {

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
+import {Intent} from "../types/Intent.sol";
 
 /**
  * @title IProver
@@ -10,10 +11,27 @@ import {ISemver} from "./ISemver.sol";
  * proof mechanisms (storage or Hyperlane)
  */
 interface IProver is ISemver {
+    struct ProofData {
+        uint96 destinationChainID;
+        address claimant;
+    }
+
     /**
      * @notice Arrays of intent hashes and claimants must have the same length
      */
     error ArrayLengthMismatch();
+
+    /**
+     * @notice Destination chain ID associated with intent does not match that in proof.
+     * @param _hash Hash of the intent
+     * @param _expectedDestinationChainID Expected destination chain ID for the intent
+     * @param _actualDestinationChainID Actual destination chain ID for the intent
+     */
+    error BadDestinationChainID(
+        bytes32 _hash,
+        uint96 _expectedDestinationChainID,
+        uint96 _actualDestinationChainID
+    );
 
     /**
      * @notice Emitted when an intent is successfully proven
@@ -28,6 +46,15 @@ interface IProver is ISemver {
      * @param _intentHash Hash of the already proven intent
      */
     event IntentAlreadyProven(bytes32 _intentHash);
+
+    /**
+     * @notice Fetches a ProofData from the provenIntents mapping
+     * @param _intentHash the hash of the intent whose proof data is being queried
+     * @return ProofData struct containing the destination chain ID and claimant address
+     */
+    function provenIntents(
+        bytes32 _intentHash
+    ) external view returns (ProofData memory);
 
     /**
      * @notice Gets the proof mechanism type used by this prover
@@ -51,4 +78,13 @@ interface IProver is ISemver {
         address[] calldata _claimants,
         bytes calldata _data
     ) external payable;
+
+    /**
+     * @notice Challenges a recorded proof
+     * @param _intent Intent to challenge
+     * @dev Clears the proof if the destination chain ID in the intent does not match the one in the proof
+     * @dev even if not challenged, an incorrect proof cannot be used to claim rewards.
+     * @dev does nothing if chainID is correct
+     */
+    function challengeIntentProof(Intent calldata _intent) external;
 }

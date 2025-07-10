@@ -3,14 +3,13 @@ pragma solidity ^0.8.26;
 
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IProver} from "./interfaces/IProver.sol";
 import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 
-import {Intent, Route, Call, TokenAmount} from "./types/Intent.sol";
+import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -26,7 +25,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Interface ID for IProver used to detect prover contracts
      */
-    bytes4 public constant IPROVER_INTERFACE_ID = 0xd8e1f34f; //type(IProver).interfaceId
+    bytes4 public constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
 
     /**
      * @notice Mapping of intent hashes to their claimant addresses
@@ -100,9 +99,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
         hashes[0] = _expectedHash;
-        claimants[0] = _claimant;
 
         initiateProving(_route.source, hashes, _localProver, _data);
         return result;
@@ -204,20 +201,24 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
-            if (call.target.code.length == 0 && call.data.length > 0) {
-                // no code at this address
-                revert CallToEOA(call.target);
+            if (call.target.code.length == 0) {
+                if (call.data.length > 0) {
+                    // no code at this address
+                    revert CallToEOA(call.target);
+                }
+            } else {
+                try
+                    IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)
+                returns (bool isProverCall) {
+                    if (isProverCall) {
+                        // call to prover
+                        revert CallToProver();
+                    }
+                } catch {
+                    // If target doesn't support ERC-165, continue.
+                }
             }
-            (bool isProverCall, ) = (call.target).call(
-                abi.encodeWithSignature(
-                    "supportsInterface(bytes4)",
-                    IPROVER_INTERFACE_ID
-                )
-            );
-            if (isProverCall) {
-                // call to prover
-                revert CallToProver();
-            }
+
             (bool success, bytes memory result) = call.target.call{
                 value: call.value
             }(call.data);

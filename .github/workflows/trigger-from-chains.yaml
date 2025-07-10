@@ -1,0 +1,113 @@
+name: Trigger Release from eco-chains
+
+# This workflow is triggered in two ways:
+# 1. Automatically when a repository_dispatch event with release_type is received
+# 2. Manually via the GitHub UI with a release_type selection
+on:
+  repository_dispatch:
+    types: [eco-chains-tag-pushed]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Release type (patch, minor, major, prepatch, preminor, premajor, prerelease)"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prepatch
+          - preminor
+          - premajor
+          - prerelease
+
+jobs:
+  # Create a commit with release_type that will trigger the release workflow
+  trigger-release:
+    name: Create Release Trigger Commit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed for pushing commits
+      actions: write # Needed for triggering other workflows
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0 # Full history for branch detection
+          token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
+
+      # Debug event details
+      - name: Debug Event Variables
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Event type: ${{ github.event.action }}"
+          echo "Manual release type: '${{ github.event.inputs.release_type }}'"
+          echo "Client payload release type: '${{ github.event.client_payload.release_type }}'"
+
+      # Create empty commit with release_type as the message
+      - name: Create Release Trigger Commit
+        run: |
+          git config --global user.name "semantic-release-bot"
+          git config --global user.email "semantic-release-bot@users.noreply.github.com"
+
+          # Set remote URL using PAT instead of GITHUB_TOKEN
+          git remote set-url origin https://semantic-release-bot:${PAT}@github.com/eco/eco-routes.git
+          # Get default branch
+          #DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+          DEFAULT_BRANCH=beta
+          echo "Default branch is: $DEFAULT_BRANCH"
+
+          # Check out the default branch
+          git fetch origin
+          git checkout $DEFAULT_BRANCH
+          git pull origin $DEFAULT_BRANCH
+
+          # Determine release type (from manual input or client payload)
+          RELEASE_TYPE="${{ github.event.inputs.release_type || github.event.client_payload.release_type }}"
+
+          # Convert release_type to semantic-release conventional commit format
+          case "$RELEASE_TYPE" in
+            "major")
+              COMMIT_MSG="feat!: trigger major release"
+              ;;
+            "minor")
+              COMMIT_MSG="feat: trigger minor release"
+              ;;
+            "patch")
+              COMMIT_MSG="fix: trigger patch release"
+              ;;
+            "premajor")
+              COMMIT_MSG="feat!: trigger premajor release"
+              ;;
+            "preminor")
+              COMMIT_MSG="feat: trigger preminor release"
+              ;;
+            "prepatch")
+              COMMIT_MSG="fix: trigger prepatch release"
+              ;;
+            "prerelease")
+              COMMIT_MSG="chore: trigger prerelease"
+              ;;
+            *)
+              COMMIT_MSG="chore: trigger release"
+              ;;
+          esac
+
+          # Create an empty commit with properly formatted conventional commit message
+          git commit --allow-empty -m "$COMMIT_MSG"
+
+          # Push the commit to the default branch
+          git push origin $DEFAULT_BRANCH
+
+          echo "Created and pushed empty commit with release type: $RELEASE_TYPE to $DEFAULT_BRANCH"
+          echo "This commit will trigger the main release workflow."
+
+      - name: Trigger Release Workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.RELEASE_PAT }}
+          event-type: manual-release-trigger
+          client-payload: '{"ref": "${{ github.ref }}", "release_type": "${{ github.event.inputs.release_type || github.event.client_payload.release_type }}"}'
+    env:
+      PAT: ${{ secrets.RELEASE_PAT }} # Store your PAT as a repository secret
