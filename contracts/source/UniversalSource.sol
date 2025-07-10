@@ -8,8 +8,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {BaseProver} from "../prover/BaseProver.sol";
 import {IUniversalIntentSource} from "../interfaces/IUniversalIntentSource.sol";
-import {IProver} from "../interfaces/IProver.sol";
-import {IIntentSource} from "../interfaces/IIntentSource.sol";
 import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
 import {Vault} from "../Vault.sol";
 import {BaseSource} from "./BaseSource.sol";
@@ -262,9 +260,9 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover.toAddress())
-            .provenIntents(intentHash)
-            .claimant;
+        address claimant = BaseProver(reward.prover.toAddress()).provenIntents(
+            intentHash
+        );
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -348,8 +346,7 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
             state.status != uint8(RewardStatus.Refunded)
         ) {
             address claimant = BaseProver(reward.prover.toAddress())
-                .provenIntents(intentHash)
-                .claimant;
+                .provenIntents(intentHash);
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);
@@ -359,10 +356,6 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
                 revert IntentNotExpired(intentHash);
             }
         }
-
-        // Check if vault already exists (e.g., if already claimed)
-        address existingVault = _getUniversalVaultAddress(intentHash, routeHash, reward);
-        bool vaultExists = existingVault.code.length > 0;
 
         if (state.status != uint8(RewardStatus.Claimed)) {
             state.status = uint8(RewardStatus.Refunded);
@@ -376,44 +369,22 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         emit Refund(intentHash, reward.creator.toAddress());
 
-        // Only deploy vault if it doesn't exist and there might be funds to refund
-        if (!vaultExists) {
-            // Check if there are any funds to refund
-            bool hasFunds = false;
-            
-            // Check native balance
-            if (existingVault.balance > 0) {
-                hasFunds = true;
-            }
-            
-            // Check token balances
-            for (uint256 i = 0; i < reward.tokens.length && !hasFunds; i++) {
-                if (IERC20(reward.tokens[i].token.toAddress()).balanceOf(existingVault) > 0) {
-                    hasFunds = true;
-                }
-            }
-            
-            // Only deploy if there are funds to refund
-            if (hasFunds) {
-                bytes memory code = type(Vault).creationCode;
-                bytes memory initCode = abi.encodePacked(
-                    code,
-                    abi.encode(intentHash, reward)
-                );
+        // Use assembly to deploy Vault with the original reward struct
+        bytes memory code = type(Vault).creationCode;
+        bytes memory initCode = abi.encodePacked(
+            code,
+            abi.encode(intentHash, reward)
+        );
 
-                address vaultAddress;
-                assembly {
-                    vaultAddress := create2(
-                        0,
-                        add(initCode, 0x20),
-                        mload(initCode),
-                        routeHash
-                    )
-                }
-            }
+        address vaultAddress;
+        assembly {
+            vaultAddress := create2(
+                0,
+                add(initCode, 0x20),
+                mload(initCode),
+                routeHash
+            )
         }
-        // If vault already exists, we can't redeploy due to EIP-6780 
-        // The refund event is emitted for record-keeping purposes
     }
 
     /**
@@ -463,27 +434,22 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         emit Refund(intentHash, reward.creator.toAddress());
 
-        // Check if vault already exists before deploying
-        address existingVault = _getUniversalVaultAddress(intentHash, routeHash, reward);
-        if (existingVault.code.length == 0) {
-            // Vault doesn't exist, deploy it using assembly
-            bytes memory code = type(Vault).creationCode;
-            bytes memory initCode = abi.encodePacked(
-                code,
-                abi.encode(intentHash, reward)
-            );
+        // Use assembly to deploy Vault with the original reward struct
+        bytes memory code = type(Vault).creationCode;
+        bytes memory initCode = abi.encodePacked(
+            code,
+            abi.encode(intentHash, reward)
+        );
 
-            address vaultAddress;
-            assembly {
-                vaultAddress := create2(
-                    0,
-                    add(initCode, 0x20),
-                    mload(initCode),
-                    routeHash
-                )
-            }
+        address vaultAddress;
+        assembly {
+            vaultAddress := create2(
+                0,
+                add(initCode, 0x20),
+                mload(initCode),
+                routeHash
+            )
         }
-        // If vault already exists, it will self-destruct based on the updated state
     }
 
     /**
@@ -670,7 +636,6 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         }
     }
 
-
     /**
      * @notice Funds an intent using a permit contract
      */
@@ -691,12 +656,6 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         _validateFundingState(state, intentHash);
 
-        // If no permit contract, use direct funding instead of deploying a vault
-        if (permitContact == address(0)) {
-            _fundUniversalIntent(intentHash, reward, vault, funder, allowPartial);
-            return;
-        }
-
         if (state.status == uint8(RewardStatus.Initial)) {
             state.status = allowPartial
                 ? uint8(RewardStatus.PartiallyFunded)
@@ -705,10 +664,13 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
 
         state.mode = uint8(VaultMode.Fund);
         state.allowPartialFunding = allowPartial ? 1 : 0;
-        state.usePermit = 1;
+        state.usePermit = permitContact != address(0) ? 1 : 0;
         state.target = funder;
 
-        vaults[intentHash].permitContract = permitContact;
+        if (permitContact != address(0)) {
+            vaults[intentHash].permitContract = permitContact;
+        }
+
         vaults[intentHash].state = state;
 
         // Use assembly to deploy Vault with the original reward struct

@@ -53,14 +53,12 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         returns (address[] memory)
     {
         bytes32[] memory whitelistBytes32 = getWhitelist();
-        address[] memory whitelistAddresses = new address[](
-            whitelistBytes32.length
-        );
-
+        address[] memory whitelistAddresses = new address[](whitelistBytes32.length);
+        
         for (uint256 i = 0; i < whitelistBytes32.length; i++) {
             whitelistAddresses[i] = address(bytes20(whitelistBytes32[i]));
         }
-
+        
         return whitelistAddresses;
     }
 
@@ -109,13 +107,13 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         return feeAmount;
     }
 
-    function addProvenIntent(
-        bytes32 _hash,
-        uint96 _destinationChainID,
-        address _claimant
-    ) public {
-        _provenIntents[_hash].claimant = _claimant;
-        _provenIntents[_hash].destinationChainID = _destinationChainID;
+    /**
+     * @notice Helper method to manually add proven intents for testing
+     * @param _hash Intent hash
+     * @param _claimant Claimant address
+     */
+    function addProvenIntent(bytes32 _hash, address _claimant) public {
+        provenIntents[_hash] = _claimant;
     }
 
     /**

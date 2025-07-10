@@ -8,7 +8,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {BaseProver} from "../prover/BaseProver.sol";
 import {Intent, Route, Reward, Call, TokenAmount} from "../types/Intent.sol";
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
-import {IProver} from "../interfaces/IProver.sol";
 import {Vault} from "../Vault.sol";
 import {BaseSource} from "./BaseSource.sol";
 
@@ -250,133 +249,97 @@ contract EvmSource is BaseSource, IIntentSource {
 
     /**
      * @notice Withdraws rewards associated with an intent to its claimant
-     * @param intent The full intent structure
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward structure of the intent
      */
-    function _withdrawRewards(Intent calldata intent) internal virtual {
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+    function withdrawRewards(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) public virtual {
+        bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        IProver.ProofData memory proofData = BaseProver(intent.reward.prover)
-            .provenIntents(intentHash);
-        address claimant = proofData.claimant;
+        address claimant = BaseProver(reward.prover).provenIntents(intentHash);
         VaultState memory state = vaults[intentHash].state;
 
-        // If no proof exists and intent is expired, refund to creator
-        if (claimant == address(0) && block.timestamp >= intent.reward.deadline) {
-            if (
-                state.status != uint8(RewardStatus.Claimed) &&
-                state.status != uint8(RewardStatus.Refunded)
-            ) {
-                state.status = uint8(RewardStatus.Refunded);
-                state.mode = uint8(VaultMode.Refund);
-                state.allowPartialFunding = 0;
-                state.usePermit = 0;
-                state.target = address(0);
-                vaults[intentHash].state = state;
-
-                emit Refund(intentHash, intent.reward.creator);
-
-                new Vault{salt: routeHash}(intentHash, intent.reward);
-                return;
-            }
-        }
-
-        // Check if proof exists
-        if (claimant == address(0)) {
-            revert UnauthorizedWithdrawal(intentHash);
-        }
-
-        // Check if already claimed/refunded
+        // Claim the rewards if the intent has not been claimed
         if (
-            state.status == uint8(RewardStatus.Claimed) ||
-            state.status == uint8(RewardStatus.Refunded)
+            claimant != address(0) &&
+            state.status != uint8(RewardStatus.Claimed) &&
+            state.status != uint8(RewardStatus.Refunded)
         ) {
-            revert RewardsAlreadyWithdrawn(intentHash);
-        }
+            state.status = uint8(RewardStatus.Claimed);
+            state.mode = uint8(VaultMode.Claim);
+            state.allowPartialFunding = 0;
+            state.usePermit = 0;
+            state.target = claimant;
+            vaults[intentHash].state = state;
 
-        // Challenge if destination chain doesn't match
-        if (proofData.destinationChainID != intent.route.destination) {
-            // Emit challenge event
-            emit IIntentSource.IntentProofChallenged(intentHash);
-            
-            // Call the prover's challenge function
-            IProver(intent.reward.prover).challengeIntentProof(intent);
-            
-            // Don't proceed with withdrawal
+            emit Withdrawal(intentHash, claimant);
+
+            new Vault{salt: routeHash}(intentHash, reward);
+
             return;
         }
 
-        // Proceed with withdrawal
-        state.status = uint8(RewardStatus.Claimed);
-        state.mode = uint8(VaultMode.Claim);
-        state.allowPartialFunding = 0;
-        state.usePermit = 0;
-        state.target = claimant;
-        vaults[intentHash].state = state;
-
-        emit Withdrawal(intentHash, claimant);
-
-        new Vault{salt: routeHash}(intentHash, intent.reward);
+        if (claimant == address(0)) {
+            revert UnauthorizedWithdrawal(intentHash);
+        } else {
+            revert RewardsAlreadyWithdrawn(intentHash);
+        }
     }
 
     /**
      * @notice Batch withdraws multiple intents
-     * @param intents Array of intents to withdraw
+     * @param routeHashes Array of route hashes for the intents
+     * @param rewards Array of reward structures for the intents
      */
-    function _batchWithdraw(Intent[] calldata intents) internal virtual {
-        for (uint256 i = 0; i < intents.length; ++i) {
-            _withdrawRewards(intents[i]);
+    function batchWithdraw(
+        bytes32[] calldata routeHashes,
+        Reward[] calldata rewards
+    ) external virtual {
+        uint256 length = routeHashes.length;
+
+        if (length != rewards.length) {
+            revert ArrayLengthMismatch();
+        }
+
+        for (uint256 i = 0; i < length; ++i) {
+            withdrawRewards(routeHashes[i], rewards[i]);
         }
     }
 
     /**
      * @notice Refunds rewards to the intent creator
-     * @param intent The full intent structure
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward structure of the intent
      */
-    function _refund(Intent calldata intent) internal virtual {
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+    function refund(
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external virtual {
+        bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         VaultState memory state = vaults[intentHash].state;
 
-        // Allow refund even if already claimed (for excess funds)
-        // Only prevent double refunds
-        if (state.status == uint8(RewardStatus.Refunded)) {
-            revert RewardsAlreadyWithdrawn(intentHash);
-        }
-
-        // If not yet claimed, check conditions
-        if (state.status != uint8(RewardStatus.Claimed)) {
-            IProver.ProofData memory proofData = BaseProver(intent.reward.prover)
-                .provenIntents(intentHash);
-            address claimant = proofData.claimant;
-            
-            // Check if the intent has been proven
+        if (
+            state.status != uint8(RewardStatus.Claimed) &&
+            state.status != uint8(RewardStatus.Refunded)
+        ) {
+            address claimant = BaseProver(reward.prover).provenIntents(
+                intentHash
+            );
+            // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
-                // If proven but destination chain is wrong, allow refund immediately
-                if (proofData.destinationChainID != intent.route.destination) {
-                    // Allow refund without waiting for expiry
-                } else {
-                    // Otherwise, revert if intent has not expired
-                    if (block.timestamp <= intent.reward.deadline) {
-                        revert IntentNotExpired(intentHash);
-                    }
-                }
-            } else {
-                // If not proven, must be expired
-                if (block.timestamp <= intent.reward.deadline) {
-                    revert IntentNotExpired(intentHash);
-                }
+                revert IntentNotClaimed(intentHash);
+            }
+            // Revert if intent has not expired
+            if (block.timestamp <= reward.deadline) {
+                revert IntentNotExpired(intentHash);
             }
         }
 
-        // Check if vault already exists (e.g., if already claimed)
-        address existingVault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
-        bool vaultExists = existingVault.code.length > 0;
-
-        // Mark as refunded if not already claimed
         if (state.status != uint8(RewardStatus.Claimed)) {
             state.status = uint8(RewardStatus.Refunded);
         }
@@ -387,32 +350,9 @@ contract EvmSource is BaseSource, IIntentSource {
         state.target = address(0);
         vaults[intentHash].state = state;
 
-        emit Refund(intentHash, intent.reward.creator);
+        emit Refund(intentHash, reward.creator);
 
-        // Only deploy vault if it doesn't exist and there might be funds to refund
-        if (!vaultExists) {
-            // Check if there are any funds to refund
-            bool hasFunds = false;
-            
-            // Check native balance
-            if (existingVault.balance > 0) {
-                hasFunds = true;
-            }
-            
-            // Check token balances
-            for (uint256 i = 0; i < intent.reward.tokens.length && !hasFunds; i++) {
-                if (IERC20(intent.reward.tokens[i].token).balanceOf(existingVault) > 0) {
-                    hasFunds = true;
-                }
-            }
-            
-            // Only deploy if there are funds to refund
-            if (hasFunds) {
-                new Vault{salt: routeHash}(intentHash, intent.reward);
-            }
-        }
-        // If vault already exists, we can't redeploy due to EIP-6780 
-        // The refund event is emitted for record-keeping purposes
+        new Vault{salt: routeHash}(intentHash, reward);
     }
 
     /**
@@ -462,13 +402,7 @@ contract EvmSource is BaseSource, IIntentSource {
 
         emit Refund(intentHash, reward.creator);
 
-        // Check if vault already exists before deploying
-        address existingVault = _getIntentVaultAddress(intentHash, routeHash, reward);
-        if (existingVault.code.length == 0) {
-            // Vault doesn't exist, deploy it
-            new Vault{salt: routeHash}(intentHash, reward);
-        }
-        // If vault already exists, it will self-destruct based on the updated state
+        new Vault{salt: routeHash}(intentHash, reward);
     }
 
     /**
@@ -643,12 +577,6 @@ contract EvmSource is BaseSource, IIntentSource {
         _disableNativeReward(reward, vault, intentHash);
         _validateFundingState(state, intentHash);
 
-        // If no permit contract, use direct funding instead of deploying a vault
-        if (permitContact == address(0)) {
-            _fundIntent(intentHash, reward, vault, funder, allowPartial);
-            return;
-        }
-
         if (state.status == uint8(RewardStatus.Initial)) {
             state.status = allowPartial
                 ? uint8(RewardStatus.PartiallyFunded)
@@ -657,10 +585,13 @@ contract EvmSource is BaseSource, IIntentSource {
 
         state.mode = uint8(VaultMode.Fund);
         state.allowPartialFunding = allowPartial ? 1 : 0;
-        state.usePermit = 1;
+        state.usePermit = permitContact != address(0) ? 1 : 0;
         state.target = funder;
 
-        vaults[intentHash].permitContract = permitContact;
+        if (permitContact != address(0)) {
+            vaults[intentHash].permitContract = permitContact;
+        }
+
         vaults[intentHash].state = state;
 
         new Vault{salt: routeHash}(intentHash, reward);
@@ -678,29 +609,5 @@ contract EvmSource is BaseSource, IIntentSource {
         } else {
             emit IntentPartiallyFunded(intentHash, funder);
         }
-    }
-
-    /**
-     * @notice Wrapper function to match IIntentSource interface
-     * @param _intent The intent to withdraw rewards for
-     */
-    function withdrawRewards(Intent calldata _intent) external {
-        _withdrawRewards(_intent);
-    }
-
-    /**
-     * @notice Wrapper function to match IIntentSource interface
-     * @param _intents The intents to withdraw rewards for
-     */
-    function batchWithdraw(Intent[] calldata _intents) external {
-        _batchWithdraw(_intents);
-    }
-
-    /**
-     * @notice Wrapper function to match IIntentSource interface
-     * @param _intent The intent to refund
-     */
-    function refund(Intent calldata _intent) external {
-        _refund(_intent);
     }
 }
