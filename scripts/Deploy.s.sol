@@ -57,11 +57,10 @@ contract Deploy is Script {
         DeploymentContext memory ctx;
         ctx.salt = vm.envBytes32("SALT");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
-        ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
+        bool metaProver = vm.envOr("META_PROVER", false);
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         bool hasMailbox = ctx.mailbox != address(0);
-        bool hasRouter = ctx.router != address(0);
         // Compute salts for each contract
         ctx.intentSourceSalt = getContractSalt(ctx.salt, "INTENT_SOURCE");
         ctx.inboxSalt = getContractSalt(ctx.salt, "INBOX");
@@ -69,7 +68,7 @@ contract Deploy is Script {
             ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
         }
 
-        if (hasRouter) {
+        if (metaProver) {
             ctx.metaProverSalt = getContractSalt(ctx.salt, "META_PROVER");
         }
 
@@ -89,9 +88,10 @@ contract Deploy is Script {
             deployHyperProver(ctx);
         }
 
-        // Deploy MetaProver
-        if (hasRouter) {
-            deployMetaProver(ctx);
+        // Deploy MetaProver or use hardcoded address
+        if (metaProver) {
+            ctx.metaProver = 0x3d529eFAEDb3B999A404c1B8543441aE616cB914;
+            console.log("MetaProver (hardcoded) :", ctx.metaProver);
         }
 
         vm.stopBroadcast();
@@ -104,9 +104,9 @@ contract Deploy is Script {
     function writeDeploymentData(DeploymentContext memory ctx) internal {
         uint num = 2;
         bool hasMailbox = ctx.mailbox != address(0);
-        bool hasRouter = ctx.router != address(0);
+        bool hasMetaProver = ctx.metaProver != address(0);
         num = hasMailbox ? num + 1 : num;
-        num = hasRouter ? num + 1 : num;
+        num = hasMetaProver ? num + 1 : num;
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
         contracts[count++] = VerificationData({
@@ -131,11 +131,12 @@ contract Deploy is Script {
                 chainId: block.chainid
             });
         }
-        if (hasRouter) {
+
+        if (hasMetaProver) {
             contracts[count++] = VerificationData({
                 contractAddress: ctx.metaProver,
                 contractPath: "contracts/prover/MetaProver.sol:MetaProver",
-                constructorArgs: ctx.metaProverConstructorArgs,
+                constructorArgs: new bytes(0),
                 chainId: block.chainid
             });
         }

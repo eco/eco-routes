@@ -24,10 +24,7 @@
  */
 
 import { SemanticContext, SemanticPluginConfig } from './sr-prepare'
-import {
-  updateSolidityVersions,
-  updatePackageJsonVersion,
-} from './solidity-version-updater'
+import { updatePackageJsonVersion } from './solidity-version-updater'
 import dotenv from 'dotenv'
 dotenv.config()
 
