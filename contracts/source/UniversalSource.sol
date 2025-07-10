@@ -260,9 +260,9 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover.toAddress()).provenIntents(
-            intentHash
-        );
+        address claimant = BaseProver(reward.prover.toAddress())
+            .provenIntents(intentHash)
+            .claimant;
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -346,7 +346,8 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
             state.status != uint8(RewardStatus.Refunded)
         ) {
             address claimant = BaseProver(reward.prover.toAddress())
-                .provenIntents(intentHash);
+                .provenIntents(intentHash)
+                .claimant;
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);

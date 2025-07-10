@@ -524,7 +524,9 @@ describe('Inbox Test', (): void => {
 
     it('should handle fulfillAndProve with non-address bytes32 claimant for cross-VM compatibility', async () => {
       // arbitrary claimant which doesn't fit into a evm address
-      const nonAddressClaimant = ethers.keccak256(ethers.toUtf8Bytes("non-evm-claimant-identifier"))
+      const nonAddressClaimant = ethers.keccak256(
+        ethers.toUtf8Bytes('non-evm-claimant-identifier'),
+      )
 
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
       await expect(

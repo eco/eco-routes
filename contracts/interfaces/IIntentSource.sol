@@ -46,20 +46,6 @@ interface IIntentSource is IBaseSource {
     );
 
     /**
-     * @notice Signals successful reward withdrawal
-     * @param hash The hash of the claimed intent
-     * @param recipient The address receiving the rewards
-     */
-    event Withdrawal(bytes32 hash, address indexed recipient);
-
-    /**
-     * @notice Signals successful reward refund
-     * @param hash The hash of the refunded intent
-     * @param recipient The address receiving the refund
-     */
-    event Refund(bytes32 hash, address indexed recipient);
-
-    /**
      * @notice Indicates an intent proof being challenged
      * @param intentHash The hash of the intent that was incorrectly proven
      */

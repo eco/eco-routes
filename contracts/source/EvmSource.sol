@@ -252,14 +252,16 @@ contract EvmSource is BaseSource, IIntentSource {
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
-    function withdrawRewards(
+    function _withdrawRewards(
         bytes32 routeHash,
         Reward calldata reward
-    ) public virtual {
+    ) internal virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover).provenIntents(intentHash);
+        address claimant = BaseProver(reward.prover)
+            .provenIntents(intentHash)
+            .claimant;
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -294,10 +296,10 @@ contract EvmSource is BaseSource, IIntentSource {
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      */
-    function batchWithdraw(
+    function _batchWithdraw(
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
-    ) external virtual {
+    ) internal virtual {
         uint256 length = routeHashes.length;
 
         if (length != rewards.length) {
@@ -305,7 +307,7 @@ contract EvmSource is BaseSource, IIntentSource {
         }
 
         for (uint256 i = 0; i < length; ++i) {
-            withdrawRewards(routeHashes[i], rewards[i]);
+            _withdrawRewards(routeHashes[i], rewards[i]);
         }
     }
 
@@ -314,10 +316,10 @@ contract EvmSource is BaseSource, IIntentSource {
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
-    function refund(
+    function _refund(
         bytes32 routeHash,
         Reward calldata reward
-    ) external virtual {
+    ) internal virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
@@ -327,9 +329,9 @@ contract EvmSource is BaseSource, IIntentSource {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            address claimant = BaseProver(reward.prover).provenIntents(
-                intentHash
-            );
+            address claimant = BaseProver(reward.prover)
+                .provenIntents(intentHash)
+                .claimant;
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);
@@ -609,5 +611,34 @@ contract EvmSource is BaseSource, IIntentSource {
         } else {
             emit IntentPartiallyFunded(intentHash, funder);
         }
+    }
+
+    /**
+     * @notice Wrapper function to match IIntentSource interface
+     * @param _intent The intent to withdraw rewards for
+     */
+    function withdrawRewards(Intent calldata _intent) external {
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
+        _withdrawRewards(routeHash, _intent.reward);
+    }
+
+    /**
+     * @notice Wrapper function to match IIntentSource interface
+     * @param _intents The intents to withdraw rewards for
+     */
+    function batchWithdraw(Intent[] calldata _intents) external {
+        for (uint256 i = 0; i < _intents.length; ++i) {
+            bytes32 routeHash = keccak256(abi.encode(_intents[i].route));
+            _withdrawRewards(routeHash, _intents[i].reward);
+        }
+    }
+
+    /**
+     * @notice Wrapper function to match IIntentSource interface
+     * @param _intent The intent to refund
+     */
+    function refund(Intent calldata _intent) external {
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
+        _refund(routeHash, _intent.reward);
     }
 }

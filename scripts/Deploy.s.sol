@@ -59,9 +59,11 @@ contract Deploy is Script {
         ctx.salt = vm.envBytes32("SALT");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
-        
+
         // Load cross-VM provers from environment variable (optional)
-        try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (bytes32[] memory provers) {
+        try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
+            bytes32[] memory provers
+        ) {
             ctx.crossVmProvers = provers;
         } catch {
             ctx.crossVmProvers = new bytes32[](0);
