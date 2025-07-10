@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {IBaseSource} from "../../contracts/interfaces/IBaseSource.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
 
 contract IntentSourceTest is BaseTest {
     
@@ -96,7 +97,8 @@ contract IntentSourceTest is BaseTest {
         
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
     }
     
     function testWithdrawsToClaimantWithProof() public {
@@ -115,7 +117,8 @@ contract IntentSourceTest is BaseTest {
         assertTrue(intentSource.isIntentFunded(intent));
         
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -133,7 +136,8 @@ contract IntentSourceTest is BaseTest {
         emit IBaseSource.Withdrawal(intentHash, claimant);
         
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
     }
     
     function testDoesNotAllowRepeatWithdrawal() public {
@@ -143,11 +147,12 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
         
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        intentSource.withdrawRewards(routeHash, intent.reward);
     }
     
     function testAllowsRefundIfAlreadyClaimed() public {
@@ -160,13 +165,14 @@ contract IntentSourceTest is BaseTest {
         emit IBaseSource.Withdrawal(intentHash, claimant);
         
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         _expectEmit();
         emit IBaseSource.Refund(intentHash, creator);
         
         vm.prank(otherPerson);
-        intentSource.refund(intent);
+        intentSource.refund(routeHash, intent.reward);
     }
     
     // After Expiry Tests
@@ -181,7 +187,8 @@ contract IntentSourceTest is BaseTest {
         assertTrue(intentSource.isIntentFunded(intent));
         
         vm.prank(otherPerson);
-        intentSource.refund(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.refund(routeHash, intent.reward);
         
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
@@ -201,7 +208,8 @@ contract IntentSourceTest is BaseTest {
         assertTrue(intentSource.isIntentFunded(intent));
         
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -215,41 +223,44 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, 2, claimant); // Wrong chain ID
         _timeTravel(expiry);
         
-        assertEq(prover.hashOfChallengedIntent(), bytes32(0));
-        
-        _expectEmit();
-        emit IIntentSource.IntentProofChallenged(intentHash);
+        // Verify proof exists before challenge
+        IProver.ProofData memory proofBefore = prover.provenIntents(intentHash);
+        assertTrue(proofBefore.claimant != bytes32(0));
         
         vm.prank(otherPerson);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
-        assertEq(prover.hashOfChallengedIntent(), intentHash);
+        // Verify proof was cleared after challenge
+        IProver.ProofData memory proofAfter = prover.provenIntents(intentHash);
+        assertEq(proofAfter.claimant, bytes32(0));
         assertTrue(intentSource.isIntentFunded(intent));
     }
     
-    function testAllowsRefundIfDestinationChainWrong() public {
+    function testCantRefundIfProofExists() public {
         _publishAndFund(intent, false);
         
         bytes32 intentHash = _hashIntent(intent);
-        _addProof(intentHash, 2, claimant); // Wrong chain ID
-        
-        _expectEmit();
-        emit IBaseSource.Refund(intentHash, creator);
+        _addProof(intentHash, 2, claimant); // Add any proof
         
         vm.prank(otherPerson);
-        intentSource.refund(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        vm.expectRevert(abi.encodeWithSelector(IBaseSource.IntentNotClaimed.selector, intentHash));
+        intentSource.refund(routeHash, intent.reward);
     }
     
     // Batch Withdrawal Tests
     function testBatchWithdrawalFailsBeforeExpiry() public {
         _publishAndFund(intent, false);
         
-        Intent[] memory intents = new Intent[](1);
-        intents[0] = intent;
+        bytes32[] memory routeHashes = new bytes32[](1);
+        Reward[] memory rewards = new Reward[](1);
+        routeHashes[0] = keccak256(abi.encode(intent.route));
+        rewards[0] = intent.reward;
         
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(intents);
+        intentSource.batchWithdraw(routeHashes, rewards);
     }
     
     function testBatchWithdrawalSingleIntentBeforeExpiryToClaimant() public {
@@ -267,11 +278,13 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenA.balanceOf(claimant), 0);
         assertEq(tokenB.balanceOf(claimant), 0);
         
-        Intent[] memory intents = new Intent[](1);
-        intents[0] = intent;
+        bytes32[] memory routeHashes = new bytes32[](1);
+        Reward[] memory rewards = new Reward[](1);
+        routeHashes[0] = keccak256(abi.encode(intent.route));
+        rewards[0] = intent.reward;
         
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(intents);
+        intentSource.batchWithdraw(routeHashes, rewards);
         
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), MINT_AMOUNT);
@@ -294,11 +307,13 @@ contract IntentSourceTest is BaseTest {
         
         assertTrue(intentSource.isIntentFunded(intent));
         
-        Intent[] memory intents = new Intent[](1);
-        intents[0] = intent;
+        bytes32[] memory routeHashes = new bytes32[](1);
+        Reward[] memory rewards = new Reward[](1);
+        routeHashes[0] = keccak256(abi.encode(intent.route));
+        rewards[0] = intent.reward;
         
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(intents);
+        intentSource.batchWithdraw(routeHashes, rewards);
         
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
@@ -535,7 +550,8 @@ contract IntentSourceTest is BaseTest {
         
         // Should not revert despite malicious token
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         assertEq(tokenA.balanceOf(claimant), initialClaimantBalance + MINT_AMOUNT);
     }
@@ -671,7 +687,8 @@ contract IntentSourceTest is BaseTest {
         uint256 initialBalanceB = tokenB.balanceOf(claimant);
         
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         // Claimant should receive reward amount, creator gets the excess
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -716,7 +733,8 @@ contract IntentSourceTest is BaseTest {
         
         // Withdrawal should handle duplicates correctly
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         // Verify balances (should transfer per each entry, including duplicates)
         assertGt(tokenA.balanceOf(claimant), 0);
@@ -755,8 +773,17 @@ contract IntentSourceTest is BaseTest {
         uint256 initialCreatorBalance = tokenA.balanceOf(creator);
         
         // Batch withdraw should handle mixed states
+        bytes32[] memory routeHashes = new bytes32[](3);
+        Reward[] memory rewards = new Reward[](3);
+        routeHashes[0] = keccak256(abi.encode(intents[0].route));
+        routeHashes[1] = keccak256(abi.encode(intents[1].route));
+        routeHashes[2] = keccak256(abi.encode(intents[2].route));
+        rewards[0] = intents[0].reward;
+        rewards[1] = intents[1].reward;
+        rewards[2] = intents[2].reward;
+        
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(intents);
+        intentSource.batchWithdraw(routeHashes, rewards);
         
         // Verify correct distributions
         // Intent 1: should go to claimant
@@ -812,7 +839,7 @@ contract IntentSourceTest is BaseTest {
         emit IBaseSource.Withdrawal(intentHash, claimant);
         
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        intentSource.withdrawRewards(routeHash, intent.reward);
     }
 }
 

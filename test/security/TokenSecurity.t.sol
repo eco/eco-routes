@@ -85,7 +85,8 @@ contract TokenSecurityTest is BaseTest {
         
         // Withdrawal should succeed despite malicious token
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         // Good token should be transferred successfully
         assertEq(tokenA.balanceOf(claimant), initialClaimantBalance + MINT_AMOUNT);
@@ -162,7 +163,8 @@ contract TokenSecurityTest is BaseTest {
         
         // Withdrawal should succeed and state should be updated
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         // After withdrawal, vault balance should be 0
         assertEq(tokenA.balanceOf(vaultAddress), 0);
@@ -241,7 +243,8 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalance = usdt.balanceOf(claimant);
         
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         assertEq(usdt.balanceOf(claimant), initialClaimantBalance + MINT_AMOUNT);
     }
@@ -342,7 +345,8 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalance = tokenA.balanceOf(claimant);
         
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         // No tokens should be transferred
         assertEq(tokenA.balanceOf(claimant), initialClaimantBalance);
@@ -387,7 +391,8 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalanceUSDT = usdt.balanceOf(claimant);
         
         vm.prank(claimant);
-        intentSource.withdrawRewards(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.withdrawRewards(routeHash, intent.reward);
         
         // Standard tokens should be transferred
         assertEq(tokenA.balanceOf(claimant), initialClaimantBalanceA + MINT_AMOUNT);

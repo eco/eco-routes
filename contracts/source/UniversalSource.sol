@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {AddressConverter} from "../libs/AddressConverter.sol";
-import {BaseProver} from "../prover/BaseProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
 import {IUniversalIntentSource} from "../interfaces/IUniversalIntentSource.sol";
 import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
 import {Vault} from "../Vault.sol";
@@ -260,9 +260,10 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover.toAddress()).provenIntents(
+        IProver.ProofData memory proof = IProver(reward.prover.toAddress()).provenIntents(
             intentHash
         );
+        address claimant = address(uint160(uint256(proof.claimant)));
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -345,8 +346,9 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            address claimant = BaseProver(reward.prover.toAddress())
+            IProver.ProofData memory proof = IProver(reward.prover.toAddress())
                 .provenIntents(intentHash);
+            address claimant = address(uint160(uint256(proof.claimant)));
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);

@@ -113,7 +113,10 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @param _claimant Claimant address
      */
     function addProvenIntent(bytes32 _hash, address _claimant) public {
-        provenIntents[_hash] = _claimant;
+        _provenIntents[_hash] = ProofData({
+            claimant: bytes32(uint256(uint160(_claimant))),
+            destinationChainID: uint96(block.chainid)
+        });
     }
 
     /**

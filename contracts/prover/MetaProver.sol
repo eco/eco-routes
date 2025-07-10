@@ -22,6 +22,12 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     using SafeCast for uint256;
 
     /**
+     * @notice Chain ID is too large to fit in uint32
+     * @param _chainId The chain ID that is too large
+     */
+    error ChainIdTooLarge(uint256 _chainId);
+
+    /**
      * @notice Constant indicating this contract uses Metalayer for proving
      */
     string public constant PROOF_TYPE = "Metalayer";
@@ -252,6 +258,11 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Centralized validation ensures arrays match exactly once in the call flow
         if (_hashes.length != _claimants.length) {
             revert ArrayLengthMismatch();
+        }
+
+        // Check if chain ID fits in uint32
+        if (_sourceChainID > type(uint32).max) {
+            revert ChainIdTooLarge(_sourceChainID);
         }
 
         // Convert chain ID to domain

@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {BaseProver} from "../prover/BaseProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
 import {Intent, Route, Reward, Call, TokenAmount} from "../types/Intent.sol";
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
 import {Vault} from "../Vault.sol";
@@ -259,7 +259,8 @@ contract EvmSource is BaseSource, IIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        address claimant = BaseProver(reward.prover).provenIntents(intentHash);
+        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(intentHash);
+        address claimant = address(uint160(uint256(proof.claimant)));
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -327,9 +328,10 @@ contract EvmSource is BaseSource, IIntentSource {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            address claimant = BaseProver(reward.prover).provenIntents(
+            IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
                 intentHash
             );
+            address claimant = address(uint160(uint256(proof.claimant)));
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);

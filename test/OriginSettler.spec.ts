@@ -10,7 +10,7 @@ import {
 } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, Provider } from 'ethers'
-import { encodeTransfer } from '../../utils/encode'
+import { encodeTransfer } from '../utils/encode'
 import {
   encodeReward,
   encodeRoute,
@@ -20,7 +20,7 @@ import {
   Reward,
   Intent,
   encodeIntent,
-} from '../../utils/intent'
+} from '../utils/intent'
 import {
   OnchainCrossChainOrderStruct,
   GaslessCrossChainOrderStruct,
@@ -31,7 +31,7 @@ import {
   OnchainCrosschainOrderData,
   encodeGaslessCrosschainOrderData,
   encodeOnchainCrosschainOrderData,
-} from '../../utils/EcoERC7683'
+} from '../utils/EcoERC7683'
 
 describe('Origin Settler Test', (): void => {
   let originSettler: Eco7683OriginSettler

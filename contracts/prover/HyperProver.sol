@@ -39,6 +39,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     }
 
     /**
+     * @notice Chain ID is too large to fit in uint32
+     * @param _chainId The chain ID that is too large
+     */
+    error ChainIdTooLarge(uint256 _chainId);
+
+    /**
      * @notice Constant indicating this contract uses Hyperlane for proving
      */
     string public constant PROOF_TYPE = "Hyperlane";

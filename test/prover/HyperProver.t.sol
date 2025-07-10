@@ -99,7 +99,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
         
         _expectEmit();
-        emit IProver.IntentProven(intentHash, claimant);
+        emit IProver.IntentProven(intentHash, bytes32(uint256(uint160(claimant))));
         
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));
@@ -124,7 +124,7 @@ contract HyperProverTest is BaseTest {
         // Check that all intents were proven
         for (uint256 i = 0; i < 3; i++) {
             IProver.ProofData memory proof = hyperProver.provenIntents(intentHashes[i]);
-            assertEq(proof.claimant, claimant);
+            assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
         }
     }
     
@@ -173,7 +173,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.handle(1, bytes32(uint256(uint160(whitelistedProver))), messageBody);
         
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHashes[0]);
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destinationChainID, CHAIN_ID);
     }
     
@@ -239,7 +239,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify intent is proven (with chain ID = 31337 from the prove call)
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != address(0));
+        assertTrue(proof.claimant != bytes32(0));
         assertEq(proof.destinationChainID, uint96(block.chainid)); // 31337
         
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
@@ -250,7 +250,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify proof was cleared
         proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, bytes32(0));
     }
     
     function testChallengeIntentProofWithCorrectChain() public {
@@ -271,7 +271,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify intent is proven
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != address(0));
+        assertTrue(proof.claimant != bytes32(0));
         assertEq(proof.destinationChainID, uint96(block.chainid));
         
         // Challenge with correct chain (destination matches proof) should do nothing
@@ -280,7 +280,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify proof is still there
         proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
     }
     
     function testProvenIntentsStorage() public {
@@ -302,7 +302,7 @@ contract HyperProverTest is BaseTest {
         
         // Now check the storage
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destinationChainID, uint96(block.chainid));
     }
     
@@ -375,6 +375,6 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(creator, block.chainid, intentHashes, claimants, proverData);
         
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHashes[0]);
-        assertEq(proof.claimant, address(uint160(uint256(claimants[0]))));
+        assertEq(proof.claimant, claimants[0]);
     }
 }

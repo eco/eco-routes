@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import {IProver} from "../interfaces/IProver.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {Intent} from "../types/Intent.sol";
 
 /**
  * @title BaseProver
@@ -18,8 +19,8 @@ abstract contract BaseProver is IProver, ERC165 {
     address public immutable INBOX;
 
     /**
-     * @notice Mapping from intent hash to address eligible to claim rewards
-     * @dev Zero claimant address indicates intent hasn't been proven
+     * @notice Mapping from intent hash to proof data
+     * @dev Empty struct (zero claimant) indicates intent hasn't been proven
      */
     mapping(bytes32 => ProofData) internal _provenIntents;
 
@@ -32,26 +33,15 @@ abstract contract BaseProver is IProver, ERC165 {
     }
 
     /**
-     * @notice Fetches a ProofData from the provenIntents mapping
-     * @param _intentHash the hash of the intent whose proof data is being queried
-     * @return ProofData struct containing the destination chain ID and claimant address
-     */
-    function provenIntents(
-        bytes32 _intentHash
-    ) public view returns (ProofData memory) {
-        return _provenIntents[_intentHash];
-    }
-
-    /**
      * @notice Process intent proofs from a cross-chain message
-     * @param _destinationChainID ID of the destination chain
      * @param _hashes Array of intent hashes
      * @param _claimants Array of claimant addresses
+     * @param _destinationChainID Chain ID where the intent is being proven
      */
     function _processIntentProofs(
-        uint96 _destinationChainID,
         bytes32[] memory _hashes,
-        address[] memory _claimants
+        address[] memory _claimants,
+        uint256 _destinationChainID
     ) internal {
         // If arrays are empty, just return early
         if (_hashes.length == 0) return;
@@ -70,28 +60,44 @@ abstract contract BaseProver is IProver, ERC165 {
                 continue; // Skip invalid claimants
             }
 
-            // covers an edge case in the event of an attack
-            uint96 currentDestinationChainID = provenIntents(intentHash)
-                .destinationChainID;
-            if (
-                _destinationChainID != currentDestinationChainID &&
-                currentDestinationChainID != 0
-            ) {
-                revert BadDestinationChainID(
-                    intentHash,
-                    currentDestinationChainID,
-                    _destinationChainID
-                );
-            }
             // Skip rather than revert for already proven intents
-            ProofData storage proofData = _provenIntents[intentHash];
-            if (proofData.claimant != address(0)) {
+            if (_provenIntents[intentHash].claimant != bytes32(0)) {
                 emit IntentAlreadyProven(intentHash);
             } else {
-                proofData.claimant = claimant;
-                proofData.destinationChainID = _destinationChainID;
+                _provenIntents[intentHash] = ProofData({
+                    claimant: bytes32(uint256(uint160(claimant))),
+                    destinationChainID: uint96(_destinationChainID)
+                });
                 emit IntentProven(intentHash, claimant);
             }
+        }
+    }
+
+    /**
+     * @notice Returns the proof data for a given intent hash
+     * @param _intentHash Hash of the intent to query
+     * @return ProofData containing claimant and destination chain ID
+     */
+    function provenIntents(bytes32 _intentHash) external view override returns (ProofData memory) {
+        return _provenIntents[_intentHash];
+    }
+
+    /**
+     * @notice Challenge an intent proof if destination chain ID doesn't match
+     * @dev Can be called by anyone to remove invalid proofs
+     * @param _intent The intent to challenge
+     */
+    function challengeIntentProof(Intent calldata _intent) external {
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
+        bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
+        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        
+        ProofData memory proof = _provenIntents[intentHash];
+        
+        // Only challenge if proof exists and destination chain ID doesn't match
+        if (proof.claimant != bytes32(0) && proof.destinationChainID != _intent.route.destination) {
+            delete _provenIntents[intentHash];
+            emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
         }
     }
 

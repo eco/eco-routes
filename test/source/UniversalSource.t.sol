@@ -245,7 +245,7 @@ contract UniversalSourceTest is BaseTest {
         (bytes32 intentHash,,) = universalSource.getIntentHash(universalIntent);
         
         vm.prank(creator);
-        prover.addProvenIntent(intentHash, CHAIN_ID, claimant);
+        prover.addProvenIntent(intentHash, bytes32(uint256(uint160(claimant))));
         
         uint256 initialBalanceA = tokenA.balanceOf(claimant);
         uint256 initialBalanceB = tokenB.balanceOf(claimant);

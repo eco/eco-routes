@@ -209,8 +209,9 @@ describe('MetaProver Test', (): void => {
         [[intentHash], [ethers.zeroPadValue(claimantAddress, 32)]],
       )
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(
-        ethers.ZeroAddress,
+      const proofDataBefore = await metaProver.provenIntents(intentHash)
+      expect(proofDataBefore.claimant).to.eq(
+        ethers.zeroPadValue(ethers.ZeroAddress, 32),
       )
 
       await expect(
@@ -227,7 +228,8 @@ describe('MetaProver Test', (): void => {
         .to.emit(metaProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(claimantAddress)
+      const proofDataAfter = await metaProver.provenIntents(intentHash)
+      expect(proofDataAfter.claimant).to.eq(ethers.zeroPadValue(claimantAddress, 32))
     })
 
     it('should emit an event when intent is already proven', async () => {
@@ -295,8 +297,10 @@ describe('MetaProver Test', (): void => {
         .to.emit(metaProver, 'IntentProven')
         .withArgs(otherHash, otherAddress)
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(claimantAddress)
-      expect(await metaProver.provenIntents(otherHash)).to.eq(otherAddress)
+      const proofDataAfter = await metaProver.provenIntents(intentHash)
+      expect(proofDataAfter.claimant).to.eq(ethers.zeroPadValue(claimantAddress, 32))
+      const proofData2 = await metaProver.provenIntents(otherHash)
+      expect(proofData2.claimant).to.eq(ethers.zeroPadValue(otherAddress, 32))
     })
   })
 
@@ -579,7 +583,8 @@ describe('MetaProver Test', (): void => {
         .to.emit(metaProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
 
-      expect(await metaProver.provenIntents(intentHash)).to.eq(claimantAddress)
+      const proofDataAfter = await metaProver.provenIntents(intentHash)
+      expect(proofDataAfter.claimant).to.eq(ethers.zeroPadValue(claimantAddress, 32))
     })
 
     it('should check that array lengths are consistent', async () => {
@@ -869,8 +874,9 @@ describe('MetaProver Test', (): void => {
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
-      expect(await testMsgProver.provenIntents(intentHash)).to.eq(
-        ethers.ZeroAddress,
+      const proofDataBefore = await testMsgProver.provenIntents(intentHash)
+      expect(proofDataBefore.claimant).to.eq(
+        ethers.zeroPadValue(ethers.ZeroAddress, 32),
       )
 
       // Get fee for fulfillment - using TestMessageBridgeProver
@@ -902,8 +908,9 @@ describe('MetaProver Test', (): void => {
       )
 
       // Verify the intent is now proven
-      expect(await testMsgProver.provenIntents(intentHash)).to.eq(
-        await claimant.getAddress(),
+      const proofDataAfter = await testMsgProver.provenIntents(intentHash)
+      expect(proofDataAfter.claimant).to.eq(
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
       )
 
       // Meanwhile, our TestMetaRouter with auto-processing should also prove intents
@@ -937,8 +944,9 @@ describe('MetaProver Test', (): void => {
         )
 
       // Verify that MetaProver marked the intent as proven
-      expect(await metaProver.provenIntents(intentHash)).to.eq(
-        await claimant.getAddress(),
+      const proofDataFinal = await metaProver.provenIntents(intentHash)
+      expect(proofDataFinal.claimant).to.eq(
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
       )
     })
 
@@ -990,8 +998,9 @@ describe('MetaProver Test', (): void => {
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      expect(await testMsgProver.provenIntents(intentHash0)).to.eq(
-        ethers.ZeroAddress,
+      const proofDataBefore0 = await testMsgProver.provenIntents(intentHash0)
+      expect(proofDataBefore0.claimant).to.eq(
+        ethers.zeroPadValue(ethers.ZeroAddress, 32),
       )
 
       // Fulfill first intent in batch
@@ -1044,8 +1053,9 @@ describe('MetaProver Test', (): void => {
       )
 
       // Check intent hasn't been proven yet
-      expect(await testMsgProver.provenIntents(intentHash1)).to.eq(
-        ethers.ZeroAddress,
+      const proofDataBefore1 = await testMsgProver.provenIntents(intentHash1)
+      expect(proofDataBefore1.claimant).to.eq(
+        ethers.zeroPadValue(ethers.ZeroAddress, 32),
       )
 
       // Get fee for batch
@@ -1090,11 +1100,13 @@ describe('MetaProver Test', (): void => {
       )
 
       // Verify both intents were marked as proven
-      expect(await testMsgProver.provenIntents(intentHash0)).to.eq(
-        await claimant.getAddress(),
+      const proofDataFinal0 = await testMsgProver.provenIntents(intentHash0)
+      expect(proofDataFinal0.claimant).to.eq(
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
       )
-      expect(await testMsgProver.provenIntents(intentHash1)).to.eq(
-        await claimant.getAddress(),
+      const proofDataFinal1 = await testMsgProver.provenIntents(intentHash1)
+      expect(proofDataFinal1.claimant).to.eq(
+        ethers.zeroPadValue(await claimant.getAddress(), 32),
       )
     })
   })

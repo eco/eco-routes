@@ -346,7 +346,7 @@ contract MetaProverTest is BaseTest {
         );
         
         IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destinationChainID, uint32(block.chainid));
     }
     
