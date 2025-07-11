@@ -66,7 +66,6 @@ export const ENV_VARS = {
 
   // Verification related
   VERIFICATION_KEYS: 'VERIFICATION_KEYS',
-  // Verification keys file path
   VERIFICATION_KEYS_FILE: 'VERIFICATION_KEYS_FILE',
 }
 
