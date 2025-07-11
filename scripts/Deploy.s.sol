@@ -29,10 +29,9 @@ contract Deploy is Script {
     SingletonFactory constant create2Factory =
         SingletonFactory(0xce0042B868300000d44A59004Da54A005ffdcf9f);
 
-    // CreateX contract address for World Chain (480)
-    address constant CREATEX_ADDRESS =
-        0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
-    ICreateX constant createXContract = ICreateX(CREATEX_ADDRESS);
+    // CreateX contract for World Chain (480)
+    ICreateX constant createXContract =
+        ICreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
     // Create3Deployer
     ICreate3Deployer constant create3Deployer =
@@ -339,7 +338,7 @@ contract Deploy is Script {
                         keccak256(
                             abi.encodePacked(
                                 bytes1(0xff),
-                                CREATEX_ADDRESS,
+                                address(createXContract),
                                 salt,
                                 keccak256(bytecode)
                             )
