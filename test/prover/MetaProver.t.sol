@@ -31,7 +31,7 @@ contract MetaProverTest is BaseTest {
         // Deploy MetaProver
         metaProver = new MetaProver(
             metaRouterAddress,
-            address(inbox),
+            address(portal),
             provers,
             100000 // default gas limit
         );
@@ -50,8 +50,8 @@ contract MetaProverTest is BaseTest {
         bytes memory data,
         uint256 value
     ) internal {
-        vm.deal(address(inbox), value);
-        vm.prank(address(inbox));
+        vm.deal(address(portal), value);
+        vm.prank(address(portal));
         metaProver.prove{value: value}(
             sender,
             sourceChainId,

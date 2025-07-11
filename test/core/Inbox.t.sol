@@ -20,23 +20,23 @@ contract InboxTest is BaseTest {
         _fundUserNative(creator, 10 ether);
         _fundUserNative(solver, 10 ether);
 
-        // Approve inbox for solver to transfer tokens
+        // Approve portal for solver to transfer tokens
         vm.startPrank(solver);
-        tokenA.approve(address(inbox), MINT_AMOUNT * 10);
-        tokenB.approve(address(inbox), MINT_AMOUNT * 20);
+        tokenA.approve(address(portal), MINT_AMOUNT * 10);
+        tokenB.approve(address(portal), MINT_AMOUNT * 20);
         vm.stopPrank();
     }
 
     function testInboxExists() public view {
-        assertTrue(address(inbox) != address(0));
+        assertTrue(address(portal) != address(0));
     }
 
-    function testInboxBasicProperties() public view {
-        // Test version from ISemver interface
-        assertEq(inbox.version(), "2.6");
+    function testPortalBasicProperties() public view {
+        // Test version from ISemver interface via portal
+        assertEq(portal.version(), "2.6");
     }
 
-    function testInboxCanReceiveIntents() public {
+    function testPortalCanReceiveIntents() public {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
@@ -46,7 +46,7 @@ contract InboxTest is BaseTest {
 
         // This should not revert
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -56,7 +56,7 @@ contract InboxTest is BaseTest {
         );
     }
 
-    function testInboxFulfillWithValidIntent() public {
+    function testPortalFulfillWithValidIntent() public {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
@@ -65,7 +65,7 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -78,7 +78,7 @@ contract InboxTest is BaseTest {
         assertEq(tokenA.balanceOf(recipient), MINT_AMOUNT);
     }
 
-    function testInboxFulfillRevertsWithInvalidIntent() public {
+    function testPortalFulfillRevertsWithInvalidIntent() public {
         Intent memory intent = _createIntent();
         intent.destination = 999; // Invalid destination
         bytes32 routeHash = keccak256(abi.encode(intent.route));
@@ -89,7 +89,7 @@ contract InboxTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -99,7 +99,7 @@ contract InboxTest is BaseTest {
         );
     }
 
-    function testInboxFulfillWithMultipleTokens() public {
+    function testPortalFulfillWithMultipleTokens() public {
         Intent memory intent = _createIntentWithMultipleTokens();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
@@ -108,7 +108,7 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -122,7 +122,7 @@ contract InboxTest is BaseTest {
         assertEq(tokenB.balanceOf(recipient), MINT_AMOUNT * 2);
     }
 
-    function testInboxFulfillWithCalls() public {
+    function testPortalFulfillWithCalls() public {
         Intent memory intent = _createIntentWithCalls();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
@@ -131,7 +131,7 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -144,7 +144,7 @@ contract InboxTest is BaseTest {
         assertEq(tokenA.balanceOf(recipient), MINT_AMOUNT);
     }
 
-    function testInboxFulfillWithNativeEthToEOA() public {
+    function testPortalFulfillWithNativeEthToEOA() public {
         uint256 ethAmount = 1 ether;
 
         // Create intent with ETH transfer to EOA
@@ -162,7 +162,7 @@ contract InboxTest is BaseTest {
             route: Route({
                 salt: salt,
                 deadline: uint64(expiry),
-                portal: TypeCasts.addressToBytes32(address(inbox)),
+                portal: TypeCasts.addressToBytes32(address(portal)),
                 tokens: tokens,
                 calls: calls
             }),
@@ -175,8 +175,8 @@ contract InboxTest is BaseTest {
             })
         });
 
-        // Fund the inbox with ETH
-        vm.deal(address(inbox), ethAmount);
+        // Fund the portal with ETH
+        vm.deal(address(portal), ethAmount);
 
         uint256 initialBalance = recipient.balance;
 
@@ -187,7 +187,7 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -200,7 +200,7 @@ contract InboxTest is BaseTest {
         assertEq(recipient.balance, initialBalance + ethAmount);
     }
 
-    function testInboxFulfillWithNonAddressClaimant() public {
+    function testPortalFulfillWithNonAddressClaimant() public {
         Intent memory intent = _createIntent();
 
         // Use non-address bytes32 claimant for cross-VM compatibility
@@ -213,7 +213,7 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -236,7 +236,7 @@ contract InboxTest is BaseTest {
         bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
 
         vm.prank(solver);
-        inbox.fulfillAndProve(
+        portal.fulfillAndProve(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -250,14 +250,14 @@ contract InboxTest is BaseTest {
         assertEq(tokenA.balanceOf(recipient), MINT_AMOUNT);
 
         // Verify intent was marked as fulfilled
-        assertEq(inbox.fulfilled(intentHash), claimantBytes);
+        assertEq(portal.fulfilled(intentHash), claimantBytes);
     }
 
     function testInitiateProvingWithMultipleIntents() public {
         // First, mint more tokens for solver to fulfill multiple intents
         vm.startPrank(solver);
         tokenA.mint(solver, MINT_AMOUNT * 3);
-        tokenA.approve(address(inbox), MINT_AMOUNT * 3);
+        tokenA.approve(address(portal), MINT_AMOUNT * 3);
         vm.stopPrank();
 
         // First, fulfill some intents
@@ -278,7 +278,7 @@ contract InboxTest is BaseTest {
 
             // Fulfill each intent
             vm.prank(solver);
-            inbox.fulfill(
+            portal.fulfill(
                 uint64(block.chainid),
                 intent.route,
                 rewardHash,
@@ -290,7 +290,7 @@ contract InboxTest is BaseTest {
 
         // Now initiate proving for all fulfilled intents
         vm.prank(solver);
-        inbox.initiateProving{value: 1 ether}(
+        portal.initiateProving{value: 1 ether}(
             block.chainid,
             intentHashes,
             address(prover),
@@ -309,7 +309,7 @@ contract InboxTest is BaseTest {
 
         // First fulfillment should succeed
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -321,7 +321,7 @@ contract InboxTest is BaseTest {
         // Second fulfillment should revert
         vm.expectRevert();
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -331,7 +331,7 @@ contract InboxTest is BaseTest {
         );
     }
 
-    function testFulfillWithInvalidInboxAddress() public {
+    function testFulfillWithInvalidPortalAddress() public {
         Intent memory intent = _createIntent();
         intent.route.portal = TypeCasts.addressToBytes32(address(0x999)); // Wrong portal address
 
@@ -343,7 +343,7 @@ contract InboxTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -371,7 +371,7 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -391,7 +391,7 @@ contract InboxTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(solver);
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             intent.route,
             rewardHash,
@@ -425,7 +425,7 @@ contract InboxTest is BaseTest {
                 route: Route({
                     salt: salt,
                     deadline: uint64(expiry),
-                    portal: TypeCasts.addressToBytes32(address(inbox)),
+                    portal: TypeCasts.addressToBytes32(address(portal)),
                     tokens: tokens,
                     calls: calls
                 }),
@@ -480,7 +480,7 @@ contract InboxTest is BaseTest {
                 route: Route({
                     salt: salt,
                     deadline: uint64(expiry),
-                    portal: TypeCasts.addressToBytes32(address(inbox)),
+                    portal: TypeCasts.addressToBytes32(address(portal)),
                     tokens: tokens,
                     calls: calls
                 }),
@@ -518,7 +518,7 @@ contract InboxTest is BaseTest {
                 route: Route({
                     salt: salt,
                     deadline: uint64(expiry),
-                    portal: TypeCasts.addressToBytes32(address(inbox)),
+                    portal: TypeCasts.addressToBytes32(address(portal)),
                     tokens: tokens,
                     calls: calls
                 }),

@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {Semver} from "./libs/Semver.sol";
 
 import {UniversalSource} from "./UniversalSource.sol";
+import {Inbox} from "./Inbox.sol";
 
 /**
  * @title IntentSource
@@ -12,6 +13,6 @@ import {UniversalSource} from "./UniversalSource.sol";
  * @dev UniversalSource inherits from EvmSource, providing both EVM and cross-chain functionality
  *      On EVM chains, this is the main entry point for interacting with intents
  */
-contract Portal is UniversalSource, Semver {
+contract Portal is UniversalSource, Inbox, Semver {
     constructor() {}
 }

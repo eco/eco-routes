@@ -17,7 +17,7 @@ contract TestProver is BaseProver {
     bytes32[] public argIntentHashes;
     bytes32[] public argClaimants;
 
-    constructor(address _inbox) BaseProver(_inbox) {}
+    constructor(address _portal) BaseProver(_portal) {}
 
     function version() external pure returns (string memory) {
         return "1.8.14-e2c12e7";

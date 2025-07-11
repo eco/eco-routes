@@ -5,6 +5,7 @@ import {
   TestERC20,
   BadERC20,
   UniversalSource,
+  Portal,
   TestProver,
   Inbox,
   AddressConverterTest,
@@ -266,18 +267,21 @@ describe('Universal Intent Source Test', (): void => {
     )
     const addressConverter = await addressConverterTestFactory.deploy()
 
-    // Deploy UniversalSource (which extends IntentSource)
-    const intentSourceFactory =
-      await ethers.getContractFactory('UniversalSource')
-    const intentSourceContract = await intentSourceFactory.deploy()
+    // Deploy Portal (which includes UniversalSource and Inbox)
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const intentSourceContract = await portalFactory.deploy()
 
-    // Deploy inbox
-    const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy()
+    // Get inbox interface from Portal
+    const inbox = await ethers.getContractAt(
+      'Inbox',
+      await intentSourceContract.getAddress(),
+    )
 
-    // Deploy prover with inbox address
+    // Deploy prover with Portal address
     const testProverFactory = await ethers.getContractFactory('TestProver')
-    const prover = await testProverFactory.deploy(await inbox.getAddress())
+    const prover = await testProverFactory.deploy(
+      await intentSourceContract.getAddress(),
+    )
 
     // Deploy test tokens
     const testERC20Factory = await ethers.getContractFactory('TestERC20')

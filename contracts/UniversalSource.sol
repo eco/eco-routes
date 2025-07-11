@@ -18,7 +18,7 @@ import {IntentSource} from "./IntentSource.sol";
  * @notice Implementation of Universal Intent Source interface using bytes32 types for cross-chain compatibility
  * @dev Extends EvmSource to add cross-chain intent functionality
  */
-contract UniversalSource is IntentSource, IUniversalIntentSource {
+abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for bytes32;
     using AddressConverter for address;

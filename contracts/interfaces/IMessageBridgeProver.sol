@@ -50,9 +50,9 @@ interface IMessageBridgeProver is IProver {
     error RouterCannotBeZeroAddress();
 
     /**
-     * @notice Inbox address cannot be zero
+     * @notice Portal address cannot be zero
      */
-    error InboxCannotBeZeroAddress();
+    error PortalCannotBeZeroAddress();
 
     /**
      * @notice Invalid chain ID for the origin

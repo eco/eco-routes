@@ -9,8 +9,7 @@ import {SingletonFactory} from "../contracts/tools/SingletonFactory.sol";
 import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 
 // Protocol
-import {Inbox} from "../contracts/Inbox.sol";
-import {Portal} from "../contracts/IntentSource.sol";
+import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 
@@ -40,15 +39,12 @@ contract Deploy is Script {
         string deployFilePath;
         bytes32[] crossVmProvers;
         address deployer;
-        bytes32 intentSourceSalt;
-        bytes32 inboxSalt;
+        bytes32 portalSalt;
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
-        address intentSource;
-        address inbox;
+        address portal;
         address hyperProver;
         address metaProver;
-        bytes inboxConstructorArgs;
         bytes hyperProverConstructorArgs;
         bytes metaProverConstructorArgs;
     }
@@ -73,8 +69,7 @@ contract Deploy is Script {
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         // Compute salts for each contract
-        ctx.intentSourceSalt = getContractSalt(ctx.salt, "INTENT_SOURCE");
-        ctx.inboxSalt = getContractSalt(ctx.salt, "INBOX");
+        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
         if (hasMailbox) {
             ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
         }
@@ -88,11 +83,8 @@ contract Deploy is Script {
         // Deploy deployer if it hasn't been deployed
         deployCreate3Deployer();
 
-        // Deploy IntentSource
-        deployIntentSource(ctx);
-
-        // Deploy Inbox
-        deployInbox(ctx);
+        // Deploy Portal
+        deployPortal(ctx);
 
         // Deploy HyperProver
         if (hasMailbox) {
@@ -112,7 +104,7 @@ contract Deploy is Script {
 
     // Separate function to handle writing deployment data to file
     function writeDeploymentData(DeploymentContext memory ctx) internal {
-        uint num = 2;
+        uint num = 1;
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         num = hasMailbox ? num + 1 : num;
@@ -120,16 +112,9 @@ contract Deploy is Script {
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
         contracts[count++] = VerificationData({
-            contractAddress: ctx.intentSource,
-            contractPath: "contracts/IntentSource.sol:IntentSource",
+            contractAddress: ctx.portal,
+            contractPath: "contracts/Portal.sol:Portal",
             constructorArgs: new bytes(0),
-            chainId: block.chainid
-        });
-
-        contracts[count++] = VerificationData({
-            contractAddress: ctx.inbox,
-            contractPath: "contracts/Inbox.sol:Inbox",
-            constructorArgs: ctx.inboxConstructorArgs,
             chainId: block.chainid
         });
 
@@ -153,25 +138,14 @@ contract Deploy is Script {
         writeDeployFile(ctx.deployFilePath, contracts);
     }
 
-    function deployIntentSource(
+    function deployPortal(
         DeploymentContext memory ctx
-    ) internal returns (address intentSource) {
-        (ctx.intentSource) = deployWithCreate2(
+    ) internal returns (address portal) {
+        (ctx.portal) = deployWithCreate2(
             type(Portal).creationCode,
-            ctx.intentSourceSalt
+            ctx.portalSalt
         );
-        console.log("IntentSource :", ctx.intentSource);
-    }
-
-    function deployInbox(
-        DeploymentContext memory ctx
-    ) internal returns (address inbox) {
-        (ctx.inbox) = deployWithCreate2(
-            type(Inbox).creationCode,
-            ctx.inboxSalt
-        );
-
-        console.log("Inbox :", ctx.inbox);
+        console.log("Portal :", ctx.portal);
     }
 
     function deployHyperProver(
@@ -192,7 +166,7 @@ contract Deploy is Script {
 
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
-            ctx.inbox,
+            ctx.portal,
             provers
         );
 
@@ -229,7 +203,7 @@ contract Deploy is Script {
 
         ctx.metaProverConstructorArgs = abi.encode(
             ctx.router,
-            ctx.inbox,
+            ctx.portal,
             provers
         );
 

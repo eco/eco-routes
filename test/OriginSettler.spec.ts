@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
   TestERC20,
-  UniversalSource,
+  Portal,
   TestProver,
   Inbox,
   Eco7683OriginSettler,
@@ -38,7 +38,7 @@ import { TypeCasts } from '../utils/typeCasts'
 
 describe('Origin Settler Test', (): void => {
   let originSettler: Eco7683OriginSettler
-  let intentSource: UniversalSource
+  let portal: Portal
   let prover: TestProver
   let inbox: Inbox
   let tokenA: TestERC20
@@ -74,7 +74,7 @@ describe('Origin Settler Test', (): void => {
 
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler
-    intentSource: UniversalSource
+    portal: Portal
     prover: TestProver
     tokenA: TestERC20
     tokenB: TestERC20
@@ -83,20 +83,15 @@ describe('Origin Settler Test', (): void => {
   }> {
     const [creator, owner, otherPerson] = await ethers.getSigners()
 
-    const intentSourceFactory =
-      await ethers.getContractFactory('UniversalSource')
-    const intentSourceImpl = await intentSourceFactory.deploy()
-    // Use the IUniversalIntentSource interface with the actual implementation
-    const intentSource = await ethers.getContractAt(
-      'UniversalSource',
-      await intentSourceImpl.getAddress(),
-    )
-    inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    // Portal combines both Inbox and UniversalSource functionality
+    inbox = portal as any
 
     // deploy prover
     prover = await (
       await ethers.getContractFactory('TestProver')
-    ).deploy(await inbox.getAddress())
+    ).deploy(await portal.getAddress())
 
     const originSettlerFactory = await ethers.getContractFactory(
       'Eco7683OriginSettler',
@@ -104,7 +99,7 @@ describe('Origin Settler Test', (): void => {
     const originSettler = await originSettlerFactory.deploy(
       name,
       version,
-      await intentSource.getAddress(),
+      await portal.getAddress(),
     )
 
     // deploy ERC20 test
@@ -114,7 +109,7 @@ describe('Origin Settler Test', (): void => {
 
     return {
       originSettler,
-      intentSource,
+      portal,
       prover,
       tokenA,
       tokenB,
@@ -132,15 +127,8 @@ describe('Origin Settler Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({
-      originSettler,
-      intentSource,
-      prover,
-      tokenA,
-      tokenB,
-      creator,
-      otherPerson,
-    } = await loadFixture(deploySourceFixture))
+    ;({ originSettler, portal, prover, tokenA, tokenB, creator, otherPerson } =
+      await loadFixture(deploySourceFixture))
 
     // fund the creator and approve it to create an intent
     await mintAndApprove()
@@ -148,7 +136,7 @@ describe('Origin Settler Test', (): void => {
 
   it('constructs', async () => {
     expect(await originSettler.INTENT_SOURCE()).to.be.eq(
-      await intentSource.getAddress(),
+      await portal.getAddress(),
     )
   })
 

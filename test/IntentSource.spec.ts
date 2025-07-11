@@ -5,6 +5,7 @@ import {
   TestERC20,
   BadERC20,
   IntentSource,
+  Portal,
   TestProver,
   Inbox,
 } from '../typechain-types'
@@ -60,19 +61,19 @@ describe('Intent Source Test', (): void => {
   }> {
     const [creator, owner, claimant, otherPerson] = await ethers.getSigners()
 
-    const intentSourceFactory = await ethers.getContractFactory('IntentSource')
-    const intentSourceImpl = await intentSourceFactory.deploy()
-    // Use the IIntentSource interface with the actual implementation
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    // Use the IIntentSource interface with the Portal implementation
     const intentSource = await ethers.getContractAt(
       'IIntentSource',
-      await intentSourceImpl.getAddress(),
+      await portal.getAddress(),
     )
-    inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+    inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // deploy prover
     prover = await (
       await ethers.getContractFactory('TestProver')
-    ).deploy(await inbox.getAddress())
+    ).deploy(await portal.getAddress())
 
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')

@@ -83,7 +83,7 @@ contract IntentSourceTest is BaseTest {
             evmIntent.destination,
             salt,
             evmIntent.route.deadline,
-            AddressConverter.toBytes32(address(inbox)),
+            AddressConverter.toBytes32(address(portal)),
             evmIntent.route.tokens,
             evmIntent.route.calls,
             AddressConverter.toBytes32(creator),
@@ -974,7 +974,7 @@ contract IntentSourceTest is BaseTest {
             evmIntent.destination,
             salt,
             evmIntent.route.deadline,
-            AddressConverter.toBytes32(address(inbox)),
+            AddressConverter.toBytes32(address(portal)),
             evmIntent.route.tokens,
             evmIntent.route.calls,
             AddressConverter.toBytes32(creator),
@@ -1103,19 +1103,19 @@ contract FakePermitContract {
     }
 
     function allowance(
-        address /* owner */,
-        address /* token */,
-        address /* spender */
+        address,
+        /* owner */ address,
+        /* token */ address /* spender */
     ) external pure returns (uint160, uint48, uint48) {
         // Lies about having unlimited allowance
         return (type(uint160).max, 0, 0);
     }
 
     function transferFrom(
-        address /* from */,
-        address /* to */,
-        uint160 /* amount */,
-        address /* token */
+        address,
+        /* from */ address,
+        /* to */ uint160,
+        /* amount */ address /* token */
     ) external {
         // Fake transferFrom that doesn't actually transfer tokens
         // This simulates a malicious permit contract that lies about transfers

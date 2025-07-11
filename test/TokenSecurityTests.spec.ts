@@ -5,7 +5,13 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
+import {
+  TestERC20,
+  IntentSource,
+  Portal,
+  TestProver,
+  Inbox,
+} from '../typechain-types'
 import { hashIntent, TokenAmount } from '../utils/intent'
 
 /**
@@ -22,22 +28,22 @@ describe('Token Security Tests', () => {
   async function deployContractsFixture() {
     const [creator, claimant] = await ethers.getSigners()
 
-    // Deploy IntentSource
-    const intentSourceFactory = await ethers.getContractFactory('IntentSource')
-    const intentSourceImpl = await intentSourceFactory.deploy()
-    // Use the IIntentSource interface with the actual implementation
+    // Deploy Portal (which includes IntentSource and Inbox)
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    // Use the IIntentSource interface with the Portal implementation
     const intentSource = await ethers.getContractAt(
       'IIntentSource',
-      await intentSourceImpl.getAddress(),
+      await portal.getAddress(),
     )
 
-    // Deploy Inbox
-    inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+    // Get Inbox interface from Portal
+    inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // Deploy test prover
     prover = await (
       await ethers.getContractFactory('TestProver')
-    ).deploy(await inbox.getAddress())
+    ).deploy(await portal.getAddress())
 
     // Deploy test token
     const tokenFactory = await ethers.getContractFactory('TestERC20')

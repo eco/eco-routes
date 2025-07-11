@@ -15,10 +15,11 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 abstract contract BaseProver is IProver, ERC165 {
     using AddressConverter for address;
     /**
-     * @notice Address of the Inbox contract
+     * @notice Address of the Portal contract
      * @dev Immutable to prevent unauthorized changes
      */
-    address public immutable INBOX;
+
+    address public immutable PORTAL;
 
     /**
      * @notice Mapping from intent hash to proof data
@@ -28,10 +29,10 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Initializes the BaseProver contract
-     * @param _inbox Address of the Inbox contract
+     * @param _portal Address of the Portal contract
      */
-    constructor(address _inbox) {
-        INBOX = _inbox;
+    constructor(address _portal) {
+        PORTAL = _portal;
     }
 
     /**

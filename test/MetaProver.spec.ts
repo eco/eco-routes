@@ -8,6 +8,7 @@ import { ethers } from 'hardhat'
 import {
   MetaProver,
   Inbox,
+  Portal,
   TestERC20,
   TestMetaRouter,
 } from '../typechain-types'
@@ -88,8 +89,9 @@ describe('MetaProver Test', (): void => {
       await ethers.getContractFactory('TestMetaRouter')
     ).deploy(ethers.ZeroAddress)
 
-    // Deploy Inbox
-    const inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+    // Deploy Portal (which includes Inbox)
+    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // Deploy Test ERC20 token
     const token = await (
@@ -124,9 +126,9 @@ describe('MetaProver Test', (): void => {
 
   describe('1. Constructor', () => {
     it('should initialize with the correct router and inbox addresses', async () => {
-      // Verify ROUTER and INBOX are set correctly
+      // Verify ROUTER and PORTAL are set correctly
       expect(await metaProver.ROUTER()).to.equal(await testRouter.getAddress())
-      expect(await metaProver.INBOX()).to.equal(await inbox.getAddress())
+      expect(await metaProver.PORTAL()).to.equal(await inbox.getAddress())
     })
 
     it('should add constructor-provided provers to the whitelist', async () => {

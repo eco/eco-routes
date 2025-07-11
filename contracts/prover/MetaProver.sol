@@ -40,16 +40,16 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Initializes the MetaProver contract
      * @param _router Address of local Metalayer router
-     * @param _inbox Address of Inbox contract
+     * @param _portal Address of Portal contract
      * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _router,
-        address _inbox,
+        address _portal,
         bytes32[] memory _provers,
         uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+    ) MessageBridgeProver(_portal, _provers, _defaultGasLimit) {
         if (_router == address(0)) revert RouterCannotBeZeroAddress();
         ROUTER = _router;
     }
@@ -84,7 +84,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Initiates proving of intents via Metalayer
      * @dev Sends message to source chain prover with intent data
-     * @dev called by the Inbox contract on the destination chain
+     * @dev called by the Portal contract on the destination chain
      * @param _sender Address that initiated the proving request
      * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
@@ -100,7 +100,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
-        // Validate the request is from Inbox
+        // Validate the request is from Portal
         _validateProvingRequest(msg.sender);
 
         // Decode source chain prover address only once

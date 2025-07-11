@@ -5,7 +5,13 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
+import {
+  HyperProver,
+  Inbox,
+  Portal,
+  TestERC20,
+  TestMailbox,
+} from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount } from '../utils/intent'
 import { addressToBytes32 } from '../utils/typeCasts'
@@ -34,7 +40,8 @@ describe('HyperProver Test', (): void => {
       await ethers.getContractFactory('TestMailbox')
     ).deploy(await owner.getAddress())
 
-    const inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
       await ethers.getContractFactory('TestERC20')
@@ -63,7 +70,7 @@ describe('HyperProver Test', (): void => {
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
 
       expect(await hyperProver.MAILBOX()).to.equal(await mailbox.getAddress())
-      expect(await hyperProver.INBOX()).to.equal(await inbox.getAddress())
+      expect(await hyperProver.PORTAL()).to.equal(await inbox.getAddress())
     })
 
     it('should add constructor-provided provers to the whitelist', async () => {

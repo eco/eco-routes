@@ -25,16 +25,16 @@ The protocol has been refactored into a modular structure to better support cros
    - Universal type support for non-EVM chains like Solana
    - Transparent type conversion for cross-chain compatibility
 
-4. **IntentSource**: Main entry point combining both implementations
-   - Inherits from both EvmSource and UniversalSource
+4. **Portal**: Main entry point combining both implementations
+   - Inherits from both UniversalSource and Inbox
    - Presents a unified interface to users
 
 ```
-IntentSource
-├── EvmSource (address-based implementation)
-│   └── BaseSource (common functionality)
-└── UniversalSource (bytes32-based implementation)
-    └── BaseSource (common functionality)
+Portal
+├── UniversalSource (cross-chain implementation)
+│   └── EvmSource (address-based implementation)
+│       └── BaseSource (common functionality)
+└── Inbox (fulfillment functionality)
 ```
 
 ### Dual-Type System
@@ -101,10 +101,10 @@ If your application only needs to interact with EVM chains:
    });
    ```
 
-3. Use the IntentSource contract directly:
+3. Use the Portal contract directly:
    ```solidity
    // The interface will use address types automatically
-   IIntentSource intentSource = IIntentSource(intentSourceAddress);
+   IIntentSource intentSource = IIntentSource(portalAddress);
    bytes32 intentHash = intentSource.publish(intent);
    ```
 
@@ -138,7 +138,7 @@ If your application needs to interact with both EVM and non-EVM chains:
 3. Use the IUniversalIntentSource interface:
    ```solidity
    // Use the universal interface with bytes32 types
-   IUniversalIntentSource intentSource = IUniversalIntentSource(intentSourceAddress);
+   IUniversalIntentSource intentSource = IUniversalIntentSource(portalAddress);
    bytes32 intentHash = intentSource.publish(universalIntent);
    ```
 
@@ -163,7 +163,7 @@ The system consists of the following key components:
    - `BaseSource.sol`: Common functionality
    - `EvmSource.sol`: EVM-specific implementation
    - `UniversalSource.sol`: Cross-chain implementation
-   - `IntentSource.sol`: Combined implementation
+   - `Portal.sol`: Combined implementation with Inbox
 
 3. **Conversion Utilities**:
    - `AddressConverter.sol`: Convert between address and bytes32
@@ -172,9 +172,9 @@ The system consists of the following key components:
 
 Type references can be found in the (types directory)[/types].
 
-## IntentSource
+## Portal
 
-The IntentSource is where intent publishing and reward claiming functionality live. Users (or actors on their behalf) can publish intents here, as well as fund intents' rewards. After an intent is fulfilled and proven, a solver can fetch their rewards here as well. This contract is not expected to hold any funds between transactions.
+The Portal is where intent publishing, fulfillment, and reward claiming functionality live. Users (or actors on their behalf) can publish intents here, as well as fund intents' rewards. Solvers can fulfill intents on the destination chain through the Portal. After an intent is fulfilled and proven, a solver can fetch their rewards here as well. This contract is not expected to hold any funds between transactions.
 
 ### Events
 
@@ -299,7 +299,7 @@ Parameters:
 
 - `intent` (Intent) The complete intent specification
 
-<ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
+<ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the Portal authority to move all the reward funds.
 
 <h4><ins>fund</ins></h4>
 <h5>Funds an existing intent</h5>
@@ -309,7 +309,7 @@ Parameters:
 - `intent` (Intent) The complete intent specification
 - `reward` (Reward) Reward structure containing distribution details
 
-<ins>Security:</ins> This method is called by the user to completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
+<ins>Security:</ins> This method is called by the user to completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the Portal authority to move all the reward funds.
 
 <h4><ins>fundFor</ins></h4>
 <h5>Funds an intent for a user with permit/allowance</h5>
@@ -334,7 +334,7 @@ Parameters:
 - `permitContract` (address) Address of the permitContract instance
 - `allowPartial` (bool) Whether to allow partial funding
 
-<ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the IntentSource authority to move all the reward funds.
+<ins>Security:</ins> This method is called by the user to create and completely fund an intent. It will fail if the funder does not have sufficient balance or has not given the Portal authority to move all the reward funds.
 
 <h4><ins>isIntentFunded</ins></h4>
 <h5>Checks if an intent is completely funded</h5>
@@ -343,7 +343,7 @@ Parameters:
 
 - `intent` (Intent) Intent to validate
 
-<ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Inbox contract on fulfillment.
+<ins>Security:</ins> This method can be called by anyone, but the caller has no specific rights. Whether or not this method succeeds and who receives the funds if it does depend solely on the intent's proven status and expiry time, as well as the claimant address specified by the solver on the Portal contract on fulfillment.
 
 <h4><ins>withdrawRewards</ins></h4>
 <h5>Claims rewards for a successfully fulfilled and proven intent</h5>
@@ -388,7 +388,7 @@ Parameters:
 
 ## Inbox (Inbox.sol)
 
-The Inbox is where intent fulfillment lives. Solvers fulfill intents on the Inbox via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Inbox also contains some post-fulfillment proving-related logic.
+The Inbox functionality is now integrated into the Portal contract. Solvers fulfill intents on the Portal via one of the contract's fulfill methods, which pulls in solver resources and executes the intent's calls on the destination chain. Once an intent has been fulfilled, any subsequent attempts to fulfill it will be reverted. The Portal also contains some post-fulfillment proving-related logic.
 
 ### Events
 
@@ -473,7 +473,7 @@ Parameters:
 - `_claimant` (address) the address that can claim the fulfilled intent's fee on the source chain
 - `_expectedHash` (bytes32) the hash of the intent. Used to verify that the correct data is being input
 
-<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Inbox contract - it is important that the caller be aware of what they are executing. The Inbox will be the msg.sender for these calls. \_sourceChainID, the destination's chainID, the inbox address, \_targets, \_data, \_expiryTime, and \_nonce are hashed together to form the intent's hash on the IntentSource - any incorrect inputs will result in a hash that differs from the original, and will prevent the intent's reward from being withdrawn (as this means the intent fulfilled differed from the one created). The \_expectedHash input exists only to help prevent this before fulfillment.
+<ins>Security:</ins> This method can be called by anyone, but cannot be called again for the same intent, thus preventing a double fulfillment. This method executes arbitrary calls written by the intent creator on behalf of the Portal contract - it is important that the caller be aware of what they are executing. The Portal will be the msg.sender for these calls. \_sourceChainID, the destination's chainID, the portal address, \_targets, \_data, \_expiryTime, and \_nonce are hashed together to form the intent's hash on the Portal - any incorrect inputs will result in a hash that differs from the original, and will prevent the intent's reward from being withdrawn (as this means the intent fulfilled differed from the one created). The \_expectedHash input exists only to help prevent this before fulfillment.
 
 <h4><ins>fulfillHyperInstant</ins></h4>
 <h5> Allows a filler to fulfill an intent on its destination chain to be proven by the HyperProver specified in the intent. After fulfilling the intent, this method packs the intentHash and claimant into a message and sends it over the Hyperlane bridge to the HyperProver on the source chain. The filler also gets to predetermine the address on the destination chain that will receive the reward tokens.</h5>

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ISemver} from "./ISemver.sol";
-
 import {Route} from "../types/UniversalIntent.sol";
 
 /**
@@ -11,7 +9,7 @@ import {Route} from "../types/UniversalIntent.sol";
  * @dev Handles intent fulfillment and proving via different mechanisms (storage proofs,
  * Hyperlane instant/batched)
  */
-interface IInbox is ISemver {
+interface IInbox {
     /**
      * @notice Emitted when an intent is successfully fulfilled
      * @param _hash Hash of the fulfilled intent

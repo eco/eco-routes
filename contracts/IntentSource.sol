@@ -18,7 +18,7 @@ import {AddressConverter} from "./libs/AddressConverter.sol";
  * @notice Implementation of Intent Source interface for EVM chains
  * @dev Base contract containing all core intent functionality
  */
-contract IntentSource is IVaultStorage, IIntentSource {
+abstract contract IntentSource is IVaultStorage, IIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for address;
 

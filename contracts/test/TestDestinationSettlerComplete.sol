@@ -2,17 +2,17 @@
 pragma solidity ^0.8.26;
 
 import "../Eco7683DestinationSettler.sol";
-import "../Inbox.sol";
+import "../Portal.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 
 contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
     using AddressConverter for bytes32;
 
-    Inbox public immutable inbox;
+    Portal public immutable portal;
 
-    constructor(address _inbox) {
-        inbox = Inbox(payable(_inbox));
+    constructor(address _portal) {
+        portal = Portal(payable(_portal));
     }
 
     function fulfillAndProve(
@@ -33,16 +33,16 @@ contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
                 address(this),
                 token.amount
             );
-            // Then approve the inbox to spend these tokens
+            // Then approve the portal to spend these tokens
             IERC20(token.token.toAddress()).approve(
-                address(inbox),
+                address(portal),
                 token.amount
             );
         }
 
-        // Call the inbox's fulfillAndProve function
+        // Call the portal's fulfillAndProve function
         return
-            inbox.fulfillAndProve{value: msg.value}(
+            portal.fulfillAndProve{value: msg.value}(
                 _sourceChainId,
                 _route,
                 _rewardHash,

@@ -1,7 +1,7 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestProver } from '../typechain-types'
+import { TestERC20, Inbox, Portal, TestProver } from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -57,8 +57,9 @@ describe('Inbox Test', (): void => {
     dstAddr: SignerWithAddress
   }> {
     const [owner, solver, dstAddr] = await ethers.getSigners()
-    const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy()
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -192,9 +193,13 @@ describe('Inbox Test', (): void => {
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
-      const anotherInbox = await (
-        await ethers.getContractFactory('Inbox')
+      const anotherPortal = await (
+        await ethers.getContractFactory('Portal')
       ).deploy()
+      const anotherInbox = await ethers.getContractAt(
+        'Inbox',
+        await anotherPortal.getAddress(),
+      )
 
       const _route: UniversalRoute = {
         ...universalRoute,

@@ -268,8 +268,7 @@ The script:
 
 This Foundry script handles the actual contract deployments using CREATE2/CREATE3:
 
-- **IntentSource**: Deployed using CREATE2
-- **Inbox**: Deployed using CREATE2
+- **Portal**: Deployed using CREATE2
 - **HyperProver**: Deployed using CREATE3 (if MAILBOX is provided)
 - **MetaProver**: Deployed using CREATE3 (if ROUTER is provided)
 

@@ -24,10 +24,10 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     // No events needed for testing
 
     constructor(
-        address _inbox,
+        address _portal,
         bytes32[] memory _provers,
         uint256 _gasLimit
-    ) MessageBridgeProver(_inbox, _provers, _gasLimit) {}
+    ) MessageBridgeProver(_portal, _provers, _gasLimit) {}
 
     /**
      * @notice Legacy test method for backward compatibility

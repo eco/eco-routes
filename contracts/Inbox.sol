@@ -18,7 +18,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
+abstract contract Inbox is IInbox, Eco7683DestinationSettler {
     using AddressConverter for address;
     using AddressConverter for bytes32;
     using SafeERC20 for IERC20;

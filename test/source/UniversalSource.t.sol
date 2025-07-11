@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
-import {UniversalSource} from "../../contracts/UniversalSource.sol";
+import {Portal} from "../../contracts/Portal.sol";
 import {IUniversalIntentSource} from "../../contracts/interfaces/IUniversalIntentSource.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Intent as UniversalIntent, Route as UniversalRoute, Reward as UniversalReward, TokenAmount as UniversalTokenAmount, Call as UniversalCall} from "../../contracts/types/UniversalIntent.sol";
@@ -13,7 +13,7 @@ contract UniversalSourceTest is BaseTest {
     using AddressConverter for address;
     using AddressConverter for bytes32;
 
-    UniversalSource internal universalSource;
+    Portal internal universalSource; // Using Portal which includes UniversalSource functionality
 
     // Universal test data
     UniversalIntent internal universalIntent;
@@ -26,8 +26,8 @@ contract UniversalSourceTest is BaseTest {
     function setUp() public override {
         super.setUp();
 
-        // Use intentSource which inherits from both UniversalSource and IIntentSource
-        universalSource = UniversalSource(address(intentSource));
+        // Use portal which includes UniversalSource functionality
+        universalSource = portal;
 
         _mintAndApprove(creator, MINT_AMOUNT * 4);
         _fundUserNative(creator, 10 ether);
@@ -105,7 +105,7 @@ contract UniversalSourceTest is BaseTest {
         universalRoute = UniversalRoute({
             salt: salt,
             deadline: uint64(expiry),
-            portal: address(inbox).toBytes32(),
+            portal: address(portal).toBytes32(),
             tokens: universalRouteTokensMemory,
             calls: universalCallsMemory
         });
@@ -278,7 +278,7 @@ contract UniversalSourceTest is BaseTest {
             universalIntent.destination,
             salt,
             uint64(expiry),
-            address(inbox).toBytes32(),
+            address(portal).toBytes32(),
             evmRouteTokens,
             evmCalls,
             creator.toBytes32(),

@@ -36,7 +36,7 @@ contract HyperProverTest is BaseTest {
         // Deploy HyperProver
         hyperProver = new HyperProver(
             address(mailbox),
-            address(inbox),
+            address(portal),
             provers,
             100000 // default gas limit
         );
@@ -51,8 +51,8 @@ contract HyperProverTest is BaseTest {
 
         // Fund the hyperProver contract for gas fees
         vm.deal(address(hyperProver), 10 ether);
-        // Also fund the inbox since it's the one calling prove
-        vm.deal(address(inbox), 10 ether);
+        // Also fund the portal since it's the one calling prove
+        vm.deal(address(portal), 10 ether);
     }
 
     function _encodeProverData(
@@ -103,7 +103,7 @@ contract HyperProverTest is BaseTest {
             proverData
         );
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         hyperProver.prove{value: expectedFee}(
             creator,
             block.chainid,
@@ -126,7 +126,7 @@ contract HyperProverTest is BaseTest {
             AddressConverter.toBytes32(claimant)
         );
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -152,7 +152,7 @@ contract HyperProverTest is BaseTest {
             claimants[i] = bytes32(uint256(uint160(claimant)));
         }
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -183,7 +183,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -202,7 +202,7 @@ contract HyperProverTest is BaseTest {
         bytes32[] memory intentHashes = new bytes32[](0);
         bytes32[] memory claimants = new bytes32[](0);
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -326,7 +326,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -369,7 +369,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -406,7 +406,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // First, send the prove message
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -449,7 +449,7 @@ contract HyperProverTest is BaseTest {
         uint256 overpayment = 2 ether;
         uint256 initialBalance = creator.balance;
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -479,7 +479,7 @@ contract HyperProverTest is BaseTest {
         }
 
         // Should handle large arrays without running out of gas
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",
@@ -528,7 +528,7 @@ contract HyperProverTest is BaseTest {
         address nonEvmClaimant = makeAddr("non-evm-claimant"); // Use a valid address
         claimants[0] = bytes32(uint256(uint160(nonEvmClaimant)));
 
-        vm.prank(address(inbox));
+        vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
             "",

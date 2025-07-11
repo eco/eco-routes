@@ -17,11 +17,11 @@ Eco Routes is designed to facilitate cross-chain messaging and intent execution.
 Eco Routes implements a modular architecture that separates concerns while maintaining a unified interface:
 
 ```
-IntentSource
+Portal
 ├── UniversalSource (for cross-chain compatibility)
-│   └── BaseSource (common functionality)
-└── EvmSource (for Ethereum compatibility)
-    └── BaseSource (common functionality)
+│   └── EvmSource (for Ethereum compatibility)
+│       └── BaseSource (common functionality)
+└── Inbox (fulfillment functionality)
 ```
 
 This design enables:
@@ -29,7 +29,7 @@ This design enables:
 1. **Clean Separation of Concerns**: Each contract handles a specific part of the system
 2. **Code Reuse**: Common functionality is shared in the BaseSource contract
 3. **Type Safety**: Each implementation handles its specific type system
-4. **Unified Interface**: Users interact with a single IntentSource contract
+4. **Unified Interface**: Users interact with a single Portal contract
 
 ## Type System Implementation
 
@@ -161,9 +161,9 @@ function isValidEthereumAddress(bytes32 _bytes32) public pure returns (bool) {
    - Converts between `bytes32` and `address` types as needed for vault interaction
    - Emits cross-chain compatible events
 
-4. **IntentSource Contract**:
+4. **Portal Contract**:
 
-   - Inherits from both `EvmSource` and `UniversalSource`
+   - Inherits from both `UniversalSource` and `Inbox`
    - Provides a unified interface for users
    - Handles type conversion at the boundary
 
@@ -222,8 +222,8 @@ Intent memory intent = Intent({
     })
 });
 
-// Use the IntentSource contract with IIntentSource interface
-IIntentSource intentSource = IIntentSource(intentSourceAddress);
+// Use the Portal contract with IIntentSource interface
+IIntentSource intentSource = IIntentSource(portalAddress);
 bytes32 intentHash = intentSource.publish(intent);
 ```
 
@@ -256,8 +256,8 @@ Intent memory intent = Intent({
     })
 });
 
-// Use the IntentSource contract with IUniversalIntentSource interface
-IUniversalIntentSource intentSource = IUniversalIntentSource(intentSourceAddress);
+// Use the Portal contract with IUniversalIntentSource interface
+IUniversalIntentSource intentSource = IUniversalIntentSource(portalAddress);
 bytes32 intentHash = intentSource.publish(intent);
 ```
 

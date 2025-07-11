@@ -24,7 +24,7 @@ import {
   keccak256,
 } from 'viem'
 import { extractAbiStruct } from './utils'
-import { IntentSourceAbi } from '../abi'
+import { PortalAbi } from '../abi'
 
 /**
  * Extracts the functions from an ABI
@@ -35,15 +35,15 @@ export type ExtractAbiFunctions<abi extends Abi> = Extract<
 >
 
 /**
- * The getIntentHash function from the IntentSource ABI
+ * The getIntentHash function from the Portal ABI
  */
 type GetIntentHashFunction = Extract<
-  ExtractAbiFunctions<typeof IntentSourceAbi>,
+  ExtractAbiFunctions<typeof PortalAbi>,
   { name: 'getIntentHash' }
 >['inputs'][number]
 
 type GetIntentHashFunctionComponents = Extract<
-  ExtractAbiFunctions<typeof IntentSourceAbi>,
+  ExtractAbiFunctions<typeof PortalAbi>,
   { name: 'getIntentHash' }
 >['inputs'][number]['components'][number]
 
@@ -69,45 +69,45 @@ type Reward = Extract<
 type Intent = Extract<GetIntentHashFunction, { name: 'intent' }>['components']
 
 /**
- * The Route struct object in the IntentSource ABI
+ * The Route struct object in the Portal ABI
  */
-const RouteStruct = extractAbiStruct<typeof IntentSourceAbi, Route>(
-  IntentSourceAbi,
+const RouteStruct = extractAbiStruct<typeof PortalAbi, Route>(
+  PortalAbi,
   'route',
 )
 
 /**
- * The Reward struct object in the IntentSource ABI
+ * The Reward struct object in the Portal ABI
  */
-const RewardStruct = extractAbiStruct<typeof IntentSourceAbi, Reward>(
-  IntentSourceAbi,
+const RewardStruct = extractAbiStruct<typeof PortalAbi, Reward>(
+  PortalAbi,
   'reward',
 )
 
 /**
- * The Reward struct object in the IntentSource ABI
+ * The Intent struct object in the Portal ABI
  */
-const IntentStruct = extractAbiStruct<typeof IntentSourceAbi, Intent>(
-  IntentSourceAbi,
+const IntentStruct = extractAbiStruct<typeof PortalAbi, Intent>(
+  PortalAbi,
   'intent',
 )
 
 /**
- * Define the type for the Intent struct in the IntentSource
+ * Define the type for the Intent struct in the Portal
  */
 export type IntentType = ContractFunctionArgs<
-  typeof IntentSourceAbi,
+  typeof PortalAbi,
   'pure',
   'getIntentHash'
 >[number]
 
 /**
- * Define the type for the Route struct in IntentSource
+ * Define the type for the Route struct in Portal
  */
 export type RouteType = IntentType['route']
 
 /**
- * Define the type for the Reward struct in IntentSource
+ * Define the type for the Reward struct in Portal
  */
 export type RewardType = IntentType['reward']
 
@@ -282,7 +282,7 @@ export function hashReward(reward: RewardType): Hex {
 /**
  * Computes all hashes for an intent, including the route hash, reward hash, and
  * the combined intent hash that uniquely identifies the entire intent. This function
- * precisely matches the on-chain hashing algorithms used by the IntentSource contract.
+ * precisely matches the on-chain hashing algorithms used by the Portal contract.
  *
  * The intent hash is derived from the route and reward hashes (not directly from their structures),
  * ensuring consistency with the on-chain implementation which uses the same approach.

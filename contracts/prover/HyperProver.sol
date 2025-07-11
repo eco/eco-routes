@@ -56,16 +56,16 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     /**
      * @param _mailbox Address of local Hyperlane mailbox
-     * @param _inbox Address of Inbox contract
+     * @param _portal Address of Portal contract
      * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
         address _mailbox,
-        address _inbox,
+        address _portal,
         bytes32[] memory _provers,
         uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
+    ) MessageBridgeProver(_portal, _provers, _defaultGasLimit) {
         if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
         MAILBOX = _mailbox;
     }
@@ -110,7 +110,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes32[] calldata _claimants,
         bytes calldata _data
     ) external payable override {
-        // Validate the request is from Inbox
+        // Validate the request is from Portal
         _validateProvingRequest(msg.sender);
 
         // Parse incoming data into a structured format for processing

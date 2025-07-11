@@ -2,13 +2,13 @@
 pragma solidity ^0.8.26;
 
 import "../Eco7683DestinationSettler.sol";
-import "../Inbox.sol";
+import "../Portal.sol";
 
 contract TestDestinationSettler is Eco7683DestinationSettler {
-    Inbox public immutable inbox;
+    Portal public immutable portal;
 
-    constructor(address _inbox) {
-        inbox = Inbox(payable(_inbox));
+    constructor(address _portal) {
+        portal = Portal(payable(_portal));
     }
 
     function fulfillAndProve(
@@ -20,9 +20,9 @@ contract TestDestinationSettler is Eco7683DestinationSettler {
         address _localProver,
         bytes memory _data
     ) public payable override returns (bytes[] memory) {
-        // Call the inbox's fulfillAndProve function
+        // Call the portal's fulfillAndProve function
         return
-            inbox.fulfillAndProve{value: msg.value}(
+            portal.fulfillAndProve{value: msg.value}(
                 _sourceChainId,
                 _route,
                 _rewardHash,

@@ -136,7 +136,7 @@ contract TokenSecurityTest is BaseTest {
         maliciousToken.mint(attacker, MINT_AMOUNT);
 
         vm.prank(attacker);
-        maliciousToken.approve(address(inbox), MINT_AMOUNT);
+        maliciousToken.approve(address(portal), MINT_AMOUNT);
 
         bytes32 intentHash = _hashIntent(destIntent);
 
@@ -144,7 +144,7 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(attacker);
         bytes32 rewardHash = keccak256(abi.encode(destIntent.reward));
         vm.expectRevert();
-        inbox.fulfill(
+        portal.fulfill(
             uint64(block.chainid),
             destIntent.route,
             rewardHash,

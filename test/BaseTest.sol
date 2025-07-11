@@ -28,9 +28,10 @@ contract BaseTest is Test {
     address internal deployer;
 
     // Core contracts
-    Portal internal intentSource;
+    Portal internal portal;
+    Portal internal intentSource; // Backward compatibility alias
+    Inbox internal inbox; // Backward compatibility alias
     TestProver internal prover;
-    Inbox internal inbox;
 
     // Test tokens
     TestERC20 internal tokenA;
@@ -56,9 +57,11 @@ contract BaseTest is Test {
         vm.startPrank(deployer);
 
         // Deploy core contracts
-        intentSource = new Portal();
-        inbox = new Inbox();
-        prover = new TestProver(address(inbox));
+        portal = new Portal();
+        // Set backward compatibility aliases
+        intentSource = portal;
+        inbox = Inbox(payable(address(portal)));
+        prover = new TestProver(address(portal));
 
         // Deploy test tokens
         tokenA = new TestERC20("TokenA", "TKA");
@@ -133,7 +136,7 @@ contract BaseTest is Test {
         route = Route({
             salt: salt,
             deadline: uint64(expiry),
-            portal: TypeCasts.addressToBytes32(address(inbox)),
+            portal: TypeCasts.addressToBytes32(address(portal)),
             tokens: routeTokensMemory,
             calls: callsMemory
         });

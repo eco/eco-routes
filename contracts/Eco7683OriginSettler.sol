@@ -33,14 +33,14 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
         );
 
-    /// @notice address of IntentSource contract where intents are actually published
+    /// @notice address of Portal contract where intents are actually published
     IUniversalIntentSource public immutable INTENT_SOURCE;
 
     /**
      * @notice Initializes the Eco7683OriginSettler
      * @param _name the name of the contract for EIP712
      * @param _version the version of the contract for EIP712
-     * @param _intentSource the address of the IntentSource contract
+     * @param _intentSource the address of the Portal contract (implements IUniversalIntentSource)
      */
     constructor(
         string memory _name,

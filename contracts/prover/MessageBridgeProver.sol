@@ -24,16 +24,16 @@ abstract contract MessageBridgeProver is
 
     /**
      * @notice Initializes the MessageBridgeProver contract
-     * @param _inbox Address of the Inbox contract
+     * @param _portal Address of the Portal contract
      * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
-        address _inbox,
+        address _portal,
         bytes32[] memory _provers,
         uint256 _defaultGasLimit
-    ) BaseProver(_inbox) Whitelist(_provers) {
-        if (_inbox == address(0)) revert InboxCannotBeZeroAddress();
+    ) BaseProver(_portal) Whitelist(_provers) {
+        if (_portal == address(0)) revert PortalCannotBeZeroAddress();
 
         DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
     }
@@ -58,7 +58,7 @@ abstract contract MessageBridgeProver is
      * @param _sender Address that sent the proving request
      */
     function _validateProvingRequest(address _sender) internal view {
-        if (_sender != INBOX) {
+        if (_sender != PORTAL) {
             revert UnauthorizedProve(_sender);
         }
     }

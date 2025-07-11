@@ -4,6 +4,7 @@ import { ethers } from 'hardhat'
 import {
   TestERC20,
   Inbox,
+  Portal,
   TestProver,
   Eco7683DestinationSettler,
 } from '../typechain-types'
@@ -63,11 +64,12 @@ describe('Destination Settler Test', (): void => {
       await ethers.getContractFactory('TestMailbox')
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
-    const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy()
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const prover = await (
       await ethers.getContractFactory('TestProver')
-    ).deploy(await inbox.getAddress())
+    ).deploy(await portal.getAddress())
 
     // Deploy the destination settler that handles token transfers
     const destinationSettlerFactory = await ethers.getContractFactory(
