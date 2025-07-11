@@ -61,12 +61,12 @@ contract MetaProverTest is BaseTest {
         );
     }
 
-    function testInitializesCorrectly() public {
+    function testInitializesCorrectly() public view {
         // Test that the contract was deployed successfully
         assertTrue(address(metaProver) != address(0));
     }
 
-    function testImplementsIProverInterface() public {
+    function testImplementsIProverInterface() public view {
         assertTrue(metaProver.supportsInterface(type(IProver).interfaceId));
     }
 
@@ -361,12 +361,12 @@ contract MetaProverTest is BaseTest {
         assertEq(proof.destinationChainID, uint32(block.chainid));
     }
 
-    function testSupportsInterface() public {
+    function testSupportsInterface() public view {
         assertTrue(metaProver.supportsInterface(type(IProver).interfaceId));
         assertTrue(metaProver.supportsInterface(0x01ffc9a7)); // ERC165
     }
 
-    function testDoesNotSupportRandomInterface() public {
+    function testDoesNotSupportRandomInterface() public view {
         assertFalse(metaProver.supportsInterface(0x12345678));
     }
 

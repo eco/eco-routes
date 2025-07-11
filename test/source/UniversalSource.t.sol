@@ -184,7 +184,7 @@ contract UniversalSourceTest is BaseTest {
             });
     }
 
-    function testUniversalIntentHashing() public {
+    function testUniversalIntentHashing() public view {
         (bytes32 universalHash, , ) = universalSource.getIntentHash(
             universalIntent
         );
@@ -196,7 +196,7 @@ contract UniversalSourceTest is BaseTest {
         assertEq(universalHash, evmHash);
     }
 
-    function testUniversalIntentVaultAddress() public {
+    function testUniversalIntentVaultAddress() public view {
         address universalVault = universalSource.intentVaultAddress(
             universalIntent
         );
@@ -327,7 +327,7 @@ contract UniversalSourceTest is BaseTest {
         assertFalse(universalSource.isIntentFunded(universalIntent));
     }
 
-    function testConsistentHashingBetweenFormats() public {
+    function testConsistentHashingBetweenFormats() public view {
         // Test that the same intent produces the same hash regardless of format
         EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
 
@@ -339,7 +339,7 @@ contract UniversalSourceTest is BaseTest {
         assertEq(universalHash, evmHash);
     }
 
-    function testConsistentVaultAddressBetweenFormats() public {
+    function testConsistentVaultAddressBetweenFormats() public view {
         // Test that the same intent produces the same vault address regardless of format
         EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
 

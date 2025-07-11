@@ -59,12 +59,12 @@ contract HyperProverTest is BaseTest {
         return abi.encode(sourceChainProver, metadata, hookAddr);
     }
 
-    function testInitializesCorrectly() public {
+    function testInitializesCorrectly() public view {
         assertTrue(address(hyperProver) != address(0));
         assertEq(hyperProver.getProofType(), "Hyperlane");
     }
 
-    function testImplementsIProverInterface() public {
+    function testImplementsIProverInterface() public view {
         assertTrue(hyperProver.supportsInterface(type(IProver).interfaceId));
     }
 
@@ -426,7 +426,7 @@ contract HyperProverTest is BaseTest {
         assertEq(proof.destinationChainID, uint96(block.chainid));
     }
 
-    function testSupportsInterface() public {
+    function testSupportsInterface() public view {
         assertTrue(hyperProver.supportsInterface(type(IProver).interfaceId));
         assertTrue(hyperProver.supportsInterface(0x01ffc9a7)); // ERC165
     }

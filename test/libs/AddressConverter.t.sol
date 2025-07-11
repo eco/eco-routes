@@ -46,7 +46,7 @@ contract AddressConverterTest is BaseTest {
         assertEq(original, reverted);
     }
 
-    function testZeroAddressConversion() public {
+    function testZeroAddressConversion() public pure {
         address zero = address(0);
         bytes32 converted = zero.toBytes32();
         address reverted = converted.toAddress();
@@ -55,7 +55,7 @@ contract AddressConverterTest is BaseTest {
         assertEq(converted, bytes32(0));
     }
 
-    function testMaxAddressConversion() public {
+    function testMaxAddressConversion() public pure {
         address maxAddr = address(type(uint160).max);
         bytes32 converted = maxAddr.toBytes32();
         address reverted = converted.toAddress();
@@ -63,7 +63,7 @@ contract AddressConverterTest is BaseTest {
         assertEq(maxAddr, reverted);
     }
 
-    function testBytes32WithNonZeroLeadingBytes() public {
+    function testBytes32WithNonZeroLeadingBytes() public pure {
         bytes32 testBytes = 0x1234567890123456789012345678901234567890123456789012345678901234;
         address converted = testBytes.toAddress();
 
@@ -100,7 +100,7 @@ contract AddressConverterTest is BaseTest {
         assertLt(gasUsed, 100);
 
         gasBefore = gasleft();
-        address reverted = converted.toAddress();
+        converted.toAddress();
         gasAfter = gasleft();
 
         gasUsed = gasBefore - gasAfter;
@@ -122,7 +122,7 @@ contract AddressConverterTest is BaseTest {
         assertEq(testAddr, reverted1);
     }
 
-    function testConversionWithBytes32Max() public {
+    function testConversionWithBytes32Max() public pure {
         bytes32 maxBytes = bytes32(type(uint256).max);
         address converted = maxBytes.toAddress();
 
@@ -131,7 +131,7 @@ contract AddressConverterTest is BaseTest {
         assertEq(converted, expected);
     }
 
-    function testConversionDoesNotOverflow() public {
+    function testConversionDoesNotOverflow() public pure {
         bytes32 largeBytes = bytes32(type(uint256).max);
         address converted = largeBytes.toAddress();
 

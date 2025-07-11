@@ -26,11 +26,11 @@ contract InboxTest is BaseTest {
         vm.stopPrank();
     }
 
-    function testInboxExists() public {
+    function testInboxExists() public view {
         assertTrue(address(inbox) != address(0));
     }
 
-    function testInboxBasicProperties() public {
+    function testInboxBasicProperties() public view {
         // Test version from ISemver interface
         assertEq(inbox.version(), "2.6");
     }

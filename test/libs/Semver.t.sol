@@ -18,18 +18,18 @@ contract SemverTest is BaseTest {
         testSemver = new TestSemver();
     }
 
-    function testSemverVersion() public {
+    function testSemverVersion() public view {
         string memory version = testSemver.version();
         assertEq(version, "2.6");
     }
 
-    function testSemverVersionConsistency() public {
+    function testSemverVersionConsistency() public view {
         string memory version1 = testSemver.version();
         string memory version2 = testSemver.version();
         assertEq(version1, version2);
     }
 
-    function testGasConsumption() public {
+    function testGasConsumption() public view {
         uint256 gasBefore = gasleft();
         testSemver.version();
         uint256 gasUsed = gasBefore - gasleft();

@@ -14,7 +14,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     // Intent Creation Tests
-    function testComputesValidIntentVaultAddress() public {
+    function testComputesValidIntentVaultAddress() public view {
         address predictedVault = intentSource.intentVaultAddress(intent);
         assertEq(predictedVault, intentSource.intentVaultAddress(intent));
     }
@@ -666,8 +666,6 @@ contract IntentSourceTest is BaseTest {
         reward.nativeValue = nativeAmount;
         intent.reward = reward;
 
-        bytes32 intentHash = _hashIntent(intent);
-
         // Try to exploit by sending zero value but claiming intent is funded
         vm.expectRevert();
         vm.prank(creator);
@@ -777,7 +775,6 @@ contract IntentSourceTest is BaseTest {
         intents[1] = intent;
         intents[1].route.salt = keccak256("salt2");
         _publishAndFund(intents[1], false);
-        bytes32 hash2 = _hashIntent(intents[1]);
 
         // Intent 3: Proven but different claimant
         intents[2] = intent;
@@ -879,8 +876,8 @@ contract FakePermitContract {
     }
 
     function allowance(
-        address owner,
-        address spender
+        address, /* owner */
+        address /* spender */
     ) external pure returns (uint256) {
         // Lies about having unlimited allowance
         return type(uint256).max;

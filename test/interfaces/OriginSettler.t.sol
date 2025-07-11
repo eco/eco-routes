@@ -19,8 +19,8 @@ contract TestOriginSettler is IOriginSettler {
 
     function openFor(
         GaslessCrossChainOrder calldata order,
-        bytes calldata signature,
-        bytes calldata originFillerData
+        bytes calldata, /* signature */
+        bytes calldata /* originFillerData */
     ) external payable {
         bytes32 orderId = keccak256(abi.encode(order));
         opened[orderId] = true;
@@ -30,8 +30,8 @@ contract TestOriginSettler is IOriginSettler {
 
     function resolveFor(
         GaslessCrossChainOrder calldata order,
-        bytes calldata originFillerData
-    ) external view returns (ResolvedCrossChainOrder memory) {
+        bytes calldata /* originFillerData */
+    ) external pure returns (ResolvedCrossChainOrder memory) {
         return
             ResolvedCrossChainOrder({
                 user: order.user,
@@ -156,7 +156,7 @@ contract OriginSettlerTest is BaseTest {
         assertTrue(originSettler.opened(orderId));
     }
 
-    function testResolveOrder() public {
+    function testResolveOrder() public view {
         OnchainCrossChainOrder memory order = OnchainCrossChainOrder({
             fillDeadline: uint32(block.timestamp + 3600),
             orderDataType: keccak256("test"),
@@ -170,7 +170,7 @@ contract OriginSettlerTest is BaseTest {
         assertEq(resolved.fillDeadline, order.fillDeadline);
     }
 
-    function testResolveForGaslessOrder() public {
+    function testResolveForGaslessOrder() public view {
         GaslessCrossChainOrder memory order = GaslessCrossChainOrder({
             originSettler: address(originSettler),
             user: user,

@@ -32,7 +32,7 @@ contract WhitelistTest is BaseTest {
         vm.stopPrank();
     }
 
-    function testWhitelistBasicFunctionality() public {
+    function testWhitelistBasicFunctionality() public view {
         bytes32 addr1 = bytes32(uint256(uint160(creator)));
         bytes32 addr2 = bytes32(uint256(uint160(claimant)));
         bytes32 addr3 = bytes32(uint256(uint160(otherPerson)));
@@ -42,12 +42,12 @@ contract WhitelistTest is BaseTest {
         assertFalse(testWhitelist.isWhitelisted(addr3));
     }
 
-    function testWhitelistSize() public {
+    function testWhitelistSize() public view {
         assertEq(testWhitelist.getWhitelistSize(), 2);
         assertEq(emptyWhitelist.getWhitelistSize(), 0);
     }
 
-    function testWhitelistGetWhitelist() public {
+    function testWhitelistGetWhitelist() public view {
         bytes32[] memory retrieved = testWhitelist.getWhitelist();
         assertEq(retrieved.length, 2);
         assertEq(retrieved[0], bytes32(uint256(uint160(creator))));
@@ -84,7 +84,7 @@ contract WhitelistTest is BaseTest {
         emptyWhitelist.checkWhitelist(anyAddr);
     }
 
-    function testWhitelistGasConsumption() public {
+    function testWhitelistGasConsumption() public view {
         bytes32 addr = bytes32(uint256(uint160(creator)));
 
         uint256 gasBefore = gasleft();
@@ -95,7 +95,7 @@ contract WhitelistTest is BaseTest {
         assertTrue(gasUsed < 10000);
     }
 
-    function testWhitelistZeroAddress() public {
+    function testWhitelistZeroAddress() public view {
         assertFalse(testWhitelist.isWhitelisted(bytes32(0)));
         assertFalse(emptyWhitelist.isWhitelisted(bytes32(0)));
     }
