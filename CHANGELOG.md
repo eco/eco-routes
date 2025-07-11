@@ -3,6 +3,15 @@
 
 ### Bug Fixes
 
+* trigger patch release ([b3051ea](https://github.com/eco/eco-routes/commit/b3051eab1e81882b32ee579b1e65e5f41da42969))
+
+## [2.8.2](https://github.com/eco/eco-routes/compare/v2.8.1...v2.8.2) (2025-07-11)
+
+## [2.8.4](https://github.com/eco/eco-routes/compare/v2.8.3...v2.8.4) (2025-07-11)
+
+
+### Bug Fixes
+
 * skip to version 2.8.5 on next release (internal version alignment)
 
 NOTE: Versions 2.8.1 through 2.8.4 are placeholder entries to align versioning.
