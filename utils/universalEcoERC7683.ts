@@ -116,14 +116,32 @@ export function encodeUniversalOnchainCrosschainOrderData(
   onchainCrosschainOrderData: UniversalOnchainCrosschainOrderData,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
+  
+  // Define types as strings for proper ABI encoding
+  const types = [
+    'uint64',     // destination
+    'tuple(bytes32,bytes32,tuple(bytes32,uint256)[],tuple(bytes32,bytes,uint256)[])', // route
+    'bytes32',    // creator
+    'bytes32',    // prover
+    'uint256',    // nativeValue
+    'tuple(bytes32,uint256)[]'  // rewardTokens
+  ]
+  
   return abiCoder.encode(
+    types,
     [
-      {
-        type: 'tuple',
-        components: UniversalOnchainCrosschainOrderDataStruct,
-      },
+      onchainCrosschainOrderData.destination,
+      [
+        onchainCrosschainOrderData.route.salt,
+        onchainCrosschainOrderData.route.portal,
+        onchainCrosschainOrderData.route.tokens.map(t => [t.token, t.amount]),
+        onchainCrosschainOrderData.route.calls.map(c => [c.target, c.data, c.value]),
+      ],
+      onchainCrosschainOrderData.creator,
+      onchainCrosschainOrderData.prover,
+      onchainCrosschainOrderData.nativeValue,
+      onchainCrosschainOrderData.rewardTokens.map(t => [t.token, t.amount]),
     ],
-    [onchainCrosschainOrderData],
   )
 }
 
@@ -131,14 +149,29 @@ export function encodeUniversalGaslessCrosschainOrderData(
   gaslessCrosschainOrderData: UniversalGaslessCrosschainOrderData,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
+  
+  // Define types as strings for proper ABI encoding
+  const types = [
+    'uint256',    // destination
+    'bytes32',    // portal
+    'tuple(bytes32,uint256)[]',  // routeTokens
+    'tuple(bytes32,bytes,uint256)[]',  // calls
+    'bytes32',    // prover
+    'uint256',    // nativeValue
+    'tuple(bytes32,uint256)[]'  // rewardTokens
+  ]
+  
   return abiCoder.encode(
+    types,
     [
-      {
-        type: 'tuple',
-        components: UniversalGaslessCrosschainOrderDataStruct,
-      },
+      gaslessCrosschainOrderData.destination,
+      gaslessCrosschainOrderData.portal,
+      gaslessCrosschainOrderData.routeTokens.map(t => [t.token, t.amount]),
+      gaslessCrosschainOrderData.calls.map(c => [c.target, c.data, c.value]),
+      gaslessCrosschainOrderData.prover,
+      gaslessCrosschainOrderData.nativeValue,
+      gaslessCrosschainOrderData.rewardTokens.map(t => [t.token, t.amount]),
     ],
-    [gaslessCrosschainOrderData],
   )
 }
 

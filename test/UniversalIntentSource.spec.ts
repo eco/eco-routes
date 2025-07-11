@@ -4,7 +4,7 @@ import { ethers } from 'hardhat'
 import {
   TestERC20,
   BadERC20,
-  IntentSource,
+  UniversalSource,
   TestProver,
   Inbox,
   AddressConverterTest,
@@ -43,7 +43,7 @@ import {
  */
 describe('Universal Intent Source Test', (): void => {
   // Contracts
-  let intentSourceContract: IntentSource
+  let intentSourceContract: UniversalSource
   let intentSource: any // IIntentSource interface
   let universalIntentSource: any // IUniversalIntentSource interface
   let inbox: Inbox
@@ -266,8 +266,8 @@ describe('Universal Intent Source Test', (): void => {
     )
     const addressConverter = await addressConverterTestFactory.deploy()
 
-    // Deploy IntentSource
-    const intentSourceFactory = await ethers.getContractFactory('IntentSource')
+    // Deploy UniversalSource (which extends IntentSource)
+    const intentSourceFactory = await ethers.getContractFactory('UniversalSource')
     const intentSourceContract = await intentSourceFactory.deploy()
 
     // Deploy inbox

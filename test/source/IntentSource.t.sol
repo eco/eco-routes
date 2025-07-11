@@ -26,7 +26,7 @@ contract IntentSourceTest is BaseTest {
     // This test is no longer relevant as Route no longer has a source field
     // The _validateSourceChain check always passes since it compares block.chainid with block.chainid
     // Keeping test but marking it as always passing
-    function testRevertWhen_PublishingWithWrongSourceChain() public {
+    function testRevertWhen_PublishingWithWrongSourceChain() public pure {
         // This test is obsolete - the WrongSourceChain error can never occur
         // because _validateSourceChain is always called with block.chainid
         // and checks if block.chainid != block.chainid, which is always false

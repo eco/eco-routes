@@ -7,7 +7,7 @@ import {TestERC20} from "../contracts/test/TestERC20.sol";
 import {BadERC20} from "../contracts/test/BadERC20.sol";
 import {FakePermit} from "../contracts/test/FakePermit.sol";
 import {TestProver} from "../contracts/test/TestProver.sol";
-import {IntentSource} from "../contracts/IntentSource.sol";
+import {Portal} from "../contracts/Portal.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/UniversalIntent.sol";
@@ -28,7 +28,7 @@ contract BaseTest is Test {
     address internal deployer;
 
     // Core contracts
-    IntentSource internal intentSource;
+    Portal internal intentSource;
     TestProver internal prover;
     Inbox internal inbox;
 
@@ -56,7 +56,7 @@ contract BaseTest is Test {
         vm.startPrank(deployer);
 
         // Deploy core contracts
-        intentSource = new IntentSource();
+        intentSource = new Portal();
         inbox = new Inbox();
         prover = new TestProver(address(inbox));
 

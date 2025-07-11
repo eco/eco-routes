@@ -10,7 +10,7 @@ import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 
 // Protocol
 import {Inbox} from "../contracts/Inbox.sol";
-import {IntentSource} from "../contracts/IntentSource.sol";
+import {Portal} from "../contracts/IntentSource.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 
@@ -157,7 +157,7 @@ contract Deploy is Script {
         DeploymentContext memory ctx
     ) internal returns (address intentSource) {
         (ctx.intentSource) = deployWithCreate2(
-            type(IntentSource).creationCode,
+            type(Portal).creationCode,
             ctx.intentSourceSalt
         );
         console.log("IntentSource :", ctx.intentSource);

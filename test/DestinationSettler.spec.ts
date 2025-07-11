@@ -26,6 +26,7 @@ import {
 import {
   UniversalOnchainCrosschainOrderData,
   encodeUniversalOnchainCrosschainOrderData,
+  UniversalRoute as EcoUniversalRoute,
 } from '../utils/universalEcoERC7683'
 import { TypeCasts } from '../utils/typeCasts'
 
@@ -154,7 +155,7 @@ describe('Destination Settler Test', (): void => {
         portal: universalIntent.route.portal,
         tokens: universalIntent.route.tokens,
         calls: universalIntent.route.calls,
-      },
+      } as EcoUniversalRoute,
       creator: universalIntent.reward.creator,
       prover: universalIntent.reward.prover,
       nativeValue: universalIntent.reward.nativeValue,

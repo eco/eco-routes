@@ -6,6 +6,7 @@ import {ISemver} from "./ISemver.sol";
 import {IVaultStorage} from "./IVaultStorage.sol";
 
 import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
+//import {Call, TokenAmount} from "../types/UniversalIntent.sol";
 
 /**
  * @title IIntentSource

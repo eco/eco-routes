@@ -24,12 +24,12 @@ contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
         address _localProver,
         bytes memory _data
     ) public payable override returns (bytes[] memory) {
-        // First, transfer tokens from the original solver (tx.origin) to this contract
+        // First, transfer tokens from the solver (msg.sender) to this contract
         uint256 routeTokenCount = _route.tokens.length;
         for (uint256 i = 0; i < routeTokenCount; ++i) {
             TokenAmount memory token = _route.tokens[i];
             IERC20(token.token.toAddress()).transferFrom(
-                tx.origin,
+                msg.sender,
                 address(this),
                 token.amount
             );

@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
   TestERC20,
-  IntentSource,
+  UniversalSource,
   TestProver,
   Inbox,
   Eco7683OriginSettler,
@@ -38,12 +38,13 @@ import {
   UniversalOnchainCrosschainOrderData,
   encodeUniversalGaslessCrosschainOrderData,
   encodeUniversalOnchainCrosschainOrderData,
+  UniversalRoute as EcoUniversalRoute,
 } from '../utils/universalEcoERC7683'
 import { TypeCasts } from '../utils/typeCasts'
 
 describe('Origin Settler Test', (): void => {
   let originSettler: Eco7683OriginSettler
-  let intentSource: IntentSource
+  let intentSource: UniversalSource
   let prover: TestProver
   let inbox: Inbox
   let tokenA: TestERC20
@@ -73,13 +74,13 @@ describe('Origin Settler Test', (): void => {
   const version = '1.5.0'
 
   const onchainCrosschainOrderDataTypehash: BytesLike =
-    '0x5dd63cf8abd3430c6387c87b7d2af2290ba415b12c3f6fbc10af65f9aee8ec38'
+    '0x0495a9b7097a40e1f9a2d3ddc6aa687933b055878dc86c0feed4d0deb0f2f80f'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
-    '0x834338e3ed54385a3fac8309f6f326a71fc399ffb7d77d7366c1e1b7c9feac6f'
+    '0xeba3c114f30d5d2e203aba45313408edb197822e682f5be0e804453b059118c4'
 
   async function deploySourceFixture(): Promise<{
     originSettler: Eco7683OriginSettler
-    intentSource: IntentSource
+    intentSource: UniversalSource
     prover: TestProver
     tokenA: TestERC20
     tokenB: TestERC20
@@ -88,11 +89,11 @@ describe('Origin Settler Test', (): void => {
   }> {
     const [creator, owner, otherPerson] = await ethers.getSigners()
 
-    const intentSourceFactory = await ethers.getContractFactory('IntentSource')
+    const intentSourceFactory = await ethers.getContractFactory('UniversalSource')
     const intentSourceImpl = await intentSourceFactory.deploy()
-    // Use the IIntentSource interface with the actual implementation
+    // Use the IUniversalIntentSource interface with the actual implementation
     const intentSource = await ethers.getContractAt(
-      'IIntentSource',
+      'UniversalSource',
       await intentSourceImpl.getAddress(),
     )
     inbox = await (await ethers.getContractFactory('Inbox')).deploy()
@@ -204,7 +205,7 @@ describe('Origin Settler Test', (): void => {
           portal: universalIntent.route.portal,
           tokens: universalIntent.route.tokens,
           calls: universalIntent.route.calls,
-        },
+        } as EcoUniversalRoute,
         creator: universalIntent.reward.creator,
         prover: universalIntent.reward.prover,
         nativeValue: universalIntent.reward.nativeValue,
@@ -215,6 +216,10 @@ describe('Origin Settler Test', (): void => {
       const encodedOrderData = encodeUniversalOnchainCrosschainOrderData(
         onchainCrosschainOrderData,
       )
+      console.log('Encoded order data:', encodedOrderData)
+      console.log('Order data object:', JSON.stringify(onchainCrosschainOrderData, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+      , 2))
       
       // Create the order struct
       onchainCrosschainOrder = {

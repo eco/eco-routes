@@ -5,20 +5,20 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {AddressConverter} from "../libs/AddressConverter.sol";
-import {IProver} from "../interfaces/IProver.sol";
-import {IUniversalIntentSource} from "../interfaces/IUniversalIntentSource.sol";
-import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
-import {TokenAmount as EVMTokenAmount, Call as EVMCall} from "../types/Intent.sol";
-import {Vault} from "../Vault.sol";
-import {EvmSource} from "./EvmSource.sol";
+import {AddressConverter} from "./libs/AddressConverter.sol";
+import {IProver} from "./interfaces/IProver.sol";
+import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
+import {Intent, Route, Call, TokenAmount, Reward} from "./types/UniversalIntent.sol";
+import {TokenAmount as EVMTokenAmount, Call as EVMCall} from "./types/Intent.sol";
+import {Vault} from "./Vault.sol";
+import {IntentSource} from "./IntentSource.sol";
 
 /**
  * @title UniversalSource
  * @notice Implementation of Universal Intent Source interface using bytes32 types for cross-chain compatibility
  * @dev Extends EvmSource to add cross-chain intent functionality
  */
-contract UniversalSource is EvmSource, IUniversalIntentSource {
+contract UniversalSource is IntentSource, IUniversalIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for bytes32;
     using AddressConverter for address;

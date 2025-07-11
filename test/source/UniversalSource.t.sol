@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
-import {UniversalSource} from "../../contracts/source/UniversalSource.sol";
+import {UniversalSource} from "../../contracts/UniversalSource.sol";
 import {IUniversalIntentSource} from "../../contracts/interfaces/IUniversalIntentSource.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Intent as UniversalIntent, Route as UniversalRoute, Reward as UniversalReward, TokenAmount as UniversalTokenAmount, Call as UniversalCall} from "../../contracts/types/UniversalIntent.sol";
@@ -409,7 +409,7 @@ contract UniversalSourceTest is BaseTest {
         );
     }
 
-    function testWrongSourceChainUniversal() public {
+    function testWrongSourceChainUniversal() public pure {
         // With the new structure, source chain validation is implicit
         // This test is no longer applicable as we can't set a wrong source
         // The source is always the current chain (block.chainid)
