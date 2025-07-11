@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {IBaseSource} from "../../contracts/interfaces/IBaseSource.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
@@ -79,7 +78,7 @@ contract IntentSourceTest is BaseTest {
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
         
         _expectEmit();
-        emit IBaseSource.IntentCreated(
+        emit IIntentSource.IntentCreated(
             intentHash,
             evmIntent.destination,
             salt,
@@ -147,7 +146,7 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IBaseSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
+        emit IIntentSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
@@ -188,7 +187,7 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IBaseSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
+        emit IIntentSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
@@ -199,7 +198,7 @@ contract IntentSourceTest is BaseTest {
         );
 
         _expectEmit();
-        emit IBaseSource.Refund(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.Refund(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(otherPerson);
         intentSource.refund(intent.destination, routeHash, intent.reward);
@@ -282,7 +281,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         vm.expectRevert(
             abi.encodeWithSelector(
-                IBaseSource.IntentNotClaimed.selector,
+                IIntentSource.IntentNotClaimed.selector,
                 intentHash
             )
         );
@@ -408,7 +407,7 @@ contract IntentSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         _expectEmit();
-        emit IBaseSource.IntentFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentFunded(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(creator);
         intentSource.fundFor(
@@ -522,7 +521,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IBaseSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(creator);
         intentSource.publishAndFund{value: sentAmount}(intent, true);
@@ -555,7 +554,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IBaseSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(creator);
         intentSource.publishAndFund(intent, true);
@@ -669,7 +668,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IBaseSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(creator);
         intentSource.publishAndFund(intent, true);
@@ -697,7 +696,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IBaseSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(creator);
         intentSource.publishAndFund{value: sentAmount}(intent, true);
@@ -937,7 +936,7 @@ contract IntentSourceTest is BaseTest {
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
         
         _expectEmit();
-        emit IBaseSource.IntentCreated(
+        emit IIntentSource.IntentCreated(
             intentHash,
             evmIntent.destination,
             salt,
@@ -965,7 +964,7 @@ contract IntentSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         _expectEmit();
-        emit IBaseSource.IntentFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentFunded(intentHash, AddressConverter.toBytes32(creator));
 
         vm.prank(creator);
         intentSource.fundFor(
@@ -981,7 +980,7 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IBaseSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
+        emit IIntentSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
 
         vm.prank(claimant);
         intentSource.withdrawRewards(

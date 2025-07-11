@@ -11,14 +11,14 @@ import {IUniversalIntentSource} from "../interfaces/IUniversalIntentSource.sol";
 import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
 import {TokenAmount as EVMTokenAmount, Call as EVMCall} from "../types/Intent.sol";
 import {Vault} from "../Vault.sol";
-import {BaseSource} from "./BaseSource.sol";
+import {EvmSource} from "./EvmSource.sol";
 
 /**
  * @title UniversalSource
  * @notice Implementation of Universal Intent Source interface using bytes32 types for cross-chain compatibility
- * @dev Base contract for cross-chain intent functionality
+ * @dev Extends EvmSource to add cross-chain intent functionality
  */
-contract UniversalSource is BaseSource, IUniversalIntentSource {
+contract UniversalSource is EvmSource, IUniversalIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for bytes32;
     using AddressConverter for address;

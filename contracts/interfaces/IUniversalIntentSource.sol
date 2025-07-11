@@ -3,7 +3,7 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
-import {IBaseSource} from "./IBaseSource.sol";
+import {IVaultStorage} from "./IVaultStorage.sol";
 
 import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent.sol";
 
@@ -14,7 +14,7 @@ import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent
  *      and a prover contract for verification. It handles intent creation, funding,
  *      and reward distribution using bytes32 identifiers for cross-chain compatibility.
  */
-interface IUniversalIntentSource is IBaseSource {
+interface IUniversalIntentSource is IVaultStorage {
     /**
      * @notice Computes the hash components of an intent
      * @param intent The intent to hash

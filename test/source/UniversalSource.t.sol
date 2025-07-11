@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {BaseTest} from "../BaseTest.sol";
 import {UniversalSource} from "../../contracts/source/UniversalSource.sol";
 import {IUniversalIntentSource} from "../../contracts/interfaces/IUniversalIntentSource.sol";
-import {IBaseSource} from "../../contracts/interfaces/IBaseSource.sol";
+import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Intent as UniversalIntent, Route as UniversalRoute, Reward as UniversalReward, TokenAmount as UniversalTokenAmount, Call as UniversalCall} from "../../contracts/types/UniversalIntent.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
@@ -26,7 +26,7 @@ contract UniversalSourceTest is BaseTest {
     function setUp() public override {
         super.setUp();
 
-        // Use intentSource which inherits from both UniversalSource and EvmSource
+        // Use intentSource which inherits from both UniversalSource and IIntentSource
         universalSource = UniversalSource(address(intentSource));
 
         _mintAndApprove(creator, MINT_AMOUNT * 4);
@@ -269,7 +269,7 @@ contract UniversalSourceTest is BaseTest {
         }
 
         _expectEmit();
-        emit IBaseSource.IntentCreated(
+        emit IIntentSource.IntentCreated(
             intentHash,
             universalIntent.destination,
             salt,
@@ -392,7 +392,7 @@ contract UniversalSourceTest is BaseTest {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IBaseSource.InsufficientNativeReward.selector,
+                IIntentSource.InsufficientNativeReward.selector,
                 keccak256(
                     abi.encodePacked(
                         universalIntent.destination,
