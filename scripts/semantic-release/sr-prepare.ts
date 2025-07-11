@@ -31,7 +31,6 @@ import dotenv from 'dotenv'
 import { Logger } from './helpers'
 import { promisify } from 'util'
 import { exec } from 'child_process'
-import { verifyContracts } from './verify-contracts'
 import { deploySingletonFactory } from './sr-singleton-factory'
 import { version as versionPackage } from './sr-version'
 
@@ -114,9 +113,12 @@ export async function prepare(
   logger.log(`Contracts deployed for version ${nextRelease.version}`)
 
   // 4. Verify contracts
-  logger.log(`Verifying deployed contracts`)
-  await verifyContracts(context)
-  logger.log(`Contracts verified for version ${nextRelease.version}`)
+  // logger.log(`Verifying deployed contracts`)
+  // await verifyContracts(context)
+  // logger.log(`Contracts verified for version ${nextRelease.version}`)
+  logger.log(
+    `Skipping for contract verification for version ${nextRelease.version}`,
+  )
 
   // 5. Build the distribution package
   logger.log(`Building main package`)
