@@ -17,7 +17,7 @@ interface IInbox {
      * @param _prover Address of the prover that fulfilled the intent
      * @param _claimant Cross-VM compatible claimant identifier
      */
-    event Fulfillment(
+    event IntentFulfilled(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
         bytes32 indexed _prover,

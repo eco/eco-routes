@@ -23,7 +23,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
     using AddressConverter for bytes32;
     using AddressConverter for address;
 
-    // Event UniversalIntentCreated is defined in IUniversalIntentSource interface
+    // Event UniversalIntentPublished is defined in IUniversalIntentSource interface
 
     /**
      * @notice Calculates the hash of an intent and its components
@@ -73,7 +73,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitUniversalIntentCreated(intent, intentHash);
+        _emitUniversalIntentPublished(intent, intentHash);
 
         return intentHash;
     }
@@ -94,7 +94,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         _validateInitialFundingState(state, intentHash);
         _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
-        _emitUniversalIntentCreated(intent, intentHash);
+        _emitUniversalIntentPublished(intent, intentHash);
 
         address vault = _getUniversalVaultAddress(
             intentHash,
@@ -133,7 +133,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitUniversalIntentCreated(intent, intentHash);
+        _emitUniversalIntentPublished(intent, intentHash);
         _validateSourceChain(block.chainid, intentHash);
 
         address vault = _getUniversalVaultAddress(
@@ -295,7 +295,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
             state.target = claimant;
             vaults[intentHash].state = state;
 
-            emit Withdrawal(intentHash, claimant.toBytes32());
+            emit IntentWithdrawn(intentHash, claimant.toBytes32());
 
             // Use assembly to deploy Vault with the original reward struct
             bytes memory code = type(Vault).creationCode;
@@ -391,7 +391,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         state.target = address(0);
         vaults[intentHash].state = state;
 
-        emit Refund(intentHash, reward.creator);
+        emit IntentRefunded(intentHash, reward.creator);
 
         // Use assembly to deploy Vault with the original reward struct
         bytes memory code = type(Vault).creationCode;
@@ -460,7 +460,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         state.target = token;
         vaults[intentHash].state = state;
 
-        emit Refund(intentHash, reward.creator);
+        emit IntentRefunded(intentHash, reward.creator);
 
         // Use assembly to deploy Vault with the original reward struct
         bytes memory code = type(Vault).creationCode;
@@ -481,12 +481,12 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
     }
 
     /**
-     * @notice Separate function to emit the UniversalIntentCreated event
+     * @notice Separate function to emit the UniversalIntentPublished event
      * @dev This helps avoid stack-too-deep errors in the calling function
      * @param intent The intent being created
      * @param intentHash Hash of the intent
      */
-    function _emitUniversalIntentCreated(
+    function _emitUniversalIntentPublished(
         Intent calldata intent,
         bytes32 intentHash
     ) internal virtual {
@@ -520,7 +520,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
             });
         }
 
-        emit IntentCreated(
+        emit IntentPublished(
             intentHash,
             intent.destination,
             intent.route.salt,

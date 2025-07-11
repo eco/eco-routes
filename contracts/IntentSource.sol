@@ -28,7 +28,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
     /**
      * @notice Event for creating standard EVM intents
      */
-    // Event IntentCreated is defined in IIntentSource interface
+    // Event IntentPublished is defined in IIntentSource interface
 
     /**
      * @notice Retrieves reward status for a given intent hash
@@ -299,7 +299,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             state.target = claimant;
             vaults[intentHash].state = state;
 
-            emit Withdrawal(intentHash, claimant.toBytes32());
+            emit IntentWithdrawn(intentHash, claimant.toBytes32());
 
             // Try to create vault, ignore if it already exists
             try new Vault{salt: routeHash}(intentHash, reward) {
@@ -326,7 +326,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
                 state.target = address(0);
                 vaults[intentHash].state = state;
 
-                emit Refund(intentHash, reward.creator.toBytes32());
+                emit IntentRefunded(intentHash, reward.creator.toBytes32());
 
                 // Try to create vault, ignore if it already exists
                 try new Vault{salt: routeHash}(intentHash, reward) {
@@ -411,7 +411,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             state.target = address(0);
             vaults[intentHash].state = state;
 
-            emit Refund(intentHash, reward.creator.toBytes32());
+            emit IntentRefunded(intentHash, reward.creator.toBytes32());
 
             // Try to create vault, ignore if it already exists
             try new Vault{salt: routeHash}(intentHash, reward) {
@@ -421,7 +421,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             }
         } else {
             // Intent was already claimed, just emit the refund event without creating a vault
-            emit Refund(intentHash, reward.creator.toBytes32());
+            emit IntentRefunded(intentHash, reward.creator.toBytes32());
         }
     }
 
@@ -474,7 +474,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         state.target = token;
         vaults[intentHash].state = state;
 
-        emit Refund(intentHash, reward.creator.toBytes32());
+        emit IntentRefunded(intentHash, reward.creator.toBytes32());
 
         // Try to create vault, ignore if it already exists
         try new Vault{salt: routeHash}(intentHash, reward) {
@@ -522,7 +522,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
     }
 
     /**
-     * @notice Separate function to emit the IntentCreated event
+     * @notice Separate function to emit the IntentPublished event
      * @dev This helps avoid stack-too-deep errors in the calling function
      * @param intent The intent being created
      * @param intentHash Hash of the intent
@@ -531,7 +531,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         Intent calldata intent,
         bytes32 intentHash
     ) internal virtual {
-        emit IntentCreated(
+        emit IntentPublished(
             intentHash,
             intent.destination,
             intent.route.salt,

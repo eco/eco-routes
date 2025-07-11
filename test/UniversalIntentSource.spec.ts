@@ -718,8 +718,8 @@ describe('Universal Intent Source Test', (): void => {
       const receipt = await tx.wait()
       expect(receipt?.status).to.equal(1)
 
-      // Check for IntentCreated event
-      const filter = intentSource.filters.IntentCreated
+      // Check for IntentPublished event
+      const filter = intentSource.filters.IntentPublished
       const events = await intentSource.queryFilter(
         filter,
         receipt?.blockNumber,
@@ -740,8 +740,8 @@ describe('Universal Intent Source Test', (): void => {
       const receipt = await tx.wait()
       expect(receipt?.status).to.equal(1)
 
-      // Check for IntentCreated event
-      const filter = intentSource.filters.IntentCreated
+      // Check for IntentPublished event
+      const filter = intentSource.filters.IntentPublished
       const events = await intentSource.queryFilter(
         filter,
         receipt?.blockNumber,
@@ -961,18 +961,18 @@ describe('Universal Intent Source Test', (): void => {
       expect(finalRewardStatus).to.not.equal(initialRewardStatus)
     })
 
-    it('should emit Withdrawal event when rewards are claimed', async function () {
+    it('should emit IntentWithdrawn event when rewards are claimed', async function () {
       // Get route hash
       const [intentHash, routeHash] =
         await intentSource.getIntentHash(evmIntent)
 
-      // Watch for Withdrawal event
+      // Watch for IntentWithdrawn event
       await expect(
         intentSource
           .connect(otherPerson)
           .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward),
       )
-        .to.emit(intentSource, 'Withdrawal')
+        .to.emit(intentSource, 'IntentWithdrawn')
         .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
     })
 
@@ -1121,7 +1121,7 @@ describe('Universal Intent Source Test', (): void => {
       ).to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
     })
 
-    it('should emit Refund event on successful refund', async function () {
+    it('should emit IntentRefunded event on successful refund', async function () {
       // Move time past deadline
       await time.increase(3601) // 1 hour + 1 second
 
@@ -1135,7 +1135,7 @@ describe('Universal Intent Source Test', (): void => {
           .connect(otherPerson)
           .refund(chainId + 1n, routeHash, evmIntent.reward),
       )
-        .to.emit(intentSource, 'Refund')
+        .to.emit(intentSource, 'IntentRefunded')
         .withArgs(intentHash, addressToBytes32(await creator.getAddress()))
     })
   })
@@ -1168,7 +1168,7 @@ describe('Universal Intent Source Test', (): void => {
       // Get route hash
       const [_, routeHash] = await intentSource.getIntentHash(fastExpiry)
 
-      // Refund should work since not proven and expired
+      // IntentRefunded should work since not proven and expired
       await intentSource
         .connect(creator)
         .refund(fastExpiry.destination, routeHash, fastExpiry.reward)

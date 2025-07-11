@@ -78,7 +78,7 @@ contract IntentSourceTest is BaseTest {
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentCreated(
+        emit IIntentSource.IntentPublished(
             intentHash,
             evmIntent.destination,
             salt,
@@ -146,7 +146,7 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.Withdrawal(
+        emit IIntentSource.IntentWithdrawn(
             intentHash,
             AddressConverter.toBytes32(claimant)
         );
@@ -190,7 +190,7 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.Withdrawal(
+        emit IIntentSource.IntentWithdrawn(
             intentHash,
             AddressConverter.toBytes32(claimant)
         );
@@ -204,7 +204,7 @@ contract IntentSourceTest is BaseTest {
         );
 
         _expectEmit();
-        emit IIntentSource.Refund(
+        emit IIntentSource.IntentRefunded(
             intentHash,
             AddressConverter.toBytes32(creator)
         );
@@ -297,7 +297,7 @@ contract IntentSourceTest is BaseTest {
         intentSource.refund(intent.destination, routeHash, intent.reward);
     }
 
-    // Batch Withdrawal Tests
+    // Batch IntentWithdrawn Tests
     function testBatchWithdrawalFailsBeforeExpiry() public {
         _publishAndFund(intent, false);
 
@@ -800,7 +800,7 @@ contract IntentSourceTest is BaseTest {
         // Intent should still be considered funded
         assertTrue(intentSource.isIntentFunded(intent));
 
-        // Withdrawal should work correctly with overfunded vault
+        // IntentWithdrawn should work correctly with overfunded vault
         bytes32 intentHash = _hashIntent(intent);
         _addProof(intentHash, CHAIN_ID, claimant);
 
@@ -856,7 +856,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         _addProof(intentHash, CHAIN_ID, claimant);
 
-        // Withdrawal should handle duplicates correctly
+        // IntentWithdrawn should handle duplicates correctly
         vm.prank(claimant);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         intentSource.withdrawRewards(
@@ -964,12 +964,12 @@ contract IntentSourceTest is BaseTest {
         // Test comprehensive event emission
         bytes32 intentHash = _hashIntent(intent);
 
-        // Test IntentCreated event
+        // Test IntentPublished event
         // Convert to EVM types for the event
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentCreated(
+        emit IIntentSource.IntentPublished(
             intentHash,
             evmIntent.destination,
             salt,
@@ -1016,7 +1016,7 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.Withdrawal(
+        emit IIntentSource.IntentWithdrawn(
             intentHash,
             AddressConverter.toBytes32(claimant)
         );
@@ -1104,8 +1104,10 @@ contract FakePermitContract {
 
     function allowance(
         address,
-        /* owner */ address,
-        /* token */ address /* spender */
+        /* owner */
+        address,
+        /* token */
+        address /* spender */
     ) external pure returns (uint160, uint48, uint48) {
         // Lies about having unlimited allowance
         return (type(uint160).max, 0, 0);
@@ -1113,9 +1115,12 @@ contract FakePermitContract {
 
     function transferFrom(
         address,
-        /* from */ address,
-        /* to */ uint160,
-        /* amount */ address /* token */
+        /* from */
+        address,
+        /* to */
+        uint160,
+        /* amount */
+        address /* token */
     ) external {
         // Fake transferFrom that doesn't actually transfer tokens
         // This simulates a malicious permit contract that lies about transfers

@@ -193,7 +193,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
 
         fulfilled[intentHash] = _claimant;
 
-        emit Fulfillment(
+        emit IntentFulfilled(
             _expectedHash,
             _sourceChainId,
             _localProver.toBytes32(),

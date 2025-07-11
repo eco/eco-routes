@@ -12,7 +12,8 @@ contract TestDestinationSettler is IDestinationSettler {
     function fill(
         bytes32 _orderId,
         bytes calldata,
-        /* _originData */ bytes calldata /* _fillerData */
+        /* _originData */
+        bytes calldata /* _fillerData */
     ) external payable {
         filled[_orderId] = true;
         emit OrderFilled(_orderId, bytes32(uint256(uint160(msg.sender))));

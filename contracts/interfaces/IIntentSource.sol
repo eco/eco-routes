@@ -102,6 +102,36 @@ interface IIntentSource is IVaultStorage {
     error ArrayLengthMismatch();
 
     /**
+     * @notice Signals the creation of a new cross-chain intent
+     * @param hash Unique identifier of the intent
+     * @param destination Destination chain ID
+     * @param salt Creator-provided uniqueness factor
+     * @param routeDeadline Deadline for route execution
+     * @param portal Address of the portal contract on the destination chain
+     * @param routeTokens Required tokens for executing destination chain calls
+     * @param calls Instructions to execute on the destination chain
+     * @param creator Intent originator address
+     * @param prover Prover contract address
+     * @param rewardDeadline Timestamp for reward claim eligibility
+     * @param nativeValue Native token reward amount
+     * @param rewardTokens ERC20 token rewards with amounts
+     */
+    event IntentPublished(
+        bytes32 indexed hash,
+        uint64 destination,
+        bytes32 salt,
+        uint64 routeDeadline,
+        bytes32 portal,
+        TokenAmount[] routeTokens,
+        Call[] calls,
+        bytes32 indexed creator,
+        bytes32 indexed prover,
+        uint64 rewardDeadline,
+        uint256 nativeValue,
+        TokenAmount[] rewardTokens
+    );
+
+    /**
      * @notice Signals partial funding of an intent
      * @param intentHash The hash of the partially funded intent
      * @param funder The address providing the partial funding
@@ -120,44 +150,14 @@ interface IIntentSource is IVaultStorage {
      * @param hash The hash of the claimed intent
      * @param recipient The address receiving the rewards
      */
-    event Withdrawal(bytes32 hash, bytes32 indexed recipient);
+    event IntentWithdrawn(bytes32 hash, bytes32 indexed recipient);
 
     /**
      * @notice Signals successful reward refund
      * @param hash The hash of the refunded intent
      * @param recipient The address receiving the refund
      */
-    event Refund(bytes32 hash, bytes32 indexed recipient);
-
-    /**
-     * @notice Signals the creation of a new cross-chain intent
-     * @param hash Unique identifier of the intent
-     * @param destination Destination chain ID
-     * @param salt Creator-provided uniqueness factor
-     * @param routeDeadline Deadline for route execution
-     * @param portal Address of the portal contract on the destination chain
-     * @param routeTokens Required tokens for executing destination chain calls
-     * @param calls Instructions to execute on the destination chain
-     * @param creator Intent originator address
-     * @param prover Prover contract address
-     * @param rewardDeadline Timestamp for reward claim eligibility
-     * @param nativeValue Native token reward amount
-     * @param rewardTokens ERC20 token rewards with amounts
-     */
-    event IntentCreated(
-        bytes32 indexed hash,
-        uint64 destination,
-        bytes32 salt,
-        uint64 routeDeadline,
-        bytes32 portal,
-        TokenAmount[] routeTokens,
-        Call[] calls,
-        bytes32 indexed creator,
-        bytes32 indexed prover,
-        uint64 rewardDeadline,
-        uint256 nativeValue,
-        TokenAmount[] rewardTokens
-    );
+    event IntentRefunded(bytes32 hash, bytes32 indexed recipient);
 
     /**
      * @notice Retrieves the current reward claim status for an intent

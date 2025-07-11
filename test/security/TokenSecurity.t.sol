@@ -83,7 +83,7 @@ contract TokenSecurityTest is BaseTest {
 
         uint256 initialClaimantBalance = tokenA.balanceOf(claimant);
 
-        // Withdrawal should succeed despite malicious token
+        // IntentWithdrawn should succeed despite malicious token
         vm.prank(claimant);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         intentSource.withdrawRewards(
@@ -178,7 +178,7 @@ contract TokenSecurityTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         _addProof(intentHash, CHAIN_ID, claimant);
 
-        // Withdrawal should succeed and state should be updated
+        // IntentWithdrawn should succeed and state should be updated
         vm.prank(claimant);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         intentSource.withdrawRewards(

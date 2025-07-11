@@ -230,7 +230,7 @@ describe('Destination Settler Test', (): void => {
     )
       .to.emit(destinationSettler, 'OrderFilled')
       .withArgs(intentHash, addressToBytes32(solver.address))
-      .and.to.emit(inbox, 'Fulfillment')
+      .and.to.emit(inbox, 'IntentFulfilled')
       .withArgs(
         intentHash,
         sourceChainID,

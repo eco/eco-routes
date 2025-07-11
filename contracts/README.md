@@ -194,7 +194,7 @@ Parameters:
 - `intentHash` (bytes32) The hash of the partially funded intent
 - `funder` (address) The address providing the partial funding
 
-<h4><ins>IntentCreated</ins></h4>
+<h4><ins>IntentPublished</ins></h4>
 <h5>Signals the creation of a new cross-chain intent</h5>
 
 Parameters:
@@ -212,7 +212,7 @@ Parameters:
 - `nativeValue` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) ERC20 token rewards with amounts
 
-<h4><ins>UniversalIntentCreated</ins></h4>
+<h4><ins>UniversalIntentPublished</ins></h4>
 <h5>Signals the creation of a new cross-chain intent with Universal types</h5>
 
 Parameters:
@@ -230,7 +230,7 @@ Parameters:
 - `nativeValue` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) Token rewards with amounts
 
-<h4><ins>Withdrawal</ins></h4>
+<h4><ins>IntentWithdrawn</ins></h4>
 <h5>Signals successful reward withdrawal</h5>
 
 Parameters:
@@ -238,7 +238,7 @@ Parameters:
 - `hash` (bytes32) The hash of the claimed intent
 - `recipient` (address) The address receiving the rewards
 
-<h4><ins>Refund</ins></h4>
+<h4><ins>IntentRefunded</ins></h4>
 <h5>Signals successful reward refund</h5>
 
 Parameters:
@@ -392,7 +392,7 @@ The Inbox functionality is now integrated into the Portal contract. Solvers fulf
 
 ### Events
 
-<h4><ins>Fulfillment</ins></h4>
+<h4><ins>IntentFulfilled</ins></h4>
 <h5>Emitted when an intent is successfully fulfilled</h5>
 
 Parameters:

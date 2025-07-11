@@ -363,7 +363,7 @@ contract InboxTest is BaseTest {
         bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
 
         _expectEmit();
-        emit IInbox.Fulfillment(
+        emit IInbox.IntentFulfilled(
             intentHash,
             uint64(block.chainid),
             bytes32(0),

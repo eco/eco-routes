@@ -257,7 +257,7 @@ describe('Intent Source Test', (): void => {
           .connect(creator)
           .publishAndFund(intent, false, { value: rewardNativeEth }),
       )
-        .to.emit(intentSource, 'IntentCreated')
+        .to.emit(intentSource, 'IntentPublished')
         .withArgs(
           intentHash,
           chainId,
@@ -368,7 +368,7 @@ describe('Intent Source Test', (): void => {
             .connect(otherPerson)
             .withdrawRewards(chainId, routeHash, intent.reward),
         )
-          .to.emit(intentSource, 'Withdrawal')
+          .to.emit(intentSource, 'IntentWithdrawn')
           .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
       })
       it('does not allow repeat withdrawal', async () => {
@@ -387,7 +387,7 @@ describe('Intent Source Test', (): void => {
             .connect(otherPerson)
             .withdrawRewards(chainId, routeHash, intent.reward),
         )
-          .to.emit(intentSource, 'Withdrawal')
+          .to.emit(intentSource, 'IntentWithdrawn')
           .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
 
         await expect(
@@ -395,7 +395,7 @@ describe('Intent Source Test', (): void => {
             .connect(otherPerson)
             .refund(chainId, routeHash, intent.reward),
         )
-          .to.emit(intentSource, 'Refund')
+          .to.emit(intentSource, 'IntentRefunded')
           .withArgs(intentHash, addressToBytes32(reward.creator))
       })
     })
@@ -704,7 +704,7 @@ describe('Intent Source Test', (): void => {
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
-          intentSource.getEvent('IntentCreated'),
+          intentSource.getEvent('IntentPublished'),
         )
         const hashes = logs.map((log) => log.args.hash)
 
@@ -780,7 +780,7 @@ describe('Intent Source Test', (): void => {
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
-          intentSource.getEvent('IntentCreated'),
+          intentSource.getEvent('IntentPublished'),
         )
         const hashes = logs.map((log) => log.args.hash)
 
@@ -879,7 +879,7 @@ describe('Intent Source Test', (): void => {
           tx = await tx.wait()
         }
         const logs = await intentSource.queryFilter(
-          intentSource.getEvent('IntentCreated'),
+          intentSource.getEvent('IntentPublished'),
         )
         const hashes = logs.map((log) => log.args.hash)
 
@@ -997,7 +997,7 @@ describe('Intent Source Test', (): void => {
         await tx.wait()
       }
       const logs = await intentSource.queryFilter(
-        intentSource.getEvent('IntentCreated'),
+        intentSource.getEvent('IntentPublished'),
       )
       const hashes = logs.map((log) => log.args.hash)
 

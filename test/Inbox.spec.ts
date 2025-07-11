@@ -375,7 +375,7 @@ describe('Inbox Test', (): void => {
             ethers.ZeroAddress,
           ),
       )
-        .to.emit(inbox, 'Fulfillment')
+        .to.emit(inbox, 'IntentFulfilled')
         .withArgs(
           intentHash,
           sourceChainID,
@@ -519,7 +519,7 @@ describe('Inbox Test', (): void => {
             intentHash,
           ),
       )
-        .to.emit(inbox, 'Fulfillment')
+        .to.emit(inbox, 'IntentFulfilled')
         .withArgs(
           intentHash,
           sourceChainID,

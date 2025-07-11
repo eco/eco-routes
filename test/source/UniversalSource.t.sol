@@ -237,7 +237,7 @@ contract UniversalSourceTest is BaseTest {
         assertTrue(universalSource.isIntentFunded(universalIntent));
     }
 
-    function testPublishEmitsUniversalIntentCreatedEvent() public {
+    function testPublishEmitsUniversalIntentPublishedEvent() public {
         (bytes32 intentHash, , ) = universalSource.getIntentHash(
             universalIntent
         );
@@ -273,7 +273,7 @@ contract UniversalSourceTest is BaseTest {
         }
 
         _expectEmit();
-        emit IIntentSource.IntentCreated(
+        emit IIntentSource.IntentPublished(
             intentHash,
             universalIntent.destination,
             salt,
