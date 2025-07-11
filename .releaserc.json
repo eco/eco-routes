@@ -6,11 +6,6 @@
     }
   ],
   "repositoryUrl": "https://github.com/eco/eco-routes.git",
-  "lastRelease": {
-    "version": "2.8.4",
-    "gitTag": "v2.8.4",
-    "gitHead": "47142ada"
-  },
   "plugins": [
     [
       "@semantic-release/commit-analyzer",
