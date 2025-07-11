@@ -88,6 +88,7 @@ TOTAL_CONTRACTS=$(wc -l < "$RESULTS_FILE" | tr -d ' ')
 CURRENT_CONTRACT=0
 SUCCESSFUL_VERIFICATIONS=0
 FAILED_VERIFICATIONS=0
+SKIPPED_VERIFICATIONS=0
 
 # Process each deployed contract
 cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PATH CONSTRUCTOR_ARGS; do
@@ -99,6 +100,18 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   if [ -z "$CONTRACT_NAME" ]; then
     # If no colon in the path, use the filename as contract name
     CONTRACT_NAME=$(basename "$CONTRACT_PATH")
+  fi
+  
+  # Skip verification for MetaProver contracts (they use hardcoded addresses)
+  if [[ "$CONTRACT_NAME" == "MetaProver" ]]; then
+    echo "⏭️ Skipping verification ($CURRENT_CONTRACT of $TOTAL_CONTRACTS): $CONTRACT_NAME (hardcoded address)"
+    echo "   Chain ID: $CHAIN_ID"
+    echo "   Address: $CONTRACT_ADDRESS"
+    echo "   Contract Path: $CONTRACT_PATH"
+    echo "   📝 MetaProver uses a hardcoded address and cannot be verified"
+    SKIPPED_VERIFICATIONS=$((SKIPPED_VERIFICATIONS + 1))
+    echo ""
+    continue
   fi
   
   echo "🔄 Verifying contract ($CURRENT_CONTRACT of $TOTAL_CONTRACTS): $CONTRACT_NAME"
@@ -185,9 +198,11 @@ echo "📊 Verification Summary:"
 echo "Total contracts processed: $TOTAL_CONTRACTS"
 echo "Successfully verified: $SUCCESSFUL_VERIFICATIONS"
 echo "Failed to verify: $FAILED_VERIFICATIONS"
+echo "Skipped (hardcoded): $SKIPPED_VERIFICATIONS"
 
-if [ $SUCCESSFUL_VERIFICATIONS -eq $TOTAL_CONTRACTS ]; then
-  echo "✅ All contracts were successfully verified!"
+VERIFIABLE_CONTRACTS=$((TOTAL_CONTRACTS - SKIPPED_VERIFICATIONS))
+if [ $SUCCESSFUL_VERIFICATIONS -eq $VERIFIABLE_CONTRACTS ]; then
+  echo "✅ All verifiable contracts were successfully verified!"
 else
   if [ $SUCCESSFUL_VERIFICATIONS -ge 0 ]; then
     echo "⚠️ Some contracts were verified, but others failed. Check the logs for details."
