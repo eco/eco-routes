@@ -78,7 +78,9 @@ abstract contract BaseProver is IProver, ERC165 {
      * @param _intentHash Hash of the intent to query
      * @return ProofData containing claimant and destination chain ID
      */
-    function provenIntents(bytes32 _intentHash) external view override returns (ProofData memory) {
+    function provenIntents(
+        bytes32 _intentHash
+    ) external view override returns (ProofData memory) {
         return _provenIntents[_intentHash];
     }
 
@@ -91,11 +93,14 @@ abstract contract BaseProver is IProver, ERC165 {
         bytes32 routeHash = keccak256(abi.encode(_intent.route));
         bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
-        
+
         ProofData memory proof = _provenIntents[intentHash];
-        
+
         // Only challenge if proof exists and destination chain ID doesn't match
-        if (proof.claimant != address(0) && proof.destinationChainID != _intent.route.destination) {
+        if (
+            proof.claimant != address(0) &&
+            proof.destinationChainID != _intent.route.destination
+        ) {
             delete _provenIntents[intentHash];
             emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
         }

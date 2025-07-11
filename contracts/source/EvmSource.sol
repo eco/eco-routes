@@ -259,7 +259,9 @@ contract EvmSource is BaseSource, IIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(intentHash);
+        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
+            intentHash
+        );
         address claimant = proof.claimant;
         VaultState memory state = vaults[intentHash].state;
 
@@ -278,9 +280,42 @@ contract EvmSource is BaseSource, IIntentSource {
 
             emit Withdrawal(intentHash, claimant);
 
-            new Vault{salt: routeHash}(intentHash, reward);
+            // Try to create vault, ignore if it already exists
+            try new Vault{salt: routeHash}(intentHash, reward) {
+                // Vault created successfully
+            } catch {
+                // Vault already exists or creation failed, ignore
+            }
 
             return;
+        }
+
+        // If no proof exists and intent has expired, try to refund
+        if (claimant == address(0) && block.timestamp >= reward.deadline) {
+            if (
+                state.status != uint8(RewardStatus.Claimed) &&
+                state.status != uint8(RewardStatus.Refunded) &&
+                (state.status == uint8(RewardStatus.Funded) ||
+                    state.status == uint8(RewardStatus.PartiallyFunded))
+            ) {
+                state.status = uint8(RewardStatus.Refunded);
+                state.mode = uint8(VaultMode.Refund);
+                state.allowPartialFunding = 0;
+                state.usePermit = 0;
+                state.target = address(0);
+                vaults[intentHash].state = state;
+
+                emit Refund(intentHash, reward.creator);
+
+                // Try to create vault, ignore if it already exists
+                try new Vault{salt: routeHash}(intentHash, reward) {
+                    // Vault created successfully
+                } catch {
+                    // Vault already exists or creation failed, ignore
+                }
+
+                return;
+            }
         }
 
         if (claimant == address(0)) {
@@ -328,9 +363,8 @@ contract EvmSource is BaseSource, IIntentSource {
             state.status != uint8(RewardStatus.Claimed) &&
             state.status != uint8(RewardStatus.Refunded)
         ) {
-            IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
-                intentHash
-            );
+            IProver.ProofData memory proof = IProver(reward.prover)
+                .provenIntents(intentHash);
             address claimant = proof.claimant;
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
@@ -344,17 +378,24 @@ contract EvmSource is BaseSource, IIntentSource {
 
         if (state.status != uint8(RewardStatus.Claimed)) {
             state.status = uint8(RewardStatus.Refunded);
+            state.mode = uint8(VaultMode.Refund);
+            state.allowPartialFunding = 0;
+            state.usePermit = 0;
+            state.target = address(0);
+            vaults[intentHash].state = state;
+
+            emit Refund(intentHash, reward.creator);
+
+            // Try to create vault, ignore if it already exists
+            try new Vault{salt: routeHash}(intentHash, reward) {
+                // Vault created successfully
+            } catch {
+                // Vault already exists or creation failed, ignore
+            }
+        } else {
+            // Intent was already claimed, just emit the refund event without creating a vault
+            emit Refund(intentHash, reward.creator);
         }
-
-        state.mode = uint8(VaultMode.Refund);
-        state.allowPartialFunding = 0;
-        state.usePermit = 0;
-        state.target = address(0);
-        vaults[intentHash].state = state;
-
-        emit Refund(intentHash, reward.creator);
-
-        new Vault{salt: routeHash}(intentHash, reward);
     }
 
     /**
@@ -404,7 +445,12 @@ contract EvmSource is BaseSource, IIntentSource {
 
         emit Refund(intentHash, reward.creator);
 
-        new Vault{salt: routeHash}(intentHash, reward);
+        // Try to create vault, ignore if it already exists
+        try new Vault{salt: routeHash}(intentHash, reward) {
+            // Vault created successfully
+        } catch {
+            // Vault already exists or creation failed, ignore
+        }
     }
 
     /**
@@ -556,11 +602,18 @@ contract EvmSource is BaseSource, IIntentSource {
             }
         }
 
+        // Update vault state based on funding result
+        VaultState memory state = vaults[intentHash].state;
+
         if (partiallyFunded) {
+            state.status = uint8(RewardStatus.PartiallyFunded);
             emit IntentPartiallyFunded(intentHash, funder);
         } else {
+            state.status = uint8(RewardStatus.Funded);
             emit IntentFunded(intentHash, funder);
         }
+
+        vaults[intentHash].state = state;
     }
 
     /**

@@ -71,7 +71,8 @@ abstract contract BaseSource is IBaseSource {
     ) internal pure virtual {
         if (
             state.status != uint8(RewardStatus.Initial) &&
-            state.status != uint8(RewardStatus.PartiallyFunded)
+            state.status != uint8(RewardStatus.PartiallyFunded) &&
+            state.status != uint8(RewardStatus.Funded)
         ) {
             revert IntentAlreadyFunded(intentHash);
         }

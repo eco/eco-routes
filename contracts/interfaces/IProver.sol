@@ -67,5 +67,7 @@ interface IProver is ISemver {
      * @param _intentHash Hash of the intent to query
      * @return ProofData containing claimant and destination chain ID
      */
-    function provenIntents(bytes32 _intentHash) external view returns (ProofData memory);
+    function provenIntents(
+        bytes32 _intentHash
+    ) external view returns (ProofData memory);
 }

@@ -30,6 +30,17 @@ contract TestProver is BaseProver {
         });
     }
 
+    function addProvenIntentWithChain(
+        bytes32 _hash,
+        address _claimant,
+        uint96 _destinationChainId
+    ) public {
+        _provenIntents[_hash] = ProofData({
+            claimant: _claimant,
+            destinationChainID: _destinationChainId
+        });
+    }
+
     function getProofType() external pure override returns (string memory) {
         return "storage";
     }

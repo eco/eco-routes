@@ -39,6 +39,8 @@ contract Vault is IVault {
             _recoverToken(state.target, reward.creator);
         }
 
+        // Note: selfdestruct is deprecated but still works for contracts created and destructed
+        // in the same transaction (EIP-6780). This pattern is intentional for ephemeral vaults.
         selfdestruct(payable(reward.creator));
     }
 

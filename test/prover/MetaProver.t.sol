@@ -10,67 +10,72 @@ import {Intent, Route, Reward} from "../../contracts/types/Intent.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 
 contract MetaProverTest is BaseTest {
-    
     MetaProver internal metaProver;
     TestMetaRouter internal metaRouter;
-    
+
     address internal metaRouterAddress;
-    
+
     function setUp() public override {
         super.setUp();
-        
+
         vm.startPrank(deployer);
-        
+
         // Deploy TestMetaRouter
         metaRouter = new TestMetaRouter(address(0));
         metaRouterAddress = address(metaRouter);
-        
+
         // Setup provers array
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(address(prover))));
-        
+
         // Deploy MetaProver
         metaProver = new MetaProver(
             metaRouterAddress,
             address(inbox),
             provers,
-            100000  // default gas limit
+            100000 // default gas limit
         );
-        
+
         vm.stopPrank();
-        
+
         _mintAndApprove(creator, MINT_AMOUNT);
     }
-    
+
     // Helper function to fund inbox and call prove
     function _proveWithFunding(
         address sender,
         uint256 sourceChainId,
         bytes32[] memory intentHashes,
-        address[] memory claimants,
+        bytes32[] memory claimants,
         bytes memory data,
         uint256 value
     ) internal {
         vm.deal(address(inbox), value);
         vm.prank(address(inbox));
-        metaProver.prove{value: value}(sender, sourceChainId, intentHashes, claimants, data);
+        metaProver.prove{value: value}(
+            sender,
+            sourceChainId,
+            intentHashes,
+            claimants,
+            data
+        );
     }
-    
+
     function testInitializesCorrectly() public {
         // Test that the contract was deployed successfully
         assertTrue(address(metaProver) != address(0));
     }
-    
+
     function testImplementsIProverInterface() public {
         assertTrue(metaProver.supportsInterface(type(IProver).interfaceId));
     }
-    
+
     function testProveIntent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -79,20 +84,20 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         // Verify that the metaRouter received the message
         assertTrue(metaRouter.dispatched());
     }
-    
+
     function testProveIntentWithCorrectMessageBody() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         // Calculate expected message body
         bytes memory expectedBody = abi.encode(intentHashes, claimants);
-        
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -101,17 +106,17 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         // Verify the message body matches expectations
         assertEq(metaRouter.messageBody(), expectedBody);
     }
-    
+
     function testProveIntentWithCorrectDestination() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -120,32 +125,38 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         // Verify the message was sent to correct destination
         assertEq(metaRouter.destinationDomain(), uint32(intent.route.source));
     }
-    
+
     function testOnlyInboxCanProveIntent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         vm.deal(creator, 1 ether);
         vm.expectRevert(); // Should revert with access control error
         vm.prank(creator);
-        metaProver.prove{value: 1 ether}(creator, block.chainid, intentHashes, claimants, abi.encode(bytes32(uint256(uint160(address(prover))))));
+        metaProver.prove{value: 1 ether}(
+            creator,
+            block.chainid,
+            intentHashes,
+            claimants,
+            abi.encode(bytes32(uint256(uint160(address(prover)))))
+        );
     }
-    
+
     function testProveIntentEmitsEvent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _expectEmit();
         emit IMessageBridgeProver.BatchSent(intentHashes, block.chainid);
-        
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -155,24 +166,24 @@ contract MetaProverTest is BaseTest {
             1 ether
         );
     }
-    
+
     function testProveIntentWithDifferentDestinations() public {
         // Test with different destination chains
         uint256[] memory destinations = new uint256[](3);
         destinations[0] = 1;
         destinations[1] = 10;
         destinations[2] = 137;
-        
+
         for (uint256 i = 0; i < destinations.length; i++) {
             Intent memory testIntent = intent;
             testIntent.route.source = destinations[i];
             bytes32 intentHash = _hashIntent(testIntent);
-            
+
             bytes32[] memory intentHashes = new bytes32[](1);
-            address[] memory claimants = new address[](1);
+            bytes32[] memory claimants = new bytes32[](1);
             intentHashes[0] = intentHash;
-            claimants[0] = claimant;
-            
+            claimants[0] = bytes32(uint256(uint160(claimant)));
+
             _proveWithFunding(
                 creator,
                 destinations[i],
@@ -181,27 +192,27 @@ contract MetaProverTest is BaseTest {
                 abi.encode(bytes32(uint256(uint160(address(prover))))),
                 1 ether
             );
-            
+
             assertEq(metaRouter.destinationDomain(), uint32(destinations[i]));
         }
     }
-    
+
     function testProveIntentWithDifferentCreators() public {
         address[] memory creators = new address[](3);
         creators[0] = makeAddr("creator1");
         creators[1] = makeAddr("creator2");
         creators[2] = makeAddr("creator3");
-        
+
         for (uint256 i = 0; i < creators.length; i++) {
             Intent memory testIntent = intent;
             testIntent.reward.creator = creators[i];
             bytes32 intentHash = _hashIntent(testIntent);
-            
+
             bytes32[] memory intentHashes = new bytes32[](1);
-            address[] memory claimants = new address[](1);
+            bytes32[] memory claimants = new bytes32[](1);
             intentHashes[0] = intentHash;
-            claimants[0] = claimant;
-            
+            claimants[0] = bytes32(uint256(uint160(claimant)));
+
             _proveWithFunding(
                 creator,
                 block.chainid,
@@ -210,32 +221,32 @@ contract MetaProverTest is BaseTest {
                 abi.encode(bytes32(uint256(uint160(address(prover))))),
                 1 ether
             );
-            
+
             bytes memory expectedBody = abi.encode(intentHashes, claimants);
-            
+
             assertEq(metaRouter.messageBody(), expectedBody);
         }
     }
-    
+
     function testMultipleProveIntents() public {
         Intent memory testIntent1 = intent;
         Intent memory testIntent2 = intent;
         testIntent2.route.salt = keccak256("different salt");
-        
+
         bytes32 intentHash1 = _hashIntent(testIntent1);
         bytes32 intentHash2 = _hashIntent(testIntent2);
-        
+
         // Test multiple separate calls
         bytes32[] memory intentHashes1 = new bytes32[](1);
-        address[] memory claimants1 = new address[](1);
+        bytes32[] memory claimants1 = new bytes32[](1);
         intentHashes1[0] = intentHash1;
-        claimants1[0] = claimant;
-        
+        claimants1[0] = bytes32(uint256(uint160(claimant)));
+
         bytes32[] memory intentHashes2 = new bytes32[](1);
-        address[] memory claimants2 = new address[](1);
+        bytes32[] memory claimants2 = new bytes32[](1);
         intentHashes2[0] = intentHash2;
-        claimants2[0] = claimant;
-        
+        claimants2[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -252,21 +263,21 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         assertTrue(metaRouter.dispatched());
         assertTrue(metaRouter.dispatched());
     }
-    
+
     function testProveIntentWithZeroDestination() public {
         Intent memory testIntent = intent;
         testIntent.route.source = 0;
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             0,
@@ -275,20 +286,20 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         assertEq(metaRouter.destinationDomain(), 0);
     }
-    
+
     function testProveIntentWithLargeDestination() public {
         Intent memory testIntent = intent;
         testIntent.route.source = type(uint32).max; // Max valid chain ID
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             type(uint32).max,
@@ -297,20 +308,20 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         assertEq(metaRouter.destinationDomain(), type(uint32).max);
     }
-    
+
     function testProveIntentWithZeroCreator() public {
         Intent memory testIntent = intent;
         testIntent.reward.creator = address(0);
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -319,21 +330,21 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         bytes memory expectedBody = abi.encode(intentHashes, claimants);
-        
+
         assertEq(metaRouter.messageBody(), expectedBody);
     }
-    
+
     function testProvenIntentsStorage() public {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         // MetaProver stores proof data when it receives a message via handle(), not when prove() is called
         // Simulate receiving a message from the source chain prover
         vm.prank(address(metaRouter));
@@ -344,30 +355,30 @@ contract MetaProverTest is BaseTest {
             new ReadOperation[](0),
             new bytes[](0)
         );
-        
+
         IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
         assertEq(proof.claimant, claimant);
         assertEq(proof.destinationChainID, uint32(block.chainid));
     }
-    
+
     function testSupportsInterface() public {
         assertTrue(metaProver.supportsInterface(type(IProver).interfaceId));
         assertTrue(metaProver.supportsInterface(0x01ffc9a7)); // ERC165
     }
-    
+
     function testDoesNotSupportRandomInterface() public {
         assertFalse(metaProver.supportsInterface(0x12345678));
     }
-    
+
     // MetaProver specific tests
     function testMetaRouterIntegration() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -376,21 +387,21 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         // Verify MetaRouter received the correct call
         assertTrue(metaRouter.dispatched());
     }
-    
+
     function testMetaRouterGasUsage() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         uint256 gasStart = gasleft();
-        
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -399,21 +410,21 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         uint256 gasUsed = gasStart - gasleft();
-        
+
         // Verify reasonable gas usage (adjust threshold as needed)
         assertLt(gasUsed, 400000); // Should use less than 400k gas
     }
-    
+
     function testMetaRouterRevert() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         // Test with insufficient fee to trigger revert
         vm.expectRevert();
         _proveWithFunding(
@@ -425,14 +436,14 @@ contract MetaProverTest is BaseTest {
             0
         );
     }
-    
+
     function testProveWithArrayLengthMismatch() public {
         bytes32[] memory intentHashes = new bytes32[](2);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
         intentHashes[1] = keccak256("second intent");
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         _proveWithFunding(
             creator,
@@ -443,11 +454,11 @@ contract MetaProverTest is BaseTest {
             1 ether
         );
     }
-    
+
     function testProveWithEmptyArrays() public {
         bytes32[] memory intentHashes = new bytes32[](0);
-        address[] memory claimants = new address[](0);
-        
+        bytes32[] memory claimants = new bytes32[](0);
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -457,23 +468,23 @@ contract MetaProverTest is BaseTest {
             1 ether
         );
     }
-    
+
     function testProveWithGasLimitParameter() public {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         // Test with gas limit encoded in data parameter
         // MetaProver expects: sourceChainProver (32 bytes) + gasLimit (32 bytes)
         bytes memory gasLimitData = abi.encode(
             bytes32(uint256(uint160(address(prover)))), // sourceChainProver
             uint256(200000) // custom gas limit
         );
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -482,23 +493,23 @@ contract MetaProverTest is BaseTest {
             gasLimitData,
             1 ether
         );
-        
+
         // Verify the message was dispatched successfully
         assertTrue(metaRouter.dispatched());
         // Verify the gas limit was passed correctly
         assertEq(metaRouter.gasLimit(), 200000);
     }
-    
+
     function testProveWithOverpaymentRefund() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         uint256 overpayment = 5 ether;
         vm.deal(creator, 10 ether);
         uint256 initialBalance = creator.balance;
-        
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -507,24 +518,24 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             overpayment
         );
-        
+
         // Should receive refund of overpayment minus actual fee
         // Fee is 0.001 ether, so refund should be 4.999 ether
         assertEq(creator.balance, initialBalance + overpayment - 0.001 ether);
     }
-    
+
     function testCrossVMClaimantSupport() public {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         // Use a valid address for the claimant
         address nonEVMClaimant = makeAddr("cross-vm-claimant");
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = nonEVMClaimant;
-        
+        claimants[0] = bytes32(uint256(uint160(nonEVMClaimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -533,23 +544,23 @@ contract MetaProverTest is BaseTest {
             abi.encode(bytes32(uint256(uint160(address(prover))))),
             1 ether
         );
-        
+
         // Verify the message was dispatched with the non-address claimant
         assertTrue(metaRouter.dispatched());
         bytes memory expectedBody = abi.encode(intentHashes, claimants);
         assertEq(metaRouter.messageBody(), expectedBody);
     }
-    
+
     function testSafeCastOverflowProtection() public {
         Intent memory testIntent = intent;
         testIntent.route.source = type(uint256).max; // Very large chain ID
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         // Should revert on overflow when casting to uint32
         vm.expectRevert();
         _proveWithFunding(
@@ -561,11 +572,11 @@ contract MetaProverTest is BaseTest {
             1 ether
         );
     }
-    
+
     function testProveIntentWithComplexData() public {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);
-        
+
         // Test with complex encoded data - sourceChainProver must be first parameter
         bytes memory complexData = abi.encode(
             bytes32(uint256(uint160(address(prover)))), // sourceChainProver (required)
@@ -573,12 +584,12 @@ contract MetaProverTest is BaseTest {
             bytes32("additional_data"),
             true // some flag
         );
-        
+
         bytes32[] memory intentHashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
+        bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = claimant;
-        
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
         _proveWithFunding(
             creator,
             block.chainid,
@@ -587,7 +598,7 @@ contract MetaProverTest is BaseTest {
             complexData,
             1 ether
         );
-        
+
         // Verify the message was dispatched successfully with complex data
         assertTrue(metaRouter.dispatched());
         // Verify custom gas limit was used
