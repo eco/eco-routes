@@ -6,11 +6,12 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {AddressConverter} from "./libs/AddressConverter.sol";
 
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
-import {IIntentSource} from "./interfaces/IIntentSource.sol";
+import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
 
-import {Intent, Reward, Route, TokenAmount} from "./types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount} from "./types/UniversalIntent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
 import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
 import {Semver} from "./libs/Semver.sol";
@@ -23,6 +24,8 @@ import {Semver} from "./libs/Semver.sol";
 contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
+    using AddressConverter for address;
+    using AddressConverter for bytes32;
 
     /// @notice typehash for gasless crosschain _order
     bytes32 public GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
@@ -31,7 +34,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         );
 
     /// @notice address of IntentSource contract where intents are actually published
-    IIntentSource public immutable INTENT_SOURCE;
+    IUniversalIntentSource public immutable INTENT_SOURCE;
 
     /**
      * @notice Initializes the Eco7683OriginSettler
@@ -44,7 +47,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         string memory _version,
         address _intentSource
     ) EIP712(_name, _version) {
-        INTENT_SOURCE = IIntentSource(_intentSource);
+        INTENT_SOURCE = IUniversalIntentSource(_intentSource);
     }
 
     /**
@@ -64,22 +67,28 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(_order.orderData, (OnchainCrosschainOrderData));
 
-        if (onchainCrosschainOrderData.route.source != block.chainid) {
-            revert OriginChainIDMismatch();
-        }
+        // Create new route without source/destination fields
+        Route memory newRoute = Route({
+            salt: onchainCrosschainOrderData.route.salt,
+            deadline: uint64(_order.fillDeadline),
+            portal: onchainCrosschainOrderData.route.portal,
+            tokens: onchainCrosschainOrderData.route.tokens,
+            calls: onchainCrosschainOrderData.route.calls
+        });
 
         Intent memory intent = Intent(
-            onchainCrosschainOrderData.route,
+            onchainCrosschainOrderData.destination,
+            newRoute,
             Reward(
+                uint64(_order.fillDeadline),
                 onchainCrosschainOrderData.creator,
                 onchainCrosschainOrderData.prover,
-                _order.fillDeadline,
                 onchainCrosschainOrderData.nativeValue,
                 onchainCrosschainOrderData.rewardTokens
             )
         );
 
-        bytes32 orderId = _openEcoIntent(intent, msg.sender);
+        bytes32 orderId = _openEcoIntent(intent, msg.sender.toBytes32());
 
         emit Open(orderId, resolve(_order));
     }
@@ -120,24 +129,24 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         }
 
         Intent memory intent = Intent(
+            uint64(gaslessCrosschainOrderData.destination),
             Route(
                 bytes32(_order.nonce),
-                _order.originChainId,
-                gaslessCrosschainOrderData.destination,
-                gaslessCrosschainOrderData.inbox,
+                uint64(_order.fillDeadline),
+                gaslessCrosschainOrderData.portal,
                 gaslessCrosschainOrderData.routeTokens,
                 gaslessCrosschainOrderData.calls
             ),
             Reward(
-                _order.user,
+                uint64(_order.fillDeadline),
+                _order.user.toBytes32(),
                 gaslessCrosschainOrderData.prover,
-                _order.fillDeadline,
                 gaslessCrosschainOrderData.nativeValue,
                 gaslessCrosschainOrderData.rewardTokens
             )
         );
 
-        bytes32 orderId = _openEcoIntent(intent, _order.user);
+        bytes32 orderId = _openEcoIntent(intent, _order.user.toBytes32());
 
         emit Open(orderId, resolveFor(_order, _originFillerData));
     }
@@ -151,6 +160,9 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) public view override returns (ResolvedCrossChainOrder memory) {
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(_order.orderData, (OnchainCrosschainOrderData));
+
+        // Extract destination from order data
+        uint64 destination = onchainCrosschainOrderData.destination;
         uint256 routeTokenCount = onchainCrosschainOrderData
             .route
             .tokens
@@ -161,10 +173,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 .route
                 .tokens[i];
             maxSpent[i] = Output(
-                bytes32(uint256(uint160(approval.token))),
+                approval.token, // Already bytes32 in universal types
                 approval.amount,
                 bytes32(uint256(uint160(address(0)))), //filler is not known
-                onchainCrosschainOrderData.route.destination
+                onchainCrosschainOrderData.destination
             );
         }
         uint256 rewardTokenCount = onchainCrosschainOrderData
@@ -177,16 +189,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
             minReceived[i] = Output(
-                bytes32(
-                    uint256(
-                        uint160(
-                            onchainCrosschainOrderData.rewardTokens[i].token
-                        )
-                    )
-                ),
+                onchainCrosschainOrderData.rewardTokens[i].token, // Already bytes32 in universal types
                 onchainCrosschainOrderData.rewardTokens[i].amount,
                 bytes32(uint256(uint160(address(0)))), //filler is not known
-                onchainCrosschainOrderData.route.destination
+                destination
             );
         }
         if (onchainCrosschainOrderData.nativeValue > 0) {
@@ -194,16 +200,23 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 bytes32(uint256(uint160(address(0)))),
                 onchainCrosschainOrderData.nativeValue,
                 bytes32(uint256(uint160(address(0)))),
-                onchainCrosschainOrderData.route.destination
+                destination
             );
         }
 
         Intent memory intent = Intent(
-            onchainCrosschainOrderData.route,
+            destination,
+            Route({
+                salt: onchainCrosschainOrderData.route.salt,
+                deadline: uint64(_order.fillDeadline),
+                portal: onchainCrosschainOrderData.route.portal,
+                tokens: onchainCrosschainOrderData.route.tokens,
+                calls: onchainCrosschainOrderData.route.calls
+            }),
             Reward(
+                uint64(_order.fillDeadline),
                 onchainCrosschainOrderData.creator,
                 onchainCrosschainOrderData.prover,
-                _order.fillDeadline,
                 onchainCrosschainOrderData.nativeValue,
                 onchainCrosschainOrderData.rewardTokens
             )
@@ -211,16 +224,16 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
         fillInstructions[0] = FillInstruction(
-            uint64(onchainCrosschainOrderData.route.destination),
-            bytes32(uint256(uint160(onchainCrosschainOrderData.route.inbox))),
+            onchainCrosschainOrderData.destination,
+            onchainCrosschainOrderData.route.portal,
             abi.encode(intent)
         );
 
         (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(intent);
         return
             ResolvedCrossChainOrder(
-                onchainCrosschainOrderData.creator,
-                onchainCrosschainOrderData.route.source,
+                onchainCrosschainOrderData.creator.toAddress(),
+                uint64(block.chainid),
                 _order.fillDeadline,
                 _order.fillDeadline,
                 intentHash,
@@ -247,7 +260,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             TokenAmount memory requirement = gaslessCrosschainOrderData
                 .routeTokens[i];
             maxSpent[i] = Output(
-                bytes32(uint256(uint160(requirement.token))),
+                requirement.token, // Already bytes32 in universal types
                 requirement.amount,
                 bytes32(uint256(uint160(address(0)))), //filler is not known
                 gaslessCrosschainOrderData.destination
@@ -263,13 +276,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
             minReceived[i] = Output(
-                bytes32(
-                    uint256(
-                        uint160(
-                            gaslessCrosschainOrderData.rewardTokens[i].token
-                        )
-                    )
-                ),
+                gaslessCrosschainOrderData.rewardTokens[i].token, // Already bytes32 in universal types
                 gaslessCrosschainOrderData.rewardTokens[i].amount,
                 bytes32(uint256(uint160(address(0)))), //filler is not known
                 gaslessCrosschainOrderData.destination
@@ -285,18 +292,18 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         }
 
         Intent memory intent = Intent(
+            uint64(gaslessCrosschainOrderData.destination),
             Route(
                 bytes32(_order.nonce),
-                _order.originChainId,
-                gaslessCrosschainOrderData.destination,
-                gaslessCrosschainOrderData.inbox,
+                uint64(_order.fillDeadline),
+                gaslessCrosschainOrderData.portal,
                 gaslessCrosschainOrderData.routeTokens,
                 gaslessCrosschainOrderData.calls
             ),
             Reward(
-                _order.user,
+                uint64(_order.fillDeadline),
+                _order.user.toBytes32(),
                 gaslessCrosschainOrderData.prover,
-                _order.fillDeadline,
                 gaslessCrosschainOrderData.nativeValue,
                 gaslessCrosschainOrderData.rewardTokens
             )
@@ -305,7 +312,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
         fillInstructions[0] = FillInstruction(
             uint64(gaslessCrosschainOrderData.destination),
-            bytes32(uint256(uint160(gaslessCrosschainOrderData.inbox))),
+            gaslessCrosschainOrderData.portal,
             abi.encode(intent)
         );
 
@@ -354,7 +361,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     /// @notice helper method that actually opens the intent
     function _openEcoIntent(
         Intent memory _intent,
-        address _user
+        bytes32 _user
     ) internal returns (bytes32 intentHash) {
         if (!INTENT_SOURCE.isIntentFunded(_intent)) {
             address vault = INTENT_SOURCE.intentVaultAddress(_intent);
@@ -368,10 +375,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             }
             uint256 rewardsLength = _intent.reward.tokens.length;
             for (uint256 i = 0; i < rewardsLength; ++i) {
-                address token = _intent.reward.tokens[i].token;
+                address token = _intent.reward.tokens[i].token.toAddress();
                 uint256 amount = _intent.reward.tokens[i].amount;
 
-                IERC20(token).safeTransferFrom(_user, vault, amount);
+                IERC20(token).safeTransferFrom(_user.toAddress(), vault, amount);
             }
         }
 

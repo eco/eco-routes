@@ -14,9 +14,8 @@ export type TokenAmount = {
 
 export type Route = {
   salt: string
-  source: number
-  destination: number
-  inbox: string
+  deadline: number | bigint
+  portal: string
   tokens: TokenAmount[]
   calls: Call[]
 }
@@ -24,21 +23,21 @@ export type Route = {
 export type Reward = {
   creator: string
   prover: string
-  deadline: number
+  deadline: number | bigint
   nativeValue: bigint
   tokens: TokenAmount[]
 }
 
 export type Intent = {
+  destination: number
   route: Route
   reward: Reward
 }
 
 const RouteStruct = [
   { name: 'salt', type: 'bytes32' },
-  { name: 'source', type: 'uint256' },
-  { name: 'destination', type: 'uint256' },
-  { name: 'inbox', type: 'address' },
+  { name: 'deadline', type: 'uint64' },
+  { name: 'portal', type: 'address' },
   {
     name: 'tokens',
     type: 'tuple[]',
@@ -59,9 +58,9 @@ const RouteStruct = [
 ]
 
 const RewardStruct = [
+  { name: 'deadline', type: 'uint64' },
   { name: 'creator', type: 'address' },
   { name: 'prover', type: 'address' },
-  { name: 'deadline', type: 'uint256' },
   { name: 'nativeValue', type: 'uint256' },
   {
     name: 'tokens',
@@ -75,13 +74,16 @@ const RewardStruct = [
 
 const IntentStruct = [
   {
+    name: 'destination',
+    type: 'uint64',
+  },
+  {
     name: 'route',
     type: 'tuple',
     components: [
       { name: 'salt', type: 'bytes32' },
-      { name: 'source', type: 'uint256' },
-      { name: 'destination', type: 'uint256' },
-      { name: 'inbox', type: 'address' },
+      { name: 'deadline', type: 'uint64' },
+      { name: 'portal', type: 'address' },
       {
         name: 'tokens',
         type: 'tuple[]',
@@ -105,9 +107,9 @@ const IntentStruct = [
     name: 'reward',
     type: 'tuple',
     components: [
+      { name: 'deadline', type: 'uint64' },
       { name: 'creator', type: 'address' },
       { name: 'prover', type: 'address' },
-      { name: 'deadline', type: 'uint256' },
       { name: 'nativeValue', type: 'uint256' },
       {
         name: 'tokens',
@@ -165,7 +167,10 @@ export function hashIntent(intent: Intent) {
   const rewardHash = keccak256(encodeReward(intent.reward))
 
   const intentHash = keccak256(
-    solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
+    solidityPacked(
+      ['uint64', 'bytes32', 'bytes32'],
+      [intent.destination, routeHash, rewardHash],
+    ),
   )
 
   return { routeHash, rewardHash, intentHash }

@@ -8,8 +8,10 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IProver} from "../interfaces/IProver.sol";
 import {Intent, Route, Reward, Call, TokenAmount} from "../types/Intent.sol";
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
+import {IVault} from "../interfaces/IVault.sol";
 import {Vault} from "../Vault.sol";
 import {BaseSource} from "./BaseSource.sol";
+import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title EvmSource
@@ -18,6 +20,7 @@ import {BaseSource} from "./BaseSource.sol";
  */
 contract EvmSource is BaseSource, IIntentSource {
     using SafeERC20 for IERC20;
+    using AddressConverter for address;
 
     /**
      * @notice Event for creating standard EVM intents
@@ -72,7 +75,9 @@ contract EvmSource is BaseSource, IIntentSource {
     {
         routeHash = keccak256(abi.encode(intent.route));
         rewardHash = keccak256(abi.encode(intent.reward));
-        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
     }
 
     /**
@@ -116,7 +121,7 @@ contract EvmSource is BaseSource, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validateInitialFundingState(state, intentHash);
-        _validateSourceChain(intent.route.source, intentHash);
+        _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
         _emitIntentCreated(intent, intentHash);
 
@@ -132,17 +137,22 @@ contract EvmSource is BaseSource, IIntentSource {
 
     /**
      * @notice Funds an existing intent
+     * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the funded intent
      */
     function fund(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         bool allowPartial
     ) external payable virtual returns (bytes32 intentHash) {
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        intentHash = keccak256(
+            abi.encodePacked(destination, routeHash, rewardHash)
+        );
         VaultState memory state = vaults[intentHash].state;
 
         _validateInitialFundingState(state, intentHash);
@@ -155,6 +165,7 @@ contract EvmSource is BaseSource, IIntentSource {
 
     /**
      * @notice Funds an intent for a user with permit/allowance
+     * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param funder Address to fund the intent from
@@ -163,6 +174,7 @@ contract EvmSource is BaseSource, IIntentSource {
      * @return intentHash Hash of the funded intent
      */
     function fundFor(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address funder,
@@ -170,7 +182,9 @@ contract EvmSource is BaseSource, IIntentSource {
         bool allowPartial
     ) external virtual returns (bytes32 intentHash) {
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        intentHash = keccak256(
+            abi.encodePacked(destination, routeHash, rewardHash)
+        );
         VaultState memory state = vaults[intentHash].state;
 
         address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
@@ -207,7 +221,7 @@ contract EvmSource is BaseSource, IIntentSource {
 
         _validatePublishState(intentHash, state);
         _emitIntentCreated(intent, intentHash);
-        _validateSourceChain(intent.route.source, intentHash);
+        _validateSourceChain(block.chainid, intentHash);
 
         address vault = _getIntentVaultAddress(
             intentHash,
@@ -235,7 +249,7 @@ contract EvmSource is BaseSource, IIntentSource {
     function isIntentFunded(
         Intent calldata intent
     ) external view virtual returns (bool) {
-        if (intent.route.source != block.chainid) return false;
+        // Source chain validation is implicit since intents are created on the source chain
 
         (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
         address vault = _getIntentVaultAddress(
@@ -249,15 +263,19 @@ contract EvmSource is BaseSource, IIntentSource {
 
     /**
      * @notice Withdraws rewards associated with an intent to its claimant
+     * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
     function withdrawRewards(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
     ) public virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(destination, routeHash, rewardHash)
+        );
 
         IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
             intentHash
@@ -278,7 +296,7 @@ contract EvmSource is BaseSource, IIntentSource {
             state.target = claimant;
             vaults[intentHash].state = state;
 
-            emit Withdrawal(intentHash, claimant);
+            emit Withdrawal(intentHash, claimant.toBytes32());
 
             // Try to create vault, ignore if it already exists
             try new Vault{salt: routeHash}(intentHash, reward) {
@@ -305,7 +323,7 @@ contract EvmSource is BaseSource, IIntentSource {
                 state.target = address(0);
                 vaults[intentHash].state = state;
 
-                emit Refund(intentHash, reward.creator);
+                emit Refund(intentHash, reward.creator.toBytes32());
 
                 // Try to create vault, ignore if it already exists
                 try new Vault{salt: routeHash}(intentHash, reward) {
@@ -327,35 +345,41 @@ contract EvmSource is BaseSource, IIntentSource {
 
     /**
      * @notice Batch withdraws multiple intents
+     * @param destinations Array of destination chain IDs for the intents
      * @param routeHashes Array of route hashes for the intents
      * @param rewards Array of reward structures for the intents
      */
     function batchWithdraw(
+        uint64[] calldata destinations,
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
     ) external virtual {
         uint256 length = routeHashes.length;
 
-        if (length != rewards.length) {
+        if (length != rewards.length || length != destinations.length) {
             revert ArrayLengthMismatch();
         }
 
         for (uint256 i = 0; i < length; ++i) {
-            withdrawRewards(routeHashes[i], rewards[i]);
+            withdrawRewards(destinations[i], routeHashes[i], rewards[i]);
         }
     }
 
     /**
      * @notice Refunds rewards to the intent creator
+     * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
     function refund(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
     ) external virtual {
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(destination, routeHash, rewardHash)
+        );
 
         VaultState memory state = vaults[intentHash].state;
 
@@ -384,7 +408,7 @@ contract EvmSource is BaseSource, IIntentSource {
             state.target = address(0);
             vaults[intentHash].state = state;
 
-            emit Refund(intentHash, reward.creator);
+            emit Refund(intentHash, reward.creator.toBytes32());
 
             // Try to create vault, ignore if it already exists
             try new Vault{salt: routeHash}(intentHash, reward) {
@@ -394,18 +418,20 @@ contract EvmSource is BaseSource, IIntentSource {
             }
         } else {
             // Intent was already claimed, just emit the refund event without creating a vault
-            emit Refund(intentHash, reward.creator);
+            emit Refund(intentHash, reward.creator.toBytes32());
         }
     }
 
     /**
      * @notice Recover tokens that were sent to the intent vault by mistake
      * @dev Must not be among the intent's rewards
+     * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      * @param token Token address for handling incorrect vault transfers
      */
     function recoverToken(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address token
@@ -415,7 +441,9 @@ contract EvmSource is BaseSource, IIntentSource {
         }
 
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(destination, routeHash, rewardHash)
+        );
 
         VaultState memory state = vaults[intentHash].state;
 
@@ -443,7 +471,7 @@ contract EvmSource is BaseSource, IIntentSource {
         state.target = token;
         vaults[intentHash].state = state;
 
-        emit Refund(intentHash, reward.creator);
+        emit Refund(intentHash, reward.creator.toBytes32());
 
         // Try to create vault, ignore if it already exists
         try new Vault{salt: routeHash}(intentHash, reward) {
@@ -502,14 +530,14 @@ contract EvmSource is BaseSource, IIntentSource {
     ) internal virtual {
         emit IntentCreated(
             intentHash,
+            intent.destination,
             intent.route.salt,
-            intent.route.source,
-            intent.route.destination,
-            intent.route.inbox,
+            intent.route.deadline,
+            intent.route.portal.toBytes32(),
             intent.route.tokens,
             intent.route.calls,
-            intent.reward.creator,
-            intent.reward.prover,
+            intent.reward.creator.toBytes32(),
+            intent.reward.prover.toBytes32(),
             intent.reward.deadline,
             intent.reward.nativeValue,
             intent.reward.tokens
@@ -607,10 +635,10 @@ contract EvmSource is BaseSource, IIntentSource {
 
         if (partiallyFunded) {
             state.status = uint8(RewardStatus.PartiallyFunded);
-            emit IntentPartiallyFunded(intentHash, funder);
+            emit IntentPartiallyFunded(intentHash, funder.toBytes32());
         } else {
             state.status = uint8(RewardStatus.Funded);
-            emit IntentFunded(intentHash, funder);
+            emit IntentFunded(intentHash, funder.toBytes32());
         }
 
         vaults[intentHash].state = state;
@@ -649,10 +677,35 @@ contract EvmSource is BaseSource, IIntentSource {
 
         vaults[intentHash].state = state;
 
-        new Vault{salt: routeHash}(intentHash, reward);
+        // Store funder balances before vault creation if using permit
+        uint256[] memory initialBalances;
+        if (permitContact != address(0)) {
+            initialBalances = new uint256[](reward.tokens.length);
+            for (uint256 i = 0; i < reward.tokens.length; i++) {
+                initialBalances[i] = IERC20(reward.tokens[i].token).balanceOf(funder);
+            }
+        }
 
+        // Create vault
+        new Vault{salt: routeHash}(intentHash, reward);
+        
+        // Check if vault was funded successfully when using permit contract
+        if (permitContact != address(0)) {
+            // Verify tokens were actually transferred from the funder
+            for (uint256 i = 0; i < reward.tokens.length; i++) {
+                uint256 currentBalance = IERC20(reward.tokens[i].token).balanceOf(funder);
+                uint256 expectedTransfer = reward.tokens[i].amount;
+                
+                // If balance didn't decrease by expected amount, funding failed
+                if (currentBalance + expectedTransfer > initialBalances[i]) {
+                    _revertFunding(state, intentHash, permitContact);
+                }
+            }
+        }
+
+        // Only emit events if we get here (vault creation succeeded)
         if (state.status == uint8(RewardStatus.Funded)) {
-            emit IntentFunded(intentHash, funder);
+            emit IntentFunded(intentHash, funder.toBytes32());
         } else if (
             state.status == uint8(RewardStatus.PartiallyFunded) &&
             _isRewardFunded(reward, vault)
@@ -660,9 +713,34 @@ contract EvmSource is BaseSource, IIntentSource {
             state.status = uint8(RewardStatus.Funded);
             vaults[intentHash].state = state;
 
-            emit IntentFunded(intentHash, funder);
+            emit IntentFunded(intentHash, funder.toBytes32());
         } else {
-            emit IntentPartiallyFunded(intentHash, funder);
+            emit IntentPartiallyFunded(intentHash, funder.toBytes32());
         }
+    }
+
+    /**
+     * @notice Reverts funding and resets state when vault creation fails
+     */
+    function _revertFunding(
+        VaultState memory state,
+        bytes32 intentHash,
+        address permitContact
+    ) internal {
+        // Reset state
+        state.status = uint8(RewardStatus.Initial);
+        state.mode = uint8(VaultMode.Fund);
+        state.allowPartialFunding = 0;
+        state.usePermit = 0;
+        state.target = address(0);
+        vaults[intentHash].state = state;
+        
+        // Clear permit contract if it was set
+        if (permitContact != address(0)) {
+            delete vaults[intentHash].permitContract;
+        }
+        
+        // Revert with error
+        revert VaultCreationFailed(intentHash);
     }
 }

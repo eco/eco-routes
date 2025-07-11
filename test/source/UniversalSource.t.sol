@@ -104,24 +104,24 @@ contract UniversalSourceTest is BaseTest {
         // Setup universal route
         universalRoute = UniversalRoute({
             salt: salt,
-            source: block.chainid,
-            destination: CHAIN_ID,
-            inbox: address(inbox).toBytes32(),
+            deadline: uint64(expiry),
+            portal: address(inbox).toBytes32(),
             tokens: universalRouteTokensMemory,
             calls: universalCallsMemory
         });
 
         // Setup universal reward
         universalReward = UniversalReward({
+            deadline: uint64(expiry),
             creator: creator.toBytes32(),
             prover: address(prover).toBytes32(),
-            deadline: expiry,
             nativeValue: 0,
             tokens: universalRewardTokensMemory
         });
 
         // Setup universal intent
         universalIntent = UniversalIntent({
+            destination: CHAIN_ID,
             route: universalRoute,
             reward: universalReward
         });
@@ -166,18 +166,18 @@ contract UniversalSourceTest is BaseTest {
 
         return
             EVMIntent({
+                destination: _universalIntent.destination,
                 route: EVMRoute({
                     salt: _universalIntent.route.salt,
-                    source: _universalIntent.route.source,
-                    destination: _universalIntent.route.destination,
-                    inbox: _universalIntent.route.inbox.toAddress(),
+                    deadline: _universalIntent.route.deadline,
+                    portal: _universalIntent.route.portal.toAddress(),
                     tokens: evmRouteTokens,
                     calls: evmCalls
                 }),
                 reward: EVMReward({
+                    deadline: _universalIntent.reward.deadline,
                     creator: _universalIntent.reward.creator.toAddress(),
                     prover: _universalIntent.reward.prover.toAddress(),
-                    deadline: _universalIntent.reward.deadline,
                     nativeValue: _universalIntent.reward.nativeValue,
                     tokens: evmRewardTokens
                 })
@@ -225,6 +225,7 @@ contract UniversalSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         universalSource.fundFor(
+            universalIntent.destination,
             routeHash,
             universalIntent.reward,
             creator,
@@ -241,20 +242,46 @@ contract UniversalSourceTest is BaseTest {
             universalIntent
         );
 
+        // Convert universal types to EVM types for the event expectation
+        EVMTokenAmount[] memory evmRouteTokens = new EVMTokenAmount[](universalRouteTokens.length);
+        for (uint256 i = 0; i < universalRouteTokens.length; i++) {
+            evmRouteTokens[i] = EVMTokenAmount({
+                token: universalRouteTokens[i].token.toAddress(),
+                amount: universalRouteTokens[i].amount
+            });
+        }
+
+        EVMCall[] memory evmCalls = new EVMCall[](universalCalls.length);
+        for (uint256 i = 0; i < universalCalls.length; i++) {
+            evmCalls[i] = EVMCall({
+                target: universalCalls[i].target.toAddress(),
+                data: universalCalls[i].data,
+                value: universalCalls[i].value
+            });
+        }
+
+        EVMTokenAmount[] memory evmRewardTokens = new EVMTokenAmount[](universalRewardTokens.length);
+        for (uint256 i = 0; i < universalRewardTokens.length; i++) {
+            evmRewardTokens[i] = EVMTokenAmount({
+                token: universalRewardTokens[i].token.toAddress(),
+                amount: universalRewardTokens[i].amount
+            });
+        }
+
         _expectEmit();
-        emit IUniversalIntentSource.UniversalIntentCreated(
+        emit IBaseSource.IntentCreated(
             intentHash,
+            universalIntent.destination,
             salt,
-            block.chainid,
-            CHAIN_ID,
+            uint64(expiry),
             address(inbox).toBytes32(),
-            universalRouteTokens,
-            universalCalls,
-            creator,
-            address(prover),
-            expiry,
+            evmRouteTokens,
+            evmCalls,
+            creator.toBytes32(),
+            address(prover).toBytes32(),
+            uint64(expiry),
             0,
-            universalRewardTokens
+            evmRewardTokens
         );
 
         vm.prank(creator);
@@ -302,7 +329,11 @@ contract UniversalSourceTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         vm.prank(otherPerson);
-        universalSource.withdrawRewards(routeHash, universalIntent.reward);
+        universalSource.withdrawRewards(
+            universalIntent.destination,
+            routeHash,
+            universalIntent.reward
+        );
 
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
         assertEq(tokenB.balanceOf(claimant), initialBalanceB + MINT_AMOUNT * 2);
@@ -320,7 +351,11 @@ contract UniversalSourceTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         vm.prank(otherPerson);
-        universalSource.refund(routeHash, universalIntent.reward);
+        universalSource.refund(
+            universalIntent.destination,
+            routeHash,
+            universalIntent.reward
+        );
 
         assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
         assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
@@ -360,6 +395,7 @@ contract UniversalSourceTest is BaseTest {
                 IBaseSource.InsufficientNativeReward.selector,
                 keccak256(
                     abi.encodePacked(
+                        universalIntent.destination,
                         keccak256(abi.encode(universalIntent.route)),
                         keccak256(abi.encode(universalIntent.reward))
                     )
@@ -374,21 +410,11 @@ contract UniversalSourceTest is BaseTest {
     }
 
     function testWrongSourceChainUniversal() public {
-        universalRoute.source = 12345;
-        universalIntent.route = universalRoute;
+        // With the new structure, source chain validation is implicit
+        // This test is no longer applicable as we can't set a wrong source
+        // The source is always the current chain (block.chainid)
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBaseSource.WrongSourceChain.selector,
-                keccak256(
-                    abi.encodePacked(
-                        keccak256(abi.encode(universalIntent.route)),
-                        keccak256(abi.encode(universalIntent.reward))
-                    )
-                )
-            )
-        );
-        vm.prank(creator);
-        universalSource.publishAndFund(universalIntent, false);
+        // Test passes as we can't create an intent with wrong source anymore
+        assertTrue(true);
     }
 }

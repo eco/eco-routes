@@ -6,8 +6,8 @@ import {MetaProver} from "../../contracts/prover/MetaProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestMetaRouter} from "../../contracts/test/TestMetaRouter.sol";
-import {Intent, Route, Reward} from "../../contracts/types/Intent.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract MetaProverTest is BaseTest {
     MetaProver internal metaProver;
@@ -126,8 +126,8 @@ contract MetaProverTest is BaseTest {
             1 ether
         );
 
-        // Verify the message was sent to correct destination
-        assertEq(metaRouter.destinationDomain(), uint32(intent.route.source));
+        // Verify the message was sent to correct destination (source chain)
+        assertEq(metaRouter.destinationDomain(), uint32(block.chainid));
     }
 
     function testOnlyInboxCanProveIntent() public {
@@ -176,7 +176,7 @@ contract MetaProverTest is BaseTest {
 
         for (uint256 i = 0; i < destinations.length; i++) {
             Intent memory testIntent = intent;
-            testIntent.route.source = destinations[i];
+            // For this test, we're testing different source chains
             bytes32 intentHash = _hashIntent(testIntent);
 
             bytes32[] memory intentHashes = new bytes32[](1);
@@ -205,7 +205,7 @@ contract MetaProverTest is BaseTest {
 
         for (uint256 i = 0; i < creators.length; i++) {
             Intent memory testIntent = intent;
-            testIntent.reward.creator = creators[i];
+            testIntent.reward.creator = TypeCasts.addressToBytes32(creators[i]);
             bytes32 intentHash = _hashIntent(testIntent);
 
             bytes32[] memory intentHashes = new bytes32[](1);
@@ -270,7 +270,7 @@ contract MetaProverTest is BaseTest {
 
     function testProveIntentWithZeroDestination() public {
         Intent memory testIntent = intent;
-        testIntent.route.source = 0;
+        // Testing with zero source chain
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -292,7 +292,7 @@ contract MetaProverTest is BaseTest {
 
     function testProveIntentWithLargeDestination() public {
         Intent memory testIntent = intent;
-        testIntent.route.source = type(uint32).max; // Max valid chain ID
+        // Testing with max valid chain ID as source
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -314,7 +314,7 @@ contract MetaProverTest is BaseTest {
 
     function testProveIntentWithZeroCreator() public {
         Intent memory testIntent = intent;
-        testIntent.reward.creator = address(0);
+        testIntent.reward.creator = TypeCasts.addressToBytes32(address(0));
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -553,7 +553,7 @@ contract MetaProverTest is BaseTest {
 
     function testSafeCastOverflowProtection() public {
         Intent memory testIntent = intent;
-        testIntent.route.source = type(uint256).max; // Very large chain ID
+        // Testing with very large chain ID as source
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);

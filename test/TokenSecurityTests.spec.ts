@@ -81,9 +81,8 @@ describe('Token Security Tests', () => {
     // Create route and reward
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
       tokens: routeTokens,
       calls: calls,
     }
@@ -96,7 +95,7 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Approve tokens for spending
     await token
@@ -112,8 +111,8 @@ describe('Token Security Tests', () => {
     const { intentHash } = hashIntent(intent)
     expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-    // Verify reward status is correct - RewardStatus.Created = 0
-    expect(await intentSource.getRewardStatus(intentHash)).to.equal(0)
+    // Verify reward status is correct - RewardStatus.Funded = 2
+    expect(await intentSource.getRewardStatus(intentHash)).to.equal(2)
   })
 
   it('should handle multiple token rewards correctly', async () => {
@@ -137,9 +136,8 @@ describe('Token Security Tests', () => {
 
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
       tokens: [],
       calls: [],
     }
@@ -152,7 +150,7 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Approve both tokens for spending
     await token
@@ -187,9 +185,8 @@ describe('Token Security Tests', () => {
 
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
       tokens: [],
       calls: [],
     }
@@ -202,7 +199,7 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Track starting balance
     const startTokenBalance = await token.balanceOf(creator.address)
@@ -251,9 +248,8 @@ describe('Token Security Tests', () => {
 
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
       tokens: [],
       calls: [],
     }
@@ -266,7 +262,7 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Approve tokens
     await token
@@ -283,6 +279,6 @@ describe('Token Security Tests', () => {
 
     // Get intent hash to check reward status
     const { intentHash } = hashIntent(intent)
-    expect(await intentSource.getRewardStatus(intentHash)).to.equal(0) // Created
+    expect(await intentSource.getRewardStatus(intentHash)).to.equal(2) // Funded
   })
 })

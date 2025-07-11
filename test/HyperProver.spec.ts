@@ -8,6 +8,7 @@ import { ethers } from 'hardhat'
 import { HyperProver, Inbox, TestERC20, TestMailbox } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount } from '../utils/intent'
+import { addressToBytes32 } from '../utils/typeCasts'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -154,7 +155,7 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, addressToBytes32(claimantAddress))
 
       const proofDataAfter = await hyperProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -218,9 +219,9 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, addressToBytes32(claimantAddress))
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(otherHash, otherAddress)
+        .withArgs(otherHash, addressToBytes32(otherAddress))
 
       const proofData1 = await hyperProver.provenIntents(intentHash)
       expect(proofData1.claimant).to.eq(claimantAddress)
@@ -567,11 +568,8 @@ describe('HyperProver Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
       const route = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -589,7 +587,14 @@ describe('HyperProver Test', (): void => {
         tokens: [] as TokenAmount[],
       }
 
-      const { intentHash, rewardHash } = hashIntent({ route, reward })
+      const destination = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
+      const { intentHash, rewardHash } = hashIntent({
+        destination,
+        route,
+        reward,
+      })
 
       // Use a bytes32 claimant that doesn't represent a valid address
       // This simulates a cross-VM scenario where the claimant identifier
@@ -662,11 +667,8 @@ describe('HyperProver Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
       const route = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -684,7 +686,14 @@ describe('HyperProver Test', (): void => {
         tokens: [] as TokenAmount[],
       }
 
-      const { intentHash, rewardHash } = hashIntent({ route, reward })
+      const destination = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
+      const { intentHash, rewardHash } = hashIntent({
+        destination,
+        route,
+        reward,
+      })
 
       // Prepare message data
       const metadata = '0x1234'
@@ -757,7 +766,7 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(simulatedHyperProver, 'IntentProven')
-        .withArgs(intentHash, await claimant.getAddress())
+        .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
 
       expect(await simulatedHyperProver.provenIntents(intentHash)).to.eq(
         await claimant.getAddress(),
@@ -801,11 +810,8 @@ describe('HyperProver Test', (): void => {
       ]
       const route = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -823,7 +829,11 @@ describe('HyperProver Test', (): void => {
         tokens: [],
       }
 
+      const destination = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
       const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
+        destination,
         route,
         reward,
       })
@@ -849,11 +859,8 @@ describe('HyperProver Test', (): void => {
       salt = ethers.encodeBytes32String('0x1234')
       const route1 = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -871,6 +878,7 @@ describe('HyperProver Test', (): void => {
         tokens: [],
       }
       const { intentHash: intentHash1, rewardHash: rewardHash1 } = hashIntent({
+        destination,
         route: route1,
         reward: reward1,
       })
@@ -960,9 +968,9 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(simulatedHyperProver, 'IntentProven')
-        .withArgs(intentHash0, await claimant.getAddress())
+        .withArgs(intentHash0, addressToBytes32(await claimant.getAddress()))
         .to.emit(simulatedHyperProver, 'IntentProven')
-        .withArgs(intentHash1, await claimant.getAddress())
+        .withArgs(intentHash1, addressToBytes32(await claimant.getAddress()))
 
       // Verify both intents were proven
       expect(await simulatedHyperProver.provenIntents(intentHash0)).to.eq(

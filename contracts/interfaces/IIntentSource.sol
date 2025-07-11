@@ -10,40 +10,11 @@ import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
 /**
  * @title IIntentSource
  * @notice Interface for managing cross-chain intents and their associated rewards on the source chain
- * @dev This contract works in conjunction with an inbox contract on the destination chain
+ * @dev This contract works in conjunction with a portal contract on the destination chain
  *      and a prover contract for verification. It handles intent creation, funding,
  *      and reward distribution.
  */
 interface IIntentSource is IBaseSource {
-    /**
-     * @notice Signals the creation of a new cross-chain intent
-     * @param hash Unique identifier of the intent
-     * @param salt Creator-provided uniqueness factor
-     * @param source Source chain identifier
-     * @param destination Destination chain identifier
-     * @param inbox Address of the receiving contract on the destination chain
-     * @param routeTokens Required tokens for executing destination chain calls
-     * @param calls Instructions to execute on the destination chain
-     * @param creator Intent originator address
-     * @param prover Prover contract address
-     * @param deadline Timestamp for reward claim eligibility
-     * @param nativeValue Native token reward amount
-     * @param rewardTokens ERC20 token rewards with amounts
-     */
-    event IntentCreated(
-        bytes32 indexed hash,
-        bytes32 salt,
-        uint256 source,
-        uint256 destination,
-        address inbox,
-        TokenAmount[] routeTokens,
-        Call[] calls,
-        address indexed creator,
-        address indexed prover,
-        uint256 deadline,
-        uint256 nativeValue,
-        TokenAmount[] rewardTokens
-    );
 
     /**
      * @notice Retrieves the current reward claim status for an intent
@@ -117,11 +88,14 @@ interface IIntentSource is IBaseSource {
 
     /**
      * @notice Funds an existing intent
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash The hash of the funded intent
      */
     function fund(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         bool allowPartial
@@ -129,6 +103,7 @@ interface IIntentSource is IBaseSource {
 
     /**
      * @notice Funds an intent on behalf of another address using permit
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      * @param fundingAddress The address providing the funding
@@ -137,6 +112,7 @@ interface IIntentSource is IBaseSource {
      * @return intentHash The hash of the funded intent
      */
     function fundFor(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
@@ -170,39 +146,50 @@ interface IIntentSource is IBaseSource {
 
     /**
      * @notice Claims rewards for a successfully fulfilled and proven intent
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
     function withdrawRewards(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
     ) external;
 
     /**
      * @notice Claims rewards for multiple fulfilled and proven intents
+     * @param destinations Array of destination chain IDs for the intents
      * @param routeHashes Array of route component hashes
      * @param rewards Array of corresponding reward specifications
      */
     function batchWithdraw(
+        uint64[] calldata destinations,
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
     ) external;
 
     /**
      * @notice Returns rewards to the intent creator
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external;
+    function refund(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external;
 
     /**
      * @notice Recovers mistakenly transferred tokens from the intent vault
      * @dev Token must not be part of the intent's reward structure
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      * @param token The address of the token to recover
      */
     function recoverToken(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address token

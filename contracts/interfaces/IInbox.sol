@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
 
-import {Route} from "../types/Intent.sol";
+import {Route} from "../types/UniversalIntent.sol";
 
 /**
  * @title IInbox
@@ -22,7 +22,7 @@ interface IInbox is ISemver {
     event Fulfillment(
         bytes32 indexed _hash,
         uint256 indexed _sourceChainID,
-        address indexed _prover,
+        bytes32 indexed _prover,
         bytes32 _claimant
     );
 
@@ -39,10 +39,15 @@ interface IInbox is ISemver {
     error IntentAlreadyFulfilled(bytes32 _hash);
 
     /**
-     * @notice Invalid inbox address provided
-     * @param _inbox Address that is not a valid inbox
+     * @notice Invalid portal address provided
+     * @param _portal Address that is not a valid portal
      */
-    error InvalidInbox(address _inbox);
+    error InvalidPortal(address _portal);
+
+    /**
+     * @notice Intent has expired and can no longer be fulfilled
+     */
+    error IntentExpired();
 
     /**
      * @notice Generated hash doesn't match expected hash
@@ -89,13 +94,16 @@ interface IInbox is ISemver {
     /**
      * @notice Fulfills an intent using storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @param _sourceChainId The source chain ID where the intent was created
      * @param _route Route information for the intent
      * @param _rewardHash Hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash Expected hash for validation
+     * @param _localProver The prover contract to use for verification
      * @return Array of execution results
      */
     function fulfill(
+        uint64 _sourceChainId,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
@@ -106,6 +114,7 @@ interface IInbox is ISemver {
     /**
      * @notice Fulfills an intent using storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @param _sourceChainId The source chain ID where the intent was created
      * @param _route Route information for the intent
      * @param _rewardHash Hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
@@ -115,6 +124,7 @@ interface IInbox is ISemver {
      * @return Array of execution results
      */
     function fulfillAndProve(
+        uint64 _sourceChainId,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,

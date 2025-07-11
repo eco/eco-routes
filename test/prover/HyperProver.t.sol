@@ -5,9 +5,13 @@ import "../BaseTest.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
-import {Intent, Route, Reward} from "../../contracts/types/Intent.sol";
+import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
 contract HyperProverTest is BaseTest {
+    using AddressConverter for bytes32;
+    
     HyperProver internal hyperProver;
     TestMailbox internal mailbox;
 
@@ -117,7 +121,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         _expectEmit();
-        emit IProver.IntentProven(intentHash, claimant);
+        emit IProver.IntentProven(intentHash, AddressConverter.toBytes32(claimant));
 
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(
@@ -340,9 +344,10 @@ contract HyperProverTest is BaseTest {
 
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
         // So challenging with the original intent should clear the proof
-        // because intent.route.destination (1) != proof.destinationChainID (31337)
+        // because intent.destination (1) != proof.destinationChainID (31337)
+        EVMIntent memory evmIntent = _convertToEVMIntent(intent);
         vm.prank(creator);
-        hyperProver.challengeIntentProof(intent);
+        hyperProver.challengeIntentProof(evmIntent);
 
         // Verify proof was cleared
         proof = hyperProver.provenIntents(intentHash);
@@ -352,7 +357,7 @@ contract HyperProverTest is BaseTest {
     function testChallengeIntentProofWithCorrectChain() public {
         // Create an intent with destination matching the chain where we'll prove it
         Intent memory localIntent = intent;
-        localIntent.route.destination = uint96(block.chainid); // 31337
+        localIntent.destination = uint64(block.chainid); // 31337
 
         // First, prove the intent
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -381,8 +386,9 @@ contract HyperProverTest is BaseTest {
         assertEq(proof.destinationChainID, uint96(block.chainid));
 
         // Challenge with correct chain (destination matches proof) should do nothing
+        EVMIntent memory evmLocalIntent = _convertToEVMIntent(localIntent);
         vm.prank(creator);
-        hyperProver.challengeIntentProof(localIntent);
+        hyperProver.challengeIntentProof(evmLocalIntent);
 
         // Verify proof is still there
         proof = hyperProver.provenIntents(intentHash);
@@ -537,5 +543,62 @@ contract HyperProverTest is BaseTest {
             intentHashes[0]
         );
         assertEq(proof.claimant, nonEvmClaimant);
+    }
+
+    function _convertToEVMIntent(
+        Intent memory _universalIntent
+    ) internal pure returns (EVMIntent memory) {
+        // Convert route tokens
+        EVMTokenAmount[] memory evmRouteTokens = new EVMTokenAmount[](
+            _universalIntent.route.tokens.length
+        );
+        for (uint256 i = 0; i < _universalIntent.route.tokens.length; i++) {
+            evmRouteTokens[i] = EVMTokenAmount({
+                token: _universalIntent.route.tokens[i].token.toAddress(),
+                amount: _universalIntent.route.tokens[i].amount
+            });
+        }
+
+        // Convert calls
+        EVMCall[] memory evmCalls = new EVMCall[](
+            _universalIntent.route.calls.length
+        );
+        for (uint256 i = 0; i < _universalIntent.route.calls.length; i++) {
+            evmCalls[i] = EVMCall({
+                target: _universalIntent.route.calls[i].target.toAddress(),
+                data: _universalIntent.route.calls[i].data,
+                value: _universalIntent.route.calls[i].value
+            });
+        }
+
+        // Convert reward tokens
+        EVMTokenAmount[] memory evmRewardTokens = new EVMTokenAmount[](
+            _universalIntent.reward.tokens.length
+        );
+        for (uint256 i = 0; i < _universalIntent.reward.tokens.length; i++) {
+            evmRewardTokens[i] = EVMTokenAmount({
+                token: _universalIntent.reward.tokens[i].token.toAddress(),
+                amount: _universalIntent.reward.tokens[i].amount
+            });
+        }
+
+        return
+            EVMIntent({
+                destination: _universalIntent.destination,
+                route: EVMRoute({
+                    salt: _universalIntent.route.salt,
+                    deadline: _universalIntent.route.deadline,
+                    portal: _universalIntent.route.portal.toAddress(),
+                    tokens: evmRouteTokens,
+                    calls: evmCalls
+                }),
+                reward: EVMReward({
+                    deadline: _universalIntent.reward.deadline,
+                    creator: _universalIntent.reward.creator.toAddress(),
+                    prover: _universalIntent.reward.prover.toAddress(),
+                    nativeValue: _universalIntent.reward.nativeValue,
+                    tokens: evmRewardTokens
+                })
+            });
     }
 }

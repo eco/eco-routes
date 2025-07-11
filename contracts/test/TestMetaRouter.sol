@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title TestMetaRouter
@@ -12,8 +12,8 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
  * @dev Simplifies testing of MetaProver without requiring a real Metalayer instance
  */
 contract TestMetaRouter {
-    using TypeCasts for bytes32;
-    using TypeCasts for address;
+    using AddressConverter for bytes32;
+    using AddressConverter for address;
 
     // Immutable domain ID for this chain
     uint32 public immutable LOCAL_DOMAIN;
@@ -113,7 +113,7 @@ contract TestMetaRouter {
         bytes calldata _message
     ) external {
         // Convert the sender address to bytes32 for the recipient's handle function
-        bytes32 sender = _sender.addressToBytes32();
+        bytes32 sender = _sender.toBytes32();
 
         // Call the recipient's handle function with empty read operations
         IMetalayerRecipientMock(_recipient).handle(

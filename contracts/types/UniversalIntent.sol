@@ -30,17 +30,15 @@ struct TokenAmount {
  * @notice Defines the routing and execution instructions for cross-chain messages
  * @dev Contains all necessary information to route and execute a message on the destination chain
  * @param salt Unique identifier provided by the intent creator, used to prevent duplicates
- * @param source Chain ID where the intent originated
- * @param destination Target chain ID where the calls should be executed
- * @param inbox Identifier of the inbox contract on the destination chain that receives messages (bytes32 for cross-chain compatibility)
+ * @param deadline Timestamp by which the route must be executed
+ * @param portal Identifier of the portal contract on the destination chain that receives messages (bytes32 for cross-chain compatibility)
  * @param tokens Array of tokens required for execution of calls on destination chain
  * @param calls Array of contract calls to execute on the destination chain in sequence
  */
 struct Route {
     bytes32 salt;
-    uint256 source;
-    uint256 destination;
-    bytes32 inbox;
+    uint64 deadline;
+    bytes32 portal;
     TokenAmount[] tokens;
     Call[] calls;
 }
@@ -48,16 +46,16 @@ struct Route {
 /**
  * @notice Defines the reward and validation parameters for cross-chain execution
  * @dev Specifies who can execute the intent and what rewards they receive
+ * @param deadline Timestamp after which the intent can no longer be executed
  * @param creator Identifier of the creator who has authority to modify/cancel (bytes32 for cross-chain compatibility)
  * @param prover Identifier of the prover contract that must approve execution (bytes32 for cross-chain compatibility)
- * @param deadline Timestamp after which the intent can no longer be executed
  * @param nativeValue Amount of native tokens offered as reward
  * @param tokens Array of tokens and amounts offered as additional rewards
  */
 struct Reward {
+    uint64 deadline;
     bytes32 creator;
     bytes32 prover;
-    uint256 deadline;
     uint256 nativeValue;
     TokenAmount[] tokens;
 }
@@ -65,10 +63,12 @@ struct Reward {
 /**
  * @notice Complete cross-chain intent combining routing and reward information
  * @dev Main structure used to process and execute cross-chain messages
+ * @param destination Target chain ID where the intent should be executed
  * @param route Routing and execution instructions
  * @param reward Reward and validation parameters
  */
 struct Intent {
+    uint64 destination;
     Route route;
     Reward reward;
 }

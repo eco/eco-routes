@@ -2,11 +2,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {TokenAmount, Route, Call} from "./Intent.sol";
+import {TokenAmount, Call} from "./UniversalIntent.sol";
+
 /**
  * @title EcoERC7683
  * @dev ERC7683 orderData subtypes designed for Eco Protocol
  */
+
+/**
+ * @notice Route structure for EIP-7683 compatibility
+ * @param salt Unique identifier for the route
+ * @param source Source chain ID
+ * @param destination Destination chain ID
+ * @param inbox Address of the inbox contract on destination chain
+ * @param tokens Array of tokens required for the route
+ * @param calls Array of calls to execute
+ */
+struct Route {
+    bytes32 salt;
+    bytes32 portal;
+    TokenAmount[] tokens;
+    Call[] calls;
+}
 
 /**
  * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
@@ -19,9 +36,10 @@ import {TokenAmount, Route, Call} from "./Intent.sol";
  * @param tokens the addresses and amounts of reward tokens
  */
 struct OnchainCrosschainOrderData {
+    uint64 destination;
     Route route;
-    address creator;
-    address prover;
+    bytes32 creator;
+    bytes32 prover;
     uint256 nativeValue;
     TokenAmount[] rewardTokens;
 }
@@ -39,18 +57,18 @@ struct OnchainCrosschainOrderData {
 
 struct GaslessCrosschainOrderData {
     uint256 destination;
-    address inbox;
+    bytes32 portal;
     TokenAmount[] routeTokens;
     Call[] calls;
-    address prover;
+    bytes32 prover;
     uint256 nativeValue;
     TokenAmount[] rewardTokens;
 }
 
 //EIP712 typehashes
 bytes32 constant ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
-    "OnchainCrosschainOrderData(Route route,address creator,address prover,uint256 nativeValue,TokenAmount[] rewardTokens)Route(bytes32 salt,uint256 source,uint256 destination,address inbox,TokenAmount[] tokens,Call[] calls)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+    "OnchainCrosschainOrderData(uint64 destination,Route route,bytes32 creator,bytes32 prover,uint256 nativeValue,TokenAmount[] rewardTokens)Route(bytes32 salt,bytes32 portal,TokenAmount[] tokens,Call[] calls)TokenAmount(bytes32 token,uint256 amount)Call(bytes32 target,bytes data,uint256 value)"
 );
 bytes32 constant GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH = keccak256(
-    "GaslessCrosschainOrderData(uint256 destination,address inbox,TokenAmount[] routeTokens,Call[] calls,address prover,uint256 nativeValue,TokenAmount[] rewardTokens)TokenAmount(address token,uint256 amount)Call(address target,bytes data,uint256 value)"
+    "GaslessCrosschainOrderData(uint256 destination,bytes32 portal,TokenAmount[] routeTokens,Call[] calls,bytes32 prover,uint256 nativeValue,TokenAmount[] rewardTokens)TokenAmount(bytes32 token,uint256 amount)Call(bytes32 target,bytes data,uint256 value)"
 );

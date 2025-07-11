@@ -10,43 +10,11 @@ import {Intent, Route, Call, TokenAmount, Reward} from "../types/UniversalIntent
 /**
  * @title IUniversalIntentSource
  * @notice Interface for managing cross-chain intents with Universal types for cross-chain compatibility
- * @dev This contract works in conjunction with an inbox contract on the destination chain
+ * @dev This contract works in conjunction with a portal contract on the destination chain
  *      and a prover contract for verification. It handles intent creation, funding,
  *      and reward distribution using bytes32 identifiers for cross-chain compatibility.
  */
 interface IUniversalIntentSource is IBaseSource {
-    /**
-     * @notice Signals the creation of a new cross-chain intent with Universal types
-     * @param hash Unique identifier of the intent
-     * @param salt Creator-provided uniqueness factor
-     * @param source Source chain identifier
-     * @param destination Destination chain identifier
-     * @param inbox bytes32 identifier of the receiving contract on destination chain
-     * @param routeTokens Required tokens for executing destination chain calls
-     * @param calls Instructions to execute on the destination chain
-     * @param creator Intent originator address
-     * @param prover Prover contract address
-     * @param deadline Timestamp for reward claim eligibility
-     * @param nativeValue Native token reward amount
-     * @param rewardTokens Token rewards with amounts
-     */
-    event UniversalIntentCreated(
-        bytes32 indexed hash,
-        bytes32 salt,
-        uint256 source,
-        uint256 destination,
-        bytes32 inbox,
-        TokenAmount[] routeTokens,
-        Call[] calls,
-        address indexed creator,
-        address indexed prover,
-        uint256 deadline,
-        uint256 nativeValue,
-        TokenAmount[] rewardTokens
-    );
-
-    // Common state access functions are inherited from IBaseSource
-
     /**
      * @notice Computes the hash components of an intent
      * @param intent The intent to hash
@@ -92,11 +60,14 @@ interface IUniversalIntentSource is IBaseSource {
 
     /**
      * @notice Funds an existing intent
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash The hash of the funded intent
      */
     function fund(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         bool allowPartial
@@ -104,6 +75,7 @@ interface IUniversalIntentSource is IBaseSource {
 
     /**
      * @notice Funds an intent on behalf of another address using permit
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      * @param fundingAddress The bytes32 identifier providing the funding
@@ -112,6 +84,7 @@ interface IUniversalIntentSource is IBaseSource {
      * @return intentHash The hash of the funded intent
      */
     function fundFor(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address fundingAddress,
@@ -145,39 +118,50 @@ interface IUniversalIntentSource is IBaseSource {
 
     /**
      * @notice Claims rewards for a successfully fulfilled and proven intent
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
     function withdrawRewards(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
     ) external;
 
     /**
      * @notice Claims rewards for multiple fulfilled and proven intents
+     * @param destinations Array of destination chain IDs for the intents
      * @param routeHashes Array of route component hashes
      * @param rewards Array of corresponding reward specifications
      */
     function batchWithdraw(
+        uint64[] calldata destinations,
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
     ) external;
 
     /**
      * @notice Returns rewards to the intent creator
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
-    function refund(bytes32 routeHash, Reward calldata reward) external;
+    function refund(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external;
 
     /**
      * @notice Recovers mistakenly transferred tokens from the intent vault
      * @dev Token must not be part of the intent's reward structure
+     * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      * @param token The bytes32 identifier of the token to recover
      */
     function recoverToken(
+        uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address token

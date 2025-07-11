@@ -1,41 +1,40 @@
 import { AbiCoder } from 'ethers'
+import { UniversalCall, UniversalTokenAmount } from './universalIntent'
 
-import { Call, TokenAmount } from './intent'
-
-// EcoERC7683 specific Route type
-export type Route = {
+// Universal EcoERC7683 Route type with bytes32 for all addresses
+export type UniversalRoute = {
   salt: string
-  portal: string
-  tokens: TokenAmount[]
-  calls: Call[]
+  portal: string  // bytes32
+  tokens: UniversalTokenAmount[]
+  calls: UniversalCall[]
 }
 
-export type OnchainCrosschainOrderData = {
+export type UniversalOnchainCrosschainOrderData = {
   destination: number
-  route: Route
-  creator: string
-  prover: string
+  route: UniversalRoute
+  creator: string  // bytes32
+  prover: string   // bytes32
   nativeValue: bigint
-  rewardTokens: TokenAmount[]
+  rewardTokens: UniversalTokenAmount[]
 }
 
-export type GaslessCrosschainOrderData = {
+export type UniversalGaslessCrosschainOrderData = {
   destination: number
-  portal: string
-  routeTokens: TokenAmount[]
-  calls: Call[]
-  prover: string
+  portal: string  // bytes32
+  routeTokens: UniversalTokenAmount[]
+  calls: UniversalCall[]
+  prover: string  // bytes32
   nativeValue: bigint
-  rewardTokens: TokenAmount[]
+  rewardTokens: UniversalTokenAmount[]
 }
 
-export type OnchainCrosschainOrder = {
+export type UniversalOnchainCrosschainOrder = {
   fillDeadline: number
   orderDataType: string
-  orderData: OnchainCrosschainOrderData
+  orderData: UniversalOnchainCrosschainOrderData
 }
 
-const OnchainCrosschainOrderDataStruct = [
+const UniversalOnchainCrosschainOrderDataStruct = [
   { name: 'destination', type: 'uint64' },
   {
     name: 'route',
@@ -47,7 +46,7 @@ const OnchainCrosschainOrderDataStruct = [
         name: 'tokens',
         type: 'tuple[]',
         components: [
-          { name: 'token', type: 'address' },
+          { name: 'token', type: 'bytes32' },
           { name: 'amount', type: 'uint256' },
         ],
       },
@@ -55,7 +54,7 @@ const OnchainCrosschainOrderDataStruct = [
         name: 'calls',
         type: 'tuple[]',
         components: [
-          { name: 'target', type: 'address' },
+          { name: 'target', type: 'bytes32' },
           { name: 'data', type: 'bytes' },
           { name: 'value', type: 'uint256' },
         ],
@@ -69,20 +68,20 @@ const OnchainCrosschainOrderDataStruct = [
     name: 'rewardTokens',
     type: 'tuple[]',
     components: [
-      { name: 'token', type: 'address' },
+      { name: 'token', type: 'bytes32' },
       { name: 'amount', type: 'uint256' },
     ],
   },
 ]
 
-const GaslessCrosschainOrderDataStruct = [
+const UniversalGaslessCrosschainOrderDataStruct = [
   { name: 'destination', type: 'uint256' },
   { name: 'portal', type: 'bytes32' },
   {
     name: 'routeTokens',
     type: 'tuple[]',
     components: [
-      { name: 'token', type: 'address' },
+      { name: 'token', type: 'bytes32' },
       { name: 'amount', type: 'uint256' },
     ],
   },
@@ -90,7 +89,7 @@ const GaslessCrosschainOrderDataStruct = [
     name: 'calls',
     type: 'tuple[]',
     components: [
-      { name: 'target', type: 'address' },
+      { name: 'target', type: 'bytes32' },
       { name: 'data', type: 'bytes' },
       { name: 'value', type: 'uint256' },
     ],
@@ -101,57 +100,57 @@ const GaslessCrosschainOrderDataStruct = [
     name: 'rewardTokens',
     type: 'tuple[]',
     components: [
-      { name: 'token', type: 'address' },
+      { name: 'token', type: 'bytes32' },
       { name: 'amount', type: 'uint256' },
     ],
   },
 ]
 
-const OnchainCrosschainOrderStruct = [
+const UniversalOnchainCrosschainOrderStruct = [
   { name: 'fillDeadline', type: 'uint32' },
   { name: 'orderDataType', type: 'bytes32' },
   { name: 'orderData', type: 'bytes' },
 ]
 
-export async function encodeOnchainCrosschainOrderData(
-  onchainCrosschainOrderData: OnchainCrosschainOrderData,
+export function encodeUniversalOnchainCrosschainOrderData(
+  onchainCrosschainOrderData: UniversalOnchainCrosschainOrderData,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
   return abiCoder.encode(
     [
       {
         type: 'tuple',
-        components: OnchainCrosschainOrderDataStruct,
+        components: UniversalOnchainCrosschainOrderDataStruct,
       },
     ],
     [onchainCrosschainOrderData],
   )
 }
 
-export async function encodeGaslessCrosschainOrderData(
-  gaslessCrosschainOrderData: GaslessCrosschainOrderData,
+export function encodeUniversalGaslessCrosschainOrderData(
+  gaslessCrosschainOrderData: UniversalGaslessCrosschainOrderData,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
   return abiCoder.encode(
     [
       {
         type: 'tuple',
-        components: GaslessCrosschainOrderDataStruct,
+        components: UniversalGaslessCrosschainOrderDataStruct,
       },
     ],
     [gaslessCrosschainOrderData],
   )
 }
 
-export async function encodeOnchainCrosschainOrder(
-  onchainCrosschainOrder: OnchainCrosschainOrder,
+export function encodeUniversalOnchainCrosschainOrder(
+  onchainCrosschainOrder: UniversalOnchainCrosschainOrder,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
   return abiCoder.encode(
     [
       {
         type: 'tuple',
-        components: OnchainCrosschainOrderStruct,
+        components: UniversalOnchainCrosschainOrderStruct,
       },
     ],
     [onchainCrosschainOrder],

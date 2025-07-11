@@ -30,7 +30,7 @@ interface IProver is ISemver {
      * @param _hash Hash of the proven intent
      * @param _claimant Address eligible to claim the intent's rewards
      */
-    event IntentProven(bytes32 indexed _hash, address indexed _claimant);
+    event IntentProven(bytes32 indexed _hash, bytes32 indexed _claimant);
 
     /**
      * @notice Emitted when attempting to prove an already-proven intent

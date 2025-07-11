@@ -79,9 +79,8 @@ describe('Universal Intent Source Test', (): void => {
 
   interface Route {
     salt: string
-    source: bigint
-    destination: bigint
-    inbox: string // address
+    deadline: number
+    portal: string // address
     tokens: TokenAmount[]
     calls: Call[]
   }
@@ -95,6 +94,7 @@ describe('Universal Intent Source Test', (): void => {
   }
 
   interface Intent {
+    destination: number
     route: Route
     reward: Reward
   }
@@ -113,9 +113,8 @@ describe('Universal Intent Source Test', (): void => {
 
   interface UniversalRoute {
     salt: string
-    source: bigint
-    destination: bigint
-    inbox: string // bytes32
+    deadline: number
+    portal: string // bytes32
     tokens: UniversalTokenAmount[]
     calls: UniversalCall[]
   }
@@ -129,6 +128,7 @@ describe('Universal Intent Source Test', (): void => {
   }
 
   interface UniversalIntent {
+    destination: number
     route: UniversalRoute
     reward: UniversalReward
   }
@@ -156,11 +156,11 @@ describe('Universal Intent Source Test', (): void => {
   // Convert standard intent to universal intent
   function convertToUniversalIntent(intent: Intent): UniversalIntent {
     return {
+      destination: intent.destination,
       route: {
         salt: intent.route.salt,
-        source: intent.route.source,
-        destination: intent.route.destination,
-        inbox: addressToBytes32(intent.route.inbox),
+        deadline: intent.route.deadline,
+        portal: addressToBytes32(intent.route.portal),
         tokens: intent.route.tokens.map((t) => ({
           token: addressToBytes32(t.token),
           amount: t.amount,
@@ -186,49 +186,35 @@ describe('Universal Intent Source Test', (): void => {
 
   // Hash functions for universal intent
   function hashUniversalIntent(intent: UniversalIntent) {
-    // Ensure tokens and calls are properly formatted for ABI encoding
-    const tokens = intent.route.tokens.map((t) => [t.token, t.amount])
-    const calls = intent.route.calls.map((c) => [c.target, c.data, c.value])
-    const rewardTokens = intent.reward.tokens.map((t) => [t.token, t.amount])
+    // Convert bytes32 addresses back to addresses for hashing
+    const route = {
+      salt: intent.route.salt,
+      deadline: intent.route.deadline,
+      portal: bytes32ToAddress(intent.route.portal),
+      tokens: intent.route.tokens.map((t) => ({
+        token: bytes32ToAddress(t.token),
+        amount: t.amount,
+      })),
+      calls: intent.route.calls.map((c) => ({
+        target: bytes32ToAddress(c.target),
+        data: c.data,
+        value: c.value,
+      })),
+    }
 
-    const routeHash = keccak256(
-      AbiCoder.defaultAbiCoder().encode(
-        [
-          'tuple(bytes32,uint256,uint256,bytes32,tuple(bytes32,uint256)[],tuple(bytes32,bytes,uint256)[])',
-        ],
-        [
-          [
-            intent.route.salt,
-            intent.route.source,
-            intent.route.destination,
-            intent.route.inbox,
-            tokens,
-            calls,
-          ],
-        ],
-      ),
-    )
+    const reward = {
+      deadline: intent.reward.deadline,
+      creator: bytes32ToAddress(intent.reward.creator),
+      prover: bytes32ToAddress(intent.reward.prover),
+      nativeValue: intent.reward.nativeValue,
+      tokens: intent.reward.tokens.map((t) => ({
+        token: bytes32ToAddress(t.token),
+        amount: t.amount,
+      })),
+    }
 
-    const rewardHash = keccak256(
-      AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,bytes32,uint256,uint256,tuple(bytes32,uint256)[])'],
-        [
-          [
-            intent.reward.creator,
-            intent.reward.prover,
-            intent.reward.deadline,
-            intent.reward.nativeValue,
-            rewardTokens,
-          ],
-        ],
-      ),
-    )
-
-    const intentHash = keccak256(
-      solidityPacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
-    )
-
-    return { routeHash, rewardHash, intentHash }
+    // Use the standard hash function from utils
+    return hashIntent({ destination: intent.destination, route, reward })
   }
 
   // Calculate vault address for a universal intent
@@ -236,57 +222,37 @@ describe('Universal Intent Source Test', (): void => {
     intentSourceAddress: string,
     intent: UniversalIntent,
   ) {
-    const { routeHash, intentHash } = hashUniversalIntent(intent)
-    const intentVaultFactory = await ethers.getContractFactory('Vault')
-    const abiCoder = AbiCoder.defaultAbiCoder()
+    // Convert the universal intent to a standard intent for vault address calculation
+    const standardIntent: Intent = {
+      destination: intent.destination,
+      route: {
+        salt: intent.route.salt,
+        deadline: intent.route.deadline,
+        portal: bytes32ToAddress(intent.route.portal),
+        tokens: intent.route.tokens.map((t) => ({
+          token: bytes32ToAddress(t.token),
+          amount: t.amount,
+        })),
+        calls: intent.route.calls.map((c) => ({
+          target: bytes32ToAddress(c.target),
+          data: c.data,
+          value: c.value,
+        })),
+      },
+      reward: {
+        deadline: intent.reward.deadline,
+        creator: bytes32ToAddress(intent.reward.creator),
+        prover: bytes32ToAddress(intent.reward.prover),
+        nativeValue: intent.reward.nativeValue,
+        tokens: intent.reward.tokens.map((t) => ({
+          token: bytes32ToAddress(t.token),
+          amount: t.amount,
+        })),
+      },
+    }
 
-    // Format reward tokens for ABI encoding
-    const rewardTokens = intent.reward.tokens.map((t) => [t.token, t.amount])
-
-    return getCreate2Address(
-      intentSourceAddress,
-      routeHash,
-      keccak256(
-        solidityPacked(
-          ['bytes', 'bytes'],
-          [
-            intentVaultFactory.bytecode,
-            abiCoder.encode(
-              [
-                'bytes32',
-                {
-                  type: 'tuple',
-                  components: [
-                    { name: 'creator', type: 'bytes32' },
-                    { name: 'prover', type: 'bytes32' },
-                    { name: 'deadline', type: 'uint256' },
-                    { name: 'nativeValue', type: 'uint256' },
-                    {
-                      name: 'tokens',
-                      type: 'tuple[]',
-                      components: [
-                        { name: 'token', type: 'bytes32' },
-                        { name: 'amount', type: 'uint256' },
-                      ],
-                    },
-                  ],
-                },
-              ],
-              [
-                intentHash,
-                [
-                  intent.reward.creator,
-                  intent.reward.prover,
-                  intent.reward.deadline,
-                  intent.reward.nativeValue,
-                  rewardTokens,
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    )
+    // Use the standard intentVaultAddress function
+    return intentVaultAddress(intentSourceAddress, standardIntent)
   }
 
   // Fixture for deploying contracts and setting up test state
@@ -409,11 +375,11 @@ describe('Universal Intent Source Test', (): void => {
     const proverAddress = await prover.getAddress()
 
     return {
+      destination: Number(chainId + 1n),
       route: {
         salt,
-        source: chainId,
-        destination: chainId + 1n,
-        inbox: inboxAddress,
+        deadline: expiry,
+        portal: inboxAddress,
         tokens: routeTokens,
         calls,
       },
@@ -566,11 +532,11 @@ describe('Universal Intent Source Test', (): void => {
 
       // Create a completely different Universal intent with the same logical values but different representation
       const customUniversalIntent: UniversalIntent = {
+        destination: standardIntent.destination,
         route: {
           salt: standardIntent.route.salt,
-          source: standardIntent.route.source,
-          destination: standardIntent.route.destination,
-          inbox: addressToBytes32(standardIntent.route.inbox),
+          deadline: standardIntent.route.deadline,
+          portal: addressToBytes32(standardIntent.route.portal),
           tokens: standardIntent.route.tokens.map((t) => ({
             // Create bytes32 in a different way, but should hash to the same
             token: '0x' + '0'.repeat(24) + t.token.slice(2).toLowerCase(),
@@ -617,11 +583,11 @@ describe('Universal Intent Source Test', (): void => {
 
       // Create a completely different Universal intent with the same logical values but different representation
       const customUniversalIntent: UniversalIntent = {
+        destination: standardIntent.destination,
         route: {
           salt: standardIntent.route.salt,
-          source: standardIntent.route.source,
-          destination: standardIntent.route.destination,
-          inbox: addressToBytes32(standardIntent.route.inbox),
+          deadline: standardIntent.route.deadline,
+          portal: addressToBytes32(standardIntent.route.portal),
           tokens: standardIntent.route.tokens.map((t) => ({
             token: '0x' + '0'.repeat(24) + t.token.slice(2).toLowerCase(),
             amount: t.amount,
@@ -670,11 +636,11 @@ describe('Universal Intent Source Test', (): void => {
 
       // Convert back to EVM intent
       const reconvertedEvmIntent: Intent = {
+        destination: universalIntent.destination,
         route: {
           salt: universalIntent.route.salt,
-          source: universalIntent.route.source,
-          destination: universalIntent.route.destination,
-          inbox: bytes32ToAddress(universalIntent.route.inbox),
+          deadline: universalIntent.route.deadline,
+          portal: bytes32ToAddress(universalIntent.route.portal),
           tokens: universalIntent.route.tokens.map((t) => ({
             token: bytes32ToAddress(t.token),
             amount: t.amount,
@@ -718,7 +684,7 @@ describe('Universal Intent Source Test', (): void => {
         ...standardIntent,
         route: {
           ...standardIntent.route,
-          inbox: standardIntent.route.inbox.toLowerCase(), // lowercase
+          portal: standardIntent.route.portal.toLowerCase(), // lowercase
         },
         reward: {
           ...standardIntent.reward,
@@ -769,9 +735,9 @@ describe('Universal Intent Source Test', (): void => {
       const receipt = await tx.wait()
       expect(receipt?.status).to.equal(1)
 
-      // Check for UniversalIntentCreated event
-      const filter = universalIntentSource.filters.UniversalIntentCreated
-      const events = await universalIntentSource.queryFilter(
+      // Check for IntentCreated event
+      const filter = intentSource.filters.IntentCreated
+      const events = await intentSource.queryFilter(
         filter,
         receipt?.blockNumber,
         receipt?.blockNumber,
@@ -949,7 +915,7 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(routeHash, evmIntent.reward)
+        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
 
       // Final balances
       const finalEthBalance = await ethers.provider.getBalance(
@@ -983,7 +949,7 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(routeHash, evmIntent.reward)
+        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
 
       // Check updated reward status is different after withdrawal
       const finalRewardStatus = await intentSource.getRewardStatus(intentHash)
@@ -999,10 +965,10 @@ describe('Universal Intent Source Test', (): void => {
       await expect(
         intentSource
           .connect(otherPerson)
-          .withdrawRewards(routeHash, evmIntent.reward),
+          .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward),
       )
         .to.emit(intentSource, 'Withdrawal')
-        .withArgs(intentHash, await claimant.getAddress())
+        .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
     })
 
     it('should prevent double claiming of rewards', async function () {
@@ -1012,13 +978,13 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards once
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(routeHash, evmIntent.reward)
+        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
 
       // Try to withdraw again
       await expect(
         intentSource
           .connect(otherPerson)
-          .withdrawRewards(routeHash, evmIntent.reward),
+          .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward),
       ).to.be.reverted
     })
 
@@ -1033,7 +999,7 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(routeHash, evmIntent.reward)
+        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
 
       // Verify claimant received the tokens
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.be.gt(0)
@@ -1050,8 +1016,8 @@ describe('Universal Intent Source Test', (): void => {
       const intents: Intent[] = []
 
       // Should revert or handle gracefully
-      await expect(intentSource.connect(otherPerson).batchWithdraw([], [])).to
-        .not.be.reverted // Empty array should be handled gracefully
+      await expect(intentSource.connect(otherPerson).batchWithdraw([], [], []))
+        .to.not.be.reverted // Empty array should be handled gracefully
     })
   })
 
@@ -1094,7 +1060,7 @@ describe('Universal Intent Source Test', (): void => {
       // Execute refund
       await intentSource
         .connect(otherPerson)
-        .refund(routeHash, evmIntent.reward)
+        .refund(chainId + 1n, routeHash, evmIntent.reward)
 
       // Final balances
       const finalEthBalance = await ethers.provider.getBalance(
@@ -1125,7 +1091,9 @@ describe('Universal Intent Source Test', (): void => {
 
       // Attempt refund
       await expect(
-        intentSource.connect(otherPerson).refund(routeHash, evmIntent.reward),
+        intentSource
+          .connect(otherPerson)
+          .refund(chainId + 1n, routeHash, evmIntent.reward),
       ).to.be.reverted
     })
 
@@ -1142,7 +1110,9 @@ describe('Universal Intent Source Test', (): void => {
 
       // Current logic doesn't allow refund if any proof exists
       await expect(
-        intentSource.connect(otherPerson).refund(routeHash, evmIntent.reward),
+        intentSource
+          .connect(otherPerson)
+          .refund(chainId + 1n, routeHash, evmIntent.reward),
       ).to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
     })
 
@@ -1156,10 +1126,12 @@ describe('Universal Intent Source Test', (): void => {
 
       // Execute refund and check for event
       await expect(
-        intentSource.connect(otherPerson).refund(routeHash, evmIntent.reward),
+        intentSource
+          .connect(otherPerson)
+          .refund(chainId + 1n, routeHash, evmIntent.reward),
       )
         .to.emit(intentSource, 'Refund')
-        .withArgs(intentHash, await creator.getAddress())
+        .withArgs(intentHash, addressToBytes32(await creator.getAddress()))
     })
   })
 
@@ -1192,7 +1164,9 @@ describe('Universal Intent Source Test', (): void => {
       const [_, routeHash] = await intentSource.getIntentHash(fastExpiry)
 
       // Refund should work since not proven and expired
-      await intentSource.connect(creator).refund(routeHash, fastExpiry.reward)
+      await intentSource
+        .connect(creator)
+        .refund(fastExpiry.destination, routeHash, fastExpiry.reward)
 
       // Verify tokens were refunded
       const balance = await tokenA.balanceOf(await creator.getAddress())
@@ -1207,13 +1181,15 @@ describe('Universal Intent Source Test', (): void => {
   describe('Edge cases and validations', function () {
     it('should handle zero token amounts in rewards', async function () {
       // Create intent with zero token amounts
-      const zeroAmountIntent = { ...evmIntent }
-      zeroAmountIntent.reward = {
-        ...evmIntent.reward,
-        tokens: [
-          { token: await tokenA.getAddress(), amount: 0n },
-          { token: await tokenB.getAddress(), amount: 0n },
-        ],
+      const zeroAmountIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [
+            { token: await tokenA.getAddress(), amount: 0n },
+            { token: await tokenB.getAddress(), amount: 0n },
+          ],
+        },
       }
 
       // Publish and fund the intent
@@ -1235,10 +1211,12 @@ describe('Universal Intent Source Test', (): void => {
 
     it('should handle empty token array in rewards', async function () {
       // Create intent with empty token array
-      const emptyTokensIntent = { ...evmIntent }
-      emptyTokensIntent.reward = {
-        ...evmIntent.reward,
-        tokens: [],
+      const emptyTokensIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [],
+        },
       }
 
       // Publish and fund the intent
@@ -1254,10 +1232,12 @@ describe('Universal Intent Source Test', (): void => {
 
     it('should handle intent with only native value rewards', async function () {
       // Create intent with only native value reward
-      const nativeOnlyIntent = { ...evmIntent }
-      nativeOnlyIntent.reward = {
-        ...evmIntent.reward,
-        tokens: [],
+      const nativeOnlyIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [],
+        },
       }
 
       // Publish and fund the intent

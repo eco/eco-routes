@@ -12,7 +12,17 @@ import {
   TestMetaRouter,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount } from '../utils/intent'
+import { TokenAmount } from '../utils/intent'
+import { addressToBytes32 } from '../utils/typeCasts'
+import {
+  UniversalIntent,
+  UniversalRoute,
+  UniversalReward,
+  UniversalTokenAmount,
+  convertIntentToUniversal,
+  hashUniversalIntent,
+} from '../utils/universalIntent'
+import { TypeCasts } from '../utils/typeCasts'
 
 /**
  * TEST SCENARIOS:
@@ -228,7 +238,7 @@ describe('MetaProver Test', (): void => {
           ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, addressToBytes32(claimantAddress))
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -298,9 +308,9 @@ describe('MetaProver Test', (): void => {
           ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, addressToBytes32(claimantAddress))
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(otherHash, otherAddress)
+        .withArgs(otherHash, addressToBytes32(otherAddress))
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -586,7 +596,7 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, addressToBytes32(claimantAddress))
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -755,11 +765,8 @@ describe('MetaProver Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
       const route = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          (await metaProver.runner?.provider?.getNetwork())?.chainId,
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -777,7 +784,16 @@ describe('MetaProver Test', (): void => {
         tokens: [] as TokenAmount[],
       }
 
-      const { intentHash, rewardHash } = hashIntent({ route, reward })
+      const destination = Number(
+        (await metaProver.runner?.provider?.getNetwork())?.chainId,
+      )
+      // Convert to UniversalIntent
+      const universalIntent = convertIntentToUniversal({
+        destination,
+        route,
+        reward,
+      })
+      const { intentHash, rewardHash } = hashUniversalIntent(universalIntent)
 
       // arbitrary bytes32 claimant that doesn't represent a valid EVM address
       // this simulates a cross-VM scenario where the claimant identifier
@@ -858,11 +874,8 @@ describe('MetaProver Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
       const route = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          await ethers.provider.getNetwork().then((n) => n.chainId),
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -880,7 +893,16 @@ describe('MetaProver Test', (): void => {
         tokens: [] as TokenAmount[],
       }
 
-      const { intentHash, rewardHash } = hashIntent({ route, reward })
+      const destination = Number(
+        await ethers.provider.getNetwork().then((n) => n.chainId),
+      )
+      // Convert to UniversalIntent
+      const universalIntent = convertIntentToUniversal({
+        destination,
+        route,
+        reward,
+      })
+      const { intentHash, rewardHash } = hashUniversalIntent(universalIntent)
       const data = abiCoder.encode(
         ['bytes32'],
         [ethers.zeroPadValue(await metaProver.getAddress(), 32)],
@@ -901,7 +923,8 @@ describe('MetaProver Test', (): void => {
 
       // Fulfill the intent using message bridge
       await inbox.connect(solver).fulfillAndProve(
-        route,
+        sourceChainID,
+        universalIntent.route,
         rewardHash,
         ethers.zeroPadValue(await claimant.getAddress(), 32),
         intentHash,
@@ -977,11 +1000,8 @@ describe('MetaProver Test', (): void => {
       ]
       const route = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          await ethers.provider.getNetwork().then((n) => n.chainId),
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -999,10 +1019,15 @@ describe('MetaProver Test', (): void => {
         tokens: [] as TokenAmount[],
       }
 
-      const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashIntent({
+      const destination = Number(
+        await ethers.provider.getNetwork().then((n) => n.chainId),
+      )
+      const universalIntent0 = convertIntentToUniversal({
+        destination,
         route,
         reward,
       })
+      const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashUniversalIntent(universalIntent0)
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1011,7 +1036,8 @@ describe('MetaProver Test', (): void => {
 
       // Fulfill first intent in batch
       await inbox.connect(solver).fulfill(
-        route,
+        sourceChainID,
+        universalIntent0.route,
         rewardHash0,
         ethers.zeroPadValue(await claimant.getAddress(), 32),
         intentHash0,
@@ -1022,11 +1048,8 @@ describe('MetaProver Test', (): void => {
       salt = ethers.encodeBytes32String('0x1234')
       const route1 = {
         salt: salt,
-        source: sourceChainID,
-        destination: Number(
-          await ethers.provider.getNetwork().then((n) => n.chainId),
-        ),
-        inbox: await inbox.getAddress(),
+        deadline: timeStamp + 1000,
+        portal: await inbox.getAddress(),
         tokens: routeTokens,
         calls: [
           {
@@ -1043,15 +1066,18 @@ describe('MetaProver Test', (): void => {
         nativeValue: 1n,
         tokens: [],
       }
-      const { intentHash: intentHash1, rewardHash: rewardHash1 } = hashIntent({
+      const universalIntent1 = convertIntentToUniversal({
+        destination,
         route: route1,
         reward: reward1,
       })
+      const { intentHash: intentHash1, rewardHash: rewardHash1 } = hashUniversalIntent(universalIntent1)
 
       // Approve tokens and fulfill second intent in batch
       await token.connect(solver).approve(await inbox.getAddress(), amount)
       await inbox.connect(solver).fulfill(
-        route1,
+        sourceChainID,
+        universalIntent1.route,
         rewardHash1,
         ethers.zeroPadValue(await claimant.getAddress(), 32),
         intentHash1,

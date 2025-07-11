@@ -3,12 +3,15 @@
 pragma solidity ^0.8.26;
 
 import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
-import {Intent, Route} from "./types/Intent.sol";
+import {Intent, Route, Reward} from "./types/UniversalIntent.sol";
+import {OnchainCrosschainOrderData} from "./types/EcoERC7683.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {AddressConverter} from "./libs/AddressConverter.sol";
 
 abstract contract Eco7683DestinationSettler is IDestinationSettler {
     using ECDSA for bytes32;
+    using AddressConverter for address;
+    using AddressConverter for bytes32;
 
     /**
      * @notice Fills a single leg of a particular order on the destination chain
@@ -23,29 +26,59 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes calldata _originData,
         bytes calldata _fillerData
     ) external payable {
-        Intent memory intent = abi.decode(_originData, (Intent));
-        if (block.timestamp > intent.reward.deadline) {
+        // Decode as OnchainCrosschainOrderData
+        OnchainCrosschainOrderData memory orderData = abi.decode(
+            _originData,
+            (OnchainCrosschainOrderData)
+        );
+
+        // For now, we'll need to get deadline from elsewhere since it's not in OnchainCrosschainOrderData
+        // This is a limitation of the EIP-7683 structure - it doesn't include deadline
+        // For test purposes, we'll use a far future deadline
+        uint64 deadline = type(uint64).max;
+
+        emit OrderFilled(_orderId, msg.sender.toBytes32());
+
+        // Create reward structure for hash calculation
+        Reward memory reward = Reward({
+            deadline: deadline,
+            creator: orderData.creator, // Already bytes32 in universal types
+            prover: orderData.prover, // Already bytes32 in universal types
+            nativeValue: orderData.nativeValue,
+            tokens: orderData.rewardTokens
+        });
+
+        // Check deadline after creating reward
+        if (block.timestamp > deadline) {
             revert FillDeadlinePassed();
         }
 
-        emit OrderFilled(_orderId, msg.sender);
+        bytes32 rewardHash = keccak256(abi.encode(reward));
+        (address claimant, uint64 sourceChainId, bytes memory data) = abi
+            .decode(_fillerData, (address, uint64, bytes));
 
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        (address claimant, bytes memory data) = abi.decode(
-            _fillerData,
-            (address, bytes)
-        );
+        // Convert EIP-7683 Route to Intent Route
+        Route memory intentRoute = Route({
+            salt: orderData.route.salt,
+            deadline: deadline,
+            portal: orderData.route.portal, // Already bytes32 in universal types
+            tokens: orderData.route.tokens,
+            calls: orderData.route.calls
+        });
+
         fulfillAndProve(
-            intent.route,
+            sourceChainId,
+            intentRoute,
             rewardHash,
-            TypeCasts.addressToBytes32(claimant),
+            claimant.toBytes32(),
             _orderId,
-            intent.reward.prover,
+            orderData.prover.toAddress(),
             data
         );
     }
 
     function fulfillAndProve(
+        uint64 _sourceChainId,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,

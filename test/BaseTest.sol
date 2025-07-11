@@ -10,15 +10,16 @@ import {TestProver} from "../contracts/test/TestProver.sol";
 import {IntentSource} from "../contracts/IntentSource.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/UniversalIntent.sol";
 import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "../contracts/types/EcoERC7683.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract BaseTest is Test {
     // Constants
     uint256 internal constant MINT_AMOUNT = 1000;
     uint256 internal constant REWARD_NATIVE_ETH = 2 ether;
     uint256 internal constant EXPIRY_DURATION = 123;
-    uint96 internal constant CHAIN_ID = 1;
+    uint64 internal constant CHAIN_ID = 1;
 
     // Test addresses
     address internal creator;
@@ -75,13 +76,13 @@ contract BaseTest is Test {
 
         // Setup route tokens
         routeTokens.push(
-            TokenAmount({token: address(tokenA), amount: MINT_AMOUNT})
+            TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT})
         );
 
         // Setup calls
         calls.push(
             Call({
-                target: address(tokenA),
+                target: TypeCasts.addressToBytes32(address(tokenA)),
                 data: abi.encodeWithSignature(
                     "transfer(address,uint256)",
                     creator,
@@ -93,10 +94,10 @@ contract BaseTest is Test {
 
         // Setup reward tokens
         rewardTokens.push(
-            TokenAmount({token: address(tokenA), amount: MINT_AMOUNT})
+            TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT})
         );
         rewardTokens.push(
-            TokenAmount({token: address(tokenB), amount: MINT_AMOUNT * 2})
+            TokenAmount({token: TypeCasts.addressToBytes32(address(tokenB)), amount: MINT_AMOUNT * 2})
         );
 
         // Create memory copies of arrays for struct assignment
@@ -122,24 +123,23 @@ contract BaseTest is Test {
         // Setup route
         route = Route({
             salt: salt,
-            source: block.chainid,
-            destination: CHAIN_ID,
-            inbox: address(inbox),
+            deadline: uint64(expiry),
+            portal: TypeCasts.addressToBytes32(address(inbox)),
             tokens: routeTokensMemory,
             calls: callsMemory
         });
 
         // Setup reward
         reward = Reward({
-            creator: creator,
-            prover: address(prover),
-            deadline: expiry,
+            deadline: uint64(expiry),
+            creator: TypeCasts.addressToBytes32(creator),
+            prover: TypeCasts.addressToBytes32(address(prover)),
             nativeValue: 0,
             tokens: rewardTokensMemory
         });
 
         // Setup intent
-        intent = Intent({route: route, reward: reward});
+        intent = Intent({destination: CHAIN_ID, route: route, reward: reward});
     }
 
     function _mintAndApprove(address user, uint256 amount) internal {
@@ -160,7 +160,10 @@ contract BaseTest is Test {
     ) internal pure virtual returns (bytes32) {
         bytes32 routeHash = keccak256(abi.encode(_intent.route));
         bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
-        return keccak256(abi.encodePacked(routeHash, rewardHash));
+        return
+            keccak256(
+                abi.encodePacked(_intent.destination, routeHash, rewardHash)
+            );
     }
 
     function _addProof(

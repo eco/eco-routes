@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
 import {IDestinationSettler} from "../../contracts/interfaces/ERC7683/IDestinationSettler.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/UniversalIntent.sol";
 
 // Simple concrete implementation for testing
 contract TestDestinationSettler is IDestinationSettler {
@@ -15,7 +15,7 @@ contract TestDestinationSettler is IDestinationSettler {
         bytes calldata /* _fillerData */
     ) external payable {
         filled[_orderId] = true;
-        emit OrderFilled(_orderId, msg.sender);
+        emit OrderFilled(_orderId, bytes32(uint256(uint160(msg.sender))));
     }
 }
 
@@ -42,8 +42,7 @@ contract DestinationSettlerTest is BaseTest {
 
     function testFillOrder() public {
         Intent memory destIntent = intent;
-        destIntent.route.source = 1; // Different source chain
-        destIntent.route.destination = block.chainid; // Current chain as destination
+        destIntent.destination = uint64(block.chainid); // Current chain as destination
 
         bytes memory originData = abi.encode(destIntent);
         bytes memory fillerData = abi.encode(filler, recipient, "");
@@ -59,8 +58,7 @@ contract DestinationSettlerTest is BaseTest {
 
     function testFillOrderEmitsEvent() public {
         Intent memory destIntent = intent;
-        destIntent.route.source = 1;
-        destIntent.route.destination = block.chainid;
+        destIntent.destination = uint64(block.chainid);
 
         bytes memory originData = abi.encode(destIntent);
         bytes memory fillerData = abi.encode(filler, recipient, "");
@@ -68,7 +66,7 @@ contract DestinationSettlerTest is BaseTest {
         bytes32 orderId = keccak256("test-order");
 
         _expectEmit();
-        emit IDestinationSettler.OrderFilled(orderId, filler);
+        emit IDestinationSettler.OrderFilled(orderId, bytes32(uint256(uint160(filler))));
 
         vm.prank(filler);
         destinationSettler.fill(orderId, originData, fillerData);
@@ -76,8 +74,7 @@ contract DestinationSettlerTest is BaseTest {
 
     function testFillOrderWithValue() public {
         Intent memory destIntent = intent;
-        destIntent.route.source = 1;
-        destIntent.route.destination = block.chainid;
+        destIntent.destination = uint64(block.chainid);
 
         bytes memory originData = abi.encode(destIntent);
         bytes memory fillerData = abi.encode(filler, recipient, "");

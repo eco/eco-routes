@@ -3,7 +3,8 @@ pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/UniversalIntent.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract InboxTest is BaseTest {
     address internal solver;
@@ -39,11 +40,14 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         // This should not revert
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -56,10 +60,13 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -73,14 +80,17 @@ contract InboxTest is BaseTest {
 
     function testInboxFulfillRevertsWithInvalidIntent() public {
         Intent memory intent = _createIntent();
-        intent.route.destination = 999; // Invalid destination
+        intent.destination = 999; // Invalid destination
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.expectRevert();
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -93,10 +103,13 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntentWithMultipleTokens();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -113,10 +126,13 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntentWithCalls();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -135,21 +151,21 @@ contract InboxTest is BaseTest {
         TokenAmount[] memory tokens = new TokenAmount[](0);
 
         Call[] memory calls = new Call[](1);
-        calls[0] = Call({target: recipient, data: "", value: ethAmount});
+        calls[0] = Call({target: TypeCasts.addressToBytes32(recipient), data: "", value: ethAmount});
 
         Intent memory intent = Intent({
+            destination: uint64(block.chainid),
             route: Route({
                 salt: salt,
-                source: block.chainid,
-                destination: block.chainid,
-                inbox: address(inbox),
+                deadline: uint64(expiry),
+                portal: TypeCasts.addressToBytes32(address(inbox)),
                 tokens: tokens,
                 calls: calls
             }),
             reward: Reward({
-                creator: creator,
-                prover: address(prover),
-                deadline: expiry,
+                deadline: uint64(expiry),
+                creator: TypeCasts.addressToBytes32(creator),
+                prover: TypeCasts.addressToBytes32(address(prover)),
                 nativeValue: 0,
                 tokens: new TokenAmount[](0)
             })
@@ -162,10 +178,13 @@ contract InboxTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -185,10 +204,13 @@ contract InboxTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             nonAddressClaimant,
@@ -204,11 +226,14 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
         bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
 
         vm.prank(solver);
         inbox.fulfillAndProve(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             claimantBytes,
@@ -243,13 +268,14 @@ contract InboxTest is BaseTest {
             bytes32 routeHash = keccak256(abi.encode(intent.route));
             bytes32 rewardHash = keccak256(abi.encode(intent.reward));
             bytes32 intentHash = keccak256(
-                abi.encodePacked(routeHash, rewardHash)
+                abi.encodePacked(intent.destination, routeHash, rewardHash)
             );
             intentHashes[i] = intentHash;
 
             // Fulfill each intent
             vm.prank(solver);
             inbox.fulfill(
+                uint64(block.chainid),
                 intent.route,
                 rewardHash,
                 bytes32(uint256(uint160(recipient))),
@@ -272,12 +298,15 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
         bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
 
         // First fulfillment should succeed
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             claimantBytes,
@@ -289,6 +318,7 @@ contract InboxTest is BaseTest {
         vm.expectRevert();
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             claimantBytes,
@@ -299,15 +329,18 @@ contract InboxTest is BaseTest {
 
     function testFulfillWithInvalidInboxAddress() public {
         Intent memory intent = _createIntent();
-        intent.route.inbox = address(0x999); // Wrong inbox address
+        intent.route.portal = TypeCasts.addressToBytes32(address(0x999)); // Wrong portal address
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.expectRevert();
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
@@ -320,19 +353,22 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
         bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
 
         _expectEmit();
         emit IInbox.Fulfillment(
             intentHash,
-            intent.route.source,
-            address(0),
+            uint64(block.chainid),
+            bytes32(0),
             claimantBytes
         );
 
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             claimantBytes,
@@ -345,11 +381,14 @@ contract InboxTest is BaseTest {
         Intent memory intent = _createIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
 
         vm.expectRevert();
         vm.prank(solver);
         inbox.fulfill(
+            uint64(block.chainid),
             intent.route,
             rewardHash,
             bytes32(0),
@@ -360,11 +399,11 @@ contract InboxTest is BaseTest {
 
     function _createIntent() internal view returns (Intent memory) {
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        tokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
-            target: address(tokenA),
+            target: TypeCasts.addressToBytes32(address(tokenA)),
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
                 recipient,
@@ -375,18 +414,18 @@ contract InboxTest is BaseTest {
 
         return
             Intent({
+                destination: uint64(block.chainid),
                 route: Route({
                     salt: salt,
-                    source: block.chainid,
-                    destination: block.chainid,
-                    inbox: address(inbox),
+                    deadline: uint64(expiry),
+                    portal: TypeCasts.addressToBytes32(address(inbox)),
                     tokens: tokens,
                     calls: calls
                 }),
                 reward: Reward({
-                    creator: creator,
-                    prover: address(prover),
-                    deadline: expiry,
+                    deadline: uint64(expiry),
+                    creator: TypeCasts.addressToBytes32(creator),
+                    prover: TypeCasts.addressToBytes32(address(prover)),
                     nativeValue: 0,
                     tokens: new TokenAmount[](0)
                 })
@@ -399,15 +438,15 @@ contract InboxTest is BaseTest {
         returns (Intent memory)
     {
         TokenAmount[] memory tokens = new TokenAmount[](2);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        tokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
         tokens[1] = TokenAmount({
-            token: address(tokenB),
+            token: TypeCasts.addressToBytes32(address(tokenB)),
             amount: MINT_AMOUNT * 2
         });
 
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
-            target: address(tokenA),
+            target: TypeCasts.addressToBytes32(address(tokenA)),
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
                 recipient,
@@ -416,7 +455,7 @@ contract InboxTest is BaseTest {
             value: 0
         });
         calls[1] = Call({
-            target: address(tokenB),
+            target: TypeCasts.addressToBytes32(address(tokenB)),
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
                 recipient,
@@ -427,18 +466,18 @@ contract InboxTest is BaseTest {
 
         return
             Intent({
+                destination: uint64(block.chainid),
                 route: Route({
                     salt: salt,
-                    source: block.chainid,
-                    destination: block.chainid,
-                    inbox: address(inbox),
+                    deadline: uint64(expiry),
+                    portal: TypeCasts.addressToBytes32(address(inbox)),
                     tokens: tokens,
                     calls: calls
                 }),
                 reward: Reward({
-                    creator: creator,
-                    prover: address(prover),
-                    deadline: expiry,
+                    deadline: uint64(expiry),
+                    creator: TypeCasts.addressToBytes32(creator),
+                    prover: TypeCasts.addressToBytes32(address(prover)),
                     nativeValue: 0,
                     tokens: new TokenAmount[](0)
                 })
@@ -447,11 +486,11 @@ contract InboxTest is BaseTest {
 
     function _createIntentWithCalls() internal view returns (Intent memory) {
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        tokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
-            target: address(tokenA),
+            target: TypeCasts.addressToBytes32(address(tokenA)),
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
                 recipient,
@@ -462,18 +501,18 @@ contract InboxTest is BaseTest {
 
         return
             Intent({
+                destination: uint64(block.chainid),
                 route: Route({
                     salt: salt,
-                    source: block.chainid,
-                    destination: block.chainid,
-                    inbox: address(inbox),
+                    deadline: uint64(expiry),
+                    portal: TypeCasts.addressToBytes32(address(inbox)),
                     tokens: tokens,
                     calls: calls
                 }),
                 reward: Reward({
-                    creator: creator,
-                    prover: address(prover),
-                    deadline: expiry,
+                    deadline: uint64(expiry),
+                    creator: TypeCasts.addressToBytes32(creator),
+                    prover: TypeCasts.addressToBytes32(address(prover)),
                     nativeValue: 0,
                     tokens: new TokenAmount[](0)
                 })

@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {IProver} from "../interfaces/IProver.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {Intent} from "../types/Intent.sol";
+import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title BaseProver
@@ -12,6 +13,7 @@ import {Intent} from "../types/Intent.sol";
  * and their claimants
  */
 abstract contract BaseProver is IProver, ERC165 {
+    using AddressConverter for address;
     /**
      * @notice Address of the Inbox contract
      * @dev Immutable to prevent unauthorized changes
@@ -68,7 +70,7 @@ abstract contract BaseProver is IProver, ERC165 {
                     claimant: claimant,
                     destinationChainID: uint96(_destinationChainID)
                 });
-                emit IntentProven(intentHash, claimant);
+                emit IntentProven(intentHash, claimant.toBytes32());
             }
         }
     }
@@ -92,17 +94,19 @@ abstract contract BaseProver is IProver, ERC165 {
     function challengeIntentProof(Intent calldata _intent) external {
         bytes32 routeHash = keccak256(abi.encode(_intent.route));
         bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
-        bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(_intent.destination, routeHash, rewardHash)
+        );
 
         ProofData memory proof = _provenIntents[intentHash];
 
         // Only challenge if proof exists and destination chain ID doesn't match
         if (
             proof.claimant != address(0) &&
-            proof.destinationChainID != _intent.route.destination
+            proof.destinationChainID != _intent.destination
         ) {
             delete _provenIntents[intentHash];
-            emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
+            emit IntentProven(intentHash, bytes32(0)); // Emit with zero bytes32 to indicate removal
         }
     }
 

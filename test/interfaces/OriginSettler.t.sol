@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
 import {IOriginSettler} from "../../contracts/interfaces/ERC7683/IOriginSettler.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction} from "../../contracts/types/ERC7683.sol";
 
 // Simple concrete implementation for testing

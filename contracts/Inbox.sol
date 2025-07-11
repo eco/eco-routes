@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {AddressConverter} from "./libs/AddressConverter.sol";
 import {IProver} from "./interfaces/IProver.sol";
 import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 
-import {Route, Call, TokenAmount} from "./types/Intent.sol";
+import {Route, Call, TokenAmount} from "./types/UniversalIntent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -19,7 +19,8 @@ import {Semver} from "./libs/Semver.sol";
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
 contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
-    using TypeCasts for address;
+    using AddressConverter for address;
+    using AddressConverter for bytes32;
     using SafeERC20 for IERC20;
 
     /**
@@ -41,6 +42,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Fulfills an intent to be proven via storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @param _sourceChainId The source chain ID where the intent was created
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
@@ -49,6 +51,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @return Array of execution results from each call
      */
     function fulfill(
+        uint64 _sourceChainId,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
@@ -56,6 +59,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         address _localProver
     ) external payable override returns (bytes[] memory) {
         bytes[] memory result = _fulfill(
+            _sourceChainId,
             _route,
             _rewardHash,
             _claimant,
@@ -69,6 +73,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Executes intent actions and sends proof message to source chain
+     * @param _sourceChainId The source chain ID where the intent was created
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
@@ -78,6 +83,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @return Array of execution results
      */
     function fulfillAndProve(
+        uint64 _sourceChainId,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
@@ -91,6 +97,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         returns (bytes[] memory)
     {
         bytes[] memory result = _fulfill(
+            _sourceChainId,
             _route,
             _rewardHash,
             _claimant,
@@ -101,7 +108,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
         bytes32[] memory hashes = new bytes32[](1);
         hashes[0] = _expectedHash;
 
-        initiateProving(_route.source, hashes, _localProver, _data);
+        initiateProving(_sourceChainId, hashes, _localProver, _data);
         return result;
     }
 
@@ -145,6 +152,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls
+     * @param _sourceChainId The source chain ID where the intent was created
      * @param _route The route of the intent
      * @param _rewardHash The hash of the reward
      * @param _claimant Cross-VM compatible claimant identifier
@@ -153,23 +161,25 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
      * @return Array of execution results
      */
     function _fulfill(
+        uint64 _sourceChainId,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
         address _localProver
     ) internal returns (bytes[] memory) {
-        if (_route.destination != block.chainid) {
-            revert WrongChain(_route.destination);
+        // Check if the route has expired
+        if (block.timestamp > _route.deadline) {
+            revert IntentExpired();
         }
 
         bytes32 routeHash = keccak256(abi.encode(_route));
         bytes32 intentHash = keccak256(
-            abi.encodePacked(routeHash, _rewardHash)
+            abi.encodePacked(uint64(block.chainid), routeHash, _rewardHash)
         );
 
-        if (_route.inbox != address(this)) {
-            revert InvalidInbox(_route.inbox);
+        if (_route.portal != address(this).toBytes32()) {
+            revert InvalidPortal(_route.portal.toAddress());
         }
         if (intentHash != _expectedHash) {
             revert InvalidHash(_expectedHash);
@@ -183,13 +193,18 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
 
         fulfilled[intentHash] = _claimant;
 
-        emit Fulfillment(_expectedHash, _route.source, _localProver, _claimant);
+        emit Fulfillment(
+            _expectedHash,
+            _sourceChainId,
+            _localProver.toBytes32(),
+            _claimant
+        );
 
         uint256 routeTokenCount = _route.tokens.length;
         // Transfer ERC20 tokens to the inbox
         for (uint256 i = 0; i < routeTokenCount; ++i) {
             TokenAmount memory approval = _route.tokens[i];
-            IERC20(approval.token).safeTransferFrom(
+            IERC20(approval.token.toAddress()).safeTransferFrom(
                 msg.sender,
                 address(this),
                 approval.amount
@@ -201,14 +216,15 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
 
         for (uint256 i = 0; i < _route.calls.length; ++i) {
             Call memory call = _route.calls[i];
-            if (call.target.code.length == 0) {
+            address target = call.target.toAddress();
+            if (target.code.length == 0) {
                 if (call.data.length > 0) {
                     // no code at this address
-                    revert CallToEOA(call.target);
+                    revert CallToEOA(target);
                 }
             } else {
                 try
-                    IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)
+                    IERC165(target).supportsInterface(IPROVER_INTERFACE_ID)
                 returns (bool isProverCall) {
                     if (isProverCall) {
                         // call to prover
@@ -219,12 +235,12 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
                 }
             }
 
-            (bool success, bytes memory result) = call.target.call{
+            (bool success, bytes memory result) = target.call{
                 value: call.value
             }(call.data);
             if (!success) {
                 revert IntentCallFailed(
-                    call.target,
+                    target,
                     call.data,
                     call.value,
                     result
