@@ -66,7 +66,10 @@ contract DestinationSettlerTest is BaseTest {
         bytes32 orderId = keccak256("test-order");
 
         _expectEmit();
-        emit IDestinationSettler.OrderFilled(orderId, bytes32(uint256(uint160(filler))));
+        emit IDestinationSettler.OrderFilled(
+            orderId,
+            bytes32(uint256(uint160(filler)))
+        );
 
         vm.prank(filler);
         destinationSettler.fill(orderId, originData, fillerData);

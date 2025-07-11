@@ -491,14 +491,16 @@ contract UniversalSource is IntentSource, IUniversalIntentSource {
         bytes32 intentHash
     ) internal virtual {
         // Convert universal types to EVM types for the event
-        EVMTokenAmount[] memory routeTokens = new EVMTokenAmount[](intent.route.tokens.length);
+        EVMTokenAmount[] memory routeTokens = new EVMTokenAmount[](
+            intent.route.tokens.length
+        );
         for (uint256 i = 0; i < intent.route.tokens.length; i++) {
             routeTokens[i] = EVMTokenAmount({
                 token: intent.route.tokens[i].token.toAddress(),
                 amount: intent.route.tokens[i].amount
             });
         }
-        
+
         EVMCall[] memory routeCalls = new EVMCall[](intent.route.calls.length);
         for (uint256 i = 0; i < intent.route.calls.length; i++) {
             routeCalls[i] = EVMCall({
@@ -507,15 +509,17 @@ contract UniversalSource is IntentSource, IUniversalIntentSource {
                 value: intent.route.calls[i].value
             });
         }
-        
-        EVMTokenAmount[] memory rewardTokens = new EVMTokenAmount[](intent.reward.tokens.length);
+
+        EVMTokenAmount[] memory rewardTokens = new EVMTokenAmount[](
+            intent.reward.tokens.length
+        );
         for (uint256 i = 0; i < intent.reward.tokens.length; i++) {
             rewardTokens[i] = EVMTokenAmount({
                 token: intent.reward.tokens[i].token.toAddress(),
                 amount: intent.reward.tokens[i].amount
             });
         }
-        
+
         emit IntentCreated(
             intentHash,
             intent.destination,
@@ -744,13 +748,13 @@ contract UniversalSource is IntentSource, IUniversalIntentSource {
                 routeHash
             )
         }
-        
+
         // Check if vault creation succeeded (has code) or if it's a valid self-destructed vault
         if (vaultAddress == address(0)) {
             // CREATE2 failed completely
             revert VaultCreationFailed(intentHash);
         }
-        
+
         // Additional check for permit contracts - verify tokens were transferred
         if (permitContact != address(0)) {
             // Check if the intent is actually funded after vault creation
@@ -764,7 +768,7 @@ contract UniversalSource is IntentSource, IUniversalIntentSource {
                 state.target = address(0);
                 vaults[intentHash].state = state;
                 delete vaults[intentHash].permitContract;
-                
+
                 revert InsufficientTokenAllowance(address(0), funder, 0);
             }
         }

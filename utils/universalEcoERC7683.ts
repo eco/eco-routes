@@ -4,7 +4,7 @@ import { UniversalCall, UniversalTokenAmount } from './universalIntent'
 // Universal EcoERC7683 Route type with bytes32 for all addresses
 export type UniversalRoute = {
   salt: string
-  portal: string  // bytes32
+  portal: string // bytes32
   tokens: UniversalTokenAmount[]
   calls: UniversalCall[]
 }
@@ -12,18 +12,18 @@ export type UniversalRoute = {
 export type UniversalOnchainCrosschainOrderData = {
   destination: number
   route: UniversalRoute
-  creator: string  // bytes32
-  prover: string   // bytes32
+  creator: string // bytes32
+  prover: string // bytes32
   nativeValue: bigint
   rewardTokens: UniversalTokenAmount[]
 }
 
 export type UniversalGaslessCrosschainOrderData = {
   destination: number
-  portal: string  // bytes32
+  portal: string // bytes32
   routeTokens: UniversalTokenAmount[]
   calls: UniversalCall[]
-  prover: string  // bytes32
+  prover: string // bytes32
   nativeValue: bigint
   rewardTokens: UniversalTokenAmount[]
 }
@@ -116,63 +116,61 @@ export function encodeUniversalOnchainCrosschainOrderData(
   onchainCrosschainOrderData: UniversalOnchainCrosschainOrderData,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
-  
+
   // Define types as strings for proper ABI encoding
   const types = [
-    'uint64',     // destination
+    'uint64', // destination
     'tuple(bytes32,bytes32,tuple(bytes32,uint256)[],tuple(bytes32,bytes,uint256)[])', // route
-    'bytes32',    // creator
-    'bytes32',    // prover
-    'uint256',    // nativeValue
-    'tuple(bytes32,uint256)[]'  // rewardTokens
+    'bytes32', // creator
+    'bytes32', // prover
+    'uint256', // nativeValue
+    'tuple(bytes32,uint256)[]', // rewardTokens
   ]
-  
-  return abiCoder.encode(
-    types,
+
+  return abiCoder.encode(types, [
+    onchainCrosschainOrderData.destination,
     [
-      onchainCrosschainOrderData.destination,
-      [
-        onchainCrosschainOrderData.route.salt,
-        onchainCrosschainOrderData.route.portal,
-        onchainCrosschainOrderData.route.tokens.map(t => [t.token, t.amount]),
-        onchainCrosschainOrderData.route.calls.map(c => [c.target, c.data, c.value]),
-      ],
-      onchainCrosschainOrderData.creator,
-      onchainCrosschainOrderData.prover,
-      onchainCrosschainOrderData.nativeValue,
-      onchainCrosschainOrderData.rewardTokens.map(t => [t.token, t.amount]),
+      onchainCrosschainOrderData.route.salt,
+      onchainCrosschainOrderData.route.portal,
+      onchainCrosschainOrderData.route.tokens.map((t) => [t.token, t.amount]),
+      onchainCrosschainOrderData.route.calls.map((c) => [
+        c.target,
+        c.data,
+        c.value,
+      ]),
     ],
-  )
+    onchainCrosschainOrderData.creator,
+    onchainCrosschainOrderData.prover,
+    onchainCrosschainOrderData.nativeValue,
+    onchainCrosschainOrderData.rewardTokens.map((t) => [t.token, t.amount]),
+  ])
 }
 
 export function encodeUniversalGaslessCrosschainOrderData(
   gaslessCrosschainOrderData: UniversalGaslessCrosschainOrderData,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
-  
+
   // Define types as strings for proper ABI encoding
   const types = [
-    'uint256',    // destination
-    'bytes32',    // portal
-    'tuple(bytes32,uint256)[]',  // routeTokens
-    'tuple(bytes32,bytes,uint256)[]',  // calls
-    'bytes32',    // prover
-    'uint256',    // nativeValue
-    'tuple(bytes32,uint256)[]'  // rewardTokens
+    'uint256', // destination
+    'bytes32', // portal
+    'tuple(bytes32,uint256)[]', // routeTokens
+    'tuple(bytes32,bytes,uint256)[]', // calls
+    'bytes32', // prover
+    'uint256', // nativeValue
+    'tuple(bytes32,uint256)[]', // rewardTokens
   ]
-  
-  return abiCoder.encode(
-    types,
-    [
-      gaslessCrosschainOrderData.destination,
-      gaslessCrosschainOrderData.portal,
-      gaslessCrosschainOrderData.routeTokens.map(t => [t.token, t.amount]),
-      gaslessCrosschainOrderData.calls.map(c => [c.target, c.data, c.value]),
-      gaslessCrosschainOrderData.prover,
-      gaslessCrosschainOrderData.nativeValue,
-      gaslessCrosschainOrderData.rewardTokens.map(t => [t.token, t.amount]),
-    ],
-  )
+
+  return abiCoder.encode(types, [
+    gaslessCrosschainOrderData.destination,
+    gaslessCrosschainOrderData.portal,
+    gaslessCrosschainOrderData.routeTokens.map((t) => [t.token, t.amount]),
+    gaslessCrosschainOrderData.calls.map((c) => [c.target, c.data, c.value]),
+    gaslessCrosschainOrderData.prover,
+    gaslessCrosschainOrderData.nativeValue,
+    gaslessCrosschainOrderData.rewardTokens.map((t) => [t.token, t.amount]),
+  ])
 }
 
 export function encodeUniversalOnchainCrosschainOrder(

@@ -8,7 +8,7 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 
 contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
     using AddressConverter for bytes32;
-    
+
     Inbox public immutable inbox;
 
     constructor(address _inbox) {
@@ -39,7 +39,7 @@ contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
                 token.amount
             );
         }
-        
+
         // Call the inbox's fulfillAndProve function
         return
             inbox.fulfillAndProve{value: msg.value}(

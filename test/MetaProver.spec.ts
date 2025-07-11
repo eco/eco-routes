@@ -1027,7 +1027,8 @@ describe('MetaProver Test', (): void => {
         route,
         reward,
       })
-      const { intentHash: intentHash0, rewardHash: rewardHash0 } = hashUniversalIntent(universalIntent0)
+      const { intentHash: intentHash0, rewardHash: rewardHash0 } =
+        hashUniversalIntent(universalIntent0)
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1071,7 +1072,8 @@ describe('MetaProver Test', (): void => {
         route: route1,
         reward: reward1,
       })
-      const { intentHash: intentHash1, rewardHash: rewardHash1 } = hashUniversalIntent(universalIntent1)
+      const { intentHash: intentHash1, rewardHash: rewardHash1 } =
+        hashUniversalIntent(universalIntent1)
 
       // Approve tokens and fulfill second intent in batch
       await token.connect(solver).approve(await inbox.getAddress(), amount)

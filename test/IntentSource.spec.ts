@@ -455,7 +455,7 @@ describe('Intent Source Test', (): void => {
       it('calls challengeIntentProof if destinationChainID is wrong, emits, and does not withdraw', async () => {
         // Note: we are in "after expiry" context, but need to add proof after the initial setup
         // which already added a proof and increased time to expiry
-        
+
         // Challenge the existing proof since destination mismatch
         // The intent has destination = 1, but proof has destinationChainID = 31337
         await prover.connect(otherPerson).challengeIntentProof(intent)

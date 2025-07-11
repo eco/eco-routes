@@ -239,12 +239,7 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
                 value: call.value
             }(call.data);
             if (!success) {
-                revert IntentCallFailed(
-                    target,
-                    call.data,
-                    call.value,
-                    result
-                );
+                revert IntentCallFailed(target, call.data, call.value, result);
             }
             results[i] = result;
         }

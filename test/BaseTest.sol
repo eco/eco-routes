@@ -76,7 +76,10 @@ contract BaseTest is Test {
 
         // Setup route tokens
         routeTokens.push(
-            TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT})
+            TokenAmount({
+                token: TypeCasts.addressToBytes32(address(tokenA)),
+                amount: MINT_AMOUNT
+            })
         );
 
         // Setup calls
@@ -94,10 +97,16 @@ contract BaseTest is Test {
 
         // Setup reward tokens
         rewardTokens.push(
-            TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT})
+            TokenAmount({
+                token: TypeCasts.addressToBytes32(address(tokenA)),
+                amount: MINT_AMOUNT
+            })
         );
         rewardTokens.push(
-            TokenAmount({token: TypeCasts.addressToBytes32(address(tokenB)), amount: MINT_AMOUNT * 2})
+            TokenAmount({
+                token: TypeCasts.addressToBytes32(address(tokenB)),
+                amount: MINT_AMOUNT * 2
+            })
         );
 
         // Create memory copies of arrays for struct assignment

@@ -87,7 +87,7 @@ describe('Inbox Test', (): void => {
     erc20Address = await erc20.getAddress()
     const _calldata = await encodeTransfer(dstAddr.address, amount)
     const _timestamp = (await time.latest()) + timeDelta
-    
+
     // Create address-based intent first
     const _intent = {
       destination: Number((await owner.provider.getNetwork()).chainId),
@@ -117,10 +117,11 @@ describe('Inbox Test', (): void => {
         ],
       },
     }
-    
+
     // Convert to UniversalIntent
     const universalIntent = convertIntentToUniversal(_intent)
-    const { rewardHash: _rewardHash, intentHash: _intentHash } = hashUniversalIntent(universalIntent)
+    const { rewardHash: _rewardHash, intentHash: _intentHash } =
+      hashUniversalIntent(universalIntent)
 
     return {
       universalIntent,
@@ -133,10 +134,13 @@ describe('Inbox Test', (): void => {
   beforeEach(async (): Promise<void> => {
     ;({ inbox, erc20, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
-    ;({ universalIntent, universalRoute, universalReward, rewardHash, intentHash } = await createIntentData(
-      mintAmount,
-      timeDelta,
-    ))
+    ;({
+      universalIntent,
+      universalRoute,
+      universalReward,
+      rewardHash,
+      intentHash,
+    } = await createIntentData(mintAmount, timeDelta))
     mockProver = await (
       await ethers.getContractFactory('TestProver')
     ).deploy(await inbox.getAddress())
@@ -146,10 +150,10 @@ describe('Inbox Test', (): void => {
     it('should revert if fulfillment is attempted on an incorrect destination chain', async () => {
       // Create an intent hash for a different destination chain
       const wrongDestination = 123
-      const wrongIntent: UniversalIntent = { 
-        destination: wrongDestination, 
-        route: universalRoute, 
-        reward: universalReward 
+      const wrongIntent: UniversalIntent = {
+        destination: wrongDestination,
+        route: universalRoute,
+        reward: universalReward,
       }
       const { intentHash: wrongIntentHash } = hashUniversalIntent(wrongIntent)
 

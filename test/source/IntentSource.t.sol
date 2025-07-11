@@ -10,7 +10,7 @@ import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
 contract IntentSourceTest is BaseTest {
     using AddressConverter for bytes32;
-    
+
     function setUp() public override {
         super.setUp();
         _mintAndApprove(creator, MINT_AMOUNT);
@@ -76,7 +76,7 @@ contract IntentSourceTest is BaseTest {
 
         // Convert to EVM types for the event
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
-        
+
         _expectEmit();
         emit IIntentSource.IntentCreated(
             intentHash,
@@ -146,7 +146,10 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
+        emit IIntentSource.Withdrawal(
+            intentHash,
+            AddressConverter.toBytes32(claimant)
+        );
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
@@ -187,7 +190,10 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
+        emit IIntentSource.Withdrawal(
+            intentHash,
+            AddressConverter.toBytes32(claimant)
+        );
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
@@ -198,7 +204,10 @@ contract IntentSourceTest is BaseTest {
         );
 
         _expectEmit();
-        emit IIntentSource.Refund(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.Refund(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(otherPerson);
         intentSource.refund(intent.destination, routeHash, intent.reward);
@@ -407,7 +416,10 @@ contract IntentSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentFunded(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(creator);
         intentSource.fundFor(
@@ -449,7 +461,10 @@ contract IntentSourceTest is BaseTest {
     function testHandlesZeroTokenAmounts() public {
         // Create intent with zero amounts
         TokenAmount[] memory zeroRewardTokens = new TokenAmount[](1);
-        zeroRewardTokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: 0});
+        zeroRewardTokens[0] = TokenAmount({
+            token: TypeCasts.addressToBytes32(address(tokenA)),
+            amount: 0
+        });
 
         Reward memory newReward = reward;
         newReward.tokens = zeroRewardTokens;
@@ -521,7 +536,10 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(creator);
         intentSource.publishAndFund{value: sentAmount}(intent, true);
@@ -554,7 +572,10 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(creator);
         intentSource.publishAndFund(intent, true);
@@ -668,7 +689,10 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(creator);
         intentSource.publishAndFund(intent, true);
@@ -696,7 +720,10 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentPartiallyFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentPartiallyFunded(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(creator);
         intentSource.publishAndFund{value: sentAmount}(intent, true);
@@ -894,7 +921,7 @@ contract IntentSourceTest is BaseTest {
 
         // Since batchWithdraw calls withdrawRewards in a loop and reverts on error,
         // we need to handle each intent separately when they have different outcomes
-        
+
         // Intent 1: Proven with claimant - should succeed
         vm.prank(claimant);
         intentSource.withdrawRewards(
@@ -902,7 +929,7 @@ contract IntentSourceTest is BaseTest {
             keccak256(abi.encode(intents[0].route)),
             intents[0].reward
         );
-        
+
         // Intent 2: No proof, expired - should refund
         vm.prank(creator);
         intentSource.refund(
@@ -910,7 +937,7 @@ contract IntentSourceTest is BaseTest {
             keccak256(abi.encode(intents[1].route)),
             intents[1].reward
         );
-        
+
         // Intent 3: Proven with creator as claimant - should succeed
         vm.prank(creator);
         intentSource.withdrawRewards(
@@ -923,8 +950,14 @@ contract IntentSourceTest is BaseTest {
         // Intent 1: should go to claimant
         // Intent 2: should go to creator (refund)
         // Intent 3: should go to creator (different claimant)
-        assertEq(tokenA.balanceOf(claimant), initialClaimantBalance + MINT_AMOUNT);
-        assertEq(tokenA.balanceOf(creator), initialCreatorBalance + MINT_AMOUNT * 2);
+        assertEq(
+            tokenA.balanceOf(claimant),
+            initialClaimantBalance + MINT_AMOUNT
+        );
+        assertEq(
+            tokenA.balanceOf(creator),
+            initialCreatorBalance + MINT_AMOUNT * 2
+        );
     }
 
     function testEventEmissionForAllOperations() public {
@@ -934,7 +967,7 @@ contract IntentSourceTest is BaseTest {
         // Test IntentCreated event
         // Convert to EVM types for the event
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
-        
+
         _expectEmit();
         emit IIntentSource.IntentCreated(
             intentHash,
@@ -964,7 +997,10 @@ contract IntentSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(intentHash, AddressConverter.toBytes32(creator));
+        emit IIntentSource.IntentFunded(
+            intentHash,
+            AddressConverter.toBytes32(creator)
+        );
 
         vm.prank(creator);
         intentSource.fundFor(
@@ -980,7 +1016,10 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.Withdrawal(intentHash, AddressConverter.toBytes32(claimant));
+        emit IIntentSource.Withdrawal(
+            intentHash,
+            AddressConverter.toBytes32(claimant)
+        );
 
         vm.prank(claimant);
         intentSource.withdrawRewards(
@@ -1071,7 +1110,7 @@ contract FakePermitContract {
         // Lies about having unlimited allowance
         return (type(uint160).max, 0, 0);
     }
-    
+
     function transferFrom(
         address /* from */,
         address /* to */,

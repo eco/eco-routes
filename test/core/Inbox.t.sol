@@ -151,7 +151,11 @@ contract InboxTest is BaseTest {
         TokenAmount[] memory tokens = new TokenAmount[](0);
 
         Call[] memory calls = new Call[](1);
-        calls[0] = Call({target: TypeCasts.addressToBytes32(recipient), data: "", value: ethAmount});
+        calls[0] = Call({
+            target: TypeCasts.addressToBytes32(recipient),
+            data: "",
+            value: ethAmount
+        });
 
         Intent memory intent = Intent({
             destination: uint64(block.chainid),
@@ -399,7 +403,10 @@ contract InboxTest is BaseTest {
 
     function _createIntent() internal view returns (Intent memory) {
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
+        tokens[0] = TokenAmount({
+            token: TypeCasts.addressToBytes32(address(tokenA)),
+            amount: MINT_AMOUNT
+        });
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
@@ -438,7 +445,10 @@ contract InboxTest is BaseTest {
         returns (Intent memory)
     {
         TokenAmount[] memory tokens = new TokenAmount[](2);
-        tokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
+        tokens[0] = TokenAmount({
+            token: TypeCasts.addressToBytes32(address(tokenA)),
+            amount: MINT_AMOUNT
+        });
         tokens[1] = TokenAmount({
             token: TypeCasts.addressToBytes32(address(tokenB)),
             amount: MINT_AMOUNT * 2
@@ -486,7 +496,10 @@ contract InboxTest is BaseTest {
 
     function _createIntentWithCalls() internal view returns (Intent memory) {
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
+        tokens[0] = TokenAmount({
+            token: TypeCasts.addressToBytes32(address(tokenA)),
+            amount: MINT_AMOUNT
+        });
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({

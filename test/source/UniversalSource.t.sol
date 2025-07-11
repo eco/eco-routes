@@ -243,7 +243,9 @@ contract UniversalSourceTest is BaseTest {
         );
 
         // Convert universal types to EVM types for the event expectation
-        EVMTokenAmount[] memory evmRouteTokens = new EVMTokenAmount[](universalRouteTokens.length);
+        EVMTokenAmount[] memory evmRouteTokens = new EVMTokenAmount[](
+            universalRouteTokens.length
+        );
         for (uint256 i = 0; i < universalRouteTokens.length; i++) {
             evmRouteTokens[i] = EVMTokenAmount({
                 token: universalRouteTokens[i].token.toAddress(),
@@ -260,7 +262,9 @@ contract UniversalSourceTest is BaseTest {
             });
         }
 
-        EVMTokenAmount[] memory evmRewardTokens = new EVMTokenAmount[](universalRewardTokens.length);
+        EVMTokenAmount[] memory evmRewardTokens = new EVMTokenAmount[](
+            universalRewardTokens.length
+        );
         for (uint256 i = 0; i < universalRewardTokens.length; i++) {
             evmRewardTokens[i] = EVMTokenAmount({
                 token: universalRewardTokens[i].token.toAddress(),

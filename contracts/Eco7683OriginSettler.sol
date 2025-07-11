@@ -11,9 +11,9 @@ import {AddressConverter} from "./libs/AddressConverter.sol";
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
 import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
 
-import {Intent, Route as UniversalRoute, Reward, TokenAmount} from "./types/UniversalIntent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "./types/UniversalIntent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, Route as EcoRoute, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
+import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, Route as Route7683, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -64,21 +64,19 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             revert TypeSignatureMismatch();
         }
 
+        // Decode components individually to avoid Solidity's nested struct decoding issues
         OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
             .decode(_order.orderData, (OnchainCrosschainOrderData));
 
-        // Create new route without source/destination fields
-        UniversalRoute memory newRoute = UniversalRoute({
-            salt: onchainCrosschainOrderData.route.salt,
-            deadline: uint64(_order.fillDeadline),
-            portal: onchainCrosschainOrderData.route.portal,
-            tokens: onchainCrosschainOrderData.route.tokens,
-            calls: onchainCrosschainOrderData.route.calls
-        });
-
         Intent memory intent = Intent(
             onchainCrosschainOrderData.destination,
-            newRoute,
+            Route({
+                salt: onchainCrosschainOrderData.route.salt,
+                deadline: uint64(_order.fillDeadline),
+                portal: onchainCrosschainOrderData.route.portal,
+                tokens: onchainCrosschainOrderData.route.tokens,
+                calls: onchainCrosschainOrderData.route.calls
+            }),
             Reward(
                 uint64(_order.fillDeadline),
                 onchainCrosschainOrderData.creator,
@@ -121,8 +119,38 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             revert TypeSignatureMismatch();
         }
 
-        GaslessCrosschainOrderData memory gaslessCrosschainOrderData = abi
-            .decode(_order.orderData, (GaslessCrosschainOrderData));
+        // Decode components individually to avoid Solidity's nested struct decoding issues
+        (
+            uint256 destination,
+            bytes32 portal,
+            TokenAmount[] memory routeTokens,
+            Call[] memory calls,
+            bytes32 prover,
+            uint256 nativeValue,
+            TokenAmount[] memory rewardTokens
+        ) = abi.decode(
+                _order.orderData,
+                (
+                    uint256,
+                    bytes32,
+                    TokenAmount[],
+                    Call[],
+                    bytes32,
+                    uint256,
+                    TokenAmount[]
+                )
+            );
+
+        GaslessCrosschainOrderData
+            memory gaslessCrosschainOrderData = GaslessCrosschainOrderData({
+                destination: destination,
+                portal: portal,
+                routeTokens: routeTokens,
+                calls: calls,
+                prover: prover,
+                nativeValue: nativeValue,
+                rewardTokens: rewardTokens
+            });
 
         if (_order.originChainId != block.chainid) {
             revert OriginChainIDMismatch();
@@ -130,7 +158,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         Intent memory intent = Intent(
             uint64(gaslessCrosschainOrderData.destination),
-            UniversalRoute(
+            Route(
                 bytes32(_order.nonce),
                 uint64(_order.fillDeadline),
                 gaslessCrosschainOrderData.portal,
@@ -161,21 +189,25 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         // Decode components individually to avoid Solidity's nested struct decoding issues
         (
             uint64 destination,
-            EcoRoute memory route,
+            Route7683 memory route,
             bytes32 creator,
             bytes32 prover,
             uint256 nativeValue,
             TokenAmount[] memory rewardTokens
-        ) = abi.decode(_order.orderData, (uint64, EcoRoute, bytes32, bytes32, uint256, TokenAmount[]));
-        
-        OnchainCrosschainOrderData memory onchainCrosschainOrderData = OnchainCrosschainOrderData({
-            destination: destination,
-            route: route,
-            creator: creator,
-            prover: prover,
-            nativeValue: nativeValue,
-            rewardTokens: rewardTokens
-        });
+        ) = abi.decode(
+                _order.orderData,
+                (uint64, Route7683, bytes32, bytes32, uint256, TokenAmount[])
+            );
+
+        OnchainCrosschainOrderData
+            memory onchainCrosschainOrderData = OnchainCrosschainOrderData({
+                destination: destination,
+                route: route,
+                creator: creator,
+                prover: prover,
+                nativeValue: nativeValue,
+                rewardTokens: rewardTokens
+            });
 
         // Extract destination from order data
         uint256 routeTokenCount = onchainCrosschainOrderData
@@ -183,10 +215,12 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             .tokens
             .length;
         Output[] memory maxSpent = new Output[](routeTokenCount);
+
         for (uint256 i = 0; i < routeTokenCount; ++i) {
             TokenAmount memory approval = onchainCrosschainOrderData
                 .route
                 .tokens[i];
+
             maxSpent[i] = Output(
                 approval.token, // Already bytes32 in universal types
                 approval.amount,
@@ -194,6 +228,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 uint256(onchainCrosschainOrderData.destination)
             );
         }
+
         uint256 rewardTokenCount = onchainCrosschainOrderData
             .rewardTokens
             .length;
@@ -210,6 +245,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 uint256(destination)
             );
         }
+
         if (onchainCrosschainOrderData.nativeValue > 0) {
             minReceived[rewardTokenCount] = Output(
                 bytes32(uint256(uint160(address(0)))),
@@ -221,7 +257,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         Intent memory intent = Intent(
             destination,
-            UniversalRoute({
+            Route({
                 salt: onchainCrosschainOrderData.route.salt,
                 deadline: uint64(_order.fillDeadline),
                 portal: onchainCrosschainOrderData.route.portal,
@@ -276,19 +312,32 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             bytes32 prover,
             uint256 nativeValue,
             TokenAmount[] memory rewardTokens
-        ) = abi.decode(_order.orderData, (uint256, bytes32, TokenAmount[], Call[], bytes32, uint256, TokenAmount[]));
-        
-        GaslessCrosschainOrderData memory gaslessCrosschainOrderData = GaslessCrosschainOrderData({
-            destination: destination,
-            portal: portal,
-            routeTokens: routeTokens,
-            calls: calls,
-            prover: prover,
-            nativeValue: nativeValue,
-            rewardTokens: rewardTokens
-        });
+        ) = abi.decode(
+                _order.orderData,
+                (
+                    uint256,
+                    bytes32,
+                    TokenAmount[],
+                    Call[],
+                    bytes32,
+                    uint256,
+                    TokenAmount[]
+                )
+            );
+
+        GaslessCrosschainOrderData
+            memory gaslessCrosschainOrderData = GaslessCrosschainOrderData({
+                destination: destination,
+                portal: portal,
+                routeTokens: routeTokens,
+                calls: calls,
+                prover: prover,
+                nativeValue: nativeValue,
+                rewardTokens: rewardTokens
+            });
         uint256 routeTokenCount = gaslessCrosschainOrderData.routeTokens.length;
         Output[] memory maxSpent = new Output[](routeTokenCount);
+
         for (uint256 i = 0; i < routeTokenCount; ++i) {
             TokenAmount memory requirement = gaslessCrosschainOrderData
                 .routeTokens[i];
@@ -299,6 +348,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 uint256(gaslessCrosschainOrderData.destination)
             );
         }
+
         uint256 rewardTokenCount = gaslessCrosschainOrderData
             .rewardTokens
             .length;
@@ -315,6 +365,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 uint256(gaslessCrosschainOrderData.destination)
             );
         }
+
         if (gaslessCrosschainOrderData.nativeValue > 0) {
             minReceived[rewardTokenCount] = Output(
                 bytes32(uint256(uint160(address(0)))),
@@ -326,7 +377,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         Intent memory intent = Intent(
             uint64(gaslessCrosschainOrderData.destination),
-            UniversalRoute(
+            Route(
                 bytes32(_order.nonce),
                 uint64(_order.fillDeadline),
                 gaslessCrosschainOrderData.portal,
@@ -348,8 +399,8 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             gaslessCrosschainOrderData.portal,
             abi.encode(intent)
         );
-
         (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(intent);
+
         return
             ResolvedCrossChainOrder(
                 _order.user,
@@ -371,6 +422,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         if (_order.originSettler != address(this)) {
             return false;
         }
+
         bytes32 structHash = keccak256(
             abi.encode(
                 GASLESS_CROSSCHAIN_ORDER_TYPEHASH,
@@ -384,7 +436,6 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 keccak256(_order.orderData)
             )
         );
-
         bytes32 hash = _hashTypedDataV4(structHash);
         address signer = hash.recover(_signature);
 
@@ -398,6 +449,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     ) internal returns (bytes32 intentHash) {
         if (!INTENT_SOURCE.isIntentFunded(_intent)) {
             address vault = INTENT_SOURCE.intentVaultAddress(_intent);
+            uint256 rewardsLength = _intent.reward.tokens.length;
 
             if (_intent.reward.nativeValue > 0) {
                 if (msg.value < _intent.reward.nativeValue) {
@@ -406,12 +458,16 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
                 payable(vault).transfer(_intent.reward.nativeValue);
             }
-            uint256 rewardsLength = _intent.reward.tokens.length;
+
             for (uint256 i = 0; i < rewardsLength; ++i) {
                 address token = _intent.reward.tokens[i].token.toAddress();
                 uint256 amount = _intent.reward.tokens[i].amount;
 
-                IERC20(token).safeTransferFrom(_user.toAddress(), vault, amount);
+                IERC20(token).safeTransferFrom(
+                    _user.toAddress(),
+                    vault,
+                    amount
+                );
             }
         }
 

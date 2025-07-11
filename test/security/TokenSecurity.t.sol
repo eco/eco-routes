@@ -288,7 +288,10 @@ contract TokenSecurityTest is BaseTest {
         // Test that approval race conditions are handled properly
 
         TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: MINT_AMOUNT});
+        rewards[0] = TokenAmount({
+            token: TypeCasts.addressToBytes32(address(tokenA)),
+            amount: MINT_AMOUNT
+        });
 
         reward.tokens = rewards;
         intent.reward = reward;
@@ -356,7 +359,10 @@ contract TokenSecurityTest is BaseTest {
         // Test that zero amount transfers are handled correctly
 
         TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({token: TypeCasts.addressToBytes32(address(tokenA)), amount: 0});
+        rewards[0] = TokenAmount({
+            token: TypeCasts.addressToBytes32(address(tokenA)),
+            amount: 0
+        });
 
         reward.tokens = rewards;
         intent.reward = reward;

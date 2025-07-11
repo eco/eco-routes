@@ -11,7 +11,7 @@ import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
 contract HyperProverTest is BaseTest {
     using AddressConverter for bytes32;
-    
+
     HyperProver internal hyperProver;
     TestMailbox internal mailbox;
 
@@ -121,7 +121,10 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         _expectEmit();
-        emit IProver.IntentProven(intentHash, AddressConverter.toBytes32(claimant));
+        emit IProver.IntentProven(
+            intentHash,
+            AddressConverter.toBytes32(claimant)
+        );
 
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(

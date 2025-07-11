@@ -3,8 +3,8 @@
 pragma solidity ^0.8.26;
 
 import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
-import {Intent, Route, Reward} from "./types/UniversalIntent.sol";
-import {OnchainCrosschainOrderData} from "./types/EcoERC7683.sol";
+import {Intent, Route, Reward, TokenAmount} from "./types/UniversalIntent.sol";
+import {OnchainCrosschainOrderData, Route as Route7683} from "./types/EcoERC7683.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 
@@ -26,11 +26,28 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes calldata _originData,
         bytes calldata _fillerData
     ) external payable {
-        // Decode as OnchainCrosschainOrderData
-        OnchainCrosschainOrderData memory orderData = abi.decode(
-            _originData,
-            (OnchainCrosschainOrderData)
-        );
+        // Decode components individually to avoid Solidity's nested struct decoding issues
+        (
+            uint64 destination,
+            Route7683 memory route,
+            bytes32 creator,
+            bytes32 prover,
+            uint256 nativeValue,
+            TokenAmount[] memory rewardTokens
+        ) = abi.decode(
+                _originData,
+                (uint64, Route7683, bytes32, bytes32, uint256, TokenAmount[])
+            );
+
+        OnchainCrosschainOrderData
+            memory orderData = OnchainCrosschainOrderData({
+                destination: destination,
+                route: route,
+                creator: creator,
+                prover: prover,
+                nativeValue: nativeValue,
+                rewardTokens: rewardTokens
+            });
 
         // For now, we'll need to get deadline from elsewhere since it's not in OnchainCrosschainOrderData
         // This is a limitation of the EIP-7683 structure - it doesn't include deadline

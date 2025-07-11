@@ -11,13 +11,7 @@ import {
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, Provider } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
-import {
-  Call,
-  TokenAmount,
-  Route,
-  Reward,
-  Intent,
-} from '../utils/intent'
+import { Call, TokenAmount, Route, Reward, Intent } from '../utils/intent'
 import {
   UniversalIntent,
   UniversalRoute,
@@ -89,7 +83,8 @@ describe('Origin Settler Test', (): void => {
   }> {
     const [creator, owner, otherPerson] = await ethers.getSigners()
 
-    const intentSourceFactory = await ethers.getContractFactory('UniversalSource')
+    const intentSourceFactory =
+      await ethers.getContractFactory('UniversalSource')
     const intentSourceImpl = await intentSourceFactory.deploy()
     // Use the IUniversalIntentSource interface with the actual implementation
     const intentSource = await ethers.getContractAt(
@@ -165,7 +160,7 @@ describe('Origin Settler Test', (): void => {
       salt =
         '0x0000000000000000000000000000000000000000000000000000000000000001'
       nonce = 1
-      
+
       // Create address-based intent first
       const intent: Intent = {
         destination: chainId,
@@ -193,10 +188,11 @@ describe('Origin Settler Test', (): void => {
           ],
         },
       }
-      
+
       // Convert to UniversalIntent
       universalIntent = convertIntentToUniversal(intent)
-      ;({ routeHash, rewardHash, intentHash } = hashUniversalIntent(universalIntent))
+      ;({ routeHash, rewardHash, intentHash } =
+        hashUniversalIntent(universalIntent))
 
       onchainCrosschainOrderData = {
         destination: chainId,
@@ -216,11 +212,7 @@ describe('Origin Settler Test', (): void => {
       const encodedOrderData = encodeUniversalOnchainCrosschainOrderData(
         onchainCrosschainOrderData,
       )
-      console.log('Encoded order data:', encodedOrderData)
-      console.log('Order data object:', JSON.stringify(onchainCrosschainOrderData, (key, value) =>
-        typeof value === 'bigint' ? value.toString() : value
-      , 2))
-      
+
       // Create the order struct
       onchainCrosschainOrder = {
         fillDeadline: expiry_fill,
@@ -239,7 +231,7 @@ describe('Origin Settler Test', (): void => {
       const encodedGaslessOrderData = encodeUniversalGaslessCrosschainOrderData(
         gaslessCrosschainOrderData,
       )
-      
+
       gaslessCrosschainOrder = {
         originSettler: await originSettler.getAddress(),
         user: creator.address,
@@ -319,12 +311,16 @@ describe('Origin Settler Test', (): void => {
           onchainCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(universalIntent.route.tokens.length)
+        expect(resolvedOrder.maxSpent.length).to.eq(
+          universalIntent.route.tokens.length,
+        )
         for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
           expect(resolvedOrder.maxSpent[i].token).to.eq(
             universalIntent.route.tokens[i].token,
           )
-          expect(resolvedOrder.maxSpent[i].amount).to.eq(universalIntent.route.tokens[i].amount)
+          expect(resolvedOrder.maxSpent[i].amount).to.eq(
+            universalIntent.route.tokens[i].amount,
+          )
           expect(resolvedOrder.maxSpent[i].recipient).to.eq(
             ethers.zeroPadValue(ethers.ZeroAddress, 32),
           )
@@ -332,7 +328,8 @@ describe('Origin Settler Test', (): void => {
         }
 
         expect(resolvedOrder.minReceived.length).to.eq(
-          universalIntent.reward.tokens.length + (universalIntent.reward.nativeValue > 0 ? 1 : 0),
+          universalIntent.reward.tokens.length +
+            (universalIntent.reward.nativeValue > 0 ? 1 : 0),
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
@@ -350,7 +347,9 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].token).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
-        expect(resolvedOrder.minReceived[i].amount).to.eq(universalIntent.reward.nativeValue)
+        expect(resolvedOrder.minReceived[i].amount).to.eq(
+          universalIntent.reward.nativeValue,
+        )
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
@@ -361,7 +360,9 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         )
-        expect(fillInstruction.originData).to.eq(encodeUniversalIntent(universalIntent))
+        expect(fillInstruction.originData).to.eq(
+          encodeUniversalIntent(universalIntent),
+        )
       })
     })
 
@@ -407,19 +408,24 @@ describe('Origin Settler Test', (): void => {
           gaslessCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(universalIntent.route.tokens.length)
+        expect(resolvedOrder.maxSpent.length).to.eq(
+          universalIntent.route.tokens.length,
+        )
         for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
           expect(resolvedOrder.maxSpent[i].token).to.eq(
             universalIntent.route.tokens[i].token,
           )
-          expect(resolvedOrder.maxSpent[i].amount).to.eq(universalIntent.route.tokens[i].amount)
+          expect(resolvedOrder.maxSpent[i].amount).to.eq(
+            universalIntent.route.tokens[i].amount,
+          )
           expect(resolvedOrder.maxSpent[i].recipient).to.eq(
             ethers.zeroPadValue(ethers.ZeroAddress, 32),
           )
           expect(resolvedOrder.maxSpent[i].chainId).to.eq(chainId)
         }
         expect(resolvedOrder.minReceived.length).to.eq(
-          universalIntent.reward.tokens.length + (universalIntent.reward.nativeValue > 0 ? 1 : 0),
+          universalIntent.reward.tokens.length +
+            (universalIntent.reward.nativeValue > 0 ? 1 : 0),
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
@@ -439,7 +445,9 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].token).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
-        expect(resolvedOrder.minReceived[i].amount).to.eq(universalIntent.reward.nativeValue)
+        expect(resolvedOrder.minReceived[i].amount).to.eq(
+          universalIntent.reward.nativeValue,
+        )
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
@@ -452,7 +460,9 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         )
-        expect(fillInstruction.originData).to.eq(encodeUniversalIntent(universalIntent))
+        expect(fillInstruction.originData).to.eq(
+          encodeUniversalIntent(universalIntent),
+        )
       })
     })
   })

@@ -685,20 +685,23 @@ contract IntentSource is IVaultStorage, IIntentSource {
         if (permitContact != address(0)) {
             initialBalances = new uint256[](reward.tokens.length);
             for (uint256 i = 0; i < reward.tokens.length; i++) {
-                initialBalances[i] = IERC20(reward.tokens[i].token).balanceOf(funder);
+                initialBalances[i] = IERC20(reward.tokens[i].token).balanceOf(
+                    funder
+                );
             }
         }
 
         // Create vault
         new Vault{salt: routeHash}(intentHash, reward);
-        
+
         // Check if vault was funded successfully when using permit contract
         if (permitContact != address(0)) {
             // Verify tokens were actually transferred from the funder
             for (uint256 i = 0; i < reward.tokens.length; i++) {
-                uint256 currentBalance = IERC20(reward.tokens[i].token).balanceOf(funder);
+                uint256 currentBalance = IERC20(reward.tokens[i].token)
+                    .balanceOf(funder);
                 uint256 expectedTransfer = reward.tokens[i].amount;
-                
+
                 // If balance didn't decrease by expected amount, funding failed
                 if (currentBalance + expectedTransfer > initialBalances[i]) {
                     _revertFunding(state, intentHash, permitContact);
@@ -737,12 +740,12 @@ contract IntentSource is IVaultStorage, IIntentSource {
         state.usePermit = 0;
         state.target = address(0);
         vaults[intentHash].state = state;
-        
+
         // Clear permit contract if it was set
         if (permitContact != address(0)) {
             delete vaults[intentHash].permitContract;
         }
-        
+
         // Revert with error
         revert VaultCreationFailed(intentHash);
     }

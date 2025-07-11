@@ -105,12 +105,12 @@ describe('Destination Settler Test', (): void => {
 
     const _calldata1 = await encodeTransferPayable(creator.address, mintAmount)
     const destination = Number((await owner.provider.getNetwork()).chainId)
-    
+
     // IMPORTANT: The DestinationSettler contract uses type(uint64).max for deadline
     // since it's not included in OnchainCrosschainOrderData
     // We need to use the exact same value the contract uses
     const contractDeadline = MAX_UINT64
-    
+
     // Create the intent with address-based types first
     const _intent: Intent = {
       destination: destination,
@@ -118,9 +118,7 @@ describe('Destination Settler Test', (): void => {
         salt,
         deadline: contractDeadline, // Use the deadline the contract will use
         portal: await inbox.getAddress(),
-        tokens: [
-          { token: await erc20.getAddress(), amount: mintAmount },
-        ],
+        tokens: [{ token: await erc20.getAddress(), amount: mintAmount }],
         calls: [
           {
             target: await erc20.getAddress(),
@@ -142,11 +140,11 @@ describe('Destination Settler Test', (): void => {
         ],
       },
     }
-    
+
     // Convert to UniversalIntent
     const universalIntent = convertIntentToUniversal(_intent)
     const { intentHash: _intentHash } = hashUniversalIntent(universalIntent)
-    
+
     // Create the UniversalOnchainCrosschainOrderData for the fill function
     const orderData: UniversalOnchainCrosschainOrderData = {
       destination: destination,
@@ -172,8 +170,11 @@ describe('Destination Settler Test', (): void => {
   beforeEach(async (): Promise<void> => {
     ;({ inbox, destinationSettler, prover, erc20, owner, creator, solver } =
       await loadFixture(deployInboxFixture))
-    ;({ universalIntent, intentHash, orderData } =
-      await createIntentDataNative(mintAmount, nativeAmount, timeDelta))
+    ;({ universalIntent, intentHash, orderData } = await createIntentDataNative(
+      mintAmount,
+      nativeAmount,
+      timeDelta,
+    ))
   })
 
   it.skip('reverts on a fill when fillDeadline has passed', async (): Promise<void> => {

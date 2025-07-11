@@ -8,27 +8,27 @@ import { TypeCasts } from './typeCasts'
  */
 
 export type UniversalCall = {
-  target: string  // bytes32
+  target: string // bytes32
   data: string
   value: number
 }
 
 export type UniversalTokenAmount = {
-  token: string  // bytes32
+  token: string // bytes32
   amount: number
 }
 
 export type UniversalRoute = {
   salt: string
   deadline: number | bigint
-  portal: string  // bytes32
+  portal: string // bytes32
   tokens: UniversalTokenAmount[]
   calls: UniversalCall[]
 }
 
 export type UniversalReward = {
-  creator: string  // bytes32
-  prover: string   // bytes32
+  creator: string // bytes32
+  prover: string // bytes32
   deadline: number | bigint
   nativeValue: bigint
   tokens: UniversalTokenAmount[]
@@ -41,18 +41,25 @@ export type UniversalIntent = {
 }
 
 // Helper functions to convert from address-based to bytes32-based structures
-export function convertCallToUniversal(call: { target: string; data: string; value: number }): UniversalCall {
+export function convertCallToUniversal(call: {
+  target: string
+  data: string
+  value: number
+}): UniversalCall {
   return {
     target: TypeCasts.addressToBytes32(call.target),
     data: call.data,
-    value: call.value
+    value: call.value,
   }
 }
 
-export function convertTokenAmountToUniversal(tokenAmount: { token: string; amount: number }): UniversalTokenAmount {
+export function convertTokenAmountToUniversal(tokenAmount: {
+  token: string
+  amount: number
+}): UniversalTokenAmount {
   return {
     token: TypeCasts.addressToBytes32(tokenAmount.token),
-    amount: tokenAmount.amount
+    amount: tokenAmount.amount,
   }
 }
 
@@ -68,7 +75,7 @@ export function convertRouteToUniversal(route: {
     deadline: route.deadline,
     portal: TypeCasts.addressToBytes32(route.portal),
     tokens: route.tokens.map(convertTokenAmountToUniversal),
-    calls: route.calls.map(convertCallToUniversal)
+    calls: route.calls.map(convertCallToUniversal),
   }
 }
 
@@ -84,7 +91,7 @@ export function convertRewardToUniversal(reward: {
     prover: TypeCasts.addressToBytes32(reward.prover),
     deadline: reward.deadline,
     nativeValue: reward.nativeValue,
-    tokens: reward.tokens.map(convertTokenAmountToUniversal)
+    tokens: reward.tokens.map(convertTokenAmountToUniversal),
   }
 }
 
@@ -108,7 +115,7 @@ export function convertIntentToUniversal(intent: {
   return {
     destination: intent.destination,
     route: convertRouteToUniversal(intent.route),
-    reward: convertRewardToUniversal(intent.reward)
+    reward: convertRewardToUniversal(intent.reward),
   }
 }
 
@@ -116,7 +123,7 @@ export function convertIntentToUniversal(intent: {
 // Max value for uint64 that works with ethers encoding
 export const MAX_UINT64 = 2n ** 64n - 1n
 // Max uint64 as a number that JS can't safely represent - use string representation
-export const MAX_UINT64_STRING = "18446744073709551615"
+export const MAX_UINT64_STRING = '18446744073709551615'
 
 const UniversalRouteStruct = [
   { name: 'salt', type: 'bytes32' },

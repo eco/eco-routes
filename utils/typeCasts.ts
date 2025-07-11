@@ -31,7 +31,7 @@ export class TypeCasts {
    * @returns Array of bytes32 representations
    */
   static addressesToBytes32Array(addresses: string[]): string[] {
-    return addresses.map(addr => this.addressToBytes32(addr))
+    return addresses.map((addr) => this.addressToBytes32(addr))
   }
 
   /**
@@ -40,12 +40,14 @@ export class TypeCasts {
    * @returns Array of addresses
    */
   static bytes32ArrayToAddresses(bytes32Array: string[]): string[] {
-    return bytes32Array.map(b32 => this.bytes32ToAddress(b32))
+    return bytes32Array.map((b32) => this.bytes32ToAddress(b32))
   }
 }
 
 // Export convenience functions
 export const addressToBytes32 = TypeCasts.addressToBytes32.bind(TypeCasts)
 export const bytes32ToAddress = TypeCasts.bytes32ToAddress.bind(TypeCasts)
-export const addressesToBytes32Array = TypeCasts.addressesToBytes32Array.bind(TypeCasts)
-export const bytes32ArrayToAddresses = TypeCasts.bytes32ArrayToAddresses.bind(TypeCasts)
+export const addressesToBytes32Array =
+  TypeCasts.addressesToBytes32Array.bind(TypeCasts)
+export const bytes32ArrayToAddresses =
+  TypeCasts.bytes32ArrayToAddresses.bind(TypeCasts)

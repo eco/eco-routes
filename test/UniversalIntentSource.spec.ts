@@ -267,7 +267,8 @@ describe('Universal Intent Source Test', (): void => {
     const addressConverter = await addressConverterTestFactory.deploy()
 
     // Deploy UniversalSource (which extends IntentSource)
-    const intentSourceFactory = await ethers.getContractFactory('UniversalSource')
+    const intentSourceFactory =
+      await ethers.getContractFactory('UniversalSource')
     const intentSourceContract = await intentSourceFactory.deploy()
 
     // Deploy inbox
