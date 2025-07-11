@@ -53,6 +53,12 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
   CHAIN_ID=$(echo "$entry" | jq -r '.key')
   value=$(echo "$entry" | jq -c '.value')
 
+  # Skip World Chain (480) - uses createx instead of singleton factory
+  if [ "$CHAIN_ID" = "480" ]; then
+    echo "⏭️  Skipping Chain ID $CHAIN_ID (World Chain) - uses createx instead of singleton factory"
+    continue
+  fi
+
   RPC_URL=$(echo "$value" | jq -r '.url')
 
   if [ "$RPC_URL" = "null" ] || [ -z "$RPC_URL" ]; then

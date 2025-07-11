@@ -7,6 +7,7 @@ import {console} from "forge-std/console.sol";
 // Tools
 import {SingletonFactory} from "../contracts/tools/SingletonFactory.sol";
 import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
+import {CreateX} from "../lib/createx/src/CreateX.sol";
 
 // Protocol
 import {Inbox} from "../contracts/Inbox.sol";
@@ -27,6 +28,10 @@ contract Deploy is Script {
 
     SingletonFactory constant create2Factory =
         SingletonFactory(0xce0042B868300000d44A59004Da54A005ffdcf9f);
+
+    // CreateX contract address for World Chain (480)
+    CreateX constant createXContract =
+        CreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
     // Create3Deployer
     ICreate3Deployer constant create3Deployer =
@@ -251,6 +256,12 @@ contract Deploy is Script {
         bytes memory bytecode,
         bytes32 salt
     ) internal returns (address deployedContract) {
+        // Switch based on chain ID
+        if (block.chainid == 480) {
+            //world chain
+            return deployWithCreate2CreateX(bytecode, salt);
+        }
+
         // Calculate the contract address that will be deployed
         deployedContract = predictCreate2Address(bytecode, salt);
 
@@ -272,6 +283,57 @@ contract Deploy is Script {
         require(isDeployed(deployedContract), "Contract did not get deployed");
 
         return deployedContract;
+    }
+
+    function deployWithCreate2CreateX(
+        bytes memory bytecode,
+        bytes32 salt
+    ) internal returns (address deployedContract) {
+        // Calculate the contract address that will be deployed using createx
+        deployedContract = predictCreate2AddressCreateX(bytecode, salt);
+
+        // Check if contract is already deployed
+        if (isDeployed(deployedContract)) {
+            console.log(
+                "Contract already deployed at address:",
+                deployedContract
+            );
+            return deployedContract;
+        }
+
+        // Deploy the contract using createx
+        address justDeployedAddr = createXContract.deployCreate2(
+            salt,
+            bytecode
+        );
+        require(
+            deployedContract == justDeployedAddr,
+            "Expected address does not match the deployed address"
+        );
+        require(isDeployed(deployedContract), "Contract did not get deployed");
+
+        return deployedContract;
+    }
+
+    function predictCreate2AddressCreateX(
+        bytes memory bytecode,
+        bytes32 salt
+    ) internal pure returns (address) {
+        return
+            address(
+                uint160(
+                    uint256(
+                        keccak256(
+                            abi.encodePacked(
+                                bytes1(0xff),
+                                address(createXContract),
+                                salt,
+                                keccak256(bytecode)
+                            )
+                        )
+                    )
+                )
+            );
     }
 
     function predictCreate2Address(
@@ -317,11 +379,46 @@ contract Deploy is Script {
         }
     }
 
+    function deployWithCreate3CreateX(
+        bytes memory bytecode,
+        address sender,
+        bytes32 salt
+    ) internal returns (address deployedContract, bool deployed) {
+        deployedContract = createXContract.computeCreate3Address(salt, sender);
+
+        deployed = isDeployed(deployedContract);
+
+        if (!deployed) {
+            address justDeployedAddr = createXContract.deployCreate3(
+                salt,
+                bytecode
+            );
+            require(
+                deployedContract == justDeployedAddr,
+                "Expected address does not match the deployed address"
+            );
+            require(
+                isDeployed(deployedContract),
+                "Contract did not get deployed"
+            );
+        } else {
+            console.log(
+                "Contract already deployed at address:",
+                deployedContract
+            );
+        }
+    }
+
     function deployWithCreate3(
         bytes memory bytecode,
         address sender,
         bytes32 salt
     ) internal returns (address deployedContract, bool deployed) {
+        // Use createx for World Chain (480)
+        if (block.chainid == 480) {
+            return deployWithCreate3CreateX(bytecode, sender, salt);
+        }
+
         deployedContract = create3Deployer.deployedAddress(
             bytecode,
             sender,
