@@ -9,5 +9,6 @@ contract FakePermit {
     ) external pure returns (uint160, uint48, uint48) {
         return (type(uint160).max, 0, 0); // lie: “unlimited allowance”
     }
+
     function transferFrom(address, address, uint160, address) external {}
 }

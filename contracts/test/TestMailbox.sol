@@ -2,6 +2,7 @@
 /* solhint-disable gas-custom-errors */
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
+
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
@@ -57,8 +58,8 @@ contract TestMailbox {
             // In Hyperlane, the sender would be the prover contract on the source chain
             // which is passed as recipientAddress in the dispatch call
             IMessageRecipient(processor).handle(
-                _destinationDomain,  // The origin domain (source chain)
-                _recipientAddress,   // The sender (prover on source chain)
+                _destinationDomain, // The origin domain (source chain)
+                _recipientAddress, // The sender (prover on source chain)
                 _messageBody
             );
         }

@@ -132,7 +132,11 @@ describe('MetaProver Test', (): void => {
       ) // 200k gas limit
 
       // Check if the prover address is in the whitelist
-      expect(await newMetaProver.isWhitelisted(ethers.zeroPadValue(additionalProver, 32))).to.be.true
+      expect(
+        await newMetaProver.isWhitelisted(
+          ethers.zeroPadValue(additionalProver, 32),
+        ),
+      ).to.be.true
     })
 
     it('should have the correct default gas limit', async () => {
@@ -210,9 +214,7 @@ describe('MetaProver Test', (): void => {
       )
 
       const proofDataBefore = await metaProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
 
       await expect(
         metaProver
@@ -277,7 +279,10 @@ describe('MetaProver Test', (): void => {
         ['bytes32[]', 'bytes32[]'],
         [
           [intentHash, otherHash],
-          [ethers.zeroPadValue(claimantAddress, 32), ethers.zeroPadValue(otherAddress, 32)],
+          [
+            ethers.zeroPadValue(claimantAddress, 32),
+            ethers.zeroPadValue(otherAddress, 32),
+          ],
         ],
       )
 
@@ -716,7 +721,11 @@ describe('MetaProver Test', (): void => {
     ]
     const testMsgProver = await (
       await ethers.getContractFactory('TestMessageBridgeProver')
-    ).deploy(await inbox.getAddress(), whitelistedAddresses.map(addr => ethers.zeroPadValue(addr, 32)), 200000) // Add default gas limit
+    ).deploy(
+      await inbox.getAddress(),
+      whitelistedAddresses.map((addr) => ethers.zeroPadValue(addr, 32)),
+      200000,
+    ) // Add default gas limit
 
     return { testMsgProver }
   }
@@ -729,7 +738,10 @@ describe('MetaProver Test', (): void => {
       ).deploy(
         await testRouter.getAddress(),
         await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32), ethers.zeroPadValue(await metaProver.getAddress(), 32)],
+        [
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(await metaProver.getAddress(), 32),
+        ],
         200000,
       )
 
@@ -770,7 +782,9 @@ describe('MetaProver Test', (): void => {
       // arbitrary bytes32 claimant that doesn't represent a valid EVM address
       // this simulates a cross-VM scenario where the claimant identifier
       // is not an Ethereum address but some other VM's identifier like Solana
-      const nonAddressClaimant = ethers.keccak256(ethers.toUtf8Bytes("non-evm-claimant-identifier"))
+      const nonAddressClaimant = ethers.keccak256(
+        ethers.toUtf8Bytes('non-evm-claimant-identifier'),
+      )
 
       // Prepare message data for MetaProver (simpler format than HyperProver)
       const data = abiCoder.encode(
@@ -779,7 +793,7 @@ describe('MetaProver Test', (): void => {
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      
+
       const fee = await metaProver.fetchFee(
         sourceChainID,
         [intentHash],
@@ -798,7 +812,7 @@ describe('MetaProver Test', (): void => {
             await metaProver.getAddress(),
             data,
             { value: fee },
-          )
+          ),
       ).to.not.be.reverted
 
       // Verify the intent was fulfilled with the non-address claimant
@@ -875,9 +889,7 @@ describe('MetaProver Test', (): void => {
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
       const proofDataBefore = await testMsgProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
 
       // Get fee for fulfillment - using TestMessageBridgeProver
       const fee = await testMsgProver.fetchFee(
@@ -909,9 +921,7 @@ describe('MetaProver Test', (): void => {
 
       // Verify the intent is now proven
       const proofDataAfter = await testMsgProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(
-        await claimant.getAddress(),
-      )
+      expect(proofDataAfter.claimant).to.eq(await claimant.getAddress())
 
       // Meanwhile, our TestMetaRouter with auto-processing should also prove intents
       // Test that our MetaProver works correctly with TestMetaRouter
@@ -945,9 +955,7 @@ describe('MetaProver Test', (): void => {
 
       // Verify that MetaProver marked the intent as proven
       const proofDataFinal = await metaProver.provenIntents(intentHash)
-      expect(proofDataFinal.claimant).to.eq(
-        await claimant.getAddress(),
-      )
+      expect(proofDataFinal.claimant).to.eq(await claimant.getAddress())
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
@@ -999,9 +1007,7 @@ describe('MetaProver Test', (): void => {
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
       const proofDataBefore0 = await testMsgProver.provenIntents(intentHash0)
-      expect(proofDataBefore0.claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(proofDataBefore0.claimant).to.eq(ethers.ZeroAddress)
 
       // Fulfill first intent in batch
       await inbox.connect(solver).fulfill(
@@ -1054,15 +1060,16 @@ describe('MetaProver Test', (): void => {
 
       // Check intent hasn't been proven yet
       const proofDataBefore1 = await testMsgProver.provenIntents(intentHash1)
-      expect(proofDataBefore1.claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(proofDataBefore1.claimant).to.eq(ethers.ZeroAddress)
 
       // Get fee for batch
       const fee = await testMsgProver.fetchFee(
         sourceChainID,
         [intentHash0, intentHash1],
-        [ethers.zeroPadValue(await claimant.getAddress(), 32), ethers.zeroPadValue(await claimant.getAddress(), 32)],
+        [
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
+        ],
         data,
       )
 
@@ -1101,13 +1108,9 @@ describe('MetaProver Test', (): void => {
 
       // Verify both intents were marked as proven
       const proofDataFinal0 = await testMsgProver.provenIntents(intentHash0)
-      expect(proofDataFinal0.claimant).to.eq(
-        await claimant.getAddress(),
-      )
+      expect(proofDataFinal0.claimant).to.eq(await claimant.getAddress())
       const proofDataFinal1 = await testMsgProver.provenIntents(intentHash1)
-      expect(proofDataFinal1.claimant).to.eq(
-        await claimant.getAddress(),
-      )
+      expect(proofDataFinal1.claimant).to.eq(await claimant.getAddress())
     })
   })
 })

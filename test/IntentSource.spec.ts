@@ -333,7 +333,9 @@ describe('Intent Source Test', (): void => {
     context('before expiry, no proof', () => {
       it('cant be withdrawn', async () => {
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward),
+          intentSource
+            .connect(otherPerson)
+            .withdrawRewards(routeHash, intent.reward),
         ).to.be.revertedWithCustomError(intentSource, `UnauthorizedWithdrawal`)
       })
     })
@@ -357,7 +359,9 @@ describe('Intent Source Test', (): void => {
 
         expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, intent.reward)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -371,22 +375,36 @@ describe('Intent Source Test', (): void => {
         ).to.eq(initialBalanceNative + rewardNativeEth)
       })
       it('emits event', async () => {
-        await expect(intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward))
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdrawRewards(routeHash, intent.reward),
+        )
           .to.emit(intentSource, 'Withdrawal')
           .withArgs(intentHash, await claimant.getAddress())
       })
       it('does not allow repeat withdrawal', async () => {
-        await intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, intent.reward)
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward),
+          intentSource
+            .connect(otherPerson)
+            .withdrawRewards(routeHash, intent.reward),
         ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
-        expect(await intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward))
+        expect(
+          await intentSource
+            .connect(otherPerson)
+            .withdrawRewards(routeHash, intent.reward),
+        )
           .to.emit(intentSource, 'Withdrawal')
           .withArgs(intentHash, await claimant.getAddress())
 
-        await expect(intentSource.connect(otherPerson).refund(routeHash, intent.reward))
+        await expect(
+          intentSource.connect(otherPerson).refund(routeHash, intent.reward),
+        )
           .to.emit(intentSource, 'Refund')
           .withArgs(intentHash, reward.creator)
       })
@@ -431,7 +449,9 @@ describe('Intent Source Test', (): void => {
         )
         expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-        await intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward)
+        await intentSource
+          .connect(otherPerson)
+          .withdrawRewards(routeHash, intent.reward)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -461,7 +481,9 @@ describe('Intent Source Test', (): void => {
 
         // Now withdrawRewards should fail since there's no proof
         await expect(
-          intentSource.connect(otherPerson).withdrawRewards(routeHash, intent.reward)
+          intentSource
+            .connect(otherPerson)
+            .withdrawRewards(routeHash, intent.reward),
         ).to.be.revertedWithCustomError(intentSource, 'UnauthorizedWithdrawal')
 
         expect(await intentSource.isIntentFunded(intent)).to.be.true
@@ -471,8 +493,9 @@ describe('Intent Source Test', (): void => {
           .connect(creator)
           .addProvenIntent(intentHash, await claimant.getAddress())
 
-        await expect(intentSource.connect(otherPerson).refund(routeHash, intent.reward))
-          .to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
+        await expect(
+          intentSource.connect(otherPerson).refund(routeHash, intent.reward),
+        ).to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
       })
     })
   })
@@ -523,7 +546,9 @@ describe('Intent Source Test', (): void => {
       })
       it('bricks if called before expiry by IntentCreator', async () => {
         await expect(
-          intentSource.connect(otherPerson).batchWithdraw([routeHash], [intent.reward]),
+          intentSource
+            .connect(otherPerson)
+            .batchWithdraw([routeHash], [intent.reward]),
         ).to.be.revertedWithCustomError(intentSource, 'UnauthorizedWithdrawal')
       })
     })
@@ -593,7 +618,9 @@ describe('Intent Source Test', (): void => {
         await prover
           .connect(creator)
           .addProvenIntent(intentHash, await claimant.getAddress())
-        await intentSource.connect(otherPerson).batchWithdraw([routeHash], [intent.reward])
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw([routeHash], [intent.reward])
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -625,7 +652,9 @@ describe('Intent Source Test', (): void => {
         await prover
           .connect(otherPerson)
           .addProvenIntent(intentHash, await creator.getAddress())
-        await intentSource.connect(otherPerson).batchWithdraw([routeHash], [intent.reward])
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw([routeHash], [intent.reward])
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await creator.getAddress())).to.eq(
@@ -693,10 +722,12 @@ describe('Intent Source Test', (): void => {
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
         }
-        
+
         // Convert intents to routeHashes and rewards arrays
-        const routeHashes = routes.map(r => keccak256(encodeRoute(r)))
-        await intentSource.connect(otherPerson).batchWithdraw(routeHashes, rewards)
+        const routeHashes = routes.map((r) => keccak256(encodeRoute(r)))
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw(routeHashes, rewards)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -763,11 +794,15 @@ describe('Intent Source Test', (): void => {
             .connect(creator)
             .addProvenIntent(hashes[i], await claimant.getAddress())
         }
-        
+
         // Convert intents to routeHashes and rewards arrays
-        const routeHashes = intents.map(intent => keccak256(encodeRoute(intent.route)))
-        const allRewards = intents.map(intent => intent.reward)
-        await intentSource.connect(otherPerson).batchWithdraw(routeHashes, allRewards)
+        const routeHashes = intents.map((intent) =>
+          keccak256(encodeRoute(intent.route)),
+        )
+        const allRewards = intents.map((intent) => intent.reward)
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw(routeHashes, allRewards)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -862,8 +897,10 @@ describe('Intent Source Test', (): void => {
         }
 
         // Convert intents to routeHashes and rewards arrays
-        const routeHashes = routes.map(r => keccak256(encodeRoute(r)))
-        await intentSource.connect(otherPerson).batchWithdraw(routeHashes, rewards)
+        const routeHashes = routes.map((r) => keccak256(encodeRoute(r)))
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw(routeHashes, rewards)
 
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
           (mintAmount / 10) * 3,
@@ -967,15 +1004,14 @@ describe('Intent Source Test', (): void => {
       for (let i = 0; i < hashes.length; ++i) {
         await prover
           .connect(creator)
-          .addProvenIntent(
-            hashes[i],
-            await claimant.getAddress(),
-          )
+          .addProvenIntent(hashes[i], await claimant.getAddress())
       }
-      
+
       // Convert intents to routeHashes and rewards arrays
-      const routeHashes = routes.map(r => keccak256(encodeRoute(r)))
-      await intentSource.connect(otherPerson).batchWithdraw(routeHashes, rewards)
+      const routeHashes = routes.map((r) => keccak256(encodeRoute(r)))
+      await intentSource
+        .connect(otherPerson)
+        .batchWithdraw(routeHashes, rewards)
 
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
         mintAmount,
@@ -1269,11 +1305,11 @@ describe('Intent Source Test', (): void => {
       await tokenA.connect(creator).transfer(intentVaultAddress, mintAmount)
 
       //mark as proven
-      const [hash, routeHash] = await intentSource.getIntentHash({ route, reward })
-      await prover.addProvenIntent(
-        hash,
-        await claimant.getAddress(),
-      )
+      const [hash, routeHash] = await intentSource.getIntentHash({
+        route,
+        reward,
+      })
+      await prover.addProvenIntent(hash, await claimant.getAddress())
 
       await intentSource.connect(claimant).withdrawRewards(routeHash, reward)
     })
@@ -1306,14 +1342,14 @@ describe('Intent Source Test', (): void => {
       expect(await intentSource.isIntentFunded({ route, reward: badReward })).to
         .be.true
 
-      const [badHash, badRouteHash] = await intentSource.getIntentHash({ route, reward: badReward })
-      await prover.addProvenIntent(
-        badHash,
-        await claimant.getAddress(),
-      )
+      const [badHash, badRouteHash] = await intentSource.getIntentHash({
+        route,
+        reward: badReward,
+      })
+      await prover.addProvenIntent(badHash, await claimant.getAddress())
 
-      await expect(intentSource.withdrawRewards(badRouteHash, badReward))
-        .to.not.be.reverted
+      await expect(intentSource.withdrawRewards(badRouteHash, badReward)).to.not
+        .be.reverted
 
       expect(await tokenA.balanceOf(claimant.address)).to.eq(
         initialClaimantBalance + BigInt(mintAmount),

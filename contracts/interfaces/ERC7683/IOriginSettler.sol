@@ -8,7 +8,6 @@ import "../../types/ERC7683.sol";
  * @title IOriginSettler
  * @notice Standard interface for settlement contracts on the origin chain
  */
-
 interface IOriginSettler {
     /// @notice Thrown when the sent native token amount is less than the required reward amount
     error InsufficientNativeReward();

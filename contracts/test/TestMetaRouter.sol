@@ -90,9 +90,9 @@ contract TestMetaRouter {
      * @return Fixed fee amount for testing
      */
     function quoteDispatch(
-        uint32 /* _destinationDomain */,
-        bytes32 /* _recipient */,
-        bytes calldata /* _message */
+        uint32,
+        /* _destinationDomain */ bytes32,
+        /* _recipient */ bytes calldata /* _message */
     ) external pure returns (uint256) {
         // Return a fixed fee for testing purposes
         return FEE;

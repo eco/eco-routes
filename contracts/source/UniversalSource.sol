@@ -260,9 +260,8 @@ contract UniversalSource is BaseSource, IUniversalIntentSource {
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
-        IProver.ProofData memory proof = IProver(reward.prover.toAddress()).provenIntents(
-            intentHash
-        );
+        IProver.ProofData memory proof = IProver(reward.prover.toAddress())
+            .provenIntents(intentHash);
         address claimant = proof.claimant;
         VaultState memory state = vaults[intentHash].state;
 

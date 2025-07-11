@@ -36,6 +36,7 @@ struct GaslessCrossChainOrder {
  * Can be used to define tokens, amounts, destination chains, fees, settlement parameters,
  * or any other order-type specific information
  */
+
 struct OnchainCrossChainOrder {
     uint32 fillDeadline;
     bytes32 orderDataType;

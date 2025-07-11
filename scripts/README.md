@@ -300,10 +300,12 @@ CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
 **Resulting Whitelist:**
 
 Each deployed prover (HyperProver and MetaProver) will have a whitelist containing:
+
 - The EVM prover's own address (self-reference for authorization)
 - All provided cross-VM prover addresses
 
 **Address Format Requirements:**
+
 - **EVM chains**: Automatically converted via `bytes32(bytes20(address))`
 - **Solana**: Native 32-byte public keys
 - **Cosmos/Sui/Other**: Must be provided as 32-byte hex strings

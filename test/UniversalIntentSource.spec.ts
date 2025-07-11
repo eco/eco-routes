@@ -1050,9 +1050,8 @@ describe('Universal Intent Source Test', (): void => {
       const intents: Intent[] = []
 
       // Should revert or handle gracefully
-      await expect(
-        intentSource.connect(otherPerson).batchWithdraw([], []),
-      ).to.not.be.reverted // Empty array should be handled gracefully
+      await expect(intentSource.connect(otherPerson).batchWithdraw([], [])).to
+        .not.be.reverted // Empty array should be handled gracefully
     })
   })
 
@@ -1144,8 +1143,7 @@ describe('Universal Intent Source Test', (): void => {
       // Current logic doesn't allow refund if any proof exists
       await expect(
         intentSource.connect(otherPerson).refund(routeHash, evmIntent.reward),
-      )
-        .to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
+      ).to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
     })
 
     it('should emit Refund event on successful refund', async function () {

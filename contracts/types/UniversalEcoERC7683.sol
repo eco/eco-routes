@@ -37,6 +37,7 @@ struct OnchainCrosschainOrderData {
  * @param nativeValue the amount of native token offered as a reward
  * @param tokens the identifiers and amounts of reward tokens
  */
+
 struct GaslessCrosschainOrderData {
     uint256 destination;
     bytes32 inbox;
