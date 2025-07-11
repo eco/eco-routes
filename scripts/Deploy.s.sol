@@ -7,7 +7,7 @@ import {console} from "forge-std/console.sol";
 // Tools
 import {SingletonFactory} from "../contracts/tools/SingletonFactory.sol";
 import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
-import {CreateX} from "../lib/createx/src/CreateX.sol";
+import {ICreateX} from "../contracts/tools/ICreateX.sol";
 
 // Protocol
 import {Inbox} from "../contracts/Inbox.sol";
@@ -30,8 +30,9 @@ contract Deploy is Script {
         SingletonFactory(0xce0042B868300000d44A59004Da54A005ffdcf9f);
 
     // CreateX contract address for World Chain (480)
-    CreateX constant createXContract =
-        CreateX(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
+    address constant CREATEX_ADDRESS =
+        0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
+    ICreateX constant createXContract = ICreateX(CREATEX_ADDRESS);
 
     // Create3Deployer
     ICreate3Deployer constant create3Deployer =
@@ -172,16 +173,28 @@ contract Deploy is Script {
 
     function deployHyperProver(
         DeploymentContext memory ctx
-    ) internal returns (address hyperProver) {
-        address hyperProverPreviewAddr = create3Deployer.deployedAddress(
+    )
+        internal
+        returns (
+            address hyperProverERC2470Address,
+            address hyperProverCreateXAddress
+        )
+    {
+        hyperProverERC2470Address = create3Deployer.deployedAddress(
             bytes(""), // Bytecode isn't used to determine the deployed address
             ctx.deployer,
             ctx.hyperProverSalt
         );
 
+        hyperProverCreateXAddress = createXContract.computeCreate3Address(
+            ctx.hyperProverSalt,
+            ctx.deployer
+        );
+
         // Initialize provers array properly with inbox address
-        address[] memory provers = new address[](1);
-        provers[0] = hyperProverPreviewAddr;
+        address[] memory provers = new address[](2);
+        provers[0] = hyperProverERC2470Address;
+        provers[1] = hyperProverCreateXAddress;
 
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
@@ -326,7 +339,7 @@ contract Deploy is Script {
                         keccak256(
                             abi.encodePacked(
                                 bytes1(0xff),
-                                address(createXContract),
+                                CREATEX_ADDRESS,
                                 salt,
                                 keccak256(bytecode)
                             )
