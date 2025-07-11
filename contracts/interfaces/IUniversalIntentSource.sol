@@ -43,20 +43,23 @@ interface IUniversalIntentSource is IVaultStorage {
      * @dev Intent must be proven on source chain before expiration for valid reward claims
      * @param intent The complete intent specification
      * @return intentHash Unique identifier of the created intent
+     * @return vault Address of the created vault
      */
     function publish(
         Intent calldata intent
-    ) external returns (bytes32 intentHash);
+    ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Creates and funds an intent in a single transaction
      * @param intent The complete intent specification
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash Unique identifier of the created and funded intent
+     * @return vault Address of the created vault
      */
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash);
+    ) external payable returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Funds an existing intent
@@ -99,13 +102,14 @@ interface IUniversalIntentSource is IVaultStorage {
      * @param permitContact The bytes32 identifier for token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
+     * @return vault Address of the created vault
      */
     function publishAndFundFor(
         Intent calldata intent,
         address funder,
         address permitContact,
         bool allowPartial
-    ) external returns (bytes32 intentHash);
+    ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Checks if an intent's rewards are valid and fully funded
@@ -122,7 +126,7 @@ interface IUniversalIntentSource is IVaultStorage {
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
-    function withdrawRewards(
+    function withdraw(
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward

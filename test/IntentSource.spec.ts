@@ -323,7 +323,7 @@ describe('Intent Source Test', (): void => {
         await expect(
           intentSource
             .connect(otherPerson)
-            .withdrawRewards(chainId, routeHash, intent.reward),
+            .withdraw(chainId, routeHash, intent.reward),
         ).to.be.revertedWithCustomError(intentSource, `UnauthorizedWithdrawal`)
       })
     })
@@ -349,7 +349,7 @@ describe('Intent Source Test', (): void => {
 
         await intentSource
           .connect(otherPerson)
-          .withdrawRewards(chainId, routeHash, intent.reward)
+          .withdraw(chainId, routeHash, intent.reward)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -366,7 +366,7 @@ describe('Intent Source Test', (): void => {
         await expect(
           intentSource
             .connect(otherPerson)
-            .withdrawRewards(chainId, routeHash, intent.reward),
+            .withdraw(chainId, routeHash, intent.reward),
         )
           .to.emit(intentSource, 'IntentWithdrawn')
           .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
@@ -374,18 +374,18 @@ describe('Intent Source Test', (): void => {
       it('does not allow repeat withdrawal', async () => {
         await intentSource
           .connect(otherPerson)
-          .withdrawRewards(chainId, routeHash, intent.reward)
+          .withdraw(chainId, routeHash, intent.reward)
         await expect(
           intentSource
             .connect(otherPerson)
-            .withdrawRewards(chainId, routeHash, intent.reward),
+            .withdraw(chainId, routeHash, intent.reward),
         ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
         expect(
           await intentSource
             .connect(otherPerson)
-            .withdrawRewards(chainId, routeHash, intent.reward),
+            .withdraw(chainId, routeHash, intent.reward),
         )
           .to.emit(intentSource, 'IntentWithdrawn')
           .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
@@ -443,7 +443,7 @@ describe('Intent Source Test', (): void => {
 
         await intentSource
           .connect(otherPerson)
-          .withdrawRewards(chainId, routeHash, intent.reward)
+          .withdraw(chainId, routeHash, intent.reward)
 
         expect(await intentSource.isIntentFunded(intent)).to.be.false
         expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
@@ -473,7 +473,7 @@ describe('Intent Source Test', (): void => {
         // withdrawRewards after expiry with no proof should refund to creator
         await intentSource
           .connect(otherPerson)
-          .withdrawRewards(chainId, routeHash, intent.reward)
+          .withdraw(chainId, routeHash, intent.reward)
 
         // Verify tokens were refunded to creator
         expect(await tokenA.balanceOf(creator.address)).to.eq(
@@ -1263,7 +1263,7 @@ describe('Intent Source Test', (): void => {
           ),
       )
         .to.emit(intentSource, 'IntentFunded')
-        .withArgs(intentHash, addressToBytes32(creator.address))
+        .withArgs(intentHash, addressToBytes32(creator.address), true)
 
       expect(
         await intentSource.isIntentFunded({
@@ -1407,9 +1407,7 @@ describe('Intent Source Test', (): void => {
       })
       await prover.addProvenIntent(hash, await claimant.getAddress())
 
-      await intentSource
-        .connect(claimant)
-        .withdrawRewards(chainId, routeHash, reward)
+      await intentSource.connect(claimant).withdraw(chainId, routeHash, reward)
     })
 
     it('should handle withdraws for rewards with malicious tokens', async () => {
@@ -1453,9 +1451,8 @@ describe('Intent Source Test', (): void => {
       })
       await prover.addProvenIntent(badHash, await claimant.getAddress())
 
-      await expect(
-        intentSource.withdrawRewards(chainId, badRouteHash, badReward),
-      ).to.not.be.reverted
+      await expect(intentSource.withdraw(chainId, badRouteHash, badReward)).to
+        .not.be.reverted
 
       expect(await tokenA.balanceOf(claimant.address)).to.eq(
         initialClaimantBalance + BigInt(mintAmount),
@@ -1634,9 +1631,9 @@ describe('Intent Source Test', (): void => {
         .connect(creator)
         .publishAndFund({ destination: chainId, route, reward }, true)
 
-      // Expect IntentPartiallyFunded event
+      // Expect IntentFunded event with complete=false
       await expect(tx)
-        .to.emit(intentSource, 'IntentPartiallyFunded')
+        .to.emit(intentSource, 'IntentFunded')
         .withArgs(
           (
             await intentSource.getIntentHash({
@@ -1646,6 +1643,7 @@ describe('Intent Source Test', (): void => {
             })
           )[0],
           addressToBytes32(creator.address),
+          false,
         )
 
       // Verify that only the available balance was transferred, not the full approved amount
@@ -1728,9 +1726,9 @@ describe('Intent Source Test', (): void => {
           value: sentAmount,
         })
 
-      // Expect IntentPartiallyFunded event
+      // Expect IntentFunded event with complete=false
       await expect(tx)
-        .to.emit(intentSource, 'IntentPartiallyFunded')
+        .to.emit(intentSource, 'IntentFunded')
         .withArgs(
           (
             await intentSource.getIntentHash({
@@ -1740,6 +1738,7 @@ describe('Intent Source Test', (): void => {
             })
           )[0],
           addressToBytes32(creator.address),
+          false,
         )
 
       // Verify vault received the partial native amount
@@ -1818,10 +1817,10 @@ describe('Intent Source Test', (): void => {
         .connect(creator)
         .publishAndFund({ destination: chainId, route, reward }, true)
 
-      // Check first transaction emits IntentPartiallyFunded
+      // Check first transaction emits IntentFunded with complete=false
       await expect(firstTx)
-        .to.emit(intentSource, 'IntentPartiallyFunded')
-        .withArgs(intentHash, addressToBytes32(creator.address))
+        .to.emit(intentSource, 'IntentFunded')
+        .withArgs(intentHash, addressToBytes32(creator.address), false)
 
       const vaultAddress = await intentSource.intentVaultAddress({
         destination: chainId,

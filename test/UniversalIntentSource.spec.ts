@@ -920,7 +920,7 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
+        .withdraw(chainId + 1n, routeHash, evmIntent.reward)
 
       // Final balances
       const finalEthBalance = await ethers.provider.getBalance(
@@ -954,7 +954,7 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
+        .withdraw(chainId + 1n, routeHash, evmIntent.reward)
 
       // Check updated reward status is different after withdrawal
       const finalRewardStatus = await intentSource.getRewardStatus(intentHash)
@@ -970,7 +970,7 @@ describe('Universal Intent Source Test', (): void => {
       await expect(
         intentSource
           .connect(otherPerson)
-          .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward),
+          .withdraw(chainId + 1n, routeHash, evmIntent.reward),
       )
         .to.emit(intentSource, 'IntentWithdrawn')
         .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
@@ -983,13 +983,13 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards once
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
+        .withdraw(chainId + 1n, routeHash, evmIntent.reward)
 
       // Try to withdraw again
       await expect(
         intentSource
           .connect(otherPerson)
-          .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward),
+          .withdraw(chainId + 1n, routeHash, evmIntent.reward),
       ).to.be.reverted
     })
 
@@ -1004,7 +1004,7 @@ describe('Universal Intent Source Test', (): void => {
       // Withdraw rewards
       await intentSource
         .connect(otherPerson)
-        .withdrawRewards(chainId + 1n, routeHash, evmIntent.reward)
+        .withdraw(chainId + 1n, routeHash, evmIntent.reward)
 
       // Verify claimant received the tokens
       expect(await tokenA.balanceOf(await claimant.getAddress())).to.be.gt(0)

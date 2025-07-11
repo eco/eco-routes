@@ -132,18 +132,12 @@ interface IIntentSource is IVaultStorage {
     );
 
     /**
-     * @notice Signals partial funding of an intent
-     * @param intentHash The hash of the partially funded intent
-     * @param funder The address providing the partial funding
+     * @notice Signals funding of an intent
+     * @param intentHash The hash of the funded intent
+     * @param funder The address providing the funding
+     * @param complete Whether the intent was completely funded (true) or partially funded (false)
      */
-    event IntentPartiallyFunded(bytes32 intentHash, bytes32 funder);
-
-    /**
-     * @notice Signals complete funding of an intent
-     * @param intentHash The hash of the fully funded intent
-     * @param funder The address providing the complete funding
-     */
-    event IntentFunded(bytes32 intentHash, bytes32 funder);
+    event IntentFunded(bytes32 intentHash, bytes32 funder, bool complete);
 
     /**
      * @notice Signals successful reward withdrawal
@@ -214,20 +208,23 @@ interface IIntentSource is IVaultStorage {
      * @dev Intent must be proven on source chain before expiration for valid reward claims
      * @param intent The complete intent specification
      * @return intentHash Unique identifier of the created intent
+     * @return vault Address of the created vault
      */
     function publish(
         Intent calldata intent
-    ) external returns (bytes32 intentHash);
+    ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Creates and funds an intent in a single transaction
      * @param intent The complete intent specification
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash Unique identifier of the created and funded intent
+     * @return vault Address of the created vault
      */
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash);
+    ) external payable returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Funds an existing intent
@@ -270,13 +267,14 @@ interface IIntentSource is IVaultStorage {
      * @param permitContact The permit contract for token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
+     * @return vault Address of the created vault
      */
     function publishAndFundFor(
         Intent calldata intent,
         address funder,
         address permitContact,
         bool allowPartial
-    ) external returns (bytes32 intentHash);
+    ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Checks if an intent's rewards are valid and fully funded
@@ -293,7 +291,7 @@ interface IIntentSource is IVaultStorage {
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
-    function withdrawRewards(
+    function withdraw(
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward

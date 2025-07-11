@@ -99,26 +99,32 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      * @notice Creates an intent without funding
      * @param intent The complete intent struct to be published
      * @return intentHash Hash of the created intent
+     * @return vault Address of the created vault
      */
     function publish(
         Intent calldata intent
-    ) external virtual returns (bytes32 intentHash) {
-        (intentHash, , ) = getIntentHash(intent);
+    ) external virtual returns (bytes32 intentHash, address vault) {
+        bytes32 routeHash;
+        (intentHash, routeHash, ) = getIntentHash(intent);
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
         _emitIntentCreated(intent, intentHash);
+
+        vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
     }
 
     /**
      * @notice Creates and funds an intent in a single transaction
      * @param intent The complete intent struct to be published and funded
+     * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
+     * @return vault Address of the created vault
      */
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) external payable virtual returns (bytes32 intentHash) {
+    ) external payable virtual returns (bytes32 intentHash, address vault) {
         bytes32 routeHash;
         (intentHash, routeHash, ) = getIntentHash(intent);
         VaultState memory state = vaults[intentHash].state;
@@ -128,11 +134,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         _validatePublishState(intentHash, state);
         _emitIntentCreated(intent, intentHash);
 
-        address vault = _getIntentVaultAddress(
-            intentHash,
-            routeHash,
-            intent.reward
-        );
+        vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
         _fundIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
 
         _returnExcessEth(intentHash, address(this).balance);
@@ -217,7 +219,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         address funder,
         address permitContact,
         bool allowPartial
-    ) external virtual returns (bytes32 intentHash) {
+    ) external virtual returns (bytes32 intentHash, address vault) {
         bytes32 routeHash;
         (intentHash, routeHash, ) = getIntentHash(intent);
         VaultState memory state = vaults[intentHash].state;
@@ -226,11 +228,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         _emitIntentCreated(intent, intentHash);
         _validateSourceChain(block.chainid, intentHash);
 
-        address vault = _getIntentVaultAddress(
-            intentHash,
-            routeHash,
-            intent.reward
-        );
+        vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
 
         _fundIntentFor(
             state,
@@ -242,6 +240,8 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             permitContact,
             allowPartial
         );
+
+        return (intentHash, vault);
     }
 
     /**
@@ -270,7 +270,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
      */
-    function withdrawRewards(
+    function withdraw(
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
@@ -364,7 +364,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         }
 
         for (uint256 i = 0; i < length; ++i) {
-            withdrawRewards(destinations[i], routeHashes[i], rewards[i]);
+            withdraw(destinations[i], routeHashes[i], rewards[i]);
         }
     }
 
@@ -638,10 +638,10 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
 
         if (partiallyFunded) {
             state.status = uint8(RewardStatus.PartiallyFunded);
-            emit IntentPartiallyFunded(intentHash, funder.toBytes32());
+            emit IntentFunded(intentHash, funder.toBytes32(), false);
         } else {
             state.status = uint8(RewardStatus.Funded);
-            emit IntentFunded(intentHash, funder.toBytes32());
+            emit IntentFunded(intentHash, funder.toBytes32(), true);
         }
 
         vaults[intentHash].state = state;
@@ -711,7 +711,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
 
         // Only emit events if we get here (vault creation succeeded)
         if (state.status == uint8(RewardStatus.Funded)) {
-            emit IntentFunded(intentHash, funder.toBytes32());
+            emit IntentFunded(intentHash, funder.toBytes32(), true);
         } else if (
             state.status == uint8(RewardStatus.PartiallyFunded) &&
             _isRewardFunded(reward, vault)
@@ -719,9 +719,9 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             state.status = uint8(RewardStatus.Funded);
             vaults[intentHash].state = state;
 
-            emit IntentFunded(intentHash, funder.toBytes32());
+            emit IntentFunded(intentHash, funder.toBytes32(), true);
         } else {
-            emit IntentPartiallyFunded(intentHash, funder.toBytes32());
+            emit IntentFunded(intentHash, funder.toBytes32(), false);
         }
     }
 

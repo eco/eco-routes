@@ -333,7 +333,7 @@ contract UniversalSourceTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         vm.prank(otherPerson);
-        universalSource.withdrawRewards(
+        universalSource.withdraw(
             universalIntent.destination,
             routeHash,
             universalIntent.reward

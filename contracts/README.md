@@ -178,21 +178,14 @@ The Portal is where intent publishing, fulfillment, and reward claiming function
 
 ### Events
 
-<h4><ins>IntentPartiallyFunded</ins></h4>
-<h5>Signals partial funding of an intent with native tokens</h5>
-
-Parameters:
-
-- `intentHash` (bytes32) The hash of the partially funded intent
-- `funder` (address) The address providing the partial funding
-
 <h4><ins>IntentFunded</ins></h4>
-<h5>Signals complete funding of an intent with native tokens</h5>
+<h5>Signals funding of an intent with native tokens</h5>
 
 Parameters:
 
-- `intentHash` (bytes32) The hash of the partially funded intent
-- `funder` (address) The address providing the partial funding
+- `intentHash` (bytes32) The hash of the funded intent
+- `funder` (address) The address providing the funding
+- `complete` (bool) Whether the intent was completely funded (true) or partially funded (false)
 
 <h4><ins>IntentPublished</ins></h4>
 <h5>Signals the creation of a new cross-chain intent</h5>
