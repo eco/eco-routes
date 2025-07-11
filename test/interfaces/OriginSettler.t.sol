@@ -19,7 +19,7 @@ contract TestOriginSettler is IOriginSettler {
 
     function openFor(
         GaslessCrossChainOrder calldata order,
-        bytes calldata, /* signature */
+        bytes calldata /* signature */,
         bytes calldata /* originFillerData */
     ) external payable {
         bytes32 orderId = keccak256(abi.encode(order));

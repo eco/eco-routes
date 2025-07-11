@@ -876,7 +876,7 @@ contract FakePermitContract {
     }
 
     function allowance(
-        address, /* owner */
+        address /* owner */,
         address /* spender */
     ) external pure returns (uint256) {
         // Lies about having unlimited allowance
