@@ -114,7 +114,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function addProvenIntent(bytes32 _hash, address _claimant) public {
         _provenIntents[_hash] = ProofData({
-            claimant: bytes32(uint256(uint160(_claimant))),
+            claimant: _claimant,
             destinationChainID: uint96(block.chainid)
         });
     }

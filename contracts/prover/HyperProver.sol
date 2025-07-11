@@ -100,7 +100,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param _sender Address that initiated the proving request
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
      * @param _data Additional data for message formatting
      */
     function prove(
@@ -179,7 +179,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Queries the Mailbox contract for accurate fee estimation
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
      * @param _data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
@@ -216,7 +216,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Internal function to calculate the fee with pre-decoded data
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
      * @param unpacked Struct containing decoded data from _data parameter
      * @return Fee amount required for message dispatch
      */
@@ -258,7 +258,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @dev Prepares all parameters needed for the Mailbox dispatch call
      * @param _sourceChainId Chain ID of the source chain
      * @param _hashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
      * @param _unpacked Struct containing decoded data from _data parameter
      * @return params Structured dispatch parameters for Hyperlane message
      */

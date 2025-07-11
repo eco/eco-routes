@@ -98,9 +98,9 @@ abstract contract MessageBridgeProver is
         }
 
         // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, address[] memory claimants) = abi.decode(
+        (bytes32[] memory hashes, bytes32[] memory claimants) = abi.decode(
             _message,
-            (bytes32[], address[])
+            (bytes32[], bytes32[])
         );
 
         // Process the intent proofs using shared implementation - array validation happens there

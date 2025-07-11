@@ -40,7 +40,7 @@ abstract contract BaseProver is IProver, ERC165 {
      */
     function _processIntentProofs(
         bytes32[] memory _hashes,
-        address[] memory _claimants,
+        bytes32[] memory _claimants,
         uint256 _destinationChainID
     ) internal {
         // If arrays are empty, just return early
@@ -53,7 +53,7 @@ abstract contract BaseProver is IProver, ERC165 {
 
         for (uint256 i = 0; i < _hashes.length; i++) {
             bytes32 intentHash = _hashes[i];
-            address claimant = _claimants[i];
+            address claimant = address(uint160(uint256(_claimants[i])));
 
             // Validate claimant is not zero address
             if (claimant == address(0)) {
@@ -61,11 +61,11 @@ abstract contract BaseProver is IProver, ERC165 {
             }
 
             // Skip rather than revert for already proven intents
-            if (_provenIntents[intentHash].claimant != bytes32(0)) {
+            if (_provenIntents[intentHash].claimant != address(0)) {
                 emit IntentAlreadyProven(intentHash);
             } else {
                 _provenIntents[intentHash] = ProofData({
-                    claimant: bytes32(uint256(uint160(claimant))),
+                    claimant: claimant,
                     destinationChainID: uint96(_destinationChainID)
                 });
                 emit IntentProven(intentHash, claimant);
@@ -95,7 +95,7 @@ abstract contract BaseProver is IProver, ERC165 {
         ProofData memory proof = _provenIntents[intentHash];
         
         // Only challenge if proof exists and destination chain ID doesn't match
-        if (proof.claimant != bytes32(0) && proof.destinationChainID != _intent.route.destination) {
+        if (proof.claimant != address(0) && proof.destinationChainID != _intent.route.destination) {
             delete _provenIntents[intentHash];
             emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
         }

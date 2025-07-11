@@ -12,11 +12,11 @@ import {ISemver} from "./ISemver.sol";
 interface IProver is ISemver {
     /**
      * @notice Proof data stored for each proven intent
-     * @param claimant Address eligible to claim the intent rewards (as bytes32 for cross-VM compatibility)
+     * @param claimant Address eligible to claim the intent rewards
      * @param destinationChainID Chain ID where the intent was proven
      */
     struct ProofData {
-        bytes32 claimant;
+        address claimant;
         uint96 destinationChainID;
     }
 
@@ -51,7 +51,7 @@ interface IProver is ISemver {
      * @param _sender Address of the original transaction sender
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
      * @param _data Additional data specific to the proving implementation
      */
     function prove(

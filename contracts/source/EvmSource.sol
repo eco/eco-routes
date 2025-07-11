@@ -260,7 +260,7 @@ contract EvmSource is BaseSource, IIntentSource {
         bytes32 intentHash = keccak256(abi.encodePacked(routeHash, rewardHash));
 
         IProver.ProofData memory proof = IProver(reward.prover).provenIntents(intentHash);
-        address claimant = address(uint160(uint256(proof.claimant)));
+        address claimant = proof.claimant;
         VaultState memory state = vaults[intentHash].state;
 
         // Claim the rewards if the intent has not been claimed
@@ -331,7 +331,7 @@ contract EvmSource is BaseSource, IIntentSource {
             IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
                 intentHash
             );
-            address claimant = address(uint160(uint256(proof.claimant)));
+            address claimant = proof.claimant;
             // Check if the intent has been proven to prevent unauthorized refunds
             if (claimant != address(0)) {
                 revert IntentNotClaimed(intentHash);

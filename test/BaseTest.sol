@@ -159,7 +159,7 @@ contract BaseTest is Test {
     
     function _addProof(bytes32 intentHash, uint96 destinationChainId, address recipient) internal {
         vm.prank(creator);
-        prover.addProvenIntent(intentHash, bytes32(uint256(uint160(recipient))));
+        prover.addProvenIntent(intentHash, recipient);
     }
     
     function _publishAndFund(Intent memory _intent, bool allowPartial) internal {

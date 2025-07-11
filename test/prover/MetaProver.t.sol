@@ -47,7 +47,7 @@ contract MetaProverTest is BaseTest {
         address sender,
         uint256 sourceChainId,
         bytes32[] memory intentHashes,
-        bytes32[] memory claimants,
+        address[] memory claimants,
         bytes memory data,
         uint256 value
     ) internal {
@@ -67,9 +67,9 @@ contract MetaProverTest is BaseTest {
     
     function testProveIntent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -86,9 +86,9 @@ contract MetaProverTest is BaseTest {
     
     function testProveIntentWithCorrectMessageBody() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         // Calculate expected message body
         bytes memory expectedBody = abi.encode(intentHashes, claimants);
@@ -108,9 +108,9 @@ contract MetaProverTest is BaseTest {
     
     function testProveIntentWithCorrectDestination() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -127,9 +127,9 @@ contract MetaProverTest is BaseTest {
     
     function testOnlyInboxCanProveIntent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         vm.deal(creator, 1 ether);
         vm.expectRevert(); // Should revert with access control error
@@ -139,9 +139,9 @@ contract MetaProverTest is BaseTest {
     
     function testProveIntentEmitsEvent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _expectEmit();
         emit IMessageBridgeProver.BatchSent(intentHashes, block.chainid);
@@ -169,9 +169,9 @@ contract MetaProverTest is BaseTest {
             bytes32 intentHash = _hashIntent(testIntent);
             
             bytes32[] memory intentHashes = new bytes32[](1);
-            bytes32[] memory claimants = new bytes32[](1);
+            address[] memory claimants = new address[](1);
             intentHashes[0] = intentHash;
-            claimants[0] = bytes32(uint256(uint160(claimant)));
+            claimants[0] = claimant;
             
             _proveWithFunding(
                 creator,
@@ -198,9 +198,9 @@ contract MetaProverTest is BaseTest {
             bytes32 intentHash = _hashIntent(testIntent);
             
             bytes32[] memory intentHashes = new bytes32[](1);
-            bytes32[] memory claimants = new bytes32[](1);
+            address[] memory claimants = new address[](1);
             intentHashes[0] = intentHash;
-            claimants[0] = bytes32(uint256(uint160(claimant)));
+            claimants[0] = claimant;
             
             _proveWithFunding(
                 creator,
@@ -227,14 +227,14 @@ contract MetaProverTest is BaseTest {
         
         // Test multiple separate calls
         bytes32[] memory intentHashes1 = new bytes32[](1);
-        bytes32[] memory claimants1 = new bytes32[](1);
+        address[] memory claimants1 = new address[](1);
         intentHashes1[0] = intentHash1;
-        claimants1[0] = bytes32(uint256(uint160(claimant)));
+        claimants1[0] = claimant;
         
         bytes32[] memory intentHashes2 = new bytes32[](1);
-        bytes32[] memory claimants2 = new bytes32[](1);
+        address[] memory claimants2 = new address[](1);
         intentHashes2[0] = intentHash2;
-        claimants2[0] = bytes32(uint256(uint160(claimant)));
+        claimants2[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -263,9 +263,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(testIntent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -285,9 +285,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(testIntent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -307,9 +307,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(testIntent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -330,9 +330,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(testIntent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         // MetaProver stores proof data when it receives a message via handle(), not when prove() is called
         // Simulate receiving a message from the source chain prover
@@ -346,7 +346,7 @@ contract MetaProverTest is BaseTest {
         );
         
         IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
-        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
+        assertEq(proof.claimant, claimant);
         assertEq(proof.destinationChainID, uint32(block.chainid));
     }
     
@@ -364,9 +364,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -385,9 +385,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         uint256 gasStart = gasleft();
         
@@ -410,9 +410,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         // Test with insufficient fee to trigger revert
         vm.expectRevert();
@@ -428,10 +428,10 @@ contract MetaProverTest is BaseTest {
     
     function testProveWithArrayLengthMismatch() public {
         bytes32[] memory intentHashes = new bytes32[](2);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
         intentHashes[1] = keccak256("second intent");
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         _proveWithFunding(
@@ -446,7 +446,7 @@ contract MetaProverTest is BaseTest {
     
     function testProveWithEmptyArrays() public {
         bytes32[] memory intentHashes = new bytes32[](0);
-        bytes32[] memory claimants = new bytes32[](0);
+        address[] memory claimants = new address[](0);
         
         _proveWithFunding(
             creator,
@@ -470,9 +470,9 @@ contract MetaProverTest is BaseTest {
         );
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,
@@ -491,9 +491,9 @@ contract MetaProverTest is BaseTest {
     
     function testProveWithOverpaymentRefund() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         uint256 overpayment = 5 ether;
         vm.deal(creator, 10 ether);
@@ -517,13 +517,13 @@ contract MetaProverTest is BaseTest {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);
         
-        // Use non-address bytes32 claimant
-        bytes32 nonAddressClaimant = keccak256("cross-vm-claimant-id");
+        // Use a valid address for the claimant
+        address nonEVMClaimant = makeAddr("cross-vm-claimant");
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = nonAddressClaimant;
+        claimants[0] = nonEVMClaimant;
         
         _proveWithFunding(
             creator,
@@ -546,9 +546,9 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(testIntent);
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         // Should revert on overflow when casting to uint32
         vm.expectRevert();
@@ -575,9 +575,9 @@ contract MetaProverTest is BaseTest {
         );
         
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _proveWithFunding(
             creator,

@@ -67,9 +67,9 @@ contract HyperProverTest is BaseTest {
     
     function testOnlyInboxCanCallProve() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         vm.expectRevert();
         vm.prank(creator);
@@ -78,9 +78,9 @@ contract HyperProverTest is BaseTest {
     
     function testProveWithValidInput() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));
         
@@ -93,13 +93,13 @@ contract HyperProverTest is BaseTest {
     
     function testProveEmitsIntentProvenEvent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         bytes32 intentHash = _hashIntent(intent);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         _expectEmit();
-        emit IProver.IntentProven(intentHash, bytes32(uint256(uint160(claimant))));
+        emit IProver.IntentProven(intentHash, claimant);
         
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));
@@ -108,13 +108,13 @@ contract HyperProverTest is BaseTest {
     
     function testProveBatchIntents() public {
         bytes32[] memory intentHashes = new bytes32[](3);
-        bytes32[] memory claimants = new bytes32[](3);
+        address[] memory claimants = new address[](3);
         
         for (uint256 i = 0; i < 3; i++) {
             Intent memory testIntent = intent;
             testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
             intentHashes[i] = _hashIntent(testIntent);
-            claimants[i] = bytes32(uint256(uint160(claimant)));
+            claimants[i] = claimant;
         }
         
         vm.prank(address(inbox));
@@ -124,16 +124,16 @@ contract HyperProverTest is BaseTest {
         // Check that all intents were proven
         for (uint256 i = 0; i < 3; i++) {
             IProver.ProofData memory proof = hyperProver.provenIntents(intentHashes[i]);
-            assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
+            assertEq(proof.claimant, claimant);
         }
     }
     
     function testProveRejectsArrayLengthMismatch() public {
         bytes32[] memory intentHashes = new bytes32[](2);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
         intentHashes[1] = keccak256("second intent");
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         vm.prank(address(inbox));
@@ -143,7 +143,7 @@ contract HyperProverTest is BaseTest {
     
     function testProveWithEmptyArrays() public {
         bytes32[] memory intentHashes = new bytes32[](0);
-        bytes32[] memory claimants = new bytes32[](0);
+        address[] memory claimants = new address[](0);
         
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));
@@ -152,8 +152,8 @@ contract HyperProverTest is BaseTest {
     
     function testHandleOnlyFromMailbox() public {
         bytes memory messageBody = abi.encode(
-            new bytes32[](1), 
-            new bytes32[](1)
+            new address[](1), 
+            new address[](1)
         );
         
         vm.expectRevert();
@@ -163,9 +163,9 @@ contract HyperProverTest is BaseTest {
     
     function testHandleWithWhitelistedSender() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         bytes memory messageBody = abi.encode(intentHashes, claimants);
         
@@ -173,15 +173,15 @@ contract HyperProverTest is BaseTest {
         hyperProver.handle(1, bytes32(uint256(uint160(whitelistedProver))), messageBody);
         
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHashes[0]);
-        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
+        assertEq(proof.claimant, claimant);
         assertEq(proof.destinationChainID, CHAIN_ID);
     }
     
     function testHandleRejectsNonWhitelistedSender() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         bytes memory messageBody = abi.encode(intentHashes, claimants);
         
@@ -192,10 +192,10 @@ contract HyperProverTest is BaseTest {
     
     function testHandleArrayLengthMismatch() public {
         bytes32[] memory intentHashes = new bytes32[](2);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
         intentHashes[1] = keccak256("second intent");
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         bytes memory messageBody = abi.encode(intentHashes, claimants);
         
@@ -206,10 +206,10 @@ contract HyperProverTest is BaseTest {
     
     function testHandleDuplicateIntent() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         bytes32 intentHash = _hashIntent(intent);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         bytes memory messageBody = abi.encode(intentHashes, claimants);
         
@@ -228,10 +228,10 @@ contract HyperProverTest is BaseTest {
     function testChallengeIntentProofWithWrongChain() public {
         // First, prove the intent
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         bytes32 intentHash = _hashIntent(intent);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));
@@ -239,7 +239,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify intent is proven (with chain ID = 31337 from the prove call)
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != bytes32(0));
+        assertTrue(proof.claimant != address(0));
         assertEq(proof.destinationChainID, uint96(block.chainid)); // 31337
         
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
@@ -250,7 +250,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify proof was cleared
         proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, bytes32(0));
+        assertEq(proof.claimant, address(0));
     }
     
     function testChallengeIntentProofWithCorrectChain() public {
@@ -260,10 +260,10 @@ contract HyperProverTest is BaseTest {
         
         // First, prove the intent
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         bytes32 intentHash = _hashIntent(localIntent);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));
@@ -271,7 +271,7 @@ contract HyperProverTest is BaseTest {
         
         // Verify intent is proven
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != bytes32(0));
+        assertTrue(proof.claimant != address(0));
         assertEq(proof.destinationChainID, uint96(block.chainid));
         
         // Challenge with correct chain (destination matches proof) should do nothing
@@ -280,15 +280,15 @@ contract HyperProverTest is BaseTest {
         
         // Verify proof is still there
         proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
+        assertEq(proof.claimant, claimant);
     }
     
     function testProvenIntentsStorage() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         bytes32 intentHash = _hashIntent(intent);
         intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         // First, send the prove message
         vm.prank(address(inbox));
@@ -302,7 +302,7 @@ contract HyperProverTest is BaseTest {
         
         // Now check the storage
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, bytes32(uint256(uint160(claimant))));
+        assertEq(proof.claimant, claimant);
         assertEq(proof.destinationChainID, uint96(block.chainid));
     }
     
@@ -313,9 +313,9 @@ contract HyperProverTest is BaseTest {
     
     function testProveWithRefundHandling() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = bytes32(uint256(uint160(claimant)));
+        claimants[0] = claimant;
         
         uint256 overpayment = 2 ether;
         uint256 initialBalance = creator.balance;
@@ -332,11 +332,11 @@ contract HyperProverTest is BaseTest {
     function testProveWithLargeArrays() public {
         uint256 arraySize = 50; // Test with larger array
         bytes32[] memory intentHashes = new bytes32[](arraySize);
-        bytes32[] memory claimants = new bytes32[](arraySize);
+        address[] memory claimants = new address[](arraySize);
         
         for (uint256 i = 0; i < arraySize; i++) {
             intentHashes[i] = keccak256(abi.encodePacked("intent", i));
-            claimants[i] = bytes32(uint256(uint160(claimant)));
+            claimants[i] = claimant;
         }
         
         // Should handle large arrays without running out of gas
@@ -347,7 +347,7 @@ contract HyperProverTest is BaseTest {
     
     function testHandleWithEmptyArrays() public {
         bytes32[] memory intentHashes = new bytes32[](0);
-        bytes32[] memory claimants = new bytes32[](0);
+        address[] memory claimants = new address[](0);
         
         bytes memory messageBody = abi.encode(intentHashes, claimants);
         
@@ -366,9 +366,9 @@ contract HyperProverTest is BaseTest {
     
     function testCrossVMClaimantCompatibility() public {
         bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        address[] memory claimants = new address[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = keccak256("non-evm-claimant-id"); // Non-address claimant
+        claimants[0] = makeAddr("non-evm-claimant"); // Use a valid address
         
         vm.prank(address(inbox));
         bytes memory proverData = _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), "", address(0));

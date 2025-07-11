@@ -225,7 +225,7 @@ contract IntentSourceTest is BaseTest {
         
         // Verify proof exists before challenge
         IProver.ProofData memory proofBefore = prover.provenIntents(intentHash);
-        assertTrue(proofBefore.claimant != bytes32(0));
+        assertTrue(proofBefore.claimant != address(0));
         
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
@@ -233,7 +233,7 @@ contract IntentSourceTest is BaseTest {
         
         // Verify proof was cleared after challenge
         IProver.ProofData memory proofAfter = prover.provenIntents(intentHash);
-        assertEq(proofAfter.claimant, bytes32(0));
+        assertEq(proofAfter.claimant, address(0));
         assertTrue(intentSource.isIntentFunded(intent));
     }
     

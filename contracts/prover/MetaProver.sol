@@ -88,7 +88,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param _sender Address that initiated the proving request
      * @param _sourceChainId Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
      * @param _data Additional data used for proving.
      * @dev the _data parameter is expected to contain the sourceChainProver (a bytes32), plus an optional gas limit override
      * @dev The gas limit override is expected to be a uint256 value, and will only be used if it is greater than the default gas limit
@@ -171,7 +171,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @dev Queries Metalayer router for fee information
      * @param _sourceChainID Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
      * @param _data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
@@ -198,7 +198,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @notice Internal function to calculate fee with pre-decoded data
      * @param _sourceChainID Chain ID of source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
      * @param _sourceChainProver Pre-decoded prover address on source chain
      * @return Fee amount required for message dispatch
      */
@@ -239,7 +239,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @notice Formats data for Metalayer message dispatch with pre-decoded values
      * @param _sourceChainID Chain ID of the source chain
      * @param _hashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
+     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
      * @param _sourceChainProver Pre-decoded prover address on source chain
      * @return domain Metalayer domain ID
      * @return recipient Recipient address encoded as bytes32

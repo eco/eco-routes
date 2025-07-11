@@ -448,7 +448,7 @@ describe('Intent Source Test', (): void => {
 
         // Verify proof exists before challenge
         const proofBefore = await prover.provenIntents(intentHash)
-        expect(proofBefore.claimant).to.not.eq(ethers.ZeroHash)
+        expect(proofBefore.claimant).to.not.eq(ethers.ZeroAddress)
         expect(proofBefore.destinationChainID).to.equal(31337) // local chain ID
 
         // Challenge the proof manually since withdrawRewards no longer does it automatically
@@ -457,7 +457,7 @@ describe('Intent Source Test', (): void => {
 
         // Verify proof was cleared after challenge
         const proofAfter = await prover.provenIntents(intentHash)
-        expect(proofAfter.claimant).to.eq(ethers.ZeroHash)
+        expect(proofAfter.claimant).to.eq(ethers.ZeroAddress)
 
         // Now withdrawRewards should fail since there's no proof
         await expect(

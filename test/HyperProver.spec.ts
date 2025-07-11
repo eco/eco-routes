@@ -124,13 +124,13 @@ describe('HyperProver Test', (): void => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
       const msgBody = abiCoder.encode(
-        ['bytes32[]', 'address[]'],
-        [[intentHash], [claimantAddress]],
+        ['bytes32[]', 'bytes32[]'],
+        [[intentHash], [ethers.zeroPadValue(claimantAddress, 32)]],
       )
 
       const proofDataBefore = await hyperProver.provenIntents(intentHash)
       expect(proofDataBefore.claimant).to.eq(
-        ethers.zeroPadValue(ethers.ZeroAddress, 32),
+        ethers.ZeroAddress,
       )
 
       await expect(
@@ -146,15 +146,15 @@ describe('HyperProver Test', (): void => {
         .withArgs(intentHash, claimantAddress)
 
       const proofDataAfter = await hyperProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(ethers.zeroPadValue(claimantAddress, 32))
+      expect(proofDataAfter.claimant).to.eq(claimantAddress)
     })
 
     it('should emit an event when intent is already proven', async () => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
       const msgBody = abiCoder.encode(
-        ['bytes32[]', 'address[]'],
-        [[intentHash], [claimantAddress]],
+        ['bytes32[]', 'bytes32[]'],
+        [[intentHash], [ethers.zeroPadValue(claimantAddress, 32)]],
       )
 
       // First handle call proves the intent
@@ -187,10 +187,10 @@ describe('HyperProver Test', (): void => {
       const otherAddress = await solver.getAddress()
 
       const msgBody = abiCoder.encode(
-        ['bytes32[]', 'address[]'],
+        ['bytes32[]', 'bytes32[]'],
         [
           [intentHash, otherHash],
-          [claimantAddress, otherAddress],
+          [ethers.zeroPadValue(claimantAddress, 32), ethers.zeroPadValue(otherAddress, 32)],
         ],
       )
 
@@ -209,9 +209,9 @@ describe('HyperProver Test', (): void => {
         .withArgs(otherHash, otherAddress)
 
       const proofData1 = await hyperProver.provenIntents(intentHash)
-      expect(proofData1.claimant).to.eq(ethers.zeroPadValue(claimantAddress, 32))
+      expect(proofData1.claimant).to.eq(claimantAddress)
       const proofData2 = await hyperProver.provenIntents(otherHash)
-      expect(proofData2.claimant).to.eq(ethers.zeroPadValue(otherAddress, 32))
+      expect(proofData2.claimant).to.eq(otherAddress)
     })
   })
 
@@ -526,7 +526,7 @@ describe('HyperProver Test', (): void => {
   })
 
   describe('4. Cross-VM Claimant Compatibility', () => {
-    it('should handle fulfillAndProve with non-address bytes32 claimant', async () => {
+    it.skip('should handle fulfillAndProve with non-address bytes32 claimant - SKIPPED: Now using address-only claimants', async () => {
       const chainId = 12345
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
@@ -679,7 +679,7 @@ describe('HyperProver Test', (): void => {
 
       const proofDataBefore = await hyperProver.provenIntents(intentHash)
       expect(proofDataBefore.claimant).to.eq(
-        ethers.zeroPadValue(ethers.ZeroAddress, 32),
+        ethers.ZeroAddress,
       )
 
       // Get fee for fulfillment
@@ -706,7 +706,7 @@ describe('HyperProver Test', (): void => {
       //the testMailbox's dispatch method directly calls the hyperProver's handle method
       const proofDataAfter = await hyperProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(
-        ethers.zeroPadValue(await claimant.getAddress(), 32),
+        await claimant.getAddress(),
       )
 
       //but lets simulate it fully anyway
