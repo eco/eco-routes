@@ -21,7 +21,7 @@ contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver,
+        address _prover,
         bytes memory _data
     ) public payable override returns (bytes[] memory) {
         // First, transfer tokens from the solver (msg.sender) to this contract
@@ -48,7 +48,7 @@ contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
                 _rewardHash,
                 _claimant,
                 _expectedHash,
-                _localProver,
+                _prover,
                 _data
             );
     }

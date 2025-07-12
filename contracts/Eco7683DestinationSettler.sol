@@ -100,7 +100,7 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver,
+        address _prover,
         bytes memory _data
     ) public payable virtual returns (bytes[] memory);
 }

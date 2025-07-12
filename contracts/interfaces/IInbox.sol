@@ -97,7 +97,7 @@ interface IInbox {
      * @param _rewardHash Hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash Expected hash for validation
-     * @param _localProver The prover contract to use for verification
+     * @param _prover The prover contract to use for verification
      * @return Array of execution results
      */
     function fulfill(
@@ -106,7 +106,7 @@ interface IInbox {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver
+        address _prover
     ) external payable returns (bytes[] memory);
 
     /**
@@ -117,7 +117,7 @@ interface IInbox {
      * @param _rewardHash Hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash Expected hash for validation
-     * @param _localProver Address of prover on the destination chain
+     * @param _prover Address of prover on the destination chain
      * @param _data Additional data for message formatting
      * @return Array of execution results
      */
@@ -127,7 +127,7 @@ interface IInbox {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver,
+        address _prover,
         bytes memory _data
     ) external payable returns (bytes[] memory);
 
@@ -136,13 +136,13 @@ interface IInbox {
      * @dev Sends message to source chain to verify intent execution
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _localProver Address of prover on the destination chain
+     * @param _prover Address of prover on the destination chain
      * @param _data Additional data for message formatting
      */
     function initiateProving(
         uint256 _sourceChainId,
         bytes32[] memory _intentHashes,
-        address _localProver,
+        address _prover,
         bytes memory _data
     ) external payable;
 }

@@ -17,7 +17,7 @@ contract TestDestinationSettler is Eco7683DestinationSettler {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver,
+        address _prover,
         bytes memory _data
     ) public payable override returns (bytes[] memory) {
         // Call the portal's fulfillAndProve function
@@ -28,7 +28,7 @@ contract TestDestinationSettler is Eco7683DestinationSettler {
                 _rewardHash,
                 _claimant,
                 _expectedHash,
-                _localProver,
+                _prover,
                 _data
             );
     }

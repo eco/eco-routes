@@ -47,7 +47,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
      * @param _rewardHash The hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _localProver The prover contract to use for verification
+     * @param _prover The prover contract to use for verification
      * @return Array of execution results from each call
      */
     function fulfill(
@@ -56,7 +56,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver
+        address _prover
     ) external payable override returns (bytes[] memory) {
         bytes[] memory result = _fulfill(
             _sourceChainId,
@@ -64,7 +64,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
             _rewardHash,
             _claimant,
             _expectedHash,
-            _localProver
+            _prover
         );
 
         return result;
@@ -78,7 +78,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
      * @param _rewardHash The hash of the reward details
      * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _localProver Address of prover on the destination chain
+     * @param _prover Address of prover on the destination chain
      * @param _data Additional data for message formatting
      * @return Array of execution results
      */
@@ -88,7 +88,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver,
+        address _prover,
         bytes memory _data
     )
         public
@@ -102,13 +102,13 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
             _rewardHash,
             _claimant,
             _expectedHash,
-            _localProver
+            _prover
         );
 
         bytes32[] memory hashes = new bytes32[](1);
         hashes[0] = _expectedHash;
 
-        initiateProving(_sourceChainId, hashes, _localProver, _data);
+        initiateProving(_sourceChainId, hashes, _prover, _data);
         return result;
     }
 
@@ -117,16 +117,16 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
      * @dev Sends message to source chain to verify intent execution
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove
-     * @param _localProver Address of prover on the destination chain
+     * @param _prover Address of prover on the destination chain
      * @param _data Additional data for message formatting
      */
     function initiateProving(
         uint256 _sourceChainId,
         bytes32[] memory _intentHashes,
-        address _localProver,
+        address _prover,
         bytes memory _data
     ) public payable {
-        if (_localProver == address(0)) {
+        if (_prover == address(0)) {
             // storage prover case, this method should do nothing
             return;
         }
@@ -140,7 +140,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
             }
             claimants[i] = claimantBytes;
         }
-        IProver(_localProver).prove{value: address(this).balance}(
+        IProver(_prover).prove{value: address(this).balance}(
             msg.sender,
             _sourceChainId,
             _intentHashes,
@@ -157,7 +157,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
      * @param _rewardHash The hash of the reward
      * @param _claimant Cross-VM compatible claimant identifier
      * @param _expectedHash The expected intent hash
-     * @param _localProver The prover contract to use
+     * @param _prover The prover contract to use
      * @return Array of execution results
      */
     function _fulfill(
@@ -166,7 +166,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
         bytes32 _rewardHash,
         bytes32 _claimant,
         bytes32 _expectedHash,
-        address _localProver
+        address _prover
     ) internal returns (bytes[] memory) {
         // Check if the route has expired
         if (block.timestamp > _route.deadline) {
@@ -196,7 +196,7 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
         emit IntentFulfilled(
             _expectedHash,
             _sourceChainId,
-            _localProver.toBytes32(),
+            _prover.toBytes32(),
             _claimant
         );
 
