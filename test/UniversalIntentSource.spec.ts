@@ -491,30 +491,52 @@ describe('Universal Intent Source Test', (): void => {
       const evmHashes = await intentSource.getIntentHash(evmIntent)
 
       // Get hash from universal contract
-      const universalHashes =
-        await universalIntentSource.getIntentHash(universalIntent)
+      const routeHashForUniversal = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        ),
+      )
+      const universalIntentHash = await universalIntentSource.getIntentHash(
+        universalIntent,
+        routeHashForUniversal,
+      )
 
       // Verify both methods return valid hashes
       expect(evmHashes[0]).to.not.equal(ethers.ZeroHash)
-      expect(universalHashes[0]).to.not.equal(ethers.ZeroHash)
+      expect(universalIntentHash).to.not.equal(ethers.ZeroHash)
 
       // Compare with our local calculation
       const manualHashes = hashUniversalIntent(universalIntent)
-      expect(universalHashes[0]).to.equal(manualHashes.intentHash)
-      expect(universalHashes[1]).to.equal(manualHashes.routeHash)
-      expect(universalHashes[2]).to.equal(manualHashes.rewardHash)
+      expect(universalIntentHash).to.equal(manualHashes.intentHash)
+      expect(routeHashForUniversal).to.equal(manualHashes.routeHash)
+      // Note: rewardHash is not returned by universalIntentSource.getIntentHash()
 
-      // The same intent should hash to the same values regardless of interface
-      expect(evmHashes[0]).to.equal(universalHashes[0])
-      expect(evmHashes[1]).to.equal(universalHashes[1])
-      expect(evmHashes[2]).to.equal(universalHashes[2])
+      // The intent hash should be the same regardless of interface
+      expect(evmHashes[0]).to.equal(universalIntentHash)
+      // Route hash should match what we calculated
+      expect(evmHashes[1]).to.equal(routeHashForUniversal)
+      // Reward hash should match our manual calculation
+      expect(evmHashes[2]).to.equal(manualHashes.rewardHash)
     })
 
     it('should compute the same vault address from both interfaces', async function () {
       // Get vault address for both formats
       const evmVaultAddr = await intentSource.intentVaultAddress(evmIntent)
-      const universalVaultAddr =
-        await universalIntentSource.intentVaultAddress(universalIntent)
+      const routeHashForVault = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        ),
+      )
+      const universalVaultAddr = await universalIntentSource.intentVaultAddress(
+        universalIntent,
+        routeHashForVault,
+      )
 
       // They should be the same vault
       expect(evmVaultAddr).to.equal(universalVaultAddr)
@@ -568,11 +590,29 @@ describe('Universal Intent Source Test', (): void => {
       }
 
       // Get hashes using the IUniversalIntentSource interface
+      const routeHash1 = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntentFromEVM.route],
+        ),
+      )
       const [hash1] = await universalIntentSource.getIntentHash(
         universalIntentFromEVM,
+        routeHash1,
+      )
+      const routeHash2 = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [customUniversalIntent.route],
+        ),
       )
       const [hash2] = await universalIntentSource.getIntentHash(
         customUniversalIntent,
+        routeHash2,
       )
 
       // The hashes should be identical even though the representations are different
@@ -616,11 +656,29 @@ describe('Universal Intent Source Test', (): void => {
       }
 
       // Get vault addresses using the IUniversalIntentSource interface
+      const vaultRouteHash1 = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntentFromEVM.route],
+        ),
+      )
       const vault1 = await universalIntentSource.intentVaultAddress(
         universalIntentFromEVM,
+        vaultRouteHash1,
+      )
+      const vaultRouteHash2 = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [customUniversalIntent.route],
+        ),
       )
       const vault2 = await universalIntentSource.intentVaultAddress(
         customUniversalIntent,
+        vaultRouteHash2,
       )
 
       // Also get vault address using the standard IIntentSource interface
@@ -669,10 +727,21 @@ describe('Universal Intent Source Test', (): void => {
       }
 
       // Get hashes for all three formats
-      const [originalHash] = await intentSource.getIntentHash(evmIntent)
-      const [universalHash] =
-        await universalIntentSource.getIntentHash(universalIntent)
-      const [reconvertedHash] =
+      const [originalHash, ,] = await intentSource.getIntentHash(evmIntent)
+      // For universal intents, we need to compute route hash separately
+      const routeHash = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        ),
+      )
+      const universalHash = await universalIntentSource.getIntentHash(
+        universalIntent,
+        routeHash,
+      )
+      const [reconvertedHash, ,] =
         await intentSource.getIntentHash(reconvertedEvmIntent)
 
       // All hashes should match
@@ -698,8 +767,9 @@ describe('Universal Intent Source Test', (): void => {
       }
 
       // Calculate intent hashes
-      const [standardHash] = await intentSource.getIntentHash(standardIntent)
-      const [mixedCaseHash] = await intentSource.getIntentHash(mixedCaseIntent)
+      const [standardHash, ,] = await intentSource.getIntentHash(standardIntent)
+      const [mixedCaseHash, ,] =
+        await intentSource.getIntentHash(mixedCaseIntent)
 
       // Addresses with different case should produce the same hash
       expect(standardHash).to.equal(mixedCaseHash)
@@ -732,9 +802,18 @@ describe('Universal Intent Source Test', (): void => {
     })
 
     it('should successfully publish a universal intent', async function () {
+      // Get the route hash first
+      const routeHash = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        ),
+      )
       const tx = await universalIntentSource
         .connect(creator)
-        .publish(universalIntent)
+        .publish(universalIntent, routeHash)
 
       // Verify intent was published
       const receipt = await tx.wait()
@@ -762,7 +841,7 @@ describe('Universal Intent Source Test', (): void => {
   describe('Intent funding', function () {
     it('should properly fund an EVM intent with ERC20 tokens', async function () {
       // Get intent hash to verify events
-      const [intentHash] = await intentSource.getIntentHash(evmIntent)
+      const [intentHash, ,] = await intentSource.getIntentHash(evmIntent)
 
       // Publish and fund the intent
       await intentSource.connect(creator).publishAndFund(
@@ -784,12 +863,22 @@ describe('Universal Intent Source Test', (): void => {
 
     it('should properly fund a universal intent with ERC20 tokens', async function () {
       // Get intent hash to verify events
-      const [intentHash] =
-        await universalIntentSource.getIntentHash(universalIntent)
-
+      const routeHash = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        ),
+      )
+      const [intentHash, ,] = await universalIntentSource.getIntentHash(
+        universalIntent,
+        routeHash,
+      )
       // Publish and fund the intent
       await universalIntentSource.connect(creator).publishAndFund(
         universalIntent,
+        routeHash,
         false, // no partial funding
         { value: universalIntent.reward.nativeValue },
       )
@@ -799,8 +888,18 @@ describe('Universal Intent Source Test', (): void => {
         .true
 
       // Check vault balance for each token
-      const vaultAddress =
-        await universalIntentSource.intentVaultAddress(universalIntent)
+      const vaultRouteHash = keccak256(
+        AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        ),
+      )
+      const vaultAddress = await universalIntentSource.intentVaultAddress(
+        universalIntent,
+        vaultRouteHash,
+      )
       expect(await tokenA.balanceOf(vaultAddress)).to.equal(Number(mintAmount))
       expect(await tokenB.balanceOf(vaultAddress)).to.equal(
         Number(mintAmount * 2n),
@@ -894,7 +993,7 @@ describe('Universal Intent Source Test', (): void => {
       )
 
       // Store intent hash
-      const [intentHash] = await intentSource.getIntentHash(evmIntent)
+      const [intentHash, ,] = await intentSource.getIntentHash(evmIntent)
 
       // Have the prover approve the intent with the correct destination chain
       await prover
@@ -973,7 +1072,7 @@ describe('Universal Intent Source Test', (): void => {
           .withdraw(chainId + 1n, routeHash, evmIntent.reward),
       )
         .to.emit(intentSource, 'IntentWithdrawn')
-        .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
+        .withArgs(intentHash, await claimant.getAddress())
     })
 
     it('should prevent double claiming of rewards', async function () {
@@ -1136,7 +1235,7 @@ describe('Universal Intent Source Test', (): void => {
           .refund(chainId + 1n, routeHash, evmIntent.reward),
       )
         .to.emit(intentSource, 'IntentRefunded')
-        .withArgs(intentHash, addressToBytes32(await creator.getAddress()))
+        .withArgs(intentHash, await creator.getAddress())
     })
   })
 

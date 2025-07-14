@@ -10,12 +10,12 @@ import { TypeCasts } from './typeCasts'
 export type UniversalCall = {
   target: string // bytes32
   data: string
-  value: number
+  value: number | bigint
 }
 
 export type UniversalTokenAmount = {
   token: string // bytes32
-  amount: number
+  amount: number | bigint
 }
 
 export type UniversalRoute = {
@@ -44,22 +44,22 @@ export type UniversalIntent = {
 export function convertCallToUniversal(call: {
   target: string
   data: string
-  value: number
+  value: number | bigint
 }): UniversalCall {
   return {
     target: TypeCasts.addressToBytes32(call.target),
     data: call.data,
-    value: call.value,
+    value: BigInt(call.value),
   }
 }
 
 export function convertTokenAmountToUniversal(tokenAmount: {
   token: string
-  amount: number
+  amount: number | bigint
 }): UniversalTokenAmount {
   return {
     token: TypeCasts.addressToBytes32(tokenAmount.token),
-    amount: tokenAmount.amount,
+    amount: BigInt(tokenAmount.amount),
   }
 }
 
@@ -67,8 +67,8 @@ export function convertRouteToUniversal(route: {
   salt: string
   deadline: number | bigint
   portal: string
-  tokens: { token: string; amount: number }[]
-  calls: { target: string; data: string; value: number }[]
+  tokens: { token: string; amount: number | bigint }[]
+  calls: { target: string; data: string; value: number | bigint }[]
 }): UniversalRoute {
   return {
     salt: route.salt,
@@ -84,7 +84,7 @@ export function convertRewardToUniversal(reward: {
   prover: string
   deadline: number | bigint
   nativeValue: bigint
-  tokens: { token: string; amount: number }[]
+  tokens: { token: string; amount: number | bigint }[]
 }): UniversalReward {
   return {
     creator: TypeCasts.addressToBytes32(reward.creator),
@@ -99,17 +99,17 @@ export function convertIntentToUniversal(intent: {
   destination: number
   route: {
     salt: string
-    deadline: number
+    deadline: number | bigint
     portal: string
-    tokens: { token: string; amount: number }[]
-    calls: { target: string; data: string; value: number }[]
+    tokens: { token: string; amount: number | bigint }[]
+    calls: { target: string; data: string; value: number | bigint }[]
   }
   reward: {
     creator: string
     prover: string
-    deadline: number
+    deadline: number | bigint
     nativeValue: bigint
-    tokens: { token: string; amount: number }[]
+    tokens: { token: string; amount: number | bigint }[]
   }
 }): UniversalIntent {
   return {

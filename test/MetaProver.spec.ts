@@ -9,11 +9,12 @@ import {
   MetaProver,
   Inbox,
   Portal,
+  IIntentSource,
   TestERC20,
   TestMetaRouter,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { TokenAmount } from '../utils/intent'
+import { TokenAmount, Route, Intent, hashIntent } from '../utils/intent'
 import { addressToBytes32 } from '../utils/typeCasts'
 import {
   UniversalIntent,
@@ -72,6 +73,24 @@ describe('MetaProver Test', (): void => {
   let claimant: SignerWithAddress
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
+
+  // Helper function to convert UniversalRoute to Route for the fulfill function
+  function universalRouteToRoute(universalRoute: UniversalRoute): Route {
+    return {
+      salt: universalRoute.salt,
+      deadline: universalRoute.deadline,
+      portal: TypeCasts.bytes32ToAddress(universalRoute.portal),
+      tokens: universalRoute.tokens.map((token) => ({
+        token: TypeCasts.bytes32ToAddress(token.token),
+        amount: token.amount,
+      })),
+      calls: universalRoute.calls.map((call) => ({
+        target: TypeCasts.bytes32ToAddress(call.target),
+        data: call.data,
+        value: call.value,
+      })),
+    }
+  }
 
   async function deployMetaProverFixture(): Promise<{
     inbox: Inbox
@@ -133,7 +152,7 @@ describe('MetaProver Test', (): void => {
 
     it('should add constructor-provided provers to the whitelist', async () => {
       // Test with additional whitelisted provers
-      const additionalProver = await owner.getAddress()
+      const additionalProver = ethers.getAddress(await owner.getAddress())
       const newMetaProver = await (
         await ethers.getContractFactory('MetaProver')
       ).deploy(
@@ -240,7 +259,7 @@ describe('MetaProver Test', (): void => {
           ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, addressToBytes32(claimantAddress))
+        .withArgs(intentHash, claimantAddress)
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -310,9 +329,9 @@ describe('MetaProver Test', (): void => {
           ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, addressToBytes32(claimantAddress))
+        .withArgs(intentHash, claimantAddress)
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(otherHash, addressToBytes32(otherAddress))
+        .withArgs(otherHash, otherAddress)
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -598,7 +617,7 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, addressToBytes32(claimantAddress))
+        .withArgs(intentHash, claimantAddress)
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -743,7 +762,59 @@ describe('MetaProver Test', (): void => {
   }
 
   describe('4. Cross-VM Claimant Compatibility', () => {
-    it.skip('should handle fulfillAndProve with non-address bytes32 claimant - SKIPPED: Now using address-only claimants', async () => {
+    it('should skip non-EVM claimants when processing handle messages', async () => {
+      // Deploy metaProver with owner as router for direct testing
+      metaProver = await (
+        await ethers.getContractFactory('MetaProver')
+      ).deploy(
+        await owner.getAddress(), // owner as router
+        await inbox.getAddress(),
+        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
+        200000,
+      )
+
+      // Create test data
+      const intentHash1 = ethers.keccak256('0x1234')
+      const intentHash2 = ethers.keccak256('0x5678')
+      const validClaimant = ethers.zeroPadValue(await claimant.getAddress(), 32)
+
+      // Use a bytes32 claimant that doesn't represent a valid address
+      // This simulates a cross-VM scenario where the claimant identifier
+      // is not an Ethereum address but some other VM's identifier like Solana
+      const nonAddressClaimant = ethers.keccak256(
+        ethers.toUtf8Bytes('non-evm-claimant-identifier'),
+      )
+
+      // Create message with both valid and invalid claimants
+      const msgBody = abiCoder.encode(
+        ['bytes32[]', 'bytes32[]'],
+        [
+          [intentHash1, intentHash2],
+          [validClaimant, nonAddressClaimant],
+        ],
+      )
+
+      // Process the message
+      await metaProver
+        .connect(owner) // owner acts as router
+        .handle(
+          12345,
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+          [], // empty ReadOperation array
+          [], // empty bytes array
+        )
+
+      // The valid claimant should be processed
+      const proofData1 = await metaProver.provenIntents(intentHash1)
+      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+
+      // The invalid claimant should be skipped (not processed)
+      const proofData2 = await metaProver.provenIntents(intentHash2)
+      expect(proofData2.claimant).to.eq(ethers.ZeroAddress)
+    })
+
+    it('should revert when attempting to prove with non-address bytes32 claimant', async () => {
       const chainId = 12345
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
@@ -757,7 +828,18 @@ describe('MetaProver Test', (): void => {
         200000,
       )
 
+      // Get Portal and IntentSource interfaces
+      const portal = await ethers.getContractAt(
+        'Portal',
+        await inbox.getAddress(),
+      )
+      const intentSource = await ethers.getContractAt(
+        'IIntentSource',
+        await portal.getAddress(),
+      )
+
       await token.mint(solver.address, amount)
+      await token.mint(owner.address, amount) // For funding the intent
 
       // Set up intent data
       const sourceChainID = 12345
@@ -789,12 +871,16 @@ describe('MetaProver Test', (): void => {
       const destination = Number(
         (await metaProver.runner?.provider?.getNetwork())?.chainId,
       )
-      // Convert to UniversalIntent
-      const universalIntent = convertIntentToUniversal({
+
+      // Create regular intent for publishing
+      const intent: Intent = {
         destination,
         route,
         reward,
-      })
+      }
+
+      // Convert to UniversalIntent for hashing
+      const universalIntent = convertIntentToUniversal(intent)
       const { intentHash, rewardHash } = hashUniversalIntent(universalIntent)
 
       // arbitrary bytes32 claimant that doesn't represent a valid EVM address
@@ -810,6 +896,14 @@ describe('MetaProver Test', (): void => {
         [ethers.zeroPadValue(await metaProver.getAddress(), 32)],
       )
 
+      // Approve tokens for funding
+      await token.connect(owner).approve(await portal.getAddress(), amount)
+
+      // Publish and fund the intent
+      await intentSource.connect(owner).publishAndFund(intent, false, {
+        value: ethers.parseEther('0.01'),
+      })
+
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
       const fee = await metaProver.fetchFee(
@@ -819,15 +913,21 @@ describe('MetaProver Test', (): void => {
         data,
       )
 
+      // Convert UniversalRoute to Route for fulfillAndProve
+      const regularRoute = universalRouteToRoute(universalIntent.route)
+
+      // Since non-EVM addresses have non-zero top 12 bytes, we expect this to succeed
+      // at the fulfill stage but fail when the prover tries to process it
       await expect(
         inbox
           .connect(solver)
           .fulfillAndProve(
-            route,
+            intentHash,
+            regularRoute,
             rewardHash,
             nonAddressClaimant,
-            intentHash,
             await metaProver.getAddress(),
+            sourceChainID,
             data,
             { value: fee },
           ),
@@ -835,6 +935,10 @@ describe('MetaProver Test', (): void => {
 
       // Verify the intent was fulfilled with the non-address claimant
       expect(await inbox.fulfilled(intentHash)).to.eq(nonAddressClaimant)
+
+      // The prover should not have processed this intent due to invalid address format
+      const provenIntent = await metaProver.provenIntents(intentHash)
+      expect(provenIntent.claimant).to.eq(ethers.ZeroAddress)
     })
   })
 
@@ -866,7 +970,18 @@ describe('MetaProver Test', (): void => {
     })
 
     it('works end to end with message bridge', async () => {
+      // Get Portal and IntentSource interfaces
+      const portal = await ethers.getContractAt(
+        'Portal',
+        await inbox.getAddress(),
+      )
+      const intentSource = await ethers.getContractAt(
+        'IIntentSource',
+        await portal.getAddress(),
+      )
+
       await token.mint(solver.address, amount)
+      await token.mint(owner.address, amount) // For funding the intent
 
       // Set up intent data
       const sourceChainID = 12345
@@ -898,17 +1013,29 @@ describe('MetaProver Test', (): void => {
       const destination = Number(
         await ethers.provider.getNetwork().then((n) => n.chainId),
       )
-      // Convert to UniversalIntent
-      const universalIntent = convertIntentToUniversal({
+
+      // Create regular intent for publishing
+      const intent: Intent = {
         destination,
         route,
         reward,
-      })
+      }
+
+      // Convert to UniversalIntent for hashing
+      const universalIntent = convertIntentToUniversal(intent)
       const { intentHash, rewardHash } = hashUniversalIntent(universalIntent)
       const data = abiCoder.encode(
         ['bytes32'],
         [ethers.zeroPadValue(await metaProver.getAddress(), 32)],
       )
+
+      // Approve tokens for funding
+      await token.connect(owner).approve(await portal.getAddress(), amount)
+
+      // Publish and fund the intent
+      await intentSource.connect(owner).publishAndFund(intent, false, {
+        value: ethers.parseEther('0.01'),
+      })
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
@@ -923,14 +1050,17 @@ describe('MetaProver Test', (): void => {
         data,
       )
 
+      // Convert UniversalRoute to Route for fulfillAndProve
+      const regularRoute = universalRouteToRoute(universalIntent.route)
+
       // Fulfill the intent using message bridge
       await inbox.connect(solver).fulfillAndProve(
-        sourceChainID,
-        universalIntent.route,
+        intentHash,
+        regularRoute,
         rewardHash,
         ethers.zeroPadValue(await claimant.getAddress(), 32),
-        intentHash,
         await testMsgProver.getAddress(), // Use TestMessageBridgeProver
+        sourceChainID,
         data,
         { value: fee },
       )
@@ -984,7 +1114,18 @@ describe('MetaProver Test', (): void => {
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
+      // Get Portal and IntentSource interfaces
+      const portal = await ethers.getContractAt(
+        'Portal',
+        await inbox.getAddress(),
+      )
+      const intentSource = await ethers.getContractAt(
+        'IIntentSource',
+        await portal.getAddress(),
+      )
+
       await token.mint(solver.address, 2 * amount)
+      await token.mint(owner.address, 2 * amount) // For funding the intents
 
       // Set up common data
       const sourceChainID = 12345
@@ -1024,28 +1165,42 @@ describe('MetaProver Test', (): void => {
       const destination = Number(
         await ethers.provider.getNetwork().then((n) => n.chainId),
       )
-      const universalIntent0 = convertIntentToUniversal({
+
+      // Create regular intent for publishing
+      const intent0: Intent = {
         destination,
         route,
         reward,
-      })
+      }
+
+      // Convert to UniversalIntent for hashing
+      const universalIntent0 = convertIntentToUniversal(intent0)
       const { intentHash: intentHash0, rewardHash: rewardHash0 } =
         hashUniversalIntent(universalIntent0)
+
+      // Approve tokens for funding and publish first intent
+      await token.connect(owner).approve(await portal.getAddress(), amount)
+      await intentSource.connect(owner).publishAndFund(intent0, false, {
+        value: ethers.parseEther('0.01'),
+      })
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
       const proofDataBefore0 = await testMsgProver.provenIntents(intentHash0)
       expect(proofDataBefore0.claimant).to.eq(ethers.ZeroAddress)
 
+      // Convert UniversalRoute to Route for fulfill
+      const regularRoute0 = universalRouteToRoute(universalIntent0.route)
+
       // Fulfill first intent in batch
-      await inbox.connect(solver).fulfill(
-        sourceChainID,
-        universalIntent0.route,
-        rewardHash0,
-        ethers.zeroPadValue(await claimant.getAddress(), 32),
-        intentHash0,
-        await testMsgProver.getAddress(), // Use TestMessageBridgeProver
-      )
+      await inbox
+        .connect(solver)
+        .fulfill(
+          intentHash0,
+          regularRoute0,
+          rewardHash0,
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
+        )
 
       // Create second intent with different salt
       salt = ethers.encodeBytes32String('0x1234')
@@ -1069,24 +1224,37 @@ describe('MetaProver Test', (): void => {
         nativeValue: 1n,
         tokens: [],
       }
-      const universalIntent1 = convertIntentToUniversal({
+      // Create regular intent for publishing
+      const intent1: Intent = {
         destination,
         route: route1,
         reward: reward1,
-      })
+      }
+
+      // Convert to UniversalIntent for hashing
+      const universalIntent1 = convertIntentToUniversal(intent1)
       const { intentHash: intentHash1, rewardHash: rewardHash1 } =
         hashUniversalIntent(universalIntent1)
 
+      // Convert UniversalRoute to Route for fulfill
+      const regularRoute1 = universalRouteToRoute(universalIntent1.route)
+
+      // Approve tokens for funding and publish second intent
+      await token.connect(owner).approve(await portal.getAddress(), amount)
+      await intentSource.connect(owner).publishAndFund(intent1, false, {
+        value: ethers.parseEther('0.01'),
+      })
+
       // Approve tokens and fulfill second intent in batch
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      await inbox.connect(solver).fulfill(
-        sourceChainID,
-        universalIntent1.route,
-        rewardHash1,
-        ethers.zeroPadValue(await claimant.getAddress(), 32),
-        intentHash1,
-        await testMsgProver.getAddress(), // Use TestMessageBridgeProver
-      )
+      await inbox
+        .connect(solver)
+        .fulfill(
+          intentHash1,
+          regularRoute1,
+          rewardHash1,
+          ethers.zeroPadValue(await claimant.getAddress(), 32),
+        )
 
       // Check intent hasn't been proven yet
       const proofDataBefore1 = await testMsgProver.provenIntents(intentHash1)
@@ -1104,10 +1272,10 @@ describe('MetaProver Test', (): void => {
       )
 
       // Send batch to message bridge
-      await inbox.connect(solver).initiateProving(
+      await inbox.connect(solver).prove(
         sourceChainID,
-        [intentHash0, intentHash1],
         await testMsgProver.getAddress(), // Use TestMessageBridgeProver
+        [intentHash0, intentHash1],
         data,
         { value: fee },
       )

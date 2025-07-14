@@ -67,7 +67,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     // No custom events needed for testing
 
     /**
-     * @notice Mock implementation of initiateProving
+     * @notice Mock implementation of prove
      * @dev Records arguments and marks dispatched = true
      */
     function prove(
@@ -117,7 +117,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     function addProvenIntent(bytes32 _hash, address _claimant) public {
         _provenIntents[_hash] = ProofData({
             claimant: _claimant,
-            destinationChainID: uint96(block.chainid)
+            destinationChainID: uint64(block.chainid)
         });
     }
 

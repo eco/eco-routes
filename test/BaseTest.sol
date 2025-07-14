@@ -3,6 +3,8 @@ pragma solidity ^0.8.27;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
+import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+
 import {TestERC20} from "../contracts/test/TestERC20.sol";
 import {BadERC20} from "../contracts/test/BadERC20.sol";
 import {FakePermit} from "../contracts/test/FakePermit.sol";
@@ -11,8 +13,7 @@ import {Portal} from "../contracts/Portal.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/UniversalIntent.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData} from "../contracts/types/EcoERC7683.sol";
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {OrderData} from "../contracts/types/EcoERC7683.sol";
 
 contract BaseTest is Test {
     // Constants
@@ -200,7 +201,9 @@ contract BaseTest is Test {
         bool allowPartial
     ) internal {
         vm.prank(creator);
-        intentSource.publishAndFund(_intent, allowPartial);
+        // For Portal/UniversalSource, we need to calculate routeHash
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
+        intentSource.publishAndFund(_intent, routeHash, allowPartial);
     }
 
     function _publishAndFundWithValue(
@@ -209,7 +212,13 @@ contract BaseTest is Test {
         uint256 value
     ) internal {
         vm.prank(creator);
-        intentSource.publishAndFund{value: value}(_intent, allowPartial);
+        // For Portal/UniversalSource, we need to calculate routeHash
+        bytes32 routeHash = keccak256(abi.encode(_intent.route));
+        intentSource.publishAndFund{value: value}(
+            _intent,
+            routeHash,
+            allowPartial
+        );
     }
 
     function _timeTravel(uint256 timestamp) internal {

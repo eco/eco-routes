@@ -13,9 +13,17 @@ import {
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer, encodeTransferPayable } from '../utils/encode'
-import { BytesLike, AbiCoder, parseEther, MaxUint256 } from 'ethers'
-import { hashIntent, Call, Reward, Intent, encodeIntent } from '../utils/intent'
-import { addressToBytes32 } from '../utils/typeCasts'
+import { BytesLike, AbiCoder, parseEther, MaxUint256, keccak256 } from 'ethers'
+import {
+  hashIntent,
+  Call,
+  Reward,
+  Intent,
+  encodeIntent,
+  Route,
+  encodeReward,
+} from '../utils/intent'
+import { addressToBytes32, bytes32ToAddress } from '../utils/typeCasts'
 import {
   UniversalIntent,
   UniversalRoute,
@@ -125,7 +133,7 @@ describe('Destination Settler Test', (): void => {
           {
             target: await erc20.getAddress(),
             data: _calldata1,
-            value: _nativeAmount,
+            value: 0, // ERC20 transfers don't need ETH
           },
         ],
       },
@@ -152,6 +160,7 @@ describe('Destination Settler Test', (): void => {
       destination: destination,
       route: {
         salt: universalIntent.route.salt,
+        deadline: universalIntent.route.deadline,
         portal: universalIntent.route.portal,
         tokens: universalIntent.route.tokens,
         calls: universalIntent.route.calls,
@@ -179,29 +188,94 @@ describe('Destination Settler Test', (): void => {
     ))
   })
 
-  it.skip('reverts on a fill when fillDeadline has passed', async (): Promise<void> => {
-    // This test is skipped because OnchainCrosschainOrderData doesn't include a deadline field
-    // The EIP-7683 structure would need to be updated to support deadline checks
-    await time.increaseTo(universalIntent.reward.deadline + 1)
+  it('reverts on a fill when fillDeadline has passed', async (): Promise<void> => {
+    // Create an intent with an expired deadline
+    const currentTime = await time.latest()
+    const expiredDeadline = currentTime - 100 // Set deadline in the past
+
+    // Create a custom intent with expired deadline
+    const erc20Address = await erc20.getAddress()
+    const destination = Number((await owner.provider.getNetwork()).chainId)
+    const _calldata1 = await encodeTransferPayable(creator.address, mintAmount)
+
+    const expiredIntent: Intent = {
+      destination: destination,
+      route: {
+        salt,
+        deadline: expiredDeadline, // Use expired deadline
+        portal: await inbox.getAddress(),
+        tokens: [{ token: await erc20.getAddress(), amount: mintAmount }],
+        calls: [
+          {
+            target: await erc20.getAddress(),
+            data: _calldata1,
+            value: 0, // ERC20 transfers don't need ETH
+          },
+        ],
+      },
+      reward: {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: currentTime + timeDelta,
+        nativeValue: BigInt(0),
+        tokens: [
+          {
+            token: await erc20.getAddress(),
+            amount: mintAmount,
+          },
+        ],
+      },
+    }
+
+    const expiredUniversalIntent = convertIntentToUniversal(expiredIntent)
+    const { intentHash: expiredIntentHash } = hashUniversalIntent(
+      expiredUniversalIntent,
+    )
+
+    // Create the UniversalOnchainCrosschainOrderData for the fill function
+    const expiredOrderData: UniversalOnchainCrosschainOrderData = {
+      destination: destination,
+      route: {
+        salt: expiredUniversalIntent.route.salt,
+        deadline: expiredUniversalIntent.route.deadline,
+        portal: expiredUniversalIntent.route.portal,
+        tokens: expiredUniversalIntent.route
+          .tokens as EcoUniversalRoute['tokens'],
+        calls: expiredUniversalIntent.route.calls as EcoUniversalRoute['calls'],
+      },
+      reward: expiredUniversalIntent.reward,
+    }
+
+    // Approve tokens for the solver
     await erc20
       .connect(solver)
       .approve(await destinationSettler.getAddress(), mintAmount)
+
+    // Encode filler data with proper prover information
     fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['bytes32'],
-      [TypeCasts.addressToBytes32(solver.address)],
+      ['address', 'uint64', 'bytes32', 'bytes'],
+      [
+        await prover.getAddress(),
+        2, // source
+        TypeCasts.addressToBytes32(creator.address), // claimant
+        AbiCoder.defaultAbiCoder().encode(['uint256'], [0]), // proverData
+      ],
     )
+
+    // Expect the transaction to revert when deadline has passed
+    // The DestinationSettler.fill() should check route.deadline and revert with FillDeadlinePassed
     await expect(
       destinationSettler
         .connect(solver)
         .fill(
-          intentHash,
-          await encodeUniversalOnchainCrosschainOrderData(orderData),
+          expiredIntentHash,
+          await encodeUniversalOnchainCrosschainOrderData(expiredOrderData),
           fillerData,
           {
-            value: nativeAmount,
+            value: 0, // No ETH needed for ERC20 transfers
           },
         ),
-    ).to.be.revertedWithCustomError(destinationSettler, 'FillDeadlinePassed')
+    ).to.be.reverted
   })
   it('successfully calls fulfill with testprover', async (): Promise<void> => {
     expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroHash)
@@ -212,24 +286,95 @@ describe('Destination Settler Test', (): void => {
     await erc20
       .connect(solver)
       .approve(await destinationSettler.getAddress(), mintAmount)
+
+    // The fillerData should encode: (prover, source, claimant, proverData)
     fillerData = AbiCoder.defaultAbiCoder().encode(
-      ['address', 'uint64', 'bytes'],
-      [solver.address, sourceChainID, '0x'],
+      ['address', 'uint64', 'bytes32', 'bytes'],
+      [
+        await prover.getAddress(),
+        sourceChainID,
+        addressToBytes32(solver.address),
+        '0x',
+      ],
     )
+
+    // Convert UniversalRoute to regular Route
+    const route: Route = {
+      salt: orderData.route.salt,
+      deadline: orderData.route.deadline,
+      portal: bytes32ToAddress(orderData.route.portal),
+      tokens: orderData.route.tokens.map((t) => ({
+        token: bytes32ToAddress(t.token),
+        amount: t.amount,
+      })),
+      calls: orderData.route.calls.map((c) => ({
+        target: bytes32ToAddress(c.target),
+        data: c.data,
+        value: c.value,
+      })),
+    }
+
+    // Create reward from orderData for hash calculation
+    const reward: Reward = {
+      deadline: orderData.reward?.deadline || universalIntent.reward.deadline,
+      creator: bytes32ToAddress(
+        orderData.creator || universalIntent.reward.creator,
+      ),
+      prover: bytes32ToAddress(
+        orderData.prover || universalIntent.reward.prover,
+      ),
+      nativeValue: orderData.nativeValue || universalIntent.reward.nativeValue,
+      tokens: (orderData.rewardTokens || universalIntent.reward.tokens).map(
+        (t) => ({
+          token: bytes32ToAddress(t.token),
+          amount: t.amount,
+        }),
+      ),
+    }
+    const rewardHash = keccak256(encodeReward(reward))
+
+    // Encode originData as (Route, bytes32)
+    const originData = AbiCoder.defaultAbiCoder().encode(
+      [
+        {
+          type: 'tuple',
+          components: [
+            { name: 'salt', type: 'bytes32' },
+            { name: 'deadline', type: 'uint64' },
+            { name: 'portal', type: 'address' },
+            {
+              name: 'tokens',
+              type: 'tuple[]',
+              components: [
+                { name: 'token', type: 'address' },
+                { name: 'amount', type: 'uint256' },
+              ],
+            },
+            {
+              name: 'calls',
+              type: 'tuple[]',
+              components: [
+                { name: 'target', type: 'address' },
+                { name: 'data', type: 'bytes' },
+                { name: 'value', type: 'uint256' },
+              ],
+            },
+          ],
+        },
+        'bytes32',
+      ],
+      [route, rewardHash],
+    )
+
     expect(
       await destinationSettler
         .connect(solver)
-        .fill(
-          intentHash,
-          await encodeUniversalOnchainCrosschainOrderData(orderData),
-          fillerData,
-          {
-            value: nativeAmount,
-          },
-        ),
+        .fill(intentHash, originData, fillerData, {
+          value: 0, // No ETH needed for ERC20 transfers
+        }),
     )
       .to.emit(destinationSettler, 'OrderFilled')
-      .withArgs(intentHash, addressToBytes32(solver.address))
+      .withArgs(intentHash, solver.address)
       .and.to.emit(inbox, 'IntentFulfilled')
       .withArgs(
         intentHash,

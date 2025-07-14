@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Route} from "../types/UniversalIntent.sol";
+import {Route} from "../types/Intent.sol";
 
 /**
  * @title IInbox
@@ -12,35 +12,28 @@ import {Route} from "../types/UniversalIntent.sol";
 interface IInbox {
     /**
      * @notice Emitted when an intent is successfully fulfilled
-     * @param _hash Hash of the fulfilled intent
-     * @param _sourceChainID ID of the source chain
-     * @param _prover Address of the prover that fulfilled the intent
-     * @param _claimant Cross-VM compatible claimant identifier
+     * @param hash Hash of the fulfilled intent
+     * @param claimant Cross-VM compatible claimant identifier
      */
-    event IntentFulfilled(
-        bytes32 indexed _hash,
-        uint256 indexed _sourceChainID,
-        bytes32 indexed _prover,
-        bytes32 _claimant
-    );
+    event IntentFulfilled(bytes32 indexed hash, bytes32 indexed claimant);
 
     /**
      * @notice Thrown when an attempt is made to fulfill an intent on the wrong destination chain
-     * @param _chainID Chain ID of the destination chain on which this intent should be fulfilled
+     * @param chainID Chain ID of the destination chain on which this intent should be fulfilled
      */
-    error WrongChain(uint256 _chainID);
+    error WrongChain(uint256 chainID);
 
     /**
      * @notice Intent has already been fulfilled
-     * @param _hash Hash of the fulfilled intent
+     * @param hash Hash of the fulfilled intent
      */
-    error IntentAlreadyFulfilled(bytes32 _hash);
+    error IntentAlreadyFulfilled(bytes32 hash);
 
     /**
      * @notice Invalid portal address provided
-     * @param _portal Address that is not a valid portal
+     * @param portal Address that is not a valid portal
      */
-    error InvalidPortal(address _portal);
+    error InvalidPortal(address portal);
 
     /**
      * @notice Intent has expired and can no longer be fulfilled
@@ -49,9 +42,9 @@ interface IInbox {
 
     /**
      * @notice Generated hash doesn't match expected hash
-     * @param _expectedHash Hash that was expected
+     * @param expectedHash Hash that was expected
      */
-    error InvalidHash(bytes32 _expectedHash);
+    error InvalidHash(bytes32 expectedHash);
 
     /**
      * @notice Zero claimant identifier provided
@@ -60,16 +53,16 @@ interface IInbox {
 
     /**
      * @notice Call during intent execution failed
-     * @param _addr Target contract address
-     * @param _data Call data that failed
+     * @param addr Target contract address
+     * @param data Call data that failed
      * @param value Native token value sent
-     * @param _returnData Error data returned
+     * @param returnData Error data returned
      */
     error IntentCallFailed(
-        address _addr,
-        bytes _data,
+        address addr,
+        bytes data,
         uint256 value,
-        bytes _returnData
+        bytes returnData
     );
 
     /**
@@ -79,70 +72,66 @@ interface IInbox {
 
     /**
      * @notice Attempted call to an EOA
-     * @param _EOA EOA address to which call was attempted
+     * @param EOA EOA address to which call was attempted
      */
-    error CallToEOA(address _EOA);
+    error CallToEOA(address EOA);
 
     /**
      * @notice Attempted to batch an unfulfilled intent
-     * @param _hash Hash of the unfulfilled intent
+     * @param hash Hash of the unfulfilled intent
      */
-    error IntentNotFulfilled(bytes32 _hash);
+    error IntentNotFulfilled(bytes32 hash);
 
     /**
      * @notice Fulfills an intent using storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
-     * @param _sourceChainId The source chain ID where the intent was created
-     * @param _route Route information for the intent
-     * @param _rewardHash Hash of the reward details
-     * @param _claimant Cross-VM compatible claimant identifier
-     * @param _expectedHash Expected hash for validation
-     * @param _prover The prover contract to use for verification
+     * @param intentHash The hash of the intent to fulfill
+     * @param route Route information for the intent
+     * @param rewardHash Hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
      * @return Array of execution results
      */
     function fulfill(
-        uint64 _sourceChainId,
-        Route memory _route,
-        bytes32 _rewardHash,
-        bytes32 _claimant,
-        bytes32 _expectedHash,
-        address _prover
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant
     ) external payable returns (bytes[] memory);
 
     /**
-     * @notice Fulfills an intent using storage proofs
+     * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Validates intent hash, executes calls, and marks as fulfilled
-     * @param _sourceChainId The source chain ID where the intent was created
-     * @param _route Route information for the intent
-     * @param _rewardHash Hash of the reward details
-     * @param _claimant Cross-VM compatible claimant identifier
-     * @param _expectedHash Expected hash for validation
-     * @param _prover Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param intentHash The hash of the intent to fulfill
+     * @param route Route information for the intent
+     * @param rewardHash Hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Address of prover on the destination chain
+     * @param source The source chain ID where the intent was created
+     * @param data Additional data for message formatting
      * @return Array of execution results
      */
     function fulfillAndProve(
-        uint64 _sourceChainId,
-        Route memory _route,
-        bytes32 _rewardHash,
-        bytes32 _claimant,
-        bytes32 _expectedHash,
-        address _prover,
-        bytes memory _data
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant,
+        address prover,
+        uint64 source,
+        bytes memory data
     ) external payable returns (bytes[] memory);
 
     /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _prover Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param source Chain ID of the source chain
+     * @param prover Address of prover on the destination chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
      */
-    function initiateProving(
-        uint256 _sourceChainId,
-        bytes32[] memory _intentHashes,
-        address _prover,
-        bytes memory _data
+    function prove(
+        uint256 source,
+        address prover,
+        bytes32[] memory intentHashes,
+        bytes memory data
     ) external payable;
 }

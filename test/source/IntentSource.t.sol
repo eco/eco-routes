@@ -19,8 +19,15 @@ contract IntentSourceTest is BaseTest {
 
     // Intent Creation Tests
     function testComputesValidIntentVaultAddress() public view {
-        address predictedVault = intentSource.intentVaultAddress(intent);
-        assertEq(predictedVault, intentSource.intentVaultAddress(intent));
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address predictedVault = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
+        assertEq(
+            predictedVault,
+            intentSource.intentVaultAddress(intent, routeHash)
+        );
     }
 
     // This test is no longer relevant as Route no longer has a source field
@@ -49,7 +56,11 @@ contract IntentSourceTest is BaseTest {
 
         assertTrue(intentSource.isIntentFunded(intent));
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(vaultAddress.balance, REWARD_NATIVE_ETH);
 
         // Check excess was refunded
@@ -62,7 +73,11 @@ contract IntentSourceTest is BaseTest {
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
         assertEq(tokenB.balanceOf(vaultAddress), MINT_AMOUNT * 2);
         assertEq(vaultAddress.balance, REWARD_NATIVE_ETH);
@@ -74,23 +89,21 @@ contract IntentSourceTest is BaseTest {
 
         bytes32 intentHash = _hashIntent(intent);
 
-        // Convert to EVM types for the event
-        EVMIntent memory evmIntent = _convertToEVMIntent(intent);
-
         _expectEmit();
         emit IIntentSource.IntentPublished(
             intentHash,
-            evmIntent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.destination,
             salt,
-            evmIntent.route.deadline,
-            AddressConverter.toBytes32(address(portal)),
-            evmIntent.route.tokens,
-            evmIntent.route.calls,
-            AddressConverter.toBytes32(creator),
-            AddressConverter.toBytes32(address(prover)),
-            evmIntent.reward.deadline,
+            intent.route.deadline,
+            intent.route.portal,
+            intent.route.tokens,
+            intent.route.calls,
+            intent.reward.creator,
+            intent.reward.prover,
+            intent.reward.deadline,
             REWARD_NATIVE_ETH,
-            evmIntent.reward.tokens
+            intent.reward.tokens
         );
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -103,7 +116,7 @@ contract IntentSourceTest is BaseTest {
         vm.expectRevert();
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
     }
 
     function testWithdrawsToClaimantWithProof() public {
@@ -123,7 +136,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -138,14 +151,11 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.IntentWithdrawn(
-            intentHash,
-            AddressConverter.toBytes32(claimant)
-        );
+        emit IIntentSource.IntentWithdrawn(intentHash, claimant);
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
     }
 
     function testDoesNotAllowRepeatWithdrawal() public {
@@ -156,11 +166,11 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
     }
 
     function testAllowsRefundIfAlreadyClaimed() public {
@@ -170,23 +180,17 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.IntentWithdrawn(
-            intentHash,
-            AddressConverter.toBytes32(claimant)
-        );
+        emit IIntentSource.IntentWithdrawn(intentHash, claimant);
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         _expectEmit();
-        emit IIntentSource.IntentRefunded(
-            intentHash,
-            AddressConverter.toBytes32(creator)
-        );
+        emit IIntentSource.IntentRefunded(intentHash, creator);
 
         vm.prank(otherPerson);
-        intentSource.refund(intent.destination, routeHash, intent.reward);
+        intentSource.refund(intent.destination, intent.reward, routeHash);
     }
 
     // After Expiry Tests
@@ -202,7 +206,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.refund(intent.destination, routeHash, intent.reward);
+        intentSource.refund(intent.destination, intent.reward, routeHash);
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
@@ -223,7 +227,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -266,7 +270,7 @@ contract IntentSourceTest is BaseTest {
                 intentHash
             )
         );
-        intentSource.refund(intent.destination, routeHash, intent.reward);
+        intentSource.refund(intent.destination, intent.reward, routeHash);
     }
 
     // Batch IntentWithdrawn Tests
@@ -283,7 +287,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+        intentSource.batchWithdraw(destinations, rewards, routeHashes);
     }
 
     function testBatchWithdrawalSingleIntentBeforeExpiryToClaimant() public {
@@ -310,7 +314,7 @@ contract IntentSourceTest is BaseTest {
         destinations[0] = intent.destination;
 
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+        intentSource.batchWithdraw(destinations, rewards, routeHashes);
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), MINT_AMOUNT);
@@ -342,7 +346,7 @@ contract IntentSourceTest is BaseTest {
         destinations[0] = intent.destination;
 
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+        intentSource.batchWithdraw(destinations, rewards, routeHashes);
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
@@ -352,9 +356,11 @@ contract IntentSourceTest is BaseTest {
 
     // Funding Tests
     function testFundIntentWithMultipleTokens() public {
-        bytes32 routeHash = keccak256(abi.encode(route));
-
-        address intentVault = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
 
         vm.prank(creator);
         tokenA.approve(intentVault, MINT_AMOUNT);
@@ -364,8 +370,8 @@ contract IntentSourceTest is BaseTest {
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             reward,
+            routeHash,
             creator,
             address(0),
             false
@@ -377,10 +383,12 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testEmitsIntentFundedEvent() public {
-        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 intentHash = _hashIntent(intent);
-
-        address intentVault = intentSource.intentVaultAddress(intent);
+        address intentVault = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
 
         vm.prank(creator);
         tokenA.approve(intentVault, MINT_AMOUNT);
@@ -388,17 +396,13 @@ contract IntentSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(
-            intentHash,
-            AddressConverter.toBytes32(creator),
-            true
-        );
+        emit IIntentSource.IntentFunded(intentHash, creator, true);
 
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             reward,
+            routeHash,
             creator,
             address(0),
             false
@@ -406,9 +410,11 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testHandlesPartialFundingBasedOnAllowance() public {
-        bytes32 routeHash = keccak256(abi.encode(route));
-
-        address intentVault = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
 
         vm.prank(creator);
         tokenA.approve(intentVault, MINT_AMOUNT / 2);
@@ -418,8 +424,8 @@ contract IntentSourceTest is BaseTest {
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             reward,
+            routeHash,
             creator,
             address(0),
             true
@@ -444,15 +450,14 @@ contract IntentSourceTest is BaseTest {
         intent.reward = newReward;
 
         vm.prank(creator);
-        intentSource.publish(intent);
-
-        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        intentSource.publish(intent, routeHash);
 
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             newReward,
+            routeHash,
             creator,
             address(0),
             false
@@ -460,7 +465,10 @@ contract IntentSourceTest is BaseTest {
 
         assertTrue(intentSource.isIntentFunded(intent));
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(tokenA.balanceOf(vaultAddress), 0);
     }
 
@@ -469,7 +477,7 @@ contract IntentSourceTest is BaseTest {
         _publishAndFund(intent, false);
 
         // Try to fund again
-        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
 
         vm.prank(creator);
         tokenA.approve(address(intentSource), MINT_AMOUNT);
@@ -477,8 +485,8 @@ contract IntentSourceTest is BaseTest {
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             reward,
+            routeHash,
             creator,
             address(0),
             false
@@ -486,7 +494,10 @@ contract IntentSourceTest is BaseTest {
 
         assertTrue(intentSource.isIntentFunded(intent));
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
     }
 
@@ -496,7 +507,8 @@ contract IntentSourceTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(creator);
-        intentSource.publishAndFund{value: 0.5 ether}(intent, false);
+        bytes32 rh1 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund{value: 0.5 ether}(intent, rh1, false);
     }
 
     function testPartialFundingWithNativeTokens() public {
@@ -509,16 +521,17 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(
-            intentHash,
-            AddressConverter.toBytes32(creator),
-            false
-        );
+        emit IIntentSource.IntentFunded(intentHash, creator, false);
 
         vm.prank(creator);
-        intentSource.publishAndFund{value: sentAmount}(intent, true);
+        bytes32 rh2 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund{value: sentAmount}(intent, rh2, true);
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(vaultAddress.balance, sentAmount);
         assertFalse(intentSource.isIntentFunded(intent));
     }
@@ -546,16 +559,17 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(
-            intentHash,
-            AddressConverter.toBytes32(creator),
-            false
-        );
+        emit IIntentSource.IntentFunded(intentHash, creator, false);
 
         vm.prank(creator);
-        intentSource.publishAndFund(intent, true);
+        bytes32 rhP1 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund(intent, rhP1, true);
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
         assertEq(tokenA.balanceOf(creator), 0);
         assertFalse(intentSource.isIntentFunded(intent));
@@ -585,7 +599,8 @@ contract IntentSourceTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(creator);
-        intentSource.publishAndFund(intent, false);
+        bytes32 rhErr = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund(intent, rhErr, false);
     }
 
     function testWithdrawsRewardsWithMaliciousTokens() public {
@@ -610,7 +625,11 @@ contract IntentSourceTest is BaseTest {
         newReward.tokens = badRewardTokens;
         intent.reward = newReward;
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
 
         // Transfer tokens to vault
         vm.prank(creator);
@@ -628,8 +647,7 @@ contract IntentSourceTest is BaseTest {
 
         // Should not revert despite malicious token
         vm.prank(claimant);
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         assertEq(
             tokenA.balanceOf(claimant),
@@ -660,16 +678,17 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(
-            intentHash,
-            AddressConverter.toBytes32(creator),
-            false
-        );
+        emit IIntentSource.IntentFunded(intentHash, creator, false);
 
         vm.prank(creator);
-        intentSource.publishAndFund(intent, true);
+        bytes32 rhP2 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund(intent, rhP2, true);
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         // Should transfer actual balance, not approved amount
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
         assertEq(tokenA.balanceOf(creator), 0);
@@ -686,22 +705,24 @@ contract IntentSourceTest is BaseTest {
         // Test insufficient native reward without partial funding
         vm.expectRevert();
         vm.prank(creator);
-        intentSource.publishAndFund{value: sentAmount}(intent, false);
+        bytes32 rh3 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund{value: sentAmount}(intent, rh3, false);
 
         // Test with partial funding allowed
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(
-            intentHash,
-            AddressConverter.toBytes32(creator),
-            false
-        );
+        emit IIntentSource.IntentFunded(intentHash, creator, false);
 
         vm.prank(creator);
-        intentSource.publishAndFund{value: sentAmount}(intent, true);
+        bytes32 rh4 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund{value: sentAmount}(intent, rh4, true);
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(vaultAddress.balance, sentAmount);
         assertFalse(intentSource.isIntentFunded(intent));
     }
@@ -710,8 +731,11 @@ contract IntentSourceTest is BaseTest {
         // Deploy fake permit contract
         FakePermitContract fakePermit = new FakePermitContract();
 
-        bytes32 routeHash = keccak256(abi.encode(route));
-        address intentVault = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
 
         // Creator has tokens but doesn't approve IntentSource
         assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
@@ -721,8 +745,8 @@ contract IntentSourceTest is BaseTest {
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             reward,
+            routeHash,
             creator,
             address(fakePermit),
             false
@@ -746,13 +770,18 @@ contract IntentSourceTest is BaseTest {
         // Try to exploit by sending zero value but claiming intent is funded
         vm.expectRevert();
         vm.prank(creator);
-        intentSource.publishAndFund{value: 0}(intent, false);
+        bytes32 rh5 = keccak256(abi.encode(intent.route));
+        intentSource.publishAndFund{value: 0}(intent, rh5, false);
 
         // Verify intent is not marked as funded
         assertFalse(intentSource.isIntentFunded(intent));
 
         // Verify vault has no ETH
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         assertEq(vaultAddress.balance, 0);
     }
 
@@ -761,7 +790,11 @@ contract IntentSourceTest is BaseTest {
         _publishAndFund(intent, false);
 
         // Send additional tokens to vault
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         vm.prank(creator);
         tokenA.mint(creator, MINT_AMOUNT);
         vm.prank(creator);
@@ -781,8 +814,7 @@ contract IntentSourceTest is BaseTest {
         uint256 initialBalanceB = tokenB.balanceOf(claimant);
 
         vm.prank(claimant);
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         // Claimant should receive reward amount, creator gets the excess
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -813,7 +845,11 @@ contract IntentSourceTest is BaseTest {
         _mintAndApprove(creator, MINT_AMOUNT * 2);
 
         // Fund the vault with enough tokens
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address vaultAddress = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
         vm.prank(creator);
         tokenA.transfer(vaultAddress, MINT_AMOUNT * 2);
         vm.prank(creator);
@@ -827,8 +863,7 @@ contract IntentSourceTest is BaseTest {
 
         // IntentWithdrawn should handle duplicates correctly
         vm.prank(claimant);
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
 
         // Verify balances (should transfer per each entry, including duplicates)
         assertGt(tokenA.balanceOf(claimant), 0);
@@ -891,24 +926,24 @@ contract IntentSourceTest is BaseTest {
         vm.prank(claimant);
         intentSource.withdraw(
             intents[0].destination,
-            keccak256(abi.encode(intents[0].route)),
-            intents[0].reward
+            intents[0].reward,
+            keccak256(abi.encode(intents[0].route))
         );
 
         // Intent 2: No proof, expired - should refund
         vm.prank(creator);
         intentSource.refund(
             intents[1].destination,
-            keccak256(abi.encode(intents[1].route)),
-            intents[1].reward
+            intents[1].reward,
+            keccak256(abi.encode(intents[1].route))
         );
 
         // Intent 3: Proven with creator as claimant - should succeed
         vm.prank(creator);
         intentSource.withdraw(
             intents[2].destination,
-            keccak256(abi.encode(intents[2].route)),
-            intents[2].reward
+            intents[2].reward,
+            keccak256(abi.encode(intents[2].route))
         );
 
         // Verify correct distributions
@@ -930,31 +965,33 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         // Test IntentPublished event
-        // Convert to EVM types for the event
-        EVMIntent memory evmIntent = _convertToEVMIntent(intent);
-
         _expectEmit();
         emit IIntentSource.IntentPublished(
             intentHash,
-            evmIntent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.destination,
             salt,
-            evmIntent.route.deadline,
-            AddressConverter.toBytes32(address(portal)),
-            evmIntent.route.tokens,
-            evmIntent.route.calls,
-            AddressConverter.toBytes32(creator),
-            AddressConverter.toBytes32(address(prover)),
-            evmIntent.reward.deadline,
+            intent.route.deadline,
+            intent.route.portal,
+            intent.route.tokens,
+            intent.route.calls,
+            intent.reward.creator,
+            intent.reward.prover,
+            intent.reward.deadline,
             0,
-            evmIntent.reward.tokens
+            intent.reward.tokens
         );
 
         vm.prank(creator);
-        intentSource.publish(intent);
+        bytes32 routeHashPub = keccak256(abi.encode(intent.route));
+        intentSource.publish(intent, routeHashPub);
 
         // Test IntentFunded event
-        bytes32 routeHash = keccak256(abi.encode(route));
-        address intentVault = intentSource.intentVaultAddress(intent);
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(
+            intent,
+            routeHash
+        );
 
         vm.prank(creator);
         tokenA.approve(intentVault, MINT_AMOUNT);
@@ -962,17 +999,13 @@ contract IntentSourceTest is BaseTest {
         tokenB.approve(intentVault, MINT_AMOUNT * 2);
 
         _expectEmit();
-        emit IIntentSource.IntentFunded(
-            intentHash,
-            AddressConverter.toBytes32(creator),
-            true
-        );
+        emit IIntentSource.IntentFunded(intentHash, creator, true);
 
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            routeHash,
             reward,
+            routeHash,
             creator,
             address(0),
             false
@@ -982,13 +1015,10 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         _expectEmit();
-        emit IIntentSource.IntentWithdrawn(
-            intentHash,
-            AddressConverter.toBytes32(claimant)
-        );
+        emit IIntentSource.IntentWithdrawn(intentHash, claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.withdraw(intent.destination, intent.reward, routeHash);
     }
 
     function _convertToEVMIntent(

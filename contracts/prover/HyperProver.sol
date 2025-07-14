@@ -109,7 +109,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes32[] calldata _intentHashes,
         bytes32[] calldata _claimants,
         bytes calldata _data
-    ) external payable override {
+    ) external payable virtual override {
         // Validate the request is from Portal
         _validateProvingRequest(msg.sender);
 
@@ -137,18 +137,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         emit BatchSent(_intentHashes, _sourceChainId);
 
-        // Decode any additional gas limit data from the _data parameter
-        uint256 gasLimit = DEFAULT_GAS_LIMIT;
-
-        // For Hyperlane, we expect data to include sourceChainProver(32) + metadata(var) + hookAddr(20)
-        // If data is long enough, the gas limit is packed at position 32-64
-        if (_data.length >= 96) {
-            // At least enough bytes for all required fields plus gas limit
-            uint256 customGasLimit = uint256(bytes32(_data[64:96]));
-            if (customGasLimit > 0) {
-                gasLimit = customGasLimit;
-            }
-        }
+        // Use default gas limit for metadata
+        // TODO: If custom gas limit is needed, it should be passed in a different way
 
         // Prepare parameters for cross-chain message dispatch using a struct
         // to reduce stack usage and improve code maintainability

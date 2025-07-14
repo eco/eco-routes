@@ -17,7 +17,7 @@ interface IProver is ISemver {
      */
     struct ProofData {
         address claimant;
-        uint96 destinationChainID;
+        uint64 destinationChainID;
     }
 
     /**
@@ -27,17 +27,17 @@ interface IProver is ISemver {
 
     /**
      * @notice Emitted when an intent is successfully proven
-     * @param _hash Hash of the proven intent
-     * @param _claimant Address eligible to claim the intent's rewards
+     * @param hash Hash of the proven intent
+     * @param claimant Address eligible to claim the intent's rewards
      */
-    event IntentProven(bytes32 indexed _hash, bytes32 indexed _claimant);
+    event IntentProven(bytes32 indexed hash, address indexed claimant);
 
     /**
      * @notice Emitted when attempting to prove an already-proven intent
      * @dev Event instead of error to allow batch processing to continue
-     * @param _intentHash Hash of the already proven intent
+     * @param intentHash Hash of the already proven intent
      */
-    event IntentAlreadyProven(bytes32 _intentHash);
+    event IntentAlreadyProven(bytes32 intentHash);
 
     /**
      * @notice Gets the proof mechanism type used by this prover
@@ -48,26 +48,26 @@ interface IProver is ISemver {
     /**
      * @notice Initiates the proving process for intents from the destination chain
      * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
-     * @param _sender Address of the original transaction sender
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param _data Additional data specific to the proving implementation
+     * @param sender Address of the original transaction sender
+     * @param sourceChainId Chain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param data Additional data specific to the proving implementation
      */
     function prove(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        address sender,
+        uint256 sourceChainId,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) external payable;
 
     /**
      * @notice Returns the proof data for a given intent hash
-     * @param _intentHash Hash of the intent to query
+     * @param intentHash Hash of the intent to query
      * @return ProofData containing claimant and destination chain ID
      */
     function provenIntents(
-        bytes32 _intentHash
+        bytes32 intentHash
     ) external view returns (ProofData memory);
 }

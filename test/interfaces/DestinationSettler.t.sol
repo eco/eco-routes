@@ -16,7 +16,7 @@ contract TestDestinationSettler is IDestinationSettler {
         bytes calldata /* _fillerData */
     ) external payable {
         filled[_orderId] = true;
-        emit OrderFilled(_orderId, bytes32(uint256(uint160(msg.sender))));
+        emit OrderFilled(_orderId, msg.sender);
     }
 }
 
@@ -67,10 +67,7 @@ contract DestinationSettlerTest is BaseTest {
         bytes32 orderId = keccak256("test-order");
 
         _expectEmit();
-        emit IDestinationSettler.OrderFilled(
-            orderId,
-            bytes32(uint256(uint160(filler)))
-        );
+        emit IDestinationSettler.OrderFilled(orderId, filler);
 
         vm.prank(filler);
         destinationSettler.fill(orderId, originData, fillerData);

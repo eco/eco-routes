@@ -6,14 +6,14 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {AddressConverter} from "./libs/AddressConverter.sol";
 
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
 import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
 
 import {Intent, Route, Reward, TokenAmount, Call} from "./types/UniversalIntent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
-import {OnchainCrosschainOrderData, GaslessCrosschainOrderData, Route as Route7683, ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH, GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
+import {OrderData, ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
+import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Semver} from "./libs/Semver.sol";
 
 /**
@@ -24,10 +24,9 @@ import {Semver} from "./libs/Semver.sol";
 contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
-    using AddressConverter for address;
     using AddressConverter for bytes32;
 
-    /// @notice typehash for gasless crosschain _order
+    /// @notice typehash for gasless crosschain order
     bytes32 public GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
         keccak256(
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
@@ -38,16 +37,16 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
     /**
      * @notice Initializes the Eco7683OriginSettler
-     * @param _name the name of the contract for EIP712
-     * @param _version the version of the contract for EIP712
-     * @param _intentSource the address of the Portal contract (implements IUniversalIntentSource)
+     * @param name the name of the contract for EIP712
+     * @param version the version of the contract for EIP712
+     * @param intentSource the address of the Portal contract (implements IUniversalIntentSource)
      */
     constructor(
-        string memory _name,
-        string memory _version,
-        address _intentSource
-    ) EIP712(_name, _version) {
-        INTENT_SOURCE = IUniversalIntentSource(_intentSource);
+        string memory name,
+        string memory version,
+        address intentSource
+    ) EIP712(name, version) {
+        INTENT_SOURCE = IUniversalIntentSource(intentSource);
     }
 
     /**
@@ -55,40 +54,27 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
      * @dev to be called by the user
      * @dev assumes user has erc20 funds approved for the intent, and includes any reward native token in msg.value
      * @dev transfers the reward tokens at time of open
-     * @param _order the OnchainCrossChainOrder that will be opened as an eco intent
+     * @param order the OnchainCrossChainOrder that will be opened as an eco intent
      */
     function open(
-        OnchainCrossChainOrder calldata _order
+        OnchainCrossChainOrder calldata order
     ) external payable override {
-        if (_order.orderDataType != ONCHAIN_CROSSCHAIN_ORDER_DATA_TYPEHASH) {
+        if (order.orderDataType != ORDER_DATA_TYPEHASH) {
             revert TypeSignatureMismatch();
         }
 
         // Decode components individually to avoid Solidity's nested struct decoding issues
-        OnchainCrosschainOrderData memory onchainCrosschainOrderData = abi
-            .decode(_order.orderData, (OnchainCrosschainOrderData));
+        OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
         Intent memory intent = Intent(
-            onchainCrosschainOrderData.destination,
-            Route({
-                salt: onchainCrosschainOrderData.route.salt,
-                deadline: uint64(_order.fillDeadline),
-                portal: onchainCrosschainOrderData.route.portal,
-                tokens: onchainCrosschainOrderData.route.tokens,
-                calls: onchainCrosschainOrderData.route.calls
-            }),
-            Reward(
-                uint64(_order.fillDeadline),
-                onchainCrosschainOrderData.creator,
-                onchainCrosschainOrderData.prover,
-                onchainCrosschainOrderData.nativeValue,
-                onchainCrosschainOrderData.rewardTokens
-            )
+            orderData.destination,
+            orderData.route,
+            orderData.reward
         );
 
-        bytes32 orderId = _openEcoIntent(intent, msg.sender.toBytes32());
+        bytes32 orderId = _openIntent(intent, orderData.routeHash, msg.sender);
 
-        emit Open(orderId, resolve(_order));
+        emit Open(orderId, _resolve(order.fillDeadline, orderData));
     }
 
     /**
@@ -99,386 +85,205 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
      * @dev to be called by the intent's solver
      * @dev assumes user has erc20 funds approved for the intent, and includes any reward native token in msg.value
      * @dev transfers the reward tokens at time of open
-     * @param _order the GaslessCrossChainOrder that will be opened as an eco intent
-     * @param _signature the signature of the user authorizing the intent to be opened
-     * @param _originFillerData filler data for the origin chain (vestigial, not used)
+     * @param order the GaslessCrossChainOrder that will be opened as an eco intent
+     * @param signature the signature of the user authorizing the intent to be opened
+     * @param originFillerData filler data for the origin chain (vestigial, not used)
      */
     function openFor(
-        GaslessCrossChainOrder calldata _order,
-        bytes calldata _signature,
-        bytes calldata _originFillerData
+        GaslessCrossChainOrder calldata order,
+        bytes calldata signature,
+        bytes calldata originFillerData
     ) external payable override {
-        if (block.timestamp > _order.openDeadline) {
+        if (block.timestamp > order.openDeadline) {
             revert OpenDeadlinePassed();
         }
-        if (!_verifyOpenFor(_order, _signature)) {
+        if (!_verifyOpenFor(order, signature)) {
             revert BadSignature();
         }
 
-        if (_order.orderDataType != GASLESS_CROSSCHAIN_ORDER_DATA_TYPEHASH) {
+        if (order.orderDataType != ORDER_DATA_TYPEHASH) {
             revert TypeSignatureMismatch();
         }
 
-        // Decode components individually to avoid Solidity's nested struct decoding issues
-        (
-            uint256 destination,
-            bytes32 portal,
-            TokenAmount[] memory routeTokens,
-            Call[] memory calls,
-            bytes32 prover,
-            uint256 nativeValue,
-            TokenAmount[] memory rewardTokens
-        ) = abi.decode(
-                _order.orderData,
-                (
-                    uint256,
-                    bytes32,
-                    TokenAmount[],
-                    Call[],
-                    bytes32,
-                    uint256,
-                    TokenAmount[]
-                )
-            );
+        OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        GaslessCrosschainOrderData
-            memory gaslessCrosschainOrderData = GaslessCrosschainOrderData({
-                destination: destination,
-                portal: portal,
-                routeTokens: routeTokens,
-                calls: calls,
-                prover: prover,
-                nativeValue: nativeValue,
-                rewardTokens: rewardTokens
-            });
+        Intent memory intent = Intent(
+            orderData.destination,
+            orderData.route,
+            orderData.reward
+        );
 
-        if (_order.originChainId != block.chainid) {
+        if (order.originChainId != block.chainid) {
             revert OriginChainIDMismatch();
         }
 
-        Intent memory intent = Intent(
-            uint64(gaslessCrosschainOrderData.destination),
-            Route(
-                bytes32(_order.nonce),
-                uint64(_order.fillDeadline),
-                gaslessCrosschainOrderData.portal,
-                gaslessCrosschainOrderData.routeTokens,
-                gaslessCrosschainOrderData.calls
-            ),
-            Reward(
-                uint64(_order.fillDeadline),
-                _order.user.toBytes32(),
-                gaslessCrosschainOrderData.prover,
-                gaslessCrosschainOrderData.nativeValue,
-                gaslessCrosschainOrderData.rewardTokens
-            )
-        );
+        bytes32 orderId = _openIntent(intent, orderData.routeHash, order.user);
 
-        bytes32 orderId = _openEcoIntent(intent, _order.user.toBytes32());
-
-        emit Open(orderId, resolveFor(_order, _originFillerData));
+        emit Open(orderId, _resolve(order.openDeadline, orderData));
     }
 
     /**
      * @notice resolves an OnchainCrossChainOrder to a ResolvedCrossChainOrder
-     * @param _order the OnchainCrossChainOrder to be resolved
+     * @param order the OnchainCrossChainOrder to be resolved
      */
     function resolve(
-        OnchainCrossChainOrder calldata _order
-    ) public view override returns (ResolvedCrossChainOrder memory) {
-        // Decode components individually to avoid Solidity's nested struct decoding issues
-        (
-            uint64 destination,
-            Route7683 memory route,
-            bytes32 creator,
-            bytes32 prover,
-            uint256 nativeValue,
-            TokenAmount[] memory rewardTokens
-        ) = abi.decode(
-                _order.orderData,
-                (uint64, Route7683, bytes32, bytes32, uint256, TokenAmount[])
-            );
+        OnchainCrossChainOrder calldata order
+    ) public view returns (ResolvedCrossChainOrder memory) {
+        OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        OnchainCrosschainOrderData
-            memory onchainCrosschainOrderData = OnchainCrosschainOrderData({
-                destination: destination,
-                route: route,
-                creator: creator,
-                prover: prover,
-                nativeValue: nativeValue,
-                rewardTokens: rewardTokens
-            });
-
-        // Extract destination from order data
-        uint256 routeTokenCount = onchainCrosschainOrderData
-            .route
-            .tokens
-            .length;
-        Output[] memory maxSpent = new Output[](routeTokenCount);
-
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            TokenAmount memory approval = onchainCrosschainOrderData
-                .route
-                .tokens[i];
-
-            maxSpent[i] = Output(
-                approval.token, // Already bytes32 in universal types
-                approval.amount,
-                bytes32(uint256(uint160(address(0)))), //filler is not known
-                uint256(onchainCrosschainOrderData.destination)
-            );
-        }
-
-        uint256 rewardTokenCount = onchainCrosschainOrderData
-            .rewardTokens
-            .length;
-        Output[] memory minReceived = new Output[](
-            rewardTokenCount +
-                (onchainCrosschainOrderData.nativeValue > 0 ? 1 : 0)
-        ); //rewards are fixed
-
-        for (uint256 i = 0; i < rewardTokenCount; ++i) {
-            minReceived[i] = Output(
-                onchainCrosschainOrderData.rewardTokens[i].token, // Already bytes32 in universal types
-                onchainCrosschainOrderData.rewardTokens[i].amount,
-                bytes32(uint256(uint160(address(0)))), //filler is not known
-                uint256(destination)
-            );
-        }
-
-        if (onchainCrosschainOrderData.nativeValue > 0) {
-            minReceived[rewardTokenCount] = Output(
-                bytes32(uint256(uint160(address(0)))),
-                onchainCrosschainOrderData.nativeValue,
-                bytes32(uint256(uint160(address(0)))),
-                uint256(destination)
-            );
-        }
-
-        Intent memory intent = Intent(
-            destination,
-            Route({
-                salt: onchainCrosschainOrderData.route.salt,
-                deadline: uint64(_order.fillDeadline),
-                portal: onchainCrosschainOrderData.route.portal,
-                tokens: onchainCrosschainOrderData.route.tokens,
-                calls: onchainCrosschainOrderData.route.calls
-            }),
-            Reward(
-                uint64(_order.fillDeadline),
-                onchainCrosschainOrderData.creator,
-                onchainCrosschainOrderData.prover,
-                onchainCrosschainOrderData.nativeValue,
-                onchainCrosschainOrderData.rewardTokens
-            )
-        );
-
-        FillInstruction[] memory fillInstructions = new FillInstruction[](1);
-        fillInstructions[0] = FillInstruction(
-            onchainCrosschainOrderData.destination,
-            onchainCrosschainOrderData.route.portal,
-            abi.encode(intent)
-        );
-
-        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(intent);
-        return
-            ResolvedCrossChainOrder(
-                onchainCrosschainOrderData.creator.toAddress(),
-                uint64(block.chainid),
-                _order.fillDeadline,
-                _order.fillDeadline,
-                intentHash,
-                maxSpent,
-                minReceived,
-                fillInstructions
-            );
+        return _resolve(order.fillDeadline, orderData);
     }
 
     /**
      * @notice resolves GaslessCrossChainOrder to a ResolvedCrossChainOrder
-     * @param _order the GaslessCrossChainOrder to be resolved
-     * param _originFillerData filler data for the origin chain (not used)
+     * @param order the GaslessCrossChainOrder to be resolved
+     * param originFillerData filler data for the origin chain (not used)
      */
     function resolveFor(
-        GaslessCrossChainOrder calldata _order,
-        bytes calldata // _originFillerData keeping it for purpose of interface
-    ) public view override returns (ResolvedCrossChainOrder memory) {
-        // Decode components individually to avoid Solidity's nested struct decoding issues
-        (
-            uint256 destination,
-            bytes32 portal,
-            TokenAmount[] memory routeTokens,
-            Call[] memory calls,
-            bytes32 prover,
-            uint256 nativeValue,
-            TokenAmount[] memory rewardTokens
-        ) = abi.decode(
-                _order.orderData,
-                (
-                    uint256,
-                    bytes32,
-                    TokenAmount[],
-                    Call[],
-                    bytes32,
-                    uint256,
-                    TokenAmount[]
-                )
-            );
+        GaslessCrossChainOrder calldata order,
+        bytes calldata // originFillerData keeping it for purpose of interface
+    ) public view returns (ResolvedCrossChainOrder memory) {
+        OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        GaslessCrosschainOrderData
-            memory gaslessCrosschainOrderData = GaslessCrosschainOrderData({
-                destination: destination,
-                portal: portal,
-                routeTokens: routeTokens,
-                calls: calls,
-                prover: prover,
-                nativeValue: nativeValue,
-                rewardTokens: rewardTokens
-            });
-        uint256 routeTokenCount = gaslessCrosschainOrderData.routeTokens.length;
-        Output[] memory maxSpent = new Output[](routeTokenCount);
-
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            TokenAmount memory requirement = gaslessCrosschainOrderData
-                .routeTokens[i];
-            maxSpent[i] = Output(
-                requirement.token, // Already bytes32 in universal types
-                requirement.amount,
-                bytes32(uint256(uint160(address(0)))), //filler is not known
-                uint256(gaslessCrosschainOrderData.destination)
-            );
-        }
-
-        uint256 rewardTokenCount = gaslessCrosschainOrderData
-            .rewardTokens
-            .length;
-        Output[] memory minReceived = new Output[](
-            rewardTokenCount +
-                (gaslessCrosschainOrderData.nativeValue > 0 ? 1 : 0)
-        ); //rewards are fixed
-
-        for (uint256 i = 0; i < rewardTokenCount; ++i) {
-            minReceived[i] = Output(
-                gaslessCrosschainOrderData.rewardTokens[i].token, // Already bytes32 in universal types
-                gaslessCrosschainOrderData.rewardTokens[i].amount,
-                bytes32(uint256(uint160(address(0)))), //filler is not known
-                uint256(gaslessCrosschainOrderData.destination)
-            );
-        }
-
-        if (gaslessCrosschainOrderData.nativeValue > 0) {
-            minReceived[rewardTokenCount] = Output(
-                bytes32(uint256(uint160(address(0)))),
-                gaslessCrosschainOrderData.nativeValue,
-                bytes32(uint256(uint160(address(0)))),
-                uint256(gaslessCrosschainOrderData.destination)
-            );
-        }
-
-        Intent memory intent = Intent(
-            uint64(gaslessCrosschainOrderData.destination),
-            Route(
-                bytes32(_order.nonce),
-                uint64(_order.fillDeadline),
-                gaslessCrosschainOrderData.portal,
-                gaslessCrosschainOrderData.routeTokens,
-                gaslessCrosschainOrderData.calls
-            ),
-            Reward(
-                uint64(_order.fillDeadline),
-                _order.user.toBytes32(),
-                gaslessCrosschainOrderData.prover,
-                gaslessCrosschainOrderData.nativeValue,
-                gaslessCrosschainOrderData.rewardTokens
-            )
-        );
-
-        FillInstruction[] memory fillInstructions = new FillInstruction[](1);
-        fillInstructions[0] = FillInstruction(
-            uint64(gaslessCrosschainOrderData.destination),
-            gaslessCrosschainOrderData.portal,
-            abi.encode(intent)
-        );
-        (bytes32 intentHash, , ) = INTENT_SOURCE.getIntentHash(intent);
-
-        return
-            ResolvedCrossChainOrder(
-                _order.user,
-                _order.originChainId,
-                _order.openDeadline,
-                _order.fillDeadline,
-                intentHash,
-                maxSpent,
-                minReceived,
-                fillInstructions
-            );
+        return _resolve(order.openDeadline, orderData);
     }
 
     /// @notice helper method for signature verification
     function _verifyOpenFor(
-        GaslessCrossChainOrder calldata _order,
-        bytes calldata _signature
+        GaslessCrossChainOrder calldata order,
+        bytes calldata signature
     ) internal view returns (bool) {
-        if (_order.originSettler != address(this)) {
+        if (order.originSettler != address(this)) {
             return false;
         }
 
         bytes32 structHash = keccak256(
             abi.encode(
                 GASLESS_CROSSCHAIN_ORDER_TYPEHASH,
-                _order.originSettler,
-                _order.user,
-                _order.nonce,
-                _order.originChainId,
-                _order.openDeadline,
-                _order.fillDeadline,
-                _order.orderDataType,
-                keccak256(_order.orderData)
+                order.originSettler,
+                order.user,
+                order.nonce,
+                order.originChainId,
+                order.openDeadline,
+                order.fillDeadline,
+                order.orderDataType,
+                keccak256(order.orderData)
             )
         );
         bytes32 hash = _hashTypedDataV4(structHash);
-        address signer = hash.recover(_signature);
+        address signer = hash.recover(signature);
 
-        return signer == _order.user;
+        return signer == order.user;
     }
 
     /// @notice helper method that actually opens the intent
-    function _openEcoIntent(
-        Intent memory _intent,
-        bytes32 _user
+    function _openIntent(
+        Intent memory intent,
+        bytes32 routeHash,
+        address user
     ) internal returns (bytes32 intentHash) {
-        if (!INTENT_SOURCE.isIntentFunded(_intent)) {
-            address vault = INTENT_SOURCE.intentVaultAddress(_intent);
-            uint256 rewardsLength = _intent.reward.tokens.length;
+        if (!INTENT_SOURCE.isIntentFunded(intent)) {
+            address vault = INTENT_SOURCE.intentVaultAddress(intent, routeHash);
+            uint256 rewardsLength = intent.reward.tokens.length;
 
-            if (_intent.reward.nativeValue > 0) {
-                if (msg.value < _intent.reward.nativeValue) {
+            if (intent.reward.nativeValue > 0) {
+                if (msg.value < intent.reward.nativeValue) {
                     revert InsufficientNativeReward();
                 }
 
-                payable(vault).transfer(_intent.reward.nativeValue);
+                payable(vault).transfer(intent.reward.nativeValue);
             }
 
             for (uint256 i = 0; i < rewardsLength; ++i) {
-                address token = _intent.reward.tokens[i].token.toAddress();
-                uint256 amount = _intent.reward.tokens[i].amount;
+                address token = intent.reward.tokens[i].token.toAddress();
+                uint256 amount = intent.reward.tokens[i].amount;
 
-                IERC20(token).safeTransferFrom(
-                    _user.toAddress(),
-                    vault,
-                    amount
-                );
+                IERC20(token).safeTransferFrom(user, vault, amount);
             }
         }
 
         payable(msg.sender).transfer(address(this).balance);
 
-        (intentHash, ) = INTENT_SOURCE.publish(_intent);
+        // Use the provided routeHash for the publish function
+        (intentHash, ) = INTENT_SOURCE.publish(intent, routeHash);
         return intentHash;
+    }
+
+    function _resolve(
+        uint32 openDeadline,
+        OrderData memory orderData
+    ) public view returns (ResolvedCrossChainOrder memory) {
+        // Extract destination from order data
+        uint256 routeTokenCount = orderData.route.tokens.length;
+
+        Output[] memory maxSpent = new Output[](routeTokenCount);
+
+        for (uint256 i = 0; i < routeTokenCount; ++i) {
+            TokenAmount memory approval = orderData.route.tokens[i];
+
+            maxSpent[i] = Output(
+                approval.token, // Already bytes32 in universal types
+                approval.amount,
+                bytes32(uint256(uint160(address(0)))), //filler is not known
+                orderData.destination
+            );
+        }
+
+        uint256 rewardTokenCount = orderData.reward.tokens.length;
+
+        Output[] memory minReceived = new Output[](
+            rewardTokenCount + (orderData.reward.nativeValue > 0 ? 1 : 0)
+        );
+
+        for (uint256 i = 0; i < rewardTokenCount; ++i) {
+            minReceived[i] = Output(
+                orderData.reward.tokens[i].token, // Already bytes32 in universal types
+                orderData.reward.tokens[i].amount,
+                bytes32(uint256(uint160(address(0)))), //filler is not known
+                uint256(orderData.destination)
+            );
+        }
+
+        if (orderData.reward.nativeValue > 0) {
+            minReceived[rewardTokenCount] = Output(
+                bytes32(uint256(uint160(address(0)))),
+                orderData.reward.nativeValue,
+                bytes32(uint256(uint160(address(0)))),
+                uint256(orderData.destination)
+            );
+        }
+
+        bytes32 rewardHash = keccak256(abi.encode(orderData.reward));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(
+                orderData.destination,
+                orderData.routeHash,
+                rewardHash
+            )
+        );
+
+        FillInstruction[] memory fillInstructions = new FillInstruction[](1);
+        fillInstructions[0] = FillInstruction(
+            orderData.destination,
+            orderData.route.portal,
+            abi.encode(orderData.route, rewardHash)
+        );
+
+        return
+            ResolvedCrossChainOrder(
+                orderData.reward.creator.toAddress(),
+                block.chainid,
+                openDeadline,
+                uint32(orderData.route.deadline),
+                intentHash,
+                maxSpent,
+                minReceived,
+                fillInstructions
+            );
     }
 
     /// @notice EIP712 domain separator
     function domainSeparatorV4() public view returns (bytes32) {
-        return _domainSeparatorV4();
+        return domainSeparatorV4();
     }
 }

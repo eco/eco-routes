@@ -121,10 +121,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         _expectEmit();
-        emit IProver.IntentProven(
-            intentHash,
-            AddressConverter.toBytes32(claimant)
-        );
+        emit IProver.IntentProven(intentHash, claimant);
 
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(

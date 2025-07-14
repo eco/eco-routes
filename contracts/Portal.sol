@@ -8,10 +8,9 @@ import {UniversalSource} from "./UniversalSource.sol";
 import {Inbox} from "./Inbox.sol";
 
 /**
- * @title IntentSource
- * @notice Source chain contract for the Eco Protocol's intent system
- * @dev UniversalSource inherits from EvmSource, providing both EVM and cross-chain functionality
- *      On EVM chains, this is the main entry point for interacting with intents
+ * @title Portal
+ * @notice Portal contract combining UniversalSource and Inbox functionality
+ * @dev Main entry point for intent publishing, fulfillment, and proving
  */
 contract Portal is UniversalSource, Inbox, Semver {
     constructor() {}

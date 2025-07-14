@@ -12,23 +12,23 @@ contract TestDestinationSettler is Eco7683DestinationSettler {
     }
 
     function fulfillAndProve(
-        uint64 _sourceChainId,
+        bytes32 _intentHash,
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
-        bytes32 _expectedHash,
         address _prover,
+        uint64 _source,
         bytes memory _data
     ) public payable override returns (bytes[] memory) {
         // Call the portal's fulfillAndProve function
         return
             portal.fulfillAndProve{value: msg.value}(
-                _sourceChainId,
+                _intentHash,
                 _route,
                 _rewardHash,
                 _claimant,
-                _expectedHash,
                 _prover,
+                _source,
                 _data
             );
     }

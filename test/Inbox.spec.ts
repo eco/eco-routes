@@ -29,6 +29,24 @@ import {
 } from '../utils/universalIntent'
 import { TypeCasts } from '../utils/typeCasts'
 
+// Helper function to convert UniversalRoute to Route for the fulfill function
+function universalRouteToRoute(universalRoute: UniversalRoute): Route {
+  return {
+    salt: universalRoute.salt,
+    deadline: universalRoute.deadline,
+    portal: TypeCasts.bytes32ToAddress(universalRoute.portal),
+    tokens: universalRoute.tokens.map((token) => ({
+      token: TypeCasts.bytes32ToAddress(token.token),
+      amount: token.amount,
+    })),
+    calls: universalRoute.calls.map((call) => ({
+      target: TypeCasts.bytes32ToAddress(call.target),
+      data: call.data,
+      value: call.value,
+    })),
+  }
+}
+
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
@@ -162,12 +180,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(owner)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            wrongIntentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            wrongIntentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
@@ -183,12 +199,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            goofyHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            goofyHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
@@ -216,12 +230,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            _route,
+            _intentHash,
+            universalRouteToRoute(_route),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            _intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidPortal')
     })
@@ -233,12 +245,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             ethers.ZeroHash,
-            intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
     })
@@ -247,12 +257,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
     })
@@ -279,12 +287,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            _route,
+            _intentHash,
+            universalRouteToRoute(_route),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            _intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
@@ -309,12 +315,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            _route,
+            _intentHash,
+            universalRouteToRoute(_route),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            _intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'CallToProver')
     })
@@ -340,12 +344,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            _route,
+            _intentHash,
+            universalRouteToRoute(_route),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            _intentHash,
-            ethers.ZeroAddress,
           ),
       )
         .to.be.revertedWithCustomError(inbox, 'CallToEOA')
@@ -367,21 +369,14 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            intentHash,
-            ethers.ZeroAddress,
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
-        .withArgs(
-          intentHash,
-          sourceChainID,
-          addressToBytes32(ethers.ZeroAddress),
-          ethers.zeroPadValue(dstAddr.address, 32),
-        )
+        .withArgs(intentHash, ethers.zeroPadValue(dstAddr.address, 32))
       // should update the fulfilled hash
       claimant = await inbox.fulfilled(intentHash)
       expect(claimant).to.equal(ethers.zeroPadValue(dstAddr.address, 32))
@@ -400,12 +395,10 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.not.be.reverted
       // should revert
@@ -413,52 +406,59 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            intentHash,
-            ethers.ZeroAddress,
           ),
       ).to.be.revertedWithCustomError(inbox, 'IntentAlreadyFulfilled')
     })
   })
 
-  describe('initiateProving', async () => {
+  describe('prove', async () => {
     it('gets the right args', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
-      const theArgs = [
-        '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-        123n,
-        intentHash,
-        123456789n,
-      ]
+      const theArgs = {
+        sender: solver.address,
+        sourceChainId: BigInt(sourceChainID),
+        data: '0x',
+        value: 123456789n,
+      }
       await expect(
         inbox
           .connect(solver)
           .fulfill(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            intentHash,
-            await mockProver.getAddress(),
           ),
       ).to.not.be.reverted
 
-      expect(await mockProver.args()).to.not.deep.equal(theArgs)
+      const argsBefore = await mockProver.args()
+      expect(argsBefore.sender).to.not.equal(theArgs.sender)
 
       await inbox
         .connect(solver)
-        .initiateProving(
+        .prove(
           sourceChainID,
-          [intentHash],
           await mockProver.getAddress(),
-          intentHash,
+          [intentHash],
+          '0x',
           { value: 123456789 },
         )
-      expect(await mockProver.args()).to.deep.equal(theArgs)
+      const argsAfter = await mockProver.args()
+      expect(argsAfter.sender).to.equal(theArgs.sender)
+      expect(argsAfter.sourceChainId).to.equal(theArgs.sourceChainId)
+      expect(argsAfter.data).to.equal(theArgs.data)
+      expect(argsAfter.value).to.equal(theArgs.value)
+
+      // Check the arrays separately
+      const intentHashes = await mockProver.argIntentHashes(0)
+      expect(intentHashes).to.equal(intentHash)
+      const claimants = await mockProver.argClaimants(0)
+      expect(claimants).to.equal(TypeCasts.addressToBytes32(dstAddr.address))
     })
   })
 
@@ -466,39 +466,41 @@ describe('Inbox Test', (): void => {
     it('works', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
-      const theArgs = [
-        '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-        123n,
-        intentHash,
-        123456789n,
-      ]
+      const theArgs = {
+        sender: solver.address,
+        sourceChainId: BigInt(sourceChainID),
+        data: '0x',
+        value: 0n,
+      }
 
-      expect(await mockProver.args()).to.not.deep.equal(theArgs)
+      const argsBefore = await mockProver.args()
+      expect(argsBefore.sender).to.not.equal(theArgs.sender)
 
       await expect(
         inbox
           .connect(solver)
           .fulfillAndProve(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(dstAddr.address),
-            intentHash,
             await mockProver.getAddress(),
-            intentHash,
+            sourceChainID,
+            '0x',
           ),
       ).to.not.be.reverted
 
-      await inbox
-        .connect(solver)
-        .initiateProving(
-          sourceChainID,
-          [intentHash],
-          await mockProver.getAddress(),
-          intentHash,
-          { value: 123456789 },
-        )
-      expect(await mockProver.args()).to.deep.equal(theArgs)
+      const argsAfter = await mockProver.args()
+      expect(argsAfter.sender).to.equal(theArgs.sender)
+      expect(argsAfter.sourceChainId).to.equal(theArgs.sourceChainId)
+      expect(argsAfter.data).to.equal(theArgs.data)
+      expect(argsAfter.value).to.equal(theArgs.value)
+
+      // Check the arrays separately
+      const intentHashes = await mockProver.argIntentHashes(0)
+      expect(intentHashes).to.equal(intentHash)
+      const claimants = await mockProver.argClaimants(0)
+      expect(claimants).to.equal(TypeCasts.addressToBytes32(dstAddr.address))
     })
 
     it('should handle fulfillAndProve with address claimant', async () => {
@@ -510,22 +512,17 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillAndProve(
-            sourceChainID,
-            universalRoute,
+            intentHash,
+            universalRouteToRoute(universalRoute),
             rewardHash,
             TypeCasts.addressToBytes32(validClaimant),
-            intentHash,
             await mockProver.getAddress(),
-            intentHash,
+            sourceChainID,
+            '0x',
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
-        .withArgs(
-          intentHash,
-          sourceChainID,
-          addressToBytes32(await mockProver.getAddress()),
-          ethers.zeroPadValue(validClaimant, 32),
-        )
+        .withArgs(intentHash, ethers.zeroPadValue(validClaimant, 32))
 
       // Verify the claimant was stored correctly
       const storedClaimant = await inbox.fulfilled(intentHash)

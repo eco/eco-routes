@@ -32,28 +32,12 @@ contract AddressConverterTest {
      * @return True if the bytes32 value can be safely converted to an Ethereum address
      */
     function isValidEthereumAddress(bytes32 b) external pure returns (bool) {
-        return AddressConverter.isValidEthereumAddress(b);
+        return AddressConverter.isValidAddress(b);
     }
 
-    /**
-     * @notice Convert an array of addresses to an array of bytes32
-     * @param addrs The array of addresses to convert
-     * @return result The array of bytes32 values
-     */
-    function toBytes32Array(
-        address[] calldata addrs
-    ) external pure returns (bytes32[] memory result) {
-        return AddressConverter.toBytes32Array(addrs);
-    }
+    // The toBytes32Array function has been removed as the corresponding
+    // library function no longer exists
 
-    /**
-     * @notice Convert an array of bytes32 to an array of addresses
-     * @param bs The array of bytes32 values to convert
-     * @return result The array of addresses
-     */
-    function toAddressArray(
-        bytes32[] calldata bs
-    ) external pure returns (address[] memory result) {
-        return AddressConverter.toAddressArray(bs);
-    }
+    // The toAddressArray function has been removed as the corresponding
+    // library function no longer exists
 }

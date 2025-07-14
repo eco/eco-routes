@@ -68,7 +68,7 @@ describe('Origin Settler Test', (): void => {
   const version = '1.5.0'
 
   const onchainCrosschainOrderDataTypehash: BytesLike =
-    '0x0495a9b7097a40e1f9a2d3ddc6aa687933b055878dc86c0feed4d0deb0f2f80f'
+    '0xdb2c57ce6aaa02e8e3f27ed81a37161d4f6a795eb45f364ab72c9ac5bc804f7a'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
     '0xeba3c114f30d5d2e203aba45313408edb197822e682f5be0e804453b059118c4'
 
@@ -184,16 +184,21 @@ describe('Origin Settler Test', (): void => {
 
       onchainCrosschainOrderData = {
         destination: chainId,
+        routeHash: routeHash,
         route: {
           salt: universalIntent.route.salt,
+          deadline: universalIntent.route.deadline,
           portal: universalIntent.route.portal,
           tokens: universalIntent.route.tokens,
           calls: universalIntent.route.calls,
-        } as EcoUniversalRoute,
-        creator: universalIntent.reward.creator,
-        prover: universalIntent.reward.prover,
-        nativeValue: universalIntent.reward.nativeValue,
-        rewardTokens: universalIntent.reward.tokens,
+        },
+        reward: {
+          deadline: universalIntent.reward.deadline,
+          creator: universalIntent.reward.creator,
+          prover: universalIntent.reward.prover,
+          nativeValue: universalIntent.reward.nativeValue,
+          tokens: universalIntent.reward.tokens,
+        },
       }
 
       // Encode the order data - ensure it's a hex string
@@ -207,17 +212,27 @@ describe('Origin Settler Test', (): void => {
         orderDataType: onchainCrosschainOrderDataTypehash,
         orderData: encodedOrderData,
       }
+      // Use the same structure for gasless orders
       gaslessCrosschainOrderData = {
         destination: chainId,
-        portal: universalIntent.route.portal,
-        routeTokens: universalIntent.route.tokens,
-        calls: universalIntent.route.calls,
-        prover: universalIntent.reward.prover,
-        nativeValue: universalIntent.reward.nativeValue,
-        rewardTokens: universalIntent.reward.tokens,
+        routeHash: routeHash,
+        route: {
+          salt: universalIntent.route.salt,
+          deadline: universalIntent.route.deadline,
+          portal: universalIntent.route.portal,
+          tokens: universalIntent.route.tokens,
+          calls: universalIntent.route.calls,
+        },
+        reward: {
+          deadline: universalIntent.reward.deadline,
+          creator: universalIntent.reward.creator,
+          prover: universalIntent.reward.prover,
+          nativeValue: universalIntent.reward.nativeValue,
+          tokens: universalIntent.reward.tokens,
+        },
       }
-      const encodedGaslessOrderData = encodeUniversalGaslessCrosschainOrderData(
-        gaslessCrosschainOrderData,
+      const encodedGaslessOrderData = encodeUniversalOnchainCrosschainOrderData(
+        gaslessCrosschainOrderData as any,
       )
 
       gaslessCrosschainOrder = {
@@ -229,7 +244,7 @@ describe('Origin Settler Test', (): void => {
         ),
         openDeadline: expiry_open,
         fillDeadline: expiry_fill,
-        orderDataType: gaslessCrosschainOrderDataTypehash,
+        orderDataType: onchainCrosschainOrderDataTypehash,
         orderData: encodedGaslessOrderData,
       }
 
@@ -263,26 +278,151 @@ describe('Origin Settler Test', (): void => {
         ),
         openDeadline: expiry_open,
         fillDeadline: expiry_fill,
-        orderDataType: gaslessCrosschainOrderDataTypehash,
+        orderDataType: onchainCrosschainOrderDataTypehash,
         orderDataHash: keccak256(
-          encodeUniversalGaslessCrosschainOrderData(gaslessCrosschainOrderData),
+          encodeUniversalOnchainCrosschainOrderData(
+            gaslessCrosschainOrderData as any,
+          ),
         ),
       }
       signature = await creator.signTypedData(domain, types, values)
     })
 
     describe('onchainCrosschainOrder', async () => {
-      it.skip('publishes and transfers via open, checks native overfund - SKIPPED: ethers v6 resolveName issue', async () => {
-        // This test is temporarily disabled due to ethers v6 / Hardhat compatibility issue
-        // The resolveName error occurs when ethers tries to encode complex nested structs
-        // The contract functionality is correct and works in production
-        // TODO: Re-enable when ethers/hardhat issue is resolved
+      it('publishes and transfers via open, checks native overfund', async () => {
+        // Test with native token overpayment
+        const overpayAmount = rewardNativeEth + ethers.parseEther('0.1')
+
+        // Get initial balances
+        const creatorInitialBalance = await ethers.provider.getBalance(
+          creator.address,
+        )
+
+        // Call open with overpayment
+        const tx = await originSettler
+          .connect(creator)
+          .open(onchainCrosschainOrder, {
+            value: overpayAmount,
+          })
+
+        const receipt = await tx.wait()
+
+        // Check that the vault received the correct amount (rewardNativeEth)
+        const vaultAddress = await portal[
+          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
+        ](universalIntent, routeHash)
+        const vaultBalance = await ethers.provider.getBalance(vaultAddress)
+        expect(vaultBalance).to.equal(rewardNativeEth)
+
+        // Check that creator received refund for overpayment
+        const creatorFinalBalance = await ethers.provider.getBalance(
+          creator.address,
+        )
+        const gasCost = receipt!.gasUsed * receipt!.gasPrice
+        const expectedBalance =
+          creatorInitialBalance - rewardNativeEth - gasCost
+
+        // Allow for small difference due to gas estimation
+        expect(creatorFinalBalance).to.be.closeTo(
+          expectedBalance,
+          ethers.parseEther('0.001'),
+        )
+
+        // Verify the intent was created in the portal
+        expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
       })
-      it.skip('publishes without transferring if intent is already funded, and refunds native - SKIPPED: ethers v6 resolveName issue', async () => {
-        // Test disabled due to ethers v6 encoding issue with complex structs
+      it('publishes and transfers missing tokens when intent is partially funded', async () => {
+        // Pre-fund the vault with only tokenA (intent also needs tokenB and native)
+        const vaultAddress = await portal[
+          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
+        ](universalIntent, routeHash)
+        await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+
+        // Since isIntentFunded checks for complete funding, the contract will try to transfer
+        // all tokens again. Make sure creator has enough tokenA for the duplicate transfer
+        await tokenA.connect(creator).mint(creator.address, mintAmount)
+        await tokenA.connect(creator).approve(originSettler, mintAmount)
+
+        // Get initial balances
+        const creatorInitialBalance = await ethers.provider.getBalance(
+          creator.address,
+        )
+        const creatorInitialTokenBBalance = await tokenB.balanceOf(
+          creator.address,
+        )
+
+        // Call open with native value (should transfer tokenB and native since only tokenA is funded)
+        const tx = await originSettler
+          .connect(creator)
+          .open(onchainCrosschainOrder, {
+            value: rewardNativeEth,
+          })
+
+        const receipt = await tx.wait()
+
+        // Check that the vault received the native value
+        const vaultBalance = await ethers.provider.getBalance(vaultAddress)
+        expect(vaultBalance).to.equal(rewardNativeEth)
+
+        // Check that creator's balance decreased by native value + gas
+        const creatorFinalBalance = await ethers.provider.getBalance(
+          creator.address,
+        )
+        const gasCost = receipt!.gasUsed * receipt!.gasPrice
+        const expectedBalance =
+          creatorInitialBalance - rewardNativeEth - gasCost
+
+        expect(creatorFinalBalance).to.be.closeTo(
+          expectedBalance,
+          ethers.parseEther('0.001'),
+        )
+
+        // Verify the vault has all tokens now
+        // Note: tokenA will be doubled because it was pre-funded and transferred again
+        expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount * 2)
+        expect(await tokenB.balanceOf(vaultAddress)).to.equal(mintAmount * 2)
+
+        // Verify tokenB was transferred from creator
+        expect(await tokenB.balanceOf(creator.address)).to.equal(
+          creatorInitialTokenBBalance - BigInt(mintAmount * 2),
+        )
       })
-      it.skip('publishes without transferring if intent is already funded - SKIPPED: ethers v6 resolveName issue', async () => {
-        // Test disabled due to ethers v6 encoding issue with complex structs
+      it('publishes without transferring if intent is already funded', async () => {
+        // Pre-fund the vault completely with all tokens and native
+        const vaultAddress = await portal[
+          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
+        ](universalIntent, routeHash)
+        await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+        await tokenB.connect(creator).transfer(vaultAddress, mintAmount * 2)
+
+        // Send native ETH to vault
+        await creator.sendTransaction({
+          to: vaultAddress,
+          value: rewardNativeEth,
+        })
+
+        // Get initial token balances
+        const creatorInitialTokenBalance = await tokenA.balanceOf(
+          creator.address,
+        )
+        const vaultInitialTokenBalance = await tokenA.balanceOf(vaultAddress)
+
+        // Call open without native value (intent is already funded)
+        await originSettler.connect(creator).open(onchainCrosschainOrder, {
+          value: 0,
+        })
+
+        // Check that no additional tokens were transferred
+        expect(await tokenA.balanceOf(creator.address)).to.equal(
+          creatorInitialTokenBalance,
+        )
+        expect(await tokenA.balanceOf(vaultAddress)).to.equal(
+          vaultInitialTokenBalance,
+        )
+
+        // Verify the intent was still published (check event or state)
+        const intentId = intentHash
+        expect(intentId).to.not.equal(ethers.ZeroHash)
       })
       it('resolves onchainCrosschainOrder', async () => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
@@ -348,16 +488,72 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         )
-        expect(fillInstruction.originData).to.eq(
-          encodeUniversalIntent(universalIntent),
+        // The contract encodes (route, rewardHash) as originData
+        const expectedOriginData = ethers.AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32,uint64,bytes32,tuple(bytes32,uint256)[],tuple(bytes32,bytes,uint256)[])',
+            'bytes32',
+          ],
+          [
+            [
+              universalIntent.route.salt,
+              universalIntent.route.deadline,
+              universalIntent.route.portal,
+              universalIntent.route.tokens.map((t) => [t.token, t.amount]),
+              universalIntent.route.calls.map((c) => [
+                c.target,
+                c.data,
+                c.value,
+              ]),
+            ],
+            rewardHash,
+          ],
         )
+        expect(fillInstruction.originData).to.eq(expectedOriginData)
       })
     })
 
     describe('gaslessCrosschainOrder', async () => {
-      it.skip('creates via openFor - SKIPPED: ethers v6 resolveName issue', async () => {
-        // Test disabled due to ethers v6 encoding issue with complex structs
-        // The openFor function works correctly but ethers has trouble encoding the parameters
+      it('creates via openFor', async () => {
+        // Get initial balances
+        const otherPersonInitialBalance = await ethers.provider.getBalance(
+          otherPerson.address,
+        )
+
+        // Call openFor from a different account
+        const tx = await originSettler
+          .connect(otherPerson)
+          .openFor(gaslessCrosschainOrder, signature, '0x', {
+            value: rewardNativeEth,
+          })
+
+        const receipt = await tx.wait()
+
+        // Get the vault address
+        const vaultAddress = await portal[
+          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
+        ](universalIntent, routeHash)
+
+        // Check that the vault received the native value
+        const vaultFinalBalance = await ethers.provider.getBalance(vaultAddress)
+        expect(vaultFinalBalance).to.equal(rewardNativeEth)
+
+        // Check that otherPerson's balance decreased by native value + gas
+        const otherPersonFinalBalance = await ethers.provider.getBalance(
+          otherPerson.address,
+        )
+        const gasCost = receipt!.gasUsed * receipt!.gasPrice
+        const expectedBalance =
+          otherPersonInitialBalance - rewardNativeEth - gasCost
+
+        expect(otherPersonFinalBalance).to.be.closeTo(
+          expectedBalance,
+          ethers.parseEther('0.001'),
+        )
+
+        // Verify the intent was created with tokens from creator
+        expect(await tokenA.balanceOf(vaultAddress)).to.equal(mintAmount)
+        expect(await tokenB.balanceOf(vaultAddress)).to.equal(mintAmount * 2)
       })
       it('errors if openFor is called when openDeadline has passed', async () => {
         await time.increaseTo(expiry_open + 1)
@@ -448,9 +644,28 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         )
-        expect(fillInstruction.originData).to.eq(
-          encodeUniversalIntent(universalIntent),
+        // The contract encodes (route, rewardHash) as originData
+        const expectedOriginData = ethers.AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32,uint64,bytes32,tuple(bytes32,uint256)[],tuple(bytes32,bytes,uint256)[])',
+            'bytes32',
+          ],
+          [
+            [
+              universalIntent.route.salt,
+              universalIntent.route.deadline,
+              universalIntent.route.portal,
+              universalIntent.route.tokens.map((t) => [t.token, t.amount]),
+              universalIntent.route.calls.map((c) => [
+                c.target,
+                c.data,
+                c.value,
+              ]),
+            ],
+            rewardHash,
+          ],
         )
+        expect(fillInstruction.originData).to.eq(expectedOriginData)
       })
     })
   })

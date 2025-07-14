@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {AddressConverter} from "./libs/AddressConverter.sol";
-import {IProver} from "./interfaces/IProver.sol";
-import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 
-import {Route, Call, TokenAmount} from "./types/UniversalIntent.sol";
+import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+
+import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 
 /**
  * @title Inbox
@@ -18,9 +19,7 @@ import {Semver} from "./libs/Semver.sol";
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-abstract contract Inbox is IInbox, Eco7683DestinationSettler {
-    using AddressConverter for address;
-    using AddressConverter for bytes32;
+abstract contract Inbox is Eco7683DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
 
     /**
@@ -42,29 +41,23 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
     /**
      * @notice Fulfills an intent to be proven via storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
-     * @param _sourceChainId The source chain ID where the intent was created
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward details
-     * @param _claimant Cross-VM compatible claimant identifier
-     * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _prover The prover contract to use for verification
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
      * @return Array of execution results from each call
      */
     function fulfill(
-        uint64 _sourceChainId,
-        Route memory _route,
-        bytes32 _rewardHash,
-        bytes32 _claimant,
-        bytes32 _expectedHash,
-        address _prover
-    ) external payable override returns (bytes[] memory) {
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant
+    ) external payable returns (bytes[] memory) {
         bytes[] memory result = _fulfill(
-            _sourceChainId,
-            _route,
-            _rewardHash,
-            _claimant,
-            _expectedHash,
-            _prover
+            intentHash,
+            route,
+            rewardHash,
+            claimant
         );
 
         return result;
@@ -73,23 +66,23 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
     /**
      * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Executes intent actions and sends proof message to source chain
-     * @param _sourceChainId The source chain ID where the intent was created
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward details
-     * @param _claimant Cross-VM compatible claimant identifier
-     * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _prover Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Address of prover on the destination chain
+     * @param source The source chain ID where the intent was created
+     * @param data Additional data for message formatting
      * @return Array of execution results
      */
     function fulfillAndProve(
-        uint64 _sourceChainId,
-        Route memory _route,
-        bytes32 _rewardHash,
-        bytes32 _claimant,
-        bytes32 _expectedHash,
-        address _prover,
-        bytes memory _data
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant,
+        address prover,
+        uint64 source,
+        bytes memory data
     )
         public
         payable
@@ -97,114 +90,101 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
         returns (bytes[] memory)
     {
         bytes[] memory result = _fulfill(
-            _sourceChainId,
-            _route,
-            _rewardHash,
-            _claimant,
-            _expectedHash,
-            _prover
+            intentHash,
+            route,
+            rewardHash,
+            claimant
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        hashes[0] = _expectedHash;
+        hashes[0] = intentHash;
 
-        initiateProving(_sourceChainId, hashes, _prover, _data);
+        prove(source, prover, hashes, data);
         return result;
     }
 
     /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _prover Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param source Chain ID of the source chain
+     * @param prover Address of prover on the destination chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
      */
-    function initiateProving(
-        uint256 _sourceChainId,
-        bytes32[] memory _intentHashes,
-        address _prover,
-        bytes memory _data
-    ) public payable {
-        if (_prover == address(0)) {
-            // storage prover case, this method should do nothing
-            return;
-        }
-        uint256 size = _intentHashes.length;
+    function prove(
+        uint256 source,
+        address prover,
+        bytes32[] memory intentHashes,
+        bytes memory data
+    ) public payable virtual {
+        uint256 size = intentHashes.length;
         bytes32[] memory claimants = new bytes32[](size);
+
         for (uint256 i = 0; i < size; ++i) {
-            bytes32 claimantBytes = fulfilled[_intentHashes[i]];
+            bytes32 claimantBytes = fulfilled[intentHashes[i]];
 
             if (claimantBytes == bytes32(0)) {
-                revert IntentNotFulfilled(_intentHashes[i]);
+                revert IntentNotFulfilled(intentHashes[i]);
             }
             claimants[i] = claimantBytes;
         }
-        IProver(_prover).prove{value: address(this).balance}(
+
+        IProver(prover).prove{value: msg.value}(
             msg.sender,
-            _sourceChainId,
-            _intentHashes,
+            source,
+            intentHashes,
             claimants,
-            _data
+            data
         );
     }
 
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls
-     * @param _sourceChainId The source chain ID where the intent was created
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward
-     * @param _claimant Cross-VM compatible claimant identifier
-     * @param _expectedHash The expected intent hash
-     * @param _prover The prover contract to use
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     * @param claimant Cross-VM compatible claimant identifier
      * @return Array of execution results
      */
     function _fulfill(
-        uint64 _sourceChainId,
-        Route memory _route,
-        bytes32 _rewardHash,
-        bytes32 _claimant,
-        bytes32 _expectedHash,
-        address _prover
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant
     ) internal returns (bytes[] memory) {
         // Check if the route has expired
-        if (block.timestamp > _route.deadline) {
+        if (block.timestamp > route.deadline) {
             revert IntentExpired();
         }
 
-        bytes32 routeHash = keccak256(abi.encode(_route));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(uint64(block.chainid), routeHash, _rewardHash)
+        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 computedIntentHash = keccak256(
+            abi.encodePacked(uint64(block.chainid), routeHash, rewardHash)
         );
 
-        if (_route.portal != address(this).toBytes32()) {
-            revert InvalidPortal(_route.portal.toAddress());
+        if (route.portal != address(this)) {
+            revert InvalidPortal(route.portal);
         }
-        if (intentHash != _expectedHash) {
-            revert InvalidHash(_expectedHash);
+        if (computedIntentHash != intentHash) {
+            revert InvalidHash(intentHash);
         }
         if (fulfilled[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
-        if (_claimant == bytes32(0)) {
+        if (claimant == bytes32(0)) {
             revert ZeroClaimant();
         }
 
-        fulfilled[intentHash] = _claimant;
+        fulfilled[intentHash] = claimant;
 
-        emit IntentFulfilled(
-            _expectedHash,
-            _sourceChainId,
-            _prover.toBytes32(),
-            _claimant
-        );
+        emit IntentFulfilled(intentHash, claimant);
 
-        uint256 routeTokenCount = _route.tokens.length;
-        // Transfer ERC20 tokens to the inbox
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            TokenAmount memory approval = _route.tokens[i];
-            IERC20(approval.token.toAddress()).safeTransferFrom(
+        uint256 tokensLength = route.tokens.length;
+        // Transfer ERC20 tokens to the portal
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            TokenAmount memory approval = route.tokens[i];
+            IERC20(approval.token).safeTransferFrom(
                 msg.sender,
                 address(this),
                 approval.amount
@@ -212,11 +192,11 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
         }
 
         // Store the results of the calls
-        bytes[] memory results = new bytes[](_route.calls.length);
+        bytes[] memory results = new bytes[](route.calls.length);
 
-        for (uint256 i = 0; i < _route.calls.length; ++i) {
-            Call memory call = _route.calls[i];
-            address target = call.target.toAddress();
+        for (uint256 i = 0; i < route.calls.length; ++i) {
+            Call memory call = route.calls[i];
+            address target = call.target;
             if (target.code.length == 0) {
                 if (call.data.length > 0) {
                     // no code at this address
@@ -238,9 +218,11 @@ abstract contract Inbox is IInbox, Eco7683DestinationSettler {
             (bool success, bytes memory result) = target.call{
                 value: call.value
             }(call.data);
+
             if (!success) {
                 revert IntentCallFailed(target, call.data, call.value, result);
             }
+
             results[i] = result;
         }
         return (results);

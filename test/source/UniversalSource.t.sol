@@ -185,24 +185,29 @@ contract UniversalSourceTest is BaseTest {
     }
 
     function testUniversalIntentHashing() public view {
-        (bytes32 universalHash, , ) = universalSource.getIntentHash(
-            universalIntent
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
+        bytes32 universalHash = universalSource.getIntentHash(
+            universalIntent,
+            routeHash
         );
 
-        EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
-        (bytes32 evmHash, , ) = intentSource.getIntentHash(evmIntent);
+        bytes32 evmHash = _hashIntent(universalIntent);
 
         // Universal and EVM intents should produce the same hash
         assertEq(universalHash, evmHash);
     }
 
     function testUniversalIntentVaultAddress() public view {
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         address universalVault = universalSource.intentVaultAddress(
-            universalIntent
+            universalIntent,
+            routeHash
         );
 
-        EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
-        address evmVault = intentSource.intentVaultAddress(evmIntent);
+        address evmVault = intentSource.intentVaultAddress(
+            universalIntent,
+            routeHash
+        );
 
         // Universal and EVM intents should produce the same vault address
         assertEq(universalVault, evmVault);
@@ -210,14 +215,15 @@ contract UniversalSourceTest is BaseTest {
 
     function testPublishUniversalIntent() public {
         vm.prank(creator);
-        universalSource.publish(universalIntent);
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
+        universalSource.publish(universalIntent, routeHash);
 
         // Verify intent was published (we can check by trying to fund it)
-        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
 
         // Get vault address and approve tokens to it for fundFor to work
         address intentVault = universalSource.intentVaultAddress(
-            universalIntent
+            universalIntent,
+            routeHash
         );
 
         vm.startPrank(creator);
@@ -226,8 +232,8 @@ contract UniversalSourceTest is BaseTest {
 
         universalSource.fundFor(
             universalIntent.destination,
-            routeHash,
             universalIntent.reward,
+            routeHash,
             creator,
             address(0),
             false
@@ -238,8 +244,10 @@ contract UniversalSourceTest is BaseTest {
     }
 
     function testPublishEmitsUniversalIntentPublishedEvent() public {
-        (bytes32 intentHash, , ) = universalSource.getIntentHash(
-            universalIntent
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
+        bytes32 intentHash = universalSource.getIntentHash(
+            universalIntent,
+            routeHash
         );
 
         // Convert universal types to EVM types for the event expectation
@@ -275,26 +283,29 @@ contract UniversalSourceTest is BaseTest {
         _expectEmit();
         emit IIntentSource.IntentPublished(
             intentHash,
+            routeHash,
             universalIntent.destination,
             salt,
             uint64(expiry),
-            address(portal).toBytes32(),
-            evmRouteTokens,
-            evmCalls,
-            creator.toBytes32(),
-            address(prover).toBytes32(),
+            universalIntent.route.portal,
+            universalIntent.route.tokens,
+            universalIntent.route.calls,
+            universalIntent.reward.creator,
+            universalIntent.reward.prover,
             uint64(expiry),
             0,
-            evmRewardTokens
+            universalIntent.reward.tokens
         );
 
         vm.prank(creator);
-        universalSource.publish(universalIntent);
+        bytes32 rh = keccak256(abi.encode(universalIntent.route));
+        universalSource.publish(universalIntent, rh);
     }
 
     function testFundUniversalIntent() public {
         vm.prank(creator);
-        universalSource.publishAndFund(universalIntent, false);
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
+        universalSource.publishAndFund(universalIntent, routeHash, false);
 
         assertTrue(universalSource.isIntentFunded(universalIntent));
     }
@@ -304,25 +315,31 @@ contract UniversalSourceTest is BaseTest {
         universalIntent.reward = universalReward;
 
         vm.prank(creator);
+        bytes32 rhNative = keccak256(abi.encode(universalIntent.route));
         universalSource.publishAndFund{value: REWARD_NATIVE_ETH}(
             universalIntent,
+            rhNative,
             false
         );
 
         assertTrue(universalSource.isIntentFunded(universalIntent));
 
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         address vaultAddress = universalSource.intentVaultAddress(
-            universalIntent
+            universalIntent,
+            routeHash
         );
         assertEq(vaultAddress.balance, REWARD_NATIVE_ETH);
     }
 
     function testWithdrawUniversalRewards() public {
         vm.prank(creator);
-        universalSource.publishAndFund(universalIntent, false);
+        bytes32 rh2 = keccak256(abi.encode(universalIntent.route));
+        universalSource.publishAndFund(universalIntent, rh2, false);
 
-        (bytes32 intentHash, , ) = universalSource.getIntentHash(
-            universalIntent
+        bytes32 intentHash = universalSource.getIntentHash(
+            universalIntent,
+            rh2
         );
 
         vm.prank(creator);
@@ -335,8 +352,8 @@ contract UniversalSourceTest is BaseTest {
         vm.prank(otherPerson);
         universalSource.withdraw(
             universalIntent.destination,
-            routeHash,
-            universalIntent.reward
+            universalIntent.reward,
+            routeHash
         );
 
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -346,7 +363,8 @@ contract UniversalSourceTest is BaseTest {
 
     function testRefundUniversalIntent() public {
         vm.prank(creator);
-        universalSource.publishAndFund(universalIntent, false);
+        bytes32 rh3 = keccak256(abi.encode(universalIntent.route));
+        universalSource.publishAndFund(universalIntent, rh3, false);
 
         _timeTravel(expiry + 1);
 
@@ -357,8 +375,8 @@ contract UniversalSourceTest is BaseTest {
         vm.prank(otherPerson);
         universalSource.refund(
             universalIntent.destination,
-            routeHash,
-            universalIntent.reward
+            universalIntent.reward,
+            routeHash
         );
 
         assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
@@ -370,10 +388,12 @@ contract UniversalSourceTest is BaseTest {
         // Test that the same intent produces the same hash regardless of format
         EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
 
-        (bytes32 universalHash, , ) = universalSource.getIntentHash(
-            universalIntent
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
+        bytes32 universalHash = universalSource.getIntentHash(
+            universalIntent,
+            routeHash
         );
-        (bytes32 evmHash, , ) = intentSource.getIntentHash(evmIntent);
+        bytes32 evmHash = _hashIntent(universalIntent);
 
         assertEq(universalHash, evmHash);
     }
@@ -382,10 +402,15 @@ contract UniversalSourceTest is BaseTest {
         // Test that the same intent produces the same vault address regardless of format
         EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
 
+        bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         address universalVault = universalSource.intentVaultAddress(
-            universalIntent
+            universalIntent,
+            routeHash
         );
-        address evmVault = intentSource.intentVaultAddress(evmIntent);
+        address evmVault = intentSource.intentVaultAddress(
+            universalIntent,
+            routeHash
+        );
 
         assertEq(universalVault, evmVault);
     }
@@ -407,8 +432,10 @@ contract UniversalSourceTest is BaseTest {
             )
         );
         vm.prank(creator);
+        bytes32 rhEmit = keccak256(abi.encode(universalIntent.route));
         universalSource.publishAndFund{value: 0.5 ether}(
             universalIntent,
+            rhEmit,
             false
         );
     }

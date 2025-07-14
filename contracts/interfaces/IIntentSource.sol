@@ -5,8 +5,8 @@ pragma solidity ^0.8.26;
 import {ISemver} from "./ISemver.sol";
 import {IVaultStorage} from "./IVaultStorage.sol";
 
-import {Intent, Reward, Call, TokenAmount} from "../types/Intent.sol";
-//import {Call, TokenAmount} from "../types/UniversalIntent.sol";
+import {Intent, Reward} from "../types/Intent.sol";
+import {Call, TokenAmount} from "../types/UniversalIntent.sol";
 
 /**
  * @title IIntentSource
@@ -118,6 +118,7 @@ interface IIntentSource is IVaultStorage {
      */
     event IntentPublished(
         bytes32 indexed hash,
+        bytes32 routeHash,
         uint64 destination,
         bytes32 salt,
         uint64 routeDeadline,
@@ -137,21 +138,21 @@ interface IIntentSource is IVaultStorage {
      * @param funder The address providing the funding
      * @param complete Whether the intent was completely funded (true) or partially funded (false)
      */
-    event IntentFunded(bytes32 intentHash, bytes32 funder, bool complete);
+    event IntentFunded(bytes32 intentHash, address funder, bool complete);
 
     /**
      * @notice Signals successful reward withdrawal
      * @param hash The hash of the claimed intent
      * @param recipient The address receiving the rewards
      */
-    event IntentWithdrawn(bytes32 hash, bytes32 indexed recipient);
+    event IntentWithdrawn(bytes32 hash, address indexed recipient);
 
     /**
      * @notice Signals successful reward refund
      * @param hash The hash of the refunded intent
      * @param recipient The address receiving the refund
      */
-    event IntentRefunded(bytes32 hash, bytes32 indexed recipient);
+    event IntentRefunded(bytes32 hash, address indexed recipient);
 
     /**
      * @notice Retrieves the current reward claim status for an intent

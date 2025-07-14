@@ -63,13 +63,17 @@ contract AddressConverterTest is BaseTest {
         assertEq(maxAddr, reverted);
     }
 
-    function testBytes32WithNonZeroLeadingBytes() public pure {
+    function testBytes32WithNonZeroLeadingBytes() public {
         bytes32 testBytes = 0x1234567890123456789012345678901234567890123456789012345678901234;
-        address converted = testBytes.toAddress();
 
-        // Should only take the rightmost 20 bytes
-        address expected = address(0x5678901234567890123456789012345678901234);
-        assertEq(converted, expected);
+        // Should revert with InvalidAddress error since top 12 bytes are not zero
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AddressConverter.InvalidAddress.selector,
+                testBytes
+            )
+        );
+        testBytes.toAddress();
     }
 
     function testConversionPreservesData() public {
@@ -122,21 +126,29 @@ contract AddressConverterTest is BaseTest {
         assertEq(testAddr, reverted1);
     }
 
-    function testConversionWithBytes32Max() public pure {
+    function testConversionWithBytes32Max() public {
         bytes32 maxBytes = bytes32(type(uint256).max);
-        address converted = maxBytes.toAddress();
 
-        // Should extract the rightmost 20 bytes
-        address expected = address(type(uint160).max);
-        assertEq(converted, expected);
+        // Should revert with InvalidAddress error since top 12 bytes are not zero
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AddressConverter.InvalidAddress.selector,
+                maxBytes
+            )
+        );
+        maxBytes.toAddress();
     }
 
-    function testConversionDoesNotOverflow() public pure {
+    function testConversionDoesNotOverflow() public {
         bytes32 largeBytes = bytes32(type(uint256).max);
-        address converted = largeBytes.toAddress();
 
-        // Should not overflow, just take the lower 160 bits
-        assertTrue(converted != address(0));
-        assertEq(converted, address(type(uint160).max));
+        // Should revert with InvalidAddress error since top 12 bytes are not zero
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AddressConverter.InvalidAddress.selector,
+                largeBytes
+            )
+        );
+        largeBytes.toAddress();
     }
 }

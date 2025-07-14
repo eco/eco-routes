@@ -13,7 +13,7 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  * and their claimants
  */
 abstract contract BaseProver is IProver, ERC165 {
-    using AddressConverter for address;
+    using AddressConverter for bytes32;
     /**
      * @notice Address of the Portal contract
      * @dev Immutable to prevent unauthorized changes
@@ -28,35 +28,53 @@ abstract contract BaseProver is IProver, ERC165 {
     mapping(bytes32 => ProofData) internal _provenIntents;
 
     /**
-     * @notice Initializes the BaseProver contract
-     * @param _portal Address of the Portal contract
+     * @notice Get proof data for an intent
+     * @param intentHash The intent hash to query
+     * @return ProofData struct containing claimant and destinationChainID
      */
-    constructor(address _portal) {
-        PORTAL = _portal;
+    function provenIntents(
+        bytes32 intentHash
+    ) external view returns (ProofData memory) {
+        return _provenIntents[intentHash];
+    }
+
+    /**
+     * @notice Initializes the BaseProver contract
+     * @param portal Address of the Portal contract
+     */
+    constructor(address portal) {
+        PORTAL = portal;
     }
 
     /**
      * @notice Process intent proofs from a cross-chain message
-     * @param _hashes Array of intent hashes
-     * @param _claimants Array of claimant addresses
-     * @param _destinationChainID Chain ID where the intent is being proven
+     * @param hashes Array of intent hashes
+     * @param claimants Array of claimant addresses
+     * @param destinationChainID Chain ID where the intent is being proven
      */
     function _processIntentProofs(
-        bytes32[] memory _hashes,
-        bytes32[] memory _claimants,
-        uint256 _destinationChainID
+        bytes32[] memory hashes,
+        bytes32[] memory claimants,
+        uint256 destinationChainID
     ) internal {
         // If arrays are empty, just return early
-        if (_hashes.length == 0) return;
+        if (hashes.length == 0) return;
 
         // Require matching array lengths for security
-        if (_hashes.length != _claimants.length) {
+        if (hashes.length != claimants.length) {
             revert ArrayLengthMismatch();
         }
 
-        for (uint256 i = 0; i < _hashes.length; i++) {
-            bytes32 intentHash = _hashes[i];
-            address claimant = address(uint160(uint256(_claimants[i])));
+        for (uint256 i = 0; i < hashes.length; i++) {
+            bytes32 intentHash = hashes[i];
+
+            // Check if the claimant bytes32 represents a valid Ethereum address
+            if (!claimants[i].isValidAddress()) {
+                // Skip non-EVM addresses that can't be converted
+                continue;
+            }
+
+            address claimant = claimants[i].toAddress();
 
             // Validate claimant is not zero address
             if (claimant == address(0)) {
@@ -69,22 +87,11 @@ abstract contract BaseProver is IProver, ERC165 {
             } else {
                 _provenIntents[intentHash] = ProofData({
                     claimant: claimant,
-                    destinationChainID: uint96(_destinationChainID)
+                    destinationChainID: uint64(destinationChainID)
                 });
-                emit IntentProven(intentHash, claimant.toBytes32());
+                emit IntentProven(intentHash, claimant);
             }
         }
-    }
-
-    /**
-     * @notice Returns the proof data for a given intent hash
-     * @param _intentHash Hash of the intent to query
-     * @return ProofData containing claimant and destination chain ID
-     */
-    function provenIntents(
-        bytes32 _intentHash
-    ) external view override returns (ProofData memory) {
-        return _provenIntents[_intentHash];
     }
 
     /**
@@ -107,7 +114,7 @@ abstract contract BaseProver is IProver, ERC165 {
             proof.destinationChainID != _intent.destination
         ) {
             delete _provenIntents[intentHash];
-            emit IntentProven(intentHash, bytes32(0)); // Emit with zero bytes32 to indicate removal
+            emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
         }
     }
 

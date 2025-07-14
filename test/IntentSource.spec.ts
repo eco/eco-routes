@@ -260,17 +260,18 @@ describe('Intent Source Test', (): void => {
         .to.emit(intentSource, 'IntentPublished')
         .withArgs(
           intentHash,
+          routeHash,
           chainId,
           salt,
           expiry,
           addressToBytes32(await inbox.getAddress()),
-          routeTokens.map(Object.values),
-          calls.map(Object.values),
+          routeTokens.map((t) => [addressToBytes32(t.token), t.amount]),
+          calls.map((c) => [addressToBytes32(c.target), c.data, c.value]),
           addressToBytes32(await creator.getAddress()),
           addressToBytes32(await prover.getAddress()),
           expiry,
           rewardNativeEth,
-          rewardTokens.map(Object.values),
+          rewardTokens.map((t) => [addressToBytes32(t.token), t.amount]),
         )
     })
   })
@@ -369,7 +370,7 @@ describe('Intent Source Test', (): void => {
             .withdraw(chainId, routeHash, intent.reward),
         )
           .to.emit(intentSource, 'IntentWithdrawn')
-          .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
+          .withArgs(intentHash, await claimant.getAddress())
       })
       it('does not allow repeat withdrawal', async () => {
         await intentSource
@@ -382,13 +383,13 @@ describe('Intent Source Test', (): void => {
         ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
       })
       it('allows refund if already claimed', async () => {
-        expect(
-          await intentSource
+        await expect(
+          intentSource
             .connect(otherPerson)
             .withdraw(chainId, routeHash, intent.reward),
         )
           .to.emit(intentSource, 'IntentWithdrawn')
-          .withArgs(intentHash, addressToBytes32(await claimant.getAddress()))
+          .withArgs(intentHash, await claimant.getAddress())
 
         await expect(
           intentSource
@@ -396,7 +397,7 @@ describe('Intent Source Test', (): void => {
             .refund(chainId, routeHash, intent.reward),
         )
           .to.emit(intentSource, 'IntentRefunded')
-          .withArgs(intentHash, addressToBytes32(reward.creator))
+          .withArgs(intentHash, reward.creator)
       })
     })
     context('after expiry, no proof', () => {
@@ -1263,7 +1264,7 @@ describe('Intent Source Test', (): void => {
           ),
       )
         .to.emit(intentSource, 'IntentFunded')
-        .withArgs(intentHash, addressToBytes32(creator.address), true)
+        .withArgs(intentHash, creator.address, true)
 
       expect(
         await intentSource.isIntentFunded({
@@ -1288,7 +1289,7 @@ describe('Intent Source Test', (): void => {
       }
 
       // Create and fund intent with zero amounts
-      await intentSource
+      const publishTx = await intentSource
         .connect(creator)
         .publish({ destination: chainId, route, reward })
 
@@ -1642,7 +1643,7 @@ describe('Intent Source Test', (): void => {
               reward,
             })
           )[0],
-          addressToBytes32(creator.address),
+          creator.address,
           false,
         )
 
@@ -1737,7 +1738,7 @@ describe('Intent Source Test', (): void => {
               reward,
             })
           )[0],
-          addressToBytes32(creator.address),
+          creator.address,
           false,
         )
 
@@ -1820,7 +1821,7 @@ describe('Intent Source Test', (): void => {
       // Check first transaction emits IntentFunded with complete=false
       await expect(firstTx)
         .to.emit(intentSource, 'IntentFunded')
-        .withArgs(intentHash, addressToBytes32(creator.address), false)
+        .withArgs(intentHash, creator.address, false)
 
       const vaultAddress = await intentSource.intentVaultAddress({
         destination: chainId,

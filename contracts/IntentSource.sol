@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IProver} from "./interfaces/IProver.sol";
 import {Intent, Route, Reward, Call, TokenAmount} from "./types/Intent.sol";
+import {Call as UniversalCall, TokenAmount as UniversalTokenAmount} from "./types/UniversalIntent.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {Vault} from "./Vault.sol";
@@ -109,7 +110,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentCreated(intent, intentHash);
+        _emitIntentPublished(intent, intentHash, routeHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
     }
@@ -132,7 +133,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         _validateInitialFundingState(state, intentHash);
         _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
-        _emitIntentCreated(intent, intentHash);
+        _emitIntentPublished(intent, intentHash, routeHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
         _fundIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
@@ -225,7 +226,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentCreated(intent, intentHash);
+        _emitIntentPublished(intent, intentHash, routeHash);
         _validateSourceChain(block.chainid, intentHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
@@ -299,7 +300,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             state.target = claimant;
             vaults[intentHash].state = state;
 
-            emit IntentWithdrawn(intentHash, claimant.toBytes32());
+            emit IntentWithdrawn(intentHash, claimant);
 
             // Try to create vault, ignore if it already exists
             try new Vault{salt: routeHash}(intentHash, reward) {
@@ -326,7 +327,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
                 state.target = address(0);
                 vaults[intentHash].state = state;
 
-                emit IntentRefunded(intentHash, reward.creator.toBytes32());
+                emit IntentRefunded(intentHash, reward.creator);
 
                 // Try to create vault, ignore if it already exists
                 try new Vault{salt: routeHash}(intentHash, reward) {
@@ -411,7 +412,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             state.target = address(0);
             vaults[intentHash].state = state;
 
-            emit IntentRefunded(intentHash, reward.creator.toBytes32());
+            emit IntentRefunded(intentHash, reward.creator);
 
             // Try to create vault, ignore if it already exists
             try new Vault{salt: routeHash}(intentHash, reward) {
@@ -421,7 +422,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             }
         } else {
             // Intent was already claimed, just emit the refund event without creating a vault
-            emit IntentRefunded(intentHash, reward.creator.toBytes32());
+            emit IntentRefunded(intentHash, reward.creator);
         }
     }
 
@@ -474,7 +475,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         state.target = token;
         vaults[intentHash].state = state;
 
-        emit IntentRefunded(intentHash, reward.creator.toBytes32());
+        emit IntentRefunded(intentHash, reward.creator);
 
         // Try to create vault, ignore if it already exists
         try new Vault{salt: routeHash}(intentHash, reward) {
@@ -527,23 +528,56 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      * @param intent The intent being created
      * @param intentHash Hash of the intent
      */
-    function _emitIntentCreated(
+    function _emitIntentPublished(
         Intent calldata intent,
-        bytes32 intentHash
+        bytes32 intentHash,
+        bytes32 routeHash
     ) internal virtual {
+        UniversalCall[] memory calls = new UniversalCall[](
+            intent.route.calls.length
+        );
+        for (uint256 i = 0; i < intent.route.calls.length; i++) {
+            calls[i] = UniversalCall({
+                target: intent.route.calls[i].target.toBytes32(),
+                data: intent.route.calls[i].data,
+                value: intent.route.calls[i].value
+            });
+        }
+
+        UniversalTokenAmount[] memory routeTokens = new UniversalTokenAmount[](
+            intent.route.tokens.length
+        );
+        for (uint256 i = 0; i < intent.route.tokens.length; i++) {
+            routeTokens[i] = UniversalTokenAmount({
+                token: intent.route.tokens[i].token.toBytes32(),
+                amount: intent.route.tokens[i].amount
+            });
+        }
+
+        UniversalTokenAmount[] memory rewardTokens = new UniversalTokenAmount[](
+            intent.reward.tokens.length
+        );
+        for (uint256 i = 0; i < intent.reward.tokens.length; i++) {
+            rewardTokens[i] = UniversalTokenAmount({
+                token: intent.reward.tokens[i].token.toBytes32(),
+                amount: intent.reward.tokens[i].amount
+            });
+        }
+
         emit IntentPublished(
             intentHash,
+            routeHash,
             intent.destination,
             intent.route.salt,
             intent.route.deadline,
             intent.route.portal.toBytes32(),
-            intent.route.tokens,
-            intent.route.calls,
+            routeTokens,
+            calls,
             intent.reward.creator.toBytes32(),
             intent.reward.prover.toBytes32(),
             intent.reward.deadline,
             intent.reward.nativeValue,
-            intent.reward.tokens
+            rewardTokens
         );
     }
 
@@ -638,10 +672,10 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
 
         if (partiallyFunded) {
             state.status = uint8(RewardStatus.PartiallyFunded);
-            emit IntentFunded(intentHash, funder.toBytes32(), false);
+            emit IntentFunded(intentHash, funder, false);
         } else {
             state.status = uint8(RewardStatus.Funded);
-            emit IntentFunded(intentHash, funder.toBytes32(), true);
+            emit IntentFunded(intentHash, funder, true);
         }
 
         vaults[intentHash].state = state;
@@ -711,7 +745,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
 
         // Only emit events if we get here (vault creation succeeded)
         if (state.status == uint8(RewardStatus.Funded)) {
-            emit IntentFunded(intentHash, funder.toBytes32(), true);
+            emit IntentFunded(intentHash, funder, true);
         } else if (
             state.status == uint8(RewardStatus.PartiallyFunded) &&
             _isRewardFunded(reward, vault)
@@ -719,9 +753,9 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             state.status = uint8(RewardStatus.Funded);
             vaults[intentHash].state = state;
 
-            emit IntentFunded(intentHash, funder.toBytes32(), true);
+            emit IntentFunded(intentHash, funder, true);
         } else {
-            emit IntentFunded(intentHash, funder.toBytes32(), false);
+            emit IntentFunded(intentHash, funder, false);
         }
     }
 
