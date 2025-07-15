@@ -24,54 +24,54 @@ abstract contract MessageBridgeProver is
 
     /**
      * @notice Initializes the MessageBridgeProver contract
-     * @param _portal Address of the Portal contract
-     * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param portal Address of the Portal contract
+     * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
+     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
-        address _portal,
-        bytes32[] memory _provers,
-        uint256 _defaultGasLimit
-    ) BaseProver(_portal) Whitelist(_provers) {
-        if (_portal == address(0)) revert PortalCannotBeZeroAddress();
+        address portal,
+        bytes32[] memory provers,
+        uint256 defaultGasLimit
+    ) BaseProver(portal) Whitelist(provers) {
+        if (portal == address(0)) revert PortalCannotBeZeroAddress();
 
-        DEFAULT_GAS_LIMIT = _defaultGasLimit > 0 ? _defaultGasLimit : 200_000;
+        DEFAULT_GAS_LIMIT = defaultGasLimit > 0 ? defaultGasLimit : 200_000;
     }
 
     /**
      * @notice Validates that the message sender is authorized
      * @dev Template method for authorization check
-     * @param _messageSender Address attempting to call handle()
-     * @param _expectedSender Address that should be authorized
+     * @param messageSender Address attempting to call handle()
+     * @param expectedSender Address that should be authorized
      */
     function _validateMessageSender(
-        address _messageSender,
-        address _expectedSender
+        address messageSender,
+        address expectedSender
     ) internal pure {
-        if (_expectedSender != _messageSender) {
-            revert UnauthorizedHandle(_messageSender);
+        if (expectedSender != messageSender) {
+            revert UnauthorizedHandle(messageSender);
         }
     }
 
     /**
      * @notice Validates that the proving request is authorized
-     * @param _sender Address that sent the proving request
+     * @param sender Address that sent the proving request
      */
-    function _validateProvingRequest(address _sender) internal view {
-        if (_sender != PORTAL) {
-            revert UnauthorizedProve(_sender);
+    function _validateProvingRequest(address sender) internal view {
+        if (sender != PORTAL) {
+            revert UnauthorizedProve(sender);
         }
     }
 
     /**
      * @notice Send refund to the user if they've overpaid
-     * @param _recipient Address to send the refund to
-     * @param _amount Amount to refund
+     * @param recipient Address to send the refund to
+     * @param amount Amount to refund
      */
-    function _sendRefund(address _recipient, uint256 _amount) internal {
-        if (_amount > 0 && _recipient != address(0)) {
-            (bool success, ) = payable(_recipient).call{
-                value: _amount,
+    function _sendRefund(address recipient, uint256 amount) internal {
+        if (amount > 0 && recipient != address(0)) {
+            (bool success, ) = payable(recipient).call{
+                value: amount,
                 gas: 3000
             }("");
             if (!success) {
@@ -83,28 +83,28 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
-     * @param _message Encoded array of intent hashes and claimants
+     * @param sourceChainId Chain ID of the source chain
+     * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
+     * @param message Encoded array of intent hashes and claimants
      */
     function _handleCrossChainMessage(
-        uint256 _sourceChainId,
-        bytes32 _messageSender,
-        bytes calldata _message
+        uint256 sourceChainId,
+        bytes32 messageSender,
+        bytes calldata message
     ) internal {
         // Verify dispatch originated from a whitelisted prover address
-        if (!isWhitelisted(_messageSender)) {
-            revert UnauthorizedIncomingProof(_messageSender);
+        if (!isWhitelisted(messageSender)) {
+            revert UnauthorizedIncomingProof(messageSender);
         }
 
         // Decode message containing intent hashes and claimants
         (bytes32[] memory hashes, bytes32[] memory claimants) = abi.decode(
-            _message,
+            message,
             (bytes32[], bytes32[])
         );
 
         // Process the intent proofs using shared implementation - array validation happens there
         // The source chain ID becomes the destination chain ID in the proof
-        _processIntentProofs(hashes, claimants, _sourceChainId);
+        _processIntentProofs(hashes, claimants, sourceChainId);
     }
 }

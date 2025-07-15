@@ -386,8 +386,6 @@ contract UniversalSourceTest is BaseTest {
 
     function testConsistentHashingBetweenFormats() public view {
         // Test that the same intent produces the same hash regardless of format
-        EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
-
         bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         bytes32 universalHash = universalSource.getIntentHash(
             universalIntent,
@@ -400,7 +398,6 @@ contract UniversalSourceTest is BaseTest {
 
     function testConsistentVaultAddressBetweenFormats() public view {
         // Test that the same intent produces the same vault address regardless of format
-        EVMIntent memory evmIntent = _convertToEVMIntent(universalIntent);
 
         bytes32 routeHash = keccak256(abi.encode(universalIntent.route));
         address universalVault = universalSource.intentVaultAddress(

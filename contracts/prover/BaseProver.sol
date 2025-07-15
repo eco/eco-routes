@@ -97,13 +97,13 @@ abstract contract BaseProver is IProver, ERC165 {
     /**
      * @notice Challenge an intent proof if destination chain ID doesn't match
      * @dev Can be called by anyone to remove invalid proofs
-     * @param _intent The intent to challenge
+     * @param intent The intent to challenge
      */
-    function challengeIntentProof(Intent calldata _intent) external {
-        bytes32 routeHash = keccak256(abi.encode(_intent.route));
-        bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
+    function challengeIntentProof(Intent calldata intent) external {
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = keccak256(
-            abi.encodePacked(_intent.destination, routeHash, rewardHash)
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
         );
 
         ProofData memory proof = _provenIntents[intentHash];
@@ -111,7 +111,7 @@ abstract contract BaseProver is IProver, ERC165 {
         // Only challenge if proof exists and destination chain ID doesn't match
         if (
             proof.claimant != address(0) &&
-            proof.destinationChainID != _intent.destination
+            proof.destinationChainID != intent.destination
         ) {
             delete _provenIntents[intentHash];
             emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal

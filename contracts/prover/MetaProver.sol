@@ -23,9 +23,9 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Chain ID is too large to fit in uint32
-     * @param _chainId The chain ID that is too large
+     * @param chainId The chain ID that is too large
      */
-    error ChainIdTooLarge(uint256 _chainId);
+    error ChainIdTooLarge(uint256 chainId);
 
     /**
      * @notice Constant indicating this contract uses Metalayer for proving
@@ -39,78 +39,78 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Initializes the MetaProver contract
-     * @param _router Address of local Metalayer router
-     * @param _portal Address of Portal contract
-     * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param router Address of local Metalayer router
+     * @param portal Address of Portal contract
+     * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
+     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
-        address _router,
-        address _portal,
-        bytes32[] memory _provers,
-        uint256 _defaultGasLimit
-    ) MessageBridgeProver(_portal, _provers, _defaultGasLimit) {
-        if (_router == address(0)) revert RouterCannotBeZeroAddress();
-        ROUTER = _router;
+        address router,
+        address portal,
+        bytes32[] memory provers,
+        uint256 defaultGasLimit
+    ) MessageBridgeProver(portal, provers, defaultGasLimit) {
+        if (router == address(0)) revert RouterCannotBeZeroAddress();
+        ROUTER = router;
     }
 
     /**
      * @notice Handles incoming Metalayer messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
      * @dev called by the Metalayer Router on the source chain
-     * @param _origin Origin chain ID from the destination chain
-     * @param _sender Address that dispatched the message on destination chain
-     * @param _message Encoded array of intent hashes and claimants
+     * @param origin Origin chain ID from the destination chain
+     * @param sender Address that dispatched the message on destination chain
+     * @param message Encoded array of intent hashes and claimants
      */
     function handle(
-        uint32 _origin,
-        bytes32 _sender,
-        bytes calldata _message,
-        ReadOperation[] calldata /* _operations */,
-        bytes[] calldata /* _operationsData */
+        uint32 origin,
+        bytes32 sender,
+        bytes calldata message,
+        ReadOperation[] calldata /* operations */,
+        bytes[] calldata /* operationsData */
     ) external payable {
         // Verify message is from authorized router
         _validateMessageSender(msg.sender, ROUTER);
 
-        // Verify _origin and _sender are valid
-        if (_origin == 0) revert InvalidOriginChainId();
+        // Verify origin and sender are valid
+        if (origin == 0) revert InvalidOriginChainId();
 
         // Validate sender is not zero
-        if (_sender == bytes32(0)) revert SenderCannotBeZeroAddress();
+        if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(_origin, _sender, _message);
+        _handleCrossChainMessage(origin, sender, message);
     }
 
     /**
      * @notice Initiates proving of intents via Metalayer
      * @dev Sends message to source chain prover with intent data
      * @dev called by the Portal contract on the destination chain
-     * @param _sender Address that initiated the proving request
-     * @param _sourceChainId Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
-     * @param _data Additional data used for proving.
-     * @dev the _data parameter is expected to contain the sourceChainProver (a bytes32), plus an optional gas limit override
+     * @param sender Address that initiated the proving request
+     * @param sourceChainId Chain ID of source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
+     * @param data Additional data used for proving.
+     * @dev the data parameter is expected to contain the sourceChainProver (a bytes32), plus an optional gas limit override
      * @dev The gas limit override is expected to be a uint256 value, and will only be used if it is greater than the default gas limit
      */
     function prove(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        address sender,
+        uint256 sourceChainId,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) external payable override {
         // Validate the request is from Portal
         _validateProvingRequest(msg.sender);
 
         // Decode source chain prover address only once
-        bytes32 sourceChainProver = abi.decode(_data, (bytes32));
+        bytes32 sourceChainProver = abi.decode(data, (bytes32));
 
         // Calculate fee with pre-decoded value
         uint256 fee = _fetchFee(
-            _sourceChainId,
-            _intentHashes,
-            _claimants,
+            sourceChainId,
+            intentHashes,
+            claimants,
             sourceChainProver
         );
 
@@ -120,21 +120,21 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         }
 
         // Calculate refund amount if overpaid
-        uint256 _refundAmount = 0;
+        uint256 refundAmount = 0;
         if (msg.value > fee) {
-            _refundAmount = msg.value - fee;
+            refundAmount = msg.value - fee;
         }
 
-        emit BatchSent(_intentHashes, _sourceChainId);
+        emit BatchSent(intentHashes, sourceChainId);
 
-        // Decode any additional gas limit data from the _data parameter
+        // Decode any additional gas limit data from the data parameter
         uint256 gasLimit = DEFAULT_GAS_LIMIT;
 
         // For Metalayer, we expect data to include sourceChainProver(32 bytes)
         // If data is long enough, the gas limit is packed at position 64-96
         // will only use custom gas limit if it is greater than the default
-        if (_data.length >= 64) {
-            uint256 customGasLimit = uint256(bytes32(_data[32:64]));
+        if (data.length >= 64) {
+            uint256 customGasLimit = uint256(bytes32(data[32:64]));
             if (customGasLimit > DEFAULT_GAS_LIMIT) {
                 gasLimit = customGasLimit;
             }
@@ -146,9 +146,9 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             bytes32 recipient,
             bytes memory message
         ) = _formatMetalayerMessage(
-                _sourceChainId,
-                _intentHashes,
-                _claimants,
+                sourceChainId,
+                intentHashes,
+                claimants,
                 sourceChainProver
             );
 
@@ -163,60 +163,60 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         );
 
         // Send refund if needed
-        _sendRefund(_sender, _refundAmount);
+        _sendRefund(sender, refundAmount);
     }
 
     /**
      * @notice Fetches fee required for message dispatch
      * @dev Queries Metalayer router for fee information
-     * @param _sourceChainID Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
-     * @param _data Additional data for message formatting
+     * @param sourceChainID Chain ID of source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
+     * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainID,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        uint256 sourceChainID,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) public view override returns (uint256) {
         // Decode source chain prover once at the entry point
-        bytes32 sourceChainProver = abi.decode(_data, (bytes32));
+        bytes32 sourceChainProver = abi.decode(data, (bytes32));
 
         // Delegate to internal function with pre-decoded value
         return
             _fetchFee(
-                _sourceChainID,
-                _intentHashes,
-                _claimants,
+                sourceChainID,
+                intentHashes,
+                claimants,
                 sourceChainProver
             );
     }
 
     /**
      * @notice Internal function to calculate fee with pre-decoded data
-     * @param _sourceChainID Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
-     * @param _sourceChainProver Pre-decoded prover address on source chain
+     * @param sourceChainID Chain ID of source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
+     * @param sourceChainProver Pre-decoded prover address on source chain
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 _sourceChainID,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes32 _sourceChainProver
+        uint256 sourceChainID,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes32 sourceChainProver
     ) internal view returns (uint256) {
         (
             uint32 sourceChainDomain,
             bytes32 recipient,
             bytes memory message
         ) = _formatMetalayerMessage(
-                _sourceChainID,
-                _intentHashes,
-                _claimants,
-                _sourceChainProver
+                sourceChainID,
+                intentHashes,
+                claimants,
+                sourceChainProver
             );
 
         return
@@ -237,41 +237,41 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Formats data for Metalayer message dispatch with pre-decoded values
-     * @param _sourceChainID Chain ID of the source chain
-     * @param _hashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param _sourceChainProver Pre-decoded prover address on source chain
+     * @param sourceChainID Chain ID of the source chain
+     * @param hashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param sourceChainProver Pre-decoded prover address on source chain
      * @return domain Metalayer domain ID
      * @return recipient Recipient address encoded as bytes32
      * @return message Encoded message body with intent hashes and claimants
      */
     function _formatMetalayerMessage(
-        uint256 _sourceChainID,
-        bytes32[] calldata _hashes,
-        bytes32[] calldata _claimants,
-        bytes32 _sourceChainProver
+        uint256 sourceChainID,
+        bytes32[] calldata hashes,
+        bytes32[] calldata claimants,
+        bytes32 sourceChainProver
     )
         internal
         pure
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
         // Centralized validation ensures arrays match exactly once in the call flow
-        if (_hashes.length != _claimants.length) {
+        if (hashes.length != claimants.length) {
             revert ArrayLengthMismatch();
         }
 
         // Check if chain ID fits in uint32
-        if (_sourceChainID > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainID);
+        if (sourceChainID > type(uint32).max) {
+            revert ChainIdTooLarge(sourceChainID);
         }
 
         // Convert chain ID to domain
-        domain = _sourceChainID.toUint32();
+        domain = sourceChainID.toUint32();
 
         // Use pre-decoded source chain prover address as recipient
-        recipient = _sourceChainProver;
+        recipient = sourceChainProver;
 
         // Pack intent hashes and claimant addresses together as message payload
-        message = abi.encode(_hashes, _claimants);
+        message = abi.encode(hashes, claimants);
     }
 }

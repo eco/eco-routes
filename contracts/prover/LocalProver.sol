@@ -26,21 +26,21 @@ contract SameChainProver is IProver, Semver {
 
     uint64 private immutable _CHAIN_ID;
 
-    constructor(address payable _inbox) {
-        _INBOX = Inbox(_inbox);
+    constructor(address payable inbox) {
+        _INBOX = Inbox(inbox);
         _CHAIN_ID = uint64(block.chainid);
     }
 
     /**
      * @notice Fetches a ProofData from the provenIntents mapping
-     * @param _intentHash the hash of the intent whose proof data is being queried
+     * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
 
     function provenIntents(
-        bytes32 _intentHash
+        bytes32 intentHash
     ) public view override returns (ProofData memory) {
-        bytes32 fulfilledClaimant = _INBOX.fulfilled(_intentHash);
+        bytes32 fulfilledClaimant = _INBOX.fulfilled(intentHash);
         // Convert bytes32 to address if it's a valid Ethereum address
         address claimant = address(0);
         if (fulfilledClaimant != bytes32(0)) {
@@ -57,11 +57,11 @@ contract SameChainProver is IProver, Semver {
     }
 
     function prove(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        address sender,
+        uint256 sourceChainId,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) external payable {
         // this function is intentionally left empty as no proof is required
         // for same-chain proving

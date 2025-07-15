@@ -40,9 +40,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Chain ID is too large to fit in uint32
-     * @param _chainId The chain ID that is too large
+     * @param chainId The chain ID that is too large
      */
-    error ChainIdTooLarge(uint256 _chainId);
+    error ChainIdTooLarge(uint256 chainId);
 
     /**
      * @notice Constant indicating this contract uses Hyperlane for proving
@@ -55,72 +55,72 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     address public immutable MAILBOX;
 
     /**
-     * @param _mailbox Address of local Hyperlane mailbox
-     * @param _portal Address of Portal contract
-     * @param _provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param mailbox Address of local Hyperlane mailbox
+     * @param portal Address of Portal contract
+     * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
+     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
      */
     constructor(
-        address _mailbox,
-        address _portal,
-        bytes32[] memory _provers,
-        uint256 _defaultGasLimit
-    ) MessageBridgeProver(_portal, _provers, _defaultGasLimit) {
-        if (_mailbox == address(0)) revert MailboxCannotBeZeroAddress();
-        MAILBOX = _mailbox;
+        address mailbox,
+        address portal,
+        bytes32[] memory provers,
+        uint256 defaultGasLimit
+    ) MessageBridgeProver(portal, provers, defaultGasLimit) {
+        if (mailbox == address(0)) revert MailboxCannotBeZeroAddress();
+        MAILBOX = mailbox;
     }
 
     /**
      * @notice Handles incoming Hyperlane messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
-     * @param _origin Origin chain ID from the source chain
-     * @param _sender Address that dispatched the message on source chain
-     * @param _messageBody Encoded array of intent hashes and claimants
+     * @param origin Origin chain ID from the source chain
+     * @param sender Address that dispatched the message on source chain
+     * @param messageBody Encoded array of intent hashes and claimants
      */
     function handle(
-        uint32 _origin,
-        bytes32 _sender,
-        bytes calldata _messageBody
+        uint32 origin,
+        bytes32 sender,
+        bytes calldata messageBody
     ) public payable {
         // Verify message is from authorized mailbox
         _validateMessageSender(msg.sender, MAILBOX);
 
-        // Verify _origin and _sender are valid
-        if (_origin == 0) revert InvalidOriginChainId();
+        // Verify origin and sender are valid
+        if (origin == 0) revert InvalidOriginChainId();
 
         // Validate sender is not zero
-        if (_sender == bytes32(0)) revert SenderCannotBeZeroAddress();
+        if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(_origin, _sender, _messageBody);
+        _handleCrossChainMessage(origin, sender, messageBody);
     }
 
     /**
      * @notice Initiates proving of intents via Hyperlane
      * @dev Sends message to source chain prover with intent data
-     * @param _sender Address that initiated the proving request
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param _data Additional data for message formatting
+     * @param sender Address that initiated the proving request
+     * @param sourceChainId Chain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param data Additional data for message formatting
      */
     function prove(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        address sender,
+        uint256 sourceChainId,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) external payable virtual override {
         // Validate the request is from Portal
         _validateProvingRequest(msg.sender);
 
         // Parse incoming data into a structured format for processing
-        UnpackedData memory unpacked = _unpackData(_data);
+        UnpackedData memory unpacked = _unpackData(data);
 
         // Calculate fee
         uint256 fee = _fetchFee(
-            _sourceChainId,
-            _intentHashes,
-            _claimants,
+            sourceChainId,
+            intentHashes,
+            claimants,
             unpacked
         );
 
@@ -130,12 +130,12 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         }
 
         // Calculate refund amount if overpaid
-        uint256 _refundAmount = 0;
+        uint256 refundAmount = 0;
         if (msg.value > fee) {
-            _refundAmount = msg.value - fee;
+            refundAmount = msg.value - fee;
         }
 
-        emit BatchSent(_intentHashes, _sourceChainId);
+        emit BatchSent(intentHashes, sourceChainId);
 
         // Use default gas limit for metadata
         // TODO: If custom gas limit is needed, it should be passed in a different way
@@ -143,9 +143,9 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Prepare parameters for cross-chain message dispatch using a struct
         // to reduce stack usage and improve code maintainability
         DispatchParams memory params = _formatHyperlaneMessage(
-            _sourceChainId,
-            _intentHashes,
-            _claimants,
+            sourceChainId,
+            intentHashes,
+            claimants,
             unpacked
         );
 
@@ -161,66 +161,66 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         );
 
         // Send refund if needed
-        _sendRefund(_sender, _refundAmount);
+        _sendRefund(sender, refundAmount);
     }
 
     /**
      * @notice Calculates the fee required for Hyperlane message dispatch
      * @dev Queries the Mailbox contract for accurate fee estimation
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param _data Additional data for message formatting
+     * @param sourceChainId Chain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        uint256 sourceChainId,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) public view override returns (uint256) {
         // Decode structured data from the raw input
-        UnpackedData memory unpacked = _unpackData(_data);
+        UnpackedData memory unpacked = _unpackData(data);
 
         // Process fee calculation using the decoded struct
         // This architecture separates decoding from core business logic
-        return _fetchFee(_sourceChainId, _intentHashes, _claimants, unpacked);
+        return _fetchFee(sourceChainId, intentHashes, claimants, unpacked);
     }
 
     /**
      * @notice Decodes the raw cross-chain message data into a structured format
      * @dev Parses ABI-encoded parameters into the UnpackedData struct
-     * @param _data Raw message data containing source chain information
+     * @param data Raw message data containing source chain information
      * @return unpacked Structured representation of the decoded parameters
      */
     function _unpackData(
-        bytes calldata _data
+        bytes calldata data
     ) internal pure returns (UnpackedData memory unpacked) {
         (unpacked.sourceChainProver, unpacked.metadata, unpacked.hookAddr) = abi
-            .decode(_data, (bytes32, bytes, address));
+            .decode(data, (bytes32, bytes, address));
 
         return unpacked;
     }
 
     /**
      * @notice Internal function to calculate the fee with pre-decoded data
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param unpacked Struct containing decoded data from _data parameter
+     * @param sourceChainId Chain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param unpacked Struct containing decoded data from data parameter
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
+        uint256 sourceChainId,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
         DispatchParams memory params = _formatHyperlaneMessage(
-            _sourceChainId,
-            _intentHashes,
-            _claimants,
+            sourceChainId,
+            intentHashes,
+            claimants,
             unpacked
         );
 
@@ -246,43 +246,43 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Formats data for Hyperlane message dispatch with pre-decoded values
      * @dev Prepares all parameters needed for the Mailbox dispatch call
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _hashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param _unpacked Struct containing decoded data from _data parameter
+     * @param sourceChainId Chain ID of the source chain
+     * @param hashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param unpacked Struct containing decoded data from data parameter
      * @return params Structured dispatch parameters for Hyperlane message
      */
     function _formatHyperlaneMessage(
-        uint256 _sourceChainId,
-        bytes32[] calldata _hashes,
-        bytes32[] calldata _claimants,
-        UnpackedData memory _unpacked
+        uint256 sourceChainId,
+        bytes32[] calldata hashes,
+        bytes32[] calldata claimants,
+        UnpackedData memory unpacked
     ) internal view returns (DispatchParams memory params) {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
-        if (_hashes.length != _claimants.length) {
+        if (hashes.length != claimants.length) {
             revert ArrayLengthMismatch();
         }
 
         // Convert chain ID to Hyperlane domain ID format
         // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (_sourceChainId > type(uint32).max) {
-            revert ChainIdTooLarge(_sourceChainId);
+        if (sourceChainId > type(uint32).max) {
+            revert ChainIdTooLarge(sourceChainId);
         }
-        params.destinationDomain = uint32(_sourceChainId);
+        params.destinationDomain = uint32(sourceChainId);
 
         // Use the source chain prover address as the message recipient
-        params.recipientAddress = _unpacked.sourceChainProver;
+        params.recipientAddress = unpacked.sourceChainProver;
 
         // Pack intent hashes and claimant addresses together as the message payload
-        params.messageBody = abi.encode(_hashes, _claimants);
+        params.messageBody = abi.encode(hashes, claimants);
 
         // Pass through metadata as provided
-        params.metadata = _unpacked.metadata;
+        params.metadata = unpacked.metadata;
 
         // Default to mailbox's hook if none provided, following Hyperlane best practices
-        params.hook = (_unpacked.hookAddr == address(0))
+        params.hook = (unpacked.hookAddr == address(0))
             ? IMailbox(MAILBOX).defaultHook()
-            : IPostDispatchHook(_unpacked.hookAddr);
+            : IPostDispatchHook(unpacked.hookAddr);
     }
 }

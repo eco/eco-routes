@@ -12,9 +12,9 @@ import {Intent} from "../types/Intent.sol";
 interface IMessageBridgeProver is IProver {
     /**
      * @notice Insufficient fee provided for cross-chain message dispatch
-     * @param _requiredFee Amount of fee required
+     * @param requiredFee Amount of fee required
      */
-    error InsufficientFee(uint256 _requiredFee);
+    error InsufficientFee(uint256 requiredFee);
 
     /**
      * @notice Native token transfer failed
@@ -23,21 +23,21 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Unauthorized call to handle() detected
-     * @param _sender Address that attempted the call
+     * @param sender Address that attempted the call
      */
-    error UnauthorizedHandle(address _sender);
+    error UnauthorizedHandle(address sender);
 
     /**
      * @notice Unauthorized call to initiate proving
-     * @param _sender Address that initiated
+     * @param sender Address that initiated
      */
-    error UnauthorizedProve(address _sender);
+    error UnauthorizedProve(address sender);
 
     /**
      * @notice Unauthorized incoming proof from source chain
-     * @param _sender Address that initiated the proof (as bytes32 for cross-VM compatibility)
+     * @param sender Address that initiated the proof (as bytes32 for cross-VM compatibility)
      */
-    error UnauthorizedIncomingProof(bytes32 _sender);
+    error UnauthorizedIncomingProof(bytes32 sender);
 
     /**
      * @notice Mailbox address cannot be zero
@@ -66,26 +66,26 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
-     * @param _hashes Intent hashes sent in the batch
-     * @param _sourceChainID ID of the source chain
+     * @param hashes Intent hashes sent in the batch
+     * @param sourceChainID ID of the source chain
      */
-    event BatchSent(bytes32[] indexed _hashes, uint256 indexed _sourceChainID);
+    event BatchSent(bytes32[] indexed hashes, uint256 indexed sourceChainID);
 
     /**
      * @notice Calculates the fee required for message dispatch
-     * @param _sourceChainID Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
-     * @param _data Additional data for message formatting.
+     * @param sourceChainID Chain ID of source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param data Additional data for message formatting.
      *        Specific format varies by implementation:
      *        - HyperProver: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
      *        - MetaProver: (bytes32 sourceChainProver, [uint256 gasLimitOverride])
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainID,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        uint256 sourceChainID,
+        bytes32[] calldata intentHashes,
+        bytes32[] calldata claimants,
+        bytes calldata data
     ) external view returns (uint256);
 }
