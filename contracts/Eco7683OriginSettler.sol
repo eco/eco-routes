@@ -92,7 +92,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     function openFor(
         GaslessCrossChainOrder calldata order,
         bytes calldata signature,
-        bytes calldata originFillerData
+        bytes calldata /* originFillerData */
     ) external payable override {
         if (block.timestamp > order.openDeadline) {
             revert OpenDeadlinePassed();

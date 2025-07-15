@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {IProver} from "../interfaces/IProver.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Inbox} from "../Inbox.sol";
 import {Intent} from "../types/Intent.sol";

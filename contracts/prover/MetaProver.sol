@@ -22,12 +22,6 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     using SafeCast for uint256;
 
     /**
-     * @notice Chain ID is too large to fit in uint32
-     * @param chainId The chain ID that is too large
-     */
-    error ChainIdTooLarge(uint256 chainId);
-
-    /**
      * @notice Constant indicating this contract uses Metalayer for proving
      */
     string public constant PROOF_TYPE = "Metalayer";
@@ -82,50 +76,23 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Initiates proving of intents via Metalayer
-     * @dev Sends message to source chain prover with intent data
-     * @dev called by the Portal contract on the destination chain
-     * @param sender Address that initiated the proving request
-     * @param sourceChainId Chain ID of source chain
+     * @notice Implementation of message dispatch for Metalayer
+     * @dev Called by base prove() function after common validations
+     * @param sourceChainId Chain ID of the source chain
      * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
-     * @param data Additional data used for proving.
-     * @dev the data parameter is expected to contain the sourceChainProver (a bytes32), plus an optional gas limit override
-     * @dev The gas limit override is expected to be a uint256 value, and will only be used if it is greater than the default gas limit
+     * @param claimants Array of claimant addresses
+     * @param data Additional data for message formatting
+     * @param fee Fee amount for message dispatch
      */
-    function prove(
-        address sender,
+    function _dispatchMessage(
         uint256 sourceChainId,
         bytes32[] calldata intentHashes,
         bytes32[] calldata claimants,
-        bytes calldata data
-    ) external payable override {
-        // Validate the request is from Portal
-        _validateProvingRequest(msg.sender);
-
+        bytes calldata data,
+        uint256 fee
+    ) internal override {
         // Decode source chain prover address only once
         bytes32 sourceChainProver = abi.decode(data, (bytes32));
-
-        // Calculate fee with pre-decoded value
-        uint256 fee = _fetchFee(
-            sourceChainId,
-            intentHashes,
-            claimants,
-            sourceChainProver
-        );
-
-        // Check if enough fee was provided
-        if (msg.value < fee) {
-            revert InsufficientFee(fee);
-        }
-
-        // Calculate refund amount if overpaid
-        uint256 refundAmount = 0;
-        if (msg.value > fee) {
-            refundAmount = msg.value - fee;
-        }
-
-        emit BatchSent(intentHashes, sourceChainId);
 
         // Decode any additional gas limit data from the data parameter
         uint256 gasLimit = DEFAULT_GAS_LIMIT;
@@ -161,9 +128,6 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             FinalityState.INSTANT,
             gasLimit
         );
-
-        // Send refund if needed
-        _sendRefund(sender, refundAmount);
     }
 
     /**
@@ -256,17 +220,10 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
         // Centralized validation ensures arrays match exactly once in the call flow
-        if (hashes.length != claimants.length) {
-            revert ArrayLengthMismatch();
-        }
+        _validateArrayLengths(hashes, claimants);
 
-        // Check if chain ID fits in uint32
-        if (sourceChainID > type(uint32).max) {
-            revert ChainIdTooLarge(sourceChainID);
-        }
-
-        // Convert chain ID to domain
-        domain = sourceChainID.toUint32();
+        // Convert and validate chain ID to domain
+        domain = _validateChainId(sourceChainID);
 
         // Use pre-decoded source chain prover address as recipient
         recipient = sourceChainProver;

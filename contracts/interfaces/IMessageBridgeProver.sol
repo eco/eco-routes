@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {IProver} from "./IProver.sol";
-import {Intent} from "../types/Intent.sol";
 
 /**
  * @title IMessageBridgeProver

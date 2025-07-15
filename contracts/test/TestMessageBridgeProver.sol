@@ -105,8 +105,22 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         bytes32[] calldata /* _intentHashes */,
         bytes32[] calldata /* _claimants */,
         bytes calldata /* _data */
-    ) external view override returns (uint256) {
+    ) public view override returns (uint256) {
         return feeAmount;
+    }
+
+    /**
+     * @notice Mock implementation of _dispatchMessage
+     * @dev Does nothing for testing purposes
+     */
+    function _dispatchMessage(
+        uint256 /* sourceChainId */,
+        bytes32[] calldata /* intentHashes */,
+        bytes32[] calldata /* claimants */,
+        bytes calldata /* data */,
+        uint256 /* fee */
+    ) internal override {
+        // Mock implementation - does nothing
     }
 
     /**

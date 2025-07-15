@@ -72,9 +72,9 @@ interface IInbox {
 
     /**
      * @notice Attempted call to an EOA
-     * @param EOA EOA address to which call was attempted
+     * @param eoa EOA address to which call was attempted
      */
-    error CallToEOA(address EOA);
+    error CallToEOA(address eoa);
 
     /**
      * @notice Attempted to batch an unfulfilled intent

@@ -10,4 +10,5 @@ import {IInbox} from "./IInbox.sol";
  * @dev Combines source chain operations (publish, fund, refund, withdraw) and
  *      destination chain operations (fulfill, prove) in a single interface
  */
+// solhint-disable-next-line no-empty-blocks
 interface IPortal is IUniversalIntentSource, IInbox {}

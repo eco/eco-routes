@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 
@@ -37,12 +36,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes metadata; // Additional metadata for the message
         IPostDispatchHook hook; // Post-dispatch hook contract
     }
-
-    /**
-     * @notice Chain ID is too large to fit in uint32
-     * @param chainId The chain ID that is too large
-     */
-    error ChainIdTooLarge(uint256 chainId);
 
     /**
      * @notice Constant indicating this contract uses Hyperlane for proving
@@ -95,50 +88,23 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Initiates proving of intents via Hyperlane
-     * @dev Sends message to source chain prover with intent data
-     * @param sender Address that initiated the proving request
+     * @notice Implementation of message dispatch for Hyperlane
+     * @dev Called by base prove() function after common validations
      * @param sourceChainId Chain ID of the source chain
      * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param claimants Array of claimant addresses
      * @param data Additional data for message formatting
+     * @param fee Fee amount for message dispatch
      */
-    function prove(
-        address sender,
+    function _dispatchMessage(
         uint256 sourceChainId,
         bytes32[] calldata intentHashes,
         bytes32[] calldata claimants,
-        bytes calldata data
-    ) external payable virtual override {
-        // Validate the request is from Portal
-        _validateProvingRequest(msg.sender);
-
+        bytes calldata data,
+        uint256 fee
+    ) internal override {
         // Parse incoming data into a structured format for processing
         UnpackedData memory unpacked = _unpackData(data);
-
-        // Calculate fee
-        uint256 fee = _fetchFee(
-            sourceChainId,
-            intentHashes,
-            claimants,
-            unpacked
-        );
-
-        // Check if enough fee was provided
-        if (msg.value < fee) {
-            revert InsufficientFee(fee);
-        }
-
-        // Calculate refund amount if overpaid
-        uint256 refundAmount = 0;
-        if (msg.value > fee) {
-            refundAmount = msg.value - fee;
-        }
-
-        emit BatchSent(intentHashes, sourceChainId);
-
-        // Use default gas limit for metadata
-        // TODO: If custom gas limit is needed, it should be passed in a different way
 
         // Prepare parameters for cross-chain message dispatch using a struct
         // to reduce stack usage and improve code maintainability
@@ -159,9 +125,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
             params.metadata,
             params.hook
         );
-
-        // Send refund if needed
-        _sendRefund(sender, refundAmount);
     }
 
     /**
@@ -260,16 +223,11 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     ) internal view returns (DispatchParams memory params) {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
-        if (hashes.length != claimants.length) {
-            revert ArrayLengthMismatch();
-        }
+        _validateArrayLengths(hashes, claimants);
 
         // Convert chain ID to Hyperlane domain ID format
         // Validate the chain ID can fit in uint32 to prevent truncation issues
-        if (sourceChainId > type(uint32).max) {
-            revert ChainIdTooLarge(sourceChainId);
-        }
-        params.destinationDomain = uint32(sourceChainId);
+        params.destinationDomain = _validateChainId(sourceChainId);
 
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;

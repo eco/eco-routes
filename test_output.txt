@@ -1,4 +1,0 @@
-yarn run v1.22.22
-$ jest test/UniversalIntentSource.spec.ts
-No tests found, exiting with code 0
-Done in 0.48s.
