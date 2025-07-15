@@ -5,6 +5,11 @@ pragma solidity ^0.8.26;
 import {IDestinationSettler} from "./interfaces/ERC7683/IDestinationSettler.sol";
 import {Route} from "./types/Intent.sol";
 
+/**
+ * @title Eco7683DestinationSettler
+ * @notice Abstract contract implementing ERC-7683 destination chain settlement for Eco Protocol
+ * @dev Handles intent fulfillment on destination chains through the ERC-7683 standard interface
+ */
 abstract contract Eco7683DestinationSettler is IDestinationSettler {
     /**
      * @notice Fills a single leg of a particular order on the destination chain
@@ -49,6 +54,18 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         );
     }
 
+    /**
+     * @notice Fulfills an intent and initiates proving in one transaction
+     * @dev Abstract function to be implemented by concrete settlement contracts
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route information for the intent
+     * @param rewardHash The hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Address of prover on the destination chain
+     * @param source The source chain ID where the intent was created
+     * @param data Additional data for message formatting
+     * @return Array of execution results from intent calls
+     */
     function fulfillAndProve(
         bytes32 intentHash,
         Route memory route,

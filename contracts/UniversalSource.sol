@@ -17,7 +17,7 @@ import {IntentSource} from "./IntentSource.sol";
 /**
  * @title UniversalSource
  * @notice Implementation of Universal Intent Source interface using bytes32 types for cross-chain compatibility
- * @dev Extends EvmSource to add cross-chain intent functionality
+ * @dev Extends IntentSource to add cross-chain intent functionality for cross-VM compatibility
  */
 abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
     using SafeERC20 for IERC20;
@@ -536,8 +536,6 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
         return true;
     }
-
-    /* Removed ERC20Reward conversion function as we'll use original types */
 
     /**
      * @notice Calculates the deterministic address of an intent vault using CREATE2

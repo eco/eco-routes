@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";

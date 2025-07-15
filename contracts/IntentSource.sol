@@ -15,9 +15,9 @@ import {IVaultStorage} from "./interfaces/IVaultStorage.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 
 /**
- * @title EvmSource
- * @notice Implementation of Intent Source interface for EVM chains
- * @dev Base contract containing all core intent functionality
+ * @title IntentSource
+ * @notice Abstract contract for managing cross-chain intents and their associated rewards on the source chain
+ * @dev Base contract containing all core intent functionality for EVM chains
  */
 abstract contract IntentSource is IVaultStorage, IIntentSource {
     using SafeERC20 for IERC20;

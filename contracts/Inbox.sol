@@ -35,6 +35,7 @@ abstract contract Inbox is Eco7683DestinationSettler, IInbox {
 
     /**
      * @notice Initializes the Inbox contract
+     * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
     constructor() {}
 

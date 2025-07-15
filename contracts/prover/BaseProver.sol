@@ -96,7 +96,8 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Challenge an intent proof if destination chain ID doesn't match
-     * @dev Can be called by anyone to remove invalid proofs
+     * @dev Can be called by anyone to remove invalid proofs. This is a safety mechanism to ensure
+     *      intents are only claimable when executed on their intended destination chains.
      * @param intent The intent to challenge
      */
     function challengeIntentProof(Intent calldata intent) external {

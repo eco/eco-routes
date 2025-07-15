@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "../Eco7683DestinationSettler.sol";
-import "../Portal.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Eco7683DestinationSettler, Route} from "../Eco7683DestinationSettler.sol";
+import {Portal} from "../Portal.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {TokenAmount} from "../types/Intent.sol";
 
 contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
     using AddressConverter for bytes32;
 
-    Portal public immutable portal;
+    Portal public immutable PORTAL;
 
     constructor(address _portal) {
-        portal = Portal(payable(_portal));
+        PORTAL = Portal(payable(_portal));
     }
 
     function fulfillAndProve(
@@ -35,12 +35,12 @@ contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
                 token.amount
             );
             // Then approve the portal to spend these tokens
-            IERC20(token.token).approve(address(portal), token.amount);
+            IERC20(token.token).approve(address(PORTAL), token.amount);
         }
 
         // Call the portal's fulfillAndProve function
         return
-            portal.fulfillAndProve{value: msg.value}(
+            PORTAL.fulfillAndProve{value: msg.value}(
                 _intentHash,
                 _route,
                 _rewardHash,

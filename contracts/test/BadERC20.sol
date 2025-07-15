@@ -3,25 +3,25 @@
 pragma solidity ^0.8.26;
 
 import {TestERC20} from "./TestERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract BadERC20 is TestERC20 {
-    address private immutable god;
+    error TransferNotAllowed();
+    address private immutable GOD;
 
     constructor(
         string memory name_,
         string memory symbol_,
         address _god
     ) TestERC20(name_, symbol_) {
-        god = _god;
+        GOD = _god;
     }
 
     function transfer(
         address to,
         uint256 value
     ) public override returns (bool) {
-        if (msg.sender != god) {
-            revert("goml");
+        if (msg.sender != GOD) {
+            revert TransferNotAllowed();
         }
         return (super.transfer(to, value));
     }

@@ -21,6 +21,13 @@ abstract contract Whitelist {
      */
     error AddressNotWhitelisted(bytes32 addr);
 
+    /**
+     * @notice Whitelist size exceeds maximum allowed
+     * @param size Attempted whitelist size
+     * @param maxSize Maximum allowed size
+     */
+    error WhitelistSizeExceeded(uint256 size, uint256 maxSize);
+
     /// @dev Maximum number of addresses that can be whitelisted
     uint256 private constant MAX_WHITELIST_SIZE = 20;
 
@@ -53,8 +60,11 @@ abstract contract Whitelist {
      * @notice Initializes the whitelist with a set of addresses
      * @param addresses Array of addresses to whitelist (as bytes32 for cross-VM compatibility)
      */
+    // solhint-disable-next-line function-max-lines
     constructor(bytes32[] memory addresses) {
-        require(addresses.length <= MAX_WHITELIST_SIZE);
+        if (addresses.length > MAX_WHITELIST_SIZE) {
+            revert WhitelistSizeExceeded(addresses.length, MAX_WHITELIST_SIZE);
+        }
 
         // Store whitelist size
         WHITELIST_SIZE = addresses.length;
@@ -87,6 +97,7 @@ abstract contract Whitelist {
      * @param addr Address to check (as bytes32 for cross-VM compatibility)
      * @return True if the address is whitelisted, false otherwise
      */
+    // solhint-disable-next-line function-max-lines
     function isWhitelisted(bytes32 addr) public view returns (bool) {
         // Short circuit check for empty whitelist
         if (WHITELIST_SIZE == 0) return false;

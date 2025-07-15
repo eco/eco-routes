@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "../Eco7683DestinationSettler.sol";
-import "../Portal.sol";
+import {Eco7683DestinationSettler, Route} from "../Eco7683DestinationSettler.sol";
+import {Portal} from "../Portal.sol";
 
 contract TestDestinationSettler is Eco7683DestinationSettler {
-    Portal public immutable portal;
+    Portal public immutable PORTAL;
 
     constructor(address _portal) {
-        portal = Portal(payable(_portal));
+        PORTAL = Portal(payable(_portal));
     }
 
     function fulfillAndProve(
@@ -22,7 +22,7 @@ contract TestDestinationSettler is Eco7683DestinationSettler {
     ) public payable override returns (bytes[] memory) {
         // Call the portal's fulfillAndProve function
         return
-            portal.fulfillAndProve{value: msg.value}(
+            PORTAL.fulfillAndProve{value: msg.value}(
                 _intentHash,
                 _route,
                 _rewardHash,

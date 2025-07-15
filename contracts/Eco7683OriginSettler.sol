@@ -87,7 +87,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
      * @dev transfers the reward tokens at time of open
      * @param order the GaslessCrossChainOrder that will be opened as an eco intent
      * @param signature the signature of the user authorizing the intent to be opened
-     * @param originFillerData filler data for the origin chain (vestigial, not used)
+     * param originFillerData filler data for the origin chain (vestigial, not used)
      */
     function openFor(
         GaslessCrossChainOrder calldata order,
@@ -148,7 +148,13 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         return _resolve(order.openDeadline, orderData);
     }
 
-    /// @notice helper method for signature verification
+    /**
+     * @notice Helper method for signature verification
+     * @dev Verifies that the gasless order was properly signed by the user
+     * @param order The gasless cross-chain order to verify
+     * @param signature The user's signature
+     * @return True if the signature is valid, false otherwise
+     */
     function _verifyOpenFor(
         GaslessCrossChainOrder calldata order,
         bytes calldata signature
@@ -176,7 +182,14 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         return signer == order.user;
     }
 
-    /// @notice helper method that actually opens the intent
+    /**
+     * @notice Helper method that actually opens the intent
+     * @dev Handles funding transfer and intent publication
+     * @param intent The intent to open
+     * @param routeHash Hash of the route
+     * @param user Address of the user opening the intent
+     * @return intentHash The hash of the opened intent
+     */
     function _openIntent(
         Intent memory intent,
         bytes32 routeHash,
@@ -209,6 +222,13 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         return intentHash;
     }
 
+    /**
+     * @notice Resolves order data into a standardized cross-chain order format
+     * @dev Converts Eco-specific order data into ERC-7683 format
+     * @param openDeadline The deadline for opening the order
+     * @param orderData The Eco-specific order data
+     * @return ResolvedCrossChainOrder in ERC-7683 format
+     */
     function _resolve(
         uint32 openDeadline,
         OrderData memory orderData

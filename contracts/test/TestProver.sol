@@ -3,7 +3,6 @@
 pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
-import {IProver} from "../interfaces/IProver.sol";
 
 contract TestProver is BaseProver {
     struct ArgsCheck {

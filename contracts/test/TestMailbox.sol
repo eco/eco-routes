@@ -67,9 +67,11 @@ contract TestMailbox {
         return (msg.value);
     }
 
-    function process(bytes calldata _msg) public {
+    function process(bytes calldata) public pure {
+        // solhint-disable-previous-line no-unused-vars
         // This function is kept for compatibility but not used in the new flow
         // The dispatch function handles the message processing directly
+        return;
     }
 
     function quoteDispatch(

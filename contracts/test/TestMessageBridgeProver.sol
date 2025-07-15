@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseProver} from "../prover/BaseProver.sol";
 import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
-import {IProver} from "../interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 
 /**
  * @title TestMessageBridgeProver
@@ -119,8 +116,10 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         bytes32[] calldata /* claimants */,
         bytes calldata /* data */,
         uint256 /* fee */
-    ) internal override {
+    ) internal pure override {
+        // solhint-disable-previous-line no-unused-vars
         // Mock implementation - does nothing
+        return;
     }
 
     /**

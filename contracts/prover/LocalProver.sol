@@ -5,12 +5,12 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Inbox} from "../Inbox.sol";
 import {Intent} from "../types/Intent.sol";
 import {Semver} from "../libs/Semver.sol";
+import {IProver} from "../interfaces/IProver.sol";
 
 /**
- * @title BaseProver
- * @notice Base implementation for intent proving contracts
- * @dev Provides core storage and functionality for tracking proven intents
- * and their claimants
+ * @title SameChainProver
+ * @notice Prover implementation for same-chain intent fulfillment
+ * @dev Handles proving of intents that are fulfilled on the same chain where they were created
  */
 contract SameChainProver is IProver, Semver {
     using SafeCast for uint256;
@@ -55,6 +55,15 @@ contract SameChainProver is IProver, Semver {
         return "Same chain";
     }
 
+    /**
+     * @notice Initiates proving of intents on the same chain
+     * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment
+     * @param sender Address that initiated the proving request (unused)
+     * @param sourceChainId Chain ID of the source chain (unused)
+     * @param intentHashes Array of intent hashes to prove (unused)
+     * @param claimants Array of claimant addresses (unused)
+     * @param data Additional data for proving (unused)
+     */
     function prove(
         address sender,
         uint256 sourceChainId,
@@ -62,12 +71,24 @@ contract SameChainProver is IProver, Semver {
         bytes32[] calldata claimants,
         bytes calldata data
     ) external payable {
+        // Suppress unused variable warnings
+        sender;
+        sourceChainId;
+        intentHashes;
+        claimants;
+        data;
+
         // this function is intentionally left empty as no proof is required
         // for same-chain proving
         // should not revert lest it be called with fulfillandprove
     }
 
-    function challengeIntentProof(Intent calldata) external pure {
+    /**
+     * @notice Challenges an intent proof (not applicable for same-chain intents)
+     * @dev Always reverts as same-chain intents cannot be challenged
+     * param intent Intent data (unused)
+     */
+    function challengeIntentProof(Intent calldata /* intent */) external pure {
         revert CannotChallengeSameChainIntentProof();
     }
 }
