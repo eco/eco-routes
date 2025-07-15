@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import {IProver} from "../interfaces/IProver.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import {Intent} from "../types/Intent.sol";
+import {Intent, Reward} from "../types/Intent.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
@@ -98,13 +98,18 @@ abstract contract BaseProver is IProver, ERC165 {
      * @notice Challenge an intent proof if destination chain ID doesn't match
      * @dev Can be called by anyone to remove invalid proofs. This is a safety mechanism to ensure
      *      intents are only claimable when executed on their intended destination chains.
-     * @param intent The intent to challenge
+     * @param destination The intended destination chain ID
+     * @param routeHash The hash of the intent's route
+     * @param reward The reward specification of the intent
      */
-    function challengeIntentProof(Intent calldata intent) external {
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+    function challengeIntentProof(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external {
+        bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+            abi.encodePacked(destination, routeHash, rewardHash)
         );
 
         ProofData memory proof = _provenIntents[intentHash];
@@ -112,7 +117,7 @@ abstract contract BaseProver is IProver, ERC165 {
         // Only challenge if proof exists and destination chain ID doesn't match
         if (
             proof.claimant != address(0) &&
-            proof.destinationChainID != intent.destination
+            proof.destinationChainID != destination
         ) {
             delete _provenIntents[intentHash];
             emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal

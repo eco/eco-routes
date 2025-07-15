@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
+import {Reward} from "../types/Intent.sol";
 
 /**
  * @title IProver
@@ -70,4 +71,18 @@ interface IProver is ISemver {
     function provenIntents(
         bytes32 intentHash
     ) external view returns (ProofData memory);
+
+    /**
+     * @notice Challenge an intent proof if destination chain ID doesn't match
+     * @dev Can be called by anyone to remove invalid proofs. This is a safety mechanism to ensure
+     *      intents are only claimable when executed on their intended destination chains.
+     * @param destination The intended destination chain ID
+     * @param routeHash The hash of the intent's route
+     * @param reward The reward specification of the intent
+     */
+    function challengeIntentProof(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external;
 }

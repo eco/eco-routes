@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Inbox} from "../Inbox.sol";
-import {Intent} from "../types/Intent.sol";
+import {Intent, Reward} from "../types/Intent.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IProver} from "../interfaces/IProver.sol";
 
@@ -14,8 +14,6 @@ import {IProver} from "../interfaces/IProver.sol";
  */
 contract SameChainProver is IProver, Semver {
     using SafeCast for uint256;
-
-    error CannotChallengeSameChainIntentProof();
 
     /**
      * @notice Address of the Inbox contract
@@ -58,26 +56,19 @@ contract SameChainProver is IProver, Semver {
     /**
      * @notice Initiates proving of intents on the same chain
      * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment
-     * @param sender Address that initiated the proving request (unused)
-     * @param sourceChainId Chain ID of the source chain (unused)
-     * @param intentHashes Array of intent hashes to prove (unused)
-     * @param claimants Array of claimant addresses (unused)
-     * @param data Additional data for proving (unused)
+     * param sender Address that initiated the proving request (unused)
+     * param sourceChainId Chain ID of the source chain (unused)
+     * param intentHashes Array of intent hashes to prove (unused)
+     * param claimants Array of claimant addresses (unused)
+     * param data Additional data for proving (unused)
      */
     function prove(
-        address sender,
-        uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
-        bytes calldata data
+        address /*sender*/,
+        uint256 /*sourceChainId*/,
+        bytes32[] calldata /*intentHashes*/,
+        bytes32[] calldata /*claimants*/,
+        bytes calldata /*data*/
     ) external payable {
-        // Suppress unused variable warnings
-        sender;
-        sourceChainId;
-        intentHashes;
-        claimants;
-        data;
-
         // this function is intentionally left empty as no proof is required
         // for same-chain proving
         // should not revert lest it be called with fulfillandprove
@@ -85,10 +76,14 @@ contract SameChainProver is IProver, Semver {
 
     /**
      * @notice Challenges an intent proof (not applicable for same-chain intents)
-     * @dev Always reverts as same-chain intents cannot be challenged
-     * param intent Intent data (unused)
+     * @dev This function is a no-op for same-chain intents as they cannot be challenged
      */
-    function challengeIntentProof(Intent calldata /* intent */) external pure {
-        revert CannotChallengeSameChainIntentProof();
+    function challengeIntentProof(
+        uint64 /* destination */,
+        bytes32 /* routeHash */,
+        Reward calldata /* reward */
+    ) external pure {
+        // Intentionally left empty as same-chain intents cannot be challenged
+        // This is a no-op similar to the prove function above
     }
 }

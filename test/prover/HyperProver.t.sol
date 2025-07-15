@@ -347,7 +347,11 @@ contract HyperProverTest is BaseTest {
         // because intent.destination (1) != proof.destinationChainID (31337)
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
         vm.prank(creator);
-        hyperProver.challengeIntentProof(evmIntent);
+        hyperProver.challengeIntentProof(
+            evmIntent.destination,
+            keccak256(abi.encode(evmIntent.route)),
+            evmIntent.reward
+        );
 
         // Verify proof was cleared
         proof = hyperProver.provenIntents(intentHash);
@@ -388,7 +392,11 @@ contract HyperProverTest is BaseTest {
         // Challenge with correct chain (destination matches proof) should do nothing
         EVMIntent memory evmLocalIntent = _convertToEVMIntent(localIntent);
         vm.prank(creator);
-        hyperProver.challengeIntentProof(evmLocalIntent);
+        hyperProver.challengeIntentProof(
+            evmLocalIntent.destination,
+            keccak256(abi.encode(evmLocalIntent.route)),
+            evmLocalIntent.reward
+        );
 
         // Verify proof is still there
         proof = hyperProver.provenIntents(intentHash);

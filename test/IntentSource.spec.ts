@@ -110,7 +110,7 @@ describe('Intent Source Test', (): void => {
   describe('intent creation', async () => {
     beforeEach(async (): Promise<void> => {
       expiry = (await time.latest()) + 123
-      chainId = 1
+      chainId = 31337 // Use local test network chain ID for same-chain testing
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
@@ -282,7 +282,7 @@ describe('Intent Source Test', (): void => {
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
-      chainId = 1
+      chainId = 31337 // Use local test network chain ID for same-chain testing
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
@@ -455,36 +455,72 @@ describe('Intent Source Test', (): void => {
         )
       })
       it('calls challengeIntentProof if destinationChainID is wrong, emits, and does not withdraw', async () => {
-        // Note: we are in "after expiry" context, but need to add proof after the initial setup
-        // which already added a proof and increased time to expiry
+        // First, mint and approve tokens for the cross-chain intent
+        await tokenA.mint(creator.address, reward.tokens[0].amount)
+        await tokenB.mint(creator.address, reward.tokens[1].amount)
+        await tokenA
+          .connect(creator)
+          .approve(await intentSource.getAddress(), reward.tokens[0].amount)
+        await tokenB
+          .connect(creator)
+          .approve(await intentSource.getAddress(), reward.tokens[1].amount)
 
-        // Challenge the existing proof since destination mismatch
-        // The intent has destination = 1, but proof has destinationChainID = 31337
-        await prover.connect(otherPerson).challengeIntentProof(intent)
+        // Create a new intent with destination = 1 to test cross-chain scenario
+        const crossChainReward = {
+          ...reward,
+          prover: await prover.getAddress(),
+        }
+        const crossChainIntent = {
+          destination: 1, // Different from test chain (31337)
+          route,
+          reward: crossChainReward,
+        }
 
-        // Verify proof was cleared after challenge
-        const proofAfter = await prover.provenIntents(intentHash)
+        // Fund this cross-chain intent
+        await intentSource
+          .connect(creator)
+          .publishAndFund(crossChainIntent, false, { value: rewardNativeEth })
+
+        const [crossChainIntentHash, crossChainRouteHash] =
+          await intentSource.getIntentHash(crossChainIntent)
+
+        // Add proof for this intent (will record destinationChainID = 31337)
+        await prover
+          .connect(creator)
+          .addProvenIntent(crossChainIntentHash, await claimant.getAddress())
+
+        // Track token balances before withdrawal attempt
+        const claimantBalanceABefore = await tokenA.balanceOf(
+          await claimant.getAddress(),
+        )
+        const claimantBalanceBBefore = await tokenB.balanceOf(
+          await claimant.getAddress(),
+        )
+
+        // Call withdraw - should trigger automatic challenge due to chain mismatch
+        // Intent has destination = 1, but proof has destinationChainID = 31337
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdraw(1, crossChainRouteHash, crossChainReward),
+        )
+          .to.emit(intentSource, 'IntentProofChallenged')
+          .withArgs(crossChainIntentHash)
+
+        // Verify no tokens were withdrawn (balances unchanged)
+        expect(await tokenA.balanceOf(await claimant.getAddress())).to.eq(
+          claimantBalanceABefore,
+        )
+        expect(await tokenB.balanceOf(await claimant.getAddress())).to.eq(
+          claimantBalanceBBefore,
+        )
+
+        // Verify proof was cleared after automatic challenge
+        const proofAfter = await prover.provenIntents(crossChainIntentHash)
         expect(proofAfter.claimant).to.eq(ethers.ZeroAddress)
 
-        // After expiry with no proof, withdrawRewards should succeed as a refund
-        // Track balances before
-        const creatorBalanceABefore = await tokenA.balanceOf(creator.address)
-        const creatorBalanceBBefore = await tokenB.balanceOf(creator.address)
-
-        // withdrawRewards after expiry with no proof should refund to creator
-        await intentSource
-          .connect(otherPerson)
-          .withdraw(chainId, routeHash, intent.reward)
-
-        // Verify tokens were refunded to creator
-        expect(await tokenA.balanceOf(creator.address)).to.eq(
-          creatorBalanceABefore + BigInt(reward.tokens[0].amount),
-        )
-        expect(await tokenB.balanceOf(creator.address)).to.eq(
-          creatorBalanceBBefore + BigInt(reward.tokens[1].amount),
-        )
-
-        expect(await intentSource.isIntentFunded(intent)).to.be.false
+        // The cross-chain intent should still be funded (rewards not withdrawn due to challenge)
+        expect(await intentSource.isIntentFunded(crossChainIntent)).to.be.true
       })
       it('cannot refund if intent is proven', async () => {
         await prover
@@ -507,7 +543,7 @@ describe('Intent Source Test', (): void => {
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
-        chainId = 1
+        chainId = 31337 // Use local test network chain ID for same-chain testing
         routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
         calls = [
           {
@@ -556,7 +592,7 @@ describe('Intent Source Test', (): void => {
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
-        chainId = 1
+        chainId = 31337 // Use local test network chain ID for same-chain testing
         routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
         calls = [
           {
@@ -669,7 +705,7 @@ describe('Intent Source Test', (): void => {
           0,
           (await ethers.provider.getNetwork()).chainId,
         )
-        chainId = 1
+        chainId = 31337 // Use local test network chain ID for same-chain testing
         calls = [
           {
             target: await tokenA.getAddress(),
@@ -922,7 +958,7 @@ describe('Intent Source Test', (): void => {
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
-      chainId = 1
+      chainId = 31337 // Use local test network chain ID for same-chain testing
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
@@ -1048,7 +1084,7 @@ describe('Intent Source Test', (): void => {
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
-      chainId = 1
+      chainId = 31337 // Use local test network chain ID for same-chain testing
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
@@ -1590,7 +1626,7 @@ describe('Intent Source Test', (): void => {
         0,
         (await ethers.provider.getNetwork()).chainId,
       )
-      chainId = 1
+      chainId = 31337 // Use local test network chain ID for same-chain testing
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {

@@ -247,8 +247,13 @@ contract IntentSourceTest is BaseTest {
 
         // Challenge the proof manually
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
+        bytes32 routeHash = keccak256(abi.encode(evmIntent.route));
         vm.prank(otherPerson);
-        prover.challengeIntentProof(evmIntent);
+        prover.challengeIntentProof(
+            evmIntent.destination,
+            routeHash,
+            evmIntent.reward
+        );
 
         // Verify proof was cleared after challenge
         IProver.ProofData memory proofAfter = prover.provenIntents(intentHash);

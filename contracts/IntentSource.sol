@@ -287,6 +287,18 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         address claimant = proof.claimant;
         VaultState memory state = vaults[intentHash].state;
 
+        // If the intent has been proven on a different chain, challenge the proof
+        if (proof.destinationChainID != destination && claimant != address(0)) {
+            // Challenge the proof and emit event
+            IProver(reward.prover).challengeIntentProof(
+                destination,
+                routeHash,
+                reward
+            );
+            emit IntentProofChallenged(intentHash);
+            return;
+        }
+
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
