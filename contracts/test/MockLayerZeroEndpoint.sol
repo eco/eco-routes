@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
-import "../interfaces/layerzero/ILayerZeroReceiver.sol";
+// solhint-disable one-contract-per-file
+// solhint-disable gas-custom-errors
+
+import {ILayerZeroEndpointV2} from "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
+import {ILayerZeroReceiver} from "../interfaces/layerzero/ILayerZeroReceiver.sol";
 
 contract MockLayerZeroEndpoint {
     uint256 public constant FEE = 0.001 ether;
@@ -12,13 +15,13 @@ contract MockLayerZeroEndpoint {
         ILayerZeroEndpointV2.MessagingParams calldata params,
         address refundAddress
     ) external payable returns (ILayerZeroEndpointV2.MessagingReceipt memory) {
-        require(msg.value >= FEE, "Insufficient fee");
+        if (msg.value < FEE) revert("Insufficient fee");
         dispatched = true;
 
         // Refund excess
         if (msg.value > FEE) {
             (bool success, ) = refundAddress.call{value: msg.value - FEE}("");
-            require(success, "Refund failed");
+            if (!success) revert("Refund failed");
         }
 
         return
@@ -33,8 +36,8 @@ contract MockLayerZeroEndpoint {
     }
 
     function quote(
-        ILayerZeroEndpointV2.MessagingParams calldata params,
-        bool payInLzToken
+        ILayerZeroEndpointV2.MessagingParams calldata /* params */,
+        bool /* payInLzToken */
     ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
             ILayerZeroEndpointV2.MessagingFee({nativeFee: FEE, lzTokenFee: 0});

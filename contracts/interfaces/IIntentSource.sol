@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
 import {IVaultStorage} from "./IVaultStorage.sol";
 
 import {Intent, Reward} from "../types/Intent.sol";
-import {Call, TokenAmount} from "../types/UniversalIntent.sol";
+import {TokenAmount} from "../types/UniversalIntent.sol";
 
 /**
  * @title IIntentSource

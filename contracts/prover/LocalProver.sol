@@ -3,7 +3,6 @@ pragma solidity ^0.8.13;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Inbox} from "../Inbox.sol";
-import {Intent, Reward} from "../types/Intent.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IProver} from "../interfaces/IProver.sol";
 
@@ -69,6 +68,7 @@ contract SameChainProver is IProver, Semver {
         bytes32[] calldata /*claimants*/,
         bytes calldata /*data*/
     ) external payable {
+        // solhint-disable-line no-empty-blocks
         // this function is intentionally left empty as no proof is required
         // for same-chain proving
         // should not revert lest it be called with fulfillandprove
@@ -83,6 +83,7 @@ contract SameChainProver is IProver, Semver {
         bytes32 /* routeHash */,
         bytes32 /* rewardHash */
     ) external pure {
+        // solhint-disable-line no-empty-blocks
         // Intentionally left empty as same-chain intents cannot be challenged
         // This is a no-op similar to the prove function above
     }

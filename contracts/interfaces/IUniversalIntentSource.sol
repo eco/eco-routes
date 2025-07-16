@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 
 import {IVaultStorage} from "./IVaultStorage.sol";
 
-import {Intent, Reward} from "../types/UniversalIntent.sol";
+import {Reward} from "../types/UniversalIntent.sol";
 
 /**
  * @title IUniversalIntentSource

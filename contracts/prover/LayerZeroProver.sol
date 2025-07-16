@@ -167,6 +167,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             });
 
         // Send the message through LayerZero endpoint
+        // solhint-disable-next-line check-send-result
         ILayerZeroEndpointV2(ENDPOINT).send{value: fee}(
             lzParams,
             msg.sender // refund address
