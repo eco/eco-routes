@@ -33,7 +33,12 @@ import { zeroAddress } from 'viem'
 
 // Define the contract types that form our chain configuration
 // This is used for both CSV headers and TypeScript type definitions
-export const CONTRACT_TYPES = ['Portal', 'HyperProver', 'MetaProver'] as const
+export const CONTRACT_TYPES = [
+  'Portal',
+  'HyperProver',
+  'MetaProver',
+  'LayerZeroProver',
+] as const
 
 const execPromise = promisify(exec)
 

@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
+import "../interfaces/layerzero/ILayerZeroReceiver.sol";
+
+contract MockLayerZeroEndpoint {
+    uint256 public constant FEE = 0.001 ether;
+    bool public dispatched;
+
+    function send(
+        ILayerZeroEndpointV2.MessagingParams calldata params,
+        address refundAddress
+    ) external payable returns (ILayerZeroEndpointV2.MessagingReceipt memory) {
+        require(msg.value >= FEE, "Insufficient fee");
+        dispatched = true;
+
+        // Refund excess
+        if (msg.value > FEE) {
+            (bool success, ) = refundAddress.call{value: msg.value - FEE}("");
+            require(success, "Refund failed");
+        }
+
+        return
+            ILayerZeroEndpointV2.MessagingReceipt({
+                guid: keccak256(abi.encode(params, block.timestamp)),
+                nonce: 1,
+                fee: ILayerZeroEndpointV2.MessagingFee({
+                    nativeFee: FEE,
+                    lzTokenFee: 0
+                })
+            });
+    }
+
+    function quote(
+        ILayerZeroEndpointV2.MessagingParams calldata params,
+        bool payInLzToken
+    ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
+        return
+            ILayerZeroEndpointV2.MessagingFee({nativeFee: FEE, lzTokenFee: 0});
+    }
+}
+
+contract TestLayerZeroEndpoint is MockLayerZeroEndpoint {
+    address public receiver;
+
+    function setReceiver(address _receiver) external {
+        receiver = _receiver;
+    }
+
+    function simulateReceive(
+        uint32 srcEid,
+        bytes32 sender,
+        bytes calldata message
+    ) external {
+        ILayerZeroReceiver(receiver).lzReceive(
+            ILayerZeroReceiver.Origin({
+                srcEid: srcEid,
+                sender: sender,
+                nonce: 1
+            }),
+            bytes32(0),
+            message,
+            address(0),
+            ""
+        );
+    }
+}

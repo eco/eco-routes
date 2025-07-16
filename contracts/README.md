@@ -578,6 +578,7 @@ The protocol now follows a flexible architecture with a hierarchy of prover impl
 3. **Concrete Provers**: Specific implementations for different messaging systems:
    - **HyperProver**: Uses Hyperlane for cross-chain messaging
    - **MetaProver**: Uses Caldera Metalayer for cross-chain messaging
+   - **LayerZeroProver**: Uses LayerZero for cross-chain messaging
 
 ### Security Features
 
@@ -617,6 +618,16 @@ Configuration parameters:
 
 - Router address: Address of the Metalayer Router on the current chain
 - Trusted provers: List of addresses authorized to send proof messages
+
+#### LayerZero
+
+The LayerZeroProver uses LayerZero's ILayerZeroReceiver interface to receive and process cross-chain messages. It interacts with the LayerZero Endpoint contract to send and receive messages.
+
+Configuration parameters:
+
+- Endpoint address: Address of the LayerZero Endpoint on the current chain
+- Trusted provers: List of addresses authorized to send proof messages
+- Default gas limit: Gas limit for LayerZero message execution
 
 ### ERC-7683 Support
 

@@ -12,6 +12,7 @@ import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
+import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -36,17 +37,21 @@ contract Deploy is Script {
         bytes32 salt;
         address mailbox;
         address router;
+        address layerZeroEndpoint;
         string deployFilePath;
         bytes32[] crossVmProvers;
         address deployer;
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
+        bytes32 layerZeroProverSalt;
         address portal;
         address hyperProver;
         address metaProver;
+        address layerZeroProver;
         bytes hyperProverConstructorArgs;
         bytes metaProverConstructorArgs;
+        bytes layerZeroProverConstructorArgs;
     }
 
     function run() external {
@@ -55,6 +60,7 @@ contract Deploy is Script {
         ctx.salt = vm.envBytes32("SALT");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
+        ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
 
         // Load cross-VM provers from environment variable (optional)
         try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
@@ -68,6 +74,7 @@ contract Deploy is Script {
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
+        bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
         // Compute salts for each contract
         ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
         if (hasMailbox) {
@@ -76,6 +83,13 @@ contract Deploy is Script {
 
         if (hasRouter) {
             ctx.metaProverSalt = getContractSalt(ctx.salt, "META_PROVER");
+        }
+
+        if (hasLayerZero) {
+            ctx.layerZeroProverSalt = getContractSalt(
+                ctx.salt,
+                "LAYERZERO_PROVER"
+            );
         }
 
         vm.startBroadcast();
@@ -96,6 +110,11 @@ contract Deploy is Script {
             deployMetaProver(ctx);
         }
 
+        // Deploy LayerZeroProver
+        if (hasLayerZero) {
+            deployLayerZeroProver(ctx);
+        }
+
         vm.stopBroadcast();
 
         // Write deployment results to file
@@ -107,8 +126,10 @@ contract Deploy is Script {
         uint num = 1;
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
+        bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
         num = hasMailbox ? num + 1 : num;
         num = hasRouter ? num + 1 : num;
+        num = hasLayerZero ? num + 1 : num;
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
         contracts[count++] = VerificationData({
@@ -131,6 +152,14 @@ contract Deploy is Script {
                 contractAddress: ctx.metaProver,
                 contractPath: "contracts/prover/MetaProver.sol:MetaProver",
                 constructorArgs: ctx.metaProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+        if (hasLayerZero) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.layerZeroProver,
+                contractPath: "contracts/prover/LayerZeroProver.sol:LayerZeroProver",
+                constructorArgs: ctx.layerZeroProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -164,10 +193,14 @@ contract Deploy is Script {
             provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
         }
 
+        // Default gas limit for cross-chain messages
+        uint256 defaultGasLimit = 200000;
+        
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
             ctx.portal,
-            provers
+            provers,
+            defaultGasLimit
         );
 
         bytes memory hyperProverBytecode = abi.encodePacked(
@@ -201,10 +234,14 @@ contract Deploy is Script {
             provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
         }
 
+        // Default gas limit for cross-chain messages
+        uint256 defaultGasLimit = 200000;
+        
         ctx.metaProverConstructorArgs = abi.encode(
             ctx.router,
             ctx.portal,
-            provers
+            provers,
+            defaultGasLimit
         );
 
         bytes memory metaProverBytecode = abi.encodePacked(
@@ -220,6 +257,47 @@ contract Deploy is Script {
         );
 
         console.log("MetaProver :", ctx.metaProver);
+    }
+
+    function deployLayerZeroProver(
+        DeploymentContext memory ctx
+    ) internal returns (address layerZeroProver) {
+        address layerZeroProverPreviewAddr = create3Deployer.deployedAddress(
+            bytes(""), // Bytecode isn't used to determine the deployed address
+            ctx.deployer,
+            ctx.layerZeroProverSalt
+        );
+
+        // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
+        bytes32[] memory provers = new bytes32[](1 + ctx.crossVmProvers.length);
+        provers[0] = bytes32(bytes20(layerZeroProverPreviewAddr)); // Self-reference for EVM
+        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
+            provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
+        }
+
+        // Default gas limit for LayerZero messages
+        uint256 defaultGasLimit = 200000;
+
+        ctx.layerZeroProverConstructorArgs = abi.encode(
+            ctx.layerZeroEndpoint,
+            ctx.portal,
+            provers,
+            defaultGasLimit
+        );
+
+        bytes memory layerZeroProverBytecode = abi.encodePacked(
+            type(LayerZeroProver).creationCode,
+            ctx.layerZeroProverConstructorArgs
+        );
+
+        bool deployed;
+        (ctx.layerZeroProver, deployed) = deployWithCreate3(
+            layerZeroProverBytecode,
+            ctx.deployer,
+            ctx.layerZeroProverSalt
+        );
+
+        console.log("LayerZeroProver :", ctx.layerZeroProver);
     }
 
     function isDeployed(address _addr) internal view returns (bool) {

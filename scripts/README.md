@@ -218,6 +218,7 @@ ALCHEMY_API_KEY=<Your Alchemy API key if using Alchemy RPCs>
 # For Deploy.s.sol
 MAILBOX=<Optional: Mailbox contract address for HyperProver>
 ROUTER=<Optional: Router contract address for MetaProver>
+LAYERZERO_ENDPOINT=<Optional: LayerZero Endpoint address for LayerZeroProver>
 
 # For VerifyResults.sh
 VERIFICATION_KEYS_FILE=<Path to verification keys JSON file>
@@ -271,6 +272,7 @@ This Foundry script handles the actual contract deployments using CREATE2/CREATE
 - **Portal**: Deployed using CREATE2
 - **HyperProver**: Deployed using CREATE3 (if MAILBOX is provided)
 - **MetaProver**: Deployed using CREATE3 (if ROUTER is provided)
+- **LayerZeroProver**: Deployed using CREATE3 (if LAYERZERO_ENDPOINT is provided)
 
 The script logs all deployed contract addresses and generates verification data.
 
@@ -298,7 +300,7 @@ CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
 
 **Resulting Whitelist:**
 
-Each deployed prover (HyperProver and MetaProver) will have a whitelist containing:
+Each deployed prover (HyperProver, MetaProver, and LayerZeroProver) will have a whitelist containing:
 
 - The EVM prover's own address (self-reference for authorization)
 - All provided cross-VM prover addresses

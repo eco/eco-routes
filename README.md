@@ -64,7 +64,7 @@ Intent fulfillment happens on the `Portal`, which lives on the destination chain
 
 ### Intent Proving
 
-Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. There are currently two types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, and HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment.
+Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. There are currently three types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment, and LayerZeroProvers(`LayerZeroProver.sol`), which utilize a <a href="https://layerzero.network/" target="_blank">LayerZero</a> bridge for cross-chain verification.
 
 ### Intent Reward Settlement
 

@@ -566,16 +566,17 @@ describe('Origin Settler Test', (): void => {
         ).to.be.revertedWithCustomError(originSettler, 'OpenDeadlinePassed')
       })
       it('errors if signature does not match', async () => {
-        //TODO investigate why this sometimes reverts with our custom error BadSignature and othere times with ECDSAInvalidSignature
+        // The revert reason varies depending on signature format:
+        // - Invalid signature format triggers ECDSAInvalidSignature from OpenZeppelin
+        // - Valid format but wrong signer triggers BadSignature custom error
+        const invalidSignature = signature.replace('1', '0')
+
         await expect(
           originSettler
             .connect(otherPerson)
-            .openFor(
-              gaslessCrosschainOrder,
-              signature.replace('1', '0'),
-              '0x',
-              { value: rewardNativeEth },
-            ),
+            .openFor(gaslessCrosschainOrder, invalidSignature, '0x', {
+              value: rewardNativeEth,
+            }),
         ).to.be.reverted
       })
       it('resolvesFor gaslessCrosschainOrder', async () => {

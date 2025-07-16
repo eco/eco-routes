@@ -79,6 +79,7 @@ interface IMessageBridgeProver is IProver {
      *        Specific format varies by implementation:
      *        - HyperProver: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
      *        - MetaProver: (bytes32 sourceChainProver, [uint256 gasLimitOverride])
+     *        - LayerZeroProver: (bytes32 sourceChainProver, bytes options, [uint256 gasLimitOverride])
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
