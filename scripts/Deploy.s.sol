@@ -195,7 +195,7 @@ contract Deploy is Script {
 
         // Default gas limit for cross-chain messages
         uint256 defaultGasLimit = 200000;
-        
+
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
             ctx.portal,
@@ -236,7 +236,7 @@ contract Deploy is Script {
 
         // Default gas limit for cross-chain messages
         uint256 defaultGasLimit = 200000;
-        
+
         ctx.metaProverConstructorArgs = abi.encode(
             ctx.router,
             ctx.portal,

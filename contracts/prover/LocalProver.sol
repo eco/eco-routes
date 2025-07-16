@@ -81,7 +81,7 @@ contract SameChainProver is IProver, Semver {
     function challengeIntentProof(
         uint64 /* destination */,
         bytes32 /* routeHash */,
-        Reward calldata /* reward */
+        bytes32 /* rewardHash */
     ) external pure {
         // Intentionally left empty as same-chain intents cannot be challenged
         // This is a no-op similar to the prove function above

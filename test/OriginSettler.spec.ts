@@ -21,6 +21,7 @@ import {
   hashUniversalIntent,
   convertIntentToUniversal,
   encodeUniversalIntent,
+  encodeUniversalRoute,
 } from '../utils/universalIntent'
 import {
   OnchainCrossChainOrderStruct,
@@ -68,7 +69,7 @@ describe('Origin Settler Test', (): void => {
   const version = '1.5.0'
 
   const onchainCrosschainOrderDataTypehash: BytesLike =
-    '0xdb2c57ce6aaa02e8e3f27ed81a37161d4f6a795eb45f364ab72c9ac5bc804f7a'
+    '0xcf9a7d202aa2c38a5a0a9db86b4ba8787bc6f19d24655743627fd104c98d7c0b'
   const gaslessCrosschainOrderDataTypehash: BytesLike =
     '0xeba3c114f30d5d2e203aba45313408edb197822e682f5be0e804453b059118c4'
 
@@ -184,7 +185,6 @@ describe('Origin Settler Test', (): void => {
 
       onchainCrosschainOrderData = {
         destination: chainId,
-        routeHash: routeHash,
         route: {
           salt: universalIntent.route.salt,
           deadline: universalIntent.route.deadline,
@@ -308,9 +308,11 @@ describe('Origin Settler Test', (): void => {
         const receipt = await tx.wait()
 
         // Check that the vault received the correct amount (rewardNativeEth)
-        const vaultAddress = await portal[
-          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
-        ](universalIntent, routeHash)
+        const vaultAddress = await portal.intentVaultAddress(
+          universalIntent.destination,
+          encodeUniversalRoute(universalIntent.route),
+          universalIntent.reward,
+        )
         const vaultBalance = await ethers.provider.getBalance(vaultAddress)
         expect(vaultBalance).to.equal(rewardNativeEth)
 
@@ -333,9 +335,11 @@ describe('Origin Settler Test', (): void => {
       })
       it('publishes and transfers missing tokens when intent is partially funded', async () => {
         // Pre-fund the vault with only tokenA (intent also needs tokenB and native)
-        const vaultAddress = await portal[
-          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
-        ](universalIntent, routeHash)
+        const vaultAddress = await portal.intentVaultAddress(
+          universalIntent.destination,
+          encodeUniversalRoute(universalIntent.route),
+          universalIntent.reward,
+        )
         await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
 
         // Since isIntentFunded checks for complete funding, the contract will try to transfer
@@ -389,9 +393,11 @@ describe('Origin Settler Test', (): void => {
       })
       it('publishes without transferring if intent is already funded', async () => {
         // Pre-fund the vault completely with all tokens and native
-        const vaultAddress = await portal[
-          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
-        ](universalIntent, routeHash)
+        const vaultAddress = await portal.intentVaultAddress(
+          universalIntent.destination,
+          encodeUniversalRoute(universalIntent.route),
+          universalIntent.reward,
+        )
         await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
         await tokenB.connect(creator).transfer(vaultAddress, mintAmount * 2)
 
@@ -439,9 +445,7 @@ describe('Origin Settler Test', (): void => {
           onchainCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(
-          universalIntent.route.tokens.length,
-        )
+        expect(resolvedOrder.maxSpent.length).to.eq(0)
         for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
           expect(resolvedOrder.maxSpent[i].token).to.eq(
             universalIntent.route.tokens[i].token,
@@ -530,9 +534,11 @@ describe('Origin Settler Test', (): void => {
         const receipt = await tx.wait()
 
         // Get the vault address
-        const vaultAddress = await portal[
-          'intentVaultAddress((uint64,(bytes32,uint64,bytes32,(bytes32,uint256)[],(bytes32,bytes,uint256)[]),(uint64,bytes32,bytes32,uint256,(bytes32,uint256)[])),bytes32)'
-        ](universalIntent, routeHash)
+        const vaultAddress = await portal.intentVaultAddress(
+          universalIntent.destination,
+          encodeUniversalRoute(universalIntent.route),
+          universalIntent.reward,
+        )
 
         // Check that the vault received the native value
         const vaultFinalBalance = await ethers.provider.getBalance(vaultAddress)
@@ -593,9 +599,7 @@ describe('Origin Settler Test', (): void => {
           gaslessCrosschainOrder.fillDeadline,
         )
         expect(resolvedOrder.orderId).to.eq(intentHash)
-        expect(resolvedOrder.maxSpent.length).to.eq(
-          universalIntent.route.tokens.length,
-        )
+        expect(resolvedOrder.maxSpent.length).to.eq(0)
         for (let i = 0; i < resolvedOrder.maxSpent.length; i++) {
           expect(resolvedOrder.maxSpent[i].token).to.eq(
             universalIntent.route.tokens[i].token,

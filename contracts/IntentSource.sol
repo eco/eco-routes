@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IProver} from "./interfaces/IProver.sol";
-import {Intent, Route, Reward, Call, TokenAmount} from "./types/Intent.sol";
+import {Intent, Route, Reward} from "./types/Intent.sol";
 import {Call as UniversalCall, TokenAmount as UniversalTokenAmount} from "./types/UniversalIntent.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IVault} from "./interfaces/IVault.sol";
@@ -54,7 +54,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
     }
 
     /**
-     * @notice Retrieves the permitContact address funding an intent
+     * @notice Retrieves the permitContract address funding an intent
      */
     function getPermitContract(
         bytes32 intentHash
@@ -175,7 +175,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
      * @param funder Address to fund the intent from
-     * @param permitContact Address of the permitContact instance
+     * @param permitContract Address of the permitContract instance
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the funded intent
      */
@@ -184,7 +184,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         bytes32 routeHash,
         Reward calldata reward,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external virtual returns (bytes32 intentHash) {
         bytes32 rewardHash = keccak256(abi.encode(reward));
@@ -202,7 +202,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             routeHash,
             vault,
             funder,
-            permitContact,
+            permitContract,
             allowPartial
         );
     }
@@ -211,14 +211,14 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      * @notice Creates and funds an intent using permit/allowance
      * @param intent The complete intent struct
      * @param funder Address to fund the intent from
-     * @param permitContact Address of the permitContact instance
+     * @param permitContract Address of the permitContract instance
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
      */
     function publishAndFundFor(
         Intent calldata intent,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external virtual returns (bytes32 intentHash, address vault) {
         bytes32 routeHash;
@@ -238,7 +238,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             routeHash,
             vault,
             funder,
-            permitContact,
+            permitContract,
             allowPartial
         );
 
@@ -293,7 +293,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
             IProver(reward.prover).challengeIntentProof(
                 destination,
                 routeHash,
-                reward
+                rewardHash
             );
             emit IntentProofChallenged(intentHash);
             return;
@@ -545,31 +545,12 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         bytes32 intentHash,
         bytes32 routeHash
     ) internal virtual {
-        UniversalCall[] memory calls = new UniversalCall[](
-            intent.route.calls.length
-        );
-        for (uint256 i = 0; i < intent.route.calls.length; i++) {
-            calls[i] = UniversalCall({
-                target: intent.route.calls[i].target.toBytes32(),
-                data: intent.route.calls[i].data,
-                value: intent.route.calls[i].value
-            });
-        }
-
-        UniversalTokenAmount[] memory routeTokens = new UniversalTokenAmount[](
-            intent.route.tokens.length
-        );
-        for (uint256 i = 0; i < intent.route.tokens.length; i++) {
-            routeTokens[i] = UniversalTokenAmount({
-                token: intent.route.tokens[i].token.toBytes32(),
-                amount: intent.route.tokens[i].amount
-            });
-        }
-
+        uint256 rewardsLength = intent.reward.tokens.length;
         UniversalTokenAmount[] memory rewardTokens = new UniversalTokenAmount[](
-            intent.reward.tokens.length
+            rewardsLength
         );
-        for (uint256 i = 0; i < intent.reward.tokens.length; i++) {
+
+        for (uint256 i = 0; i < rewardsLength; i++) {
             rewardTokens[i] = UniversalTokenAmount({
                 token: intent.reward.tokens[i].token.toBytes32(),
                 amount: intent.reward.tokens[i].amount
@@ -578,18 +559,13 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
 
         emit IntentPublished(
             intentHash,
-            routeHash,
             intent.destination,
-            intent.route.salt,
-            intent.route.deadline,
-            intent.route.portal.toBytes32(),
-            routeTokens,
-            calls,
             intent.reward.creator.toBytes32(),
             intent.reward.prover.toBytes32(),
             intent.reward.deadline,
             intent.reward.nativeValue,
-            rewardTokens
+            rewardTokens,
+            abi.encode(intent.route)
         );
     }
 
@@ -703,7 +679,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         bytes32 routeHash,
         address vault,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) internal virtual {
         _disableNativeReward(reward, vault, intentHash);
@@ -717,46 +693,23 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
 
         state.mode = uint8(VaultMode.Fund);
         state.allowPartialFunding = allowPartial ? 1 : 0;
-        state.usePermit = permitContact != address(0) ? 1 : 0;
+        state.usePermit = permitContract != address(0) ? 1 : 0;
         state.target = funder;
 
-        if (permitContact != address(0)) {
-            vaults[intentHash].permitContract = permitContact;
+        if (permitContract != address(0)) {
+            vaults[intentHash].permitContract = permitContract;
         }
 
         vaults[intentHash].state = state;
 
-        // Store funder balances before vault creation if using permit
-        uint256[] memory initialBalances;
-        if (permitContact != address(0)) {
-            initialBalances = new uint256[](reward.tokens.length);
-            for (uint256 i = 0; i < reward.tokens.length; i++) {
-                initialBalances[i] = IERC20(reward.tokens[i].token).balanceOf(
-                    funder
-                );
-            }
-        }
-
         // Create vault
         new Vault{salt: routeHash}(intentHash, reward);
 
-        // Check if vault was funded successfully when using permit contract
-        if (permitContact != address(0)) {
-            // Verify tokens were actually transferred from the funder
-            for (uint256 i = 0; i < reward.tokens.length; i++) {
-                uint256 currentBalance = IERC20(reward.tokens[i].token)
-                    .balanceOf(funder);
-                uint256 expectedTransfer = reward.tokens[i].amount;
-
-                // If balance didn't decrease by expected amount, funding failed
-                if (currentBalance + expectedTransfer > initialBalances[i]) {
-                    _revertFunding(state, intentHash, permitContact);
-                }
-            }
-        }
-
-        // Only emit events if we get here (vault creation succeeded)
+        // Check if funding was successful and emit appropriate events
         if (state.status == uint8(RewardStatus.Funded)) {
+            if (vault.balance < reward.nativeValue) {
+                revert InsufficientNativeReward(intentHash);
+            }
             emit IntentFunded(intentHash, funder, true);
         } else if (
             state.status == uint8(RewardStatus.PartiallyFunded) &&
@@ -769,31 +722,6 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         } else {
             emit IntentFunded(intentHash, funder, false);
         }
-    }
-
-    /**
-     * @notice Reverts funding and resets state when vault creation fails
-     */
-    function _revertFunding(
-        VaultState memory state,
-        bytes32 intentHash,
-        address permitContact
-    ) internal {
-        // Reset state
-        state.status = uint8(RewardStatus.Initial);
-        state.mode = uint8(VaultMode.Fund);
-        state.allowPartialFunding = 0;
-        state.usePermit = 0;
-        state.target = address(0);
-        vaults[intentHash].state = state;
-
-        // Clear permit contract if it was set
-        if (permitContact != address(0)) {
-            delete vaults[intentHash].permitContract;
-        }
-
-        // Revert with error
-        revert VaultCreationFailed(intentHash);
     }
 
     /**

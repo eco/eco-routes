@@ -104,31 +104,22 @@ interface IIntentSource is IVaultStorage {
      * @notice Signals the creation of a new cross-chain intent
      * @param hash Unique identifier of the intent
      * @param destination Destination chain ID
-     * @param salt Creator-provided uniqueness factor
-     * @param routeDeadline Deadline for route execution
-     * @param portal Address of the portal contract on the destination chain
-     * @param routeTokens Required tokens for executing destination chain calls
-     * @param calls Instructions to execute on the destination chain
      * @param creator Intent originator address
      * @param prover Prover contract address
      * @param rewardDeadline Timestamp for reward claim eligibility
      * @param nativeValue Native token reward amount
      * @param rewardTokens ERC20 token rewards with amounts
+     * @param route Encoded route data for the destination chain
      */
     event IntentPublished(
         bytes32 indexed hash,
-        bytes32 routeHash,
         uint64 destination,
-        bytes32 salt,
-        uint64 routeDeadline,
-        bytes32 portal,
-        TokenAmount[] routeTokens,
-        Call[] calls,
         bytes32 indexed creator,
         bytes32 indexed prover,
         uint64 rewardDeadline,
         uint256 nativeValue,
-        TokenAmount[] rewardTokens
+        TokenAmount[] rewardTokens,
+        bytes route
     );
 
     /**
@@ -270,7 +261,7 @@ interface IIntentSource is IVaultStorage {
      * @notice Creates and funds an intent on behalf of another address
      * @param intent The complete intent specification
      * @param funder The address providing the funding
-     * @param permitContact The permit contract for token approvals
+     * @param permitContract The permit contract for token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      * @return vault Address of the created vault
@@ -278,7 +269,7 @@ interface IIntentSource is IVaultStorage {
     function publishAndFundFor(
         Intent calldata intent,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external returns (bytes32 intentHash, address vault);
 

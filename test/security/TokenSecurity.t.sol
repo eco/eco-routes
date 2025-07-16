@@ -5,7 +5,7 @@ import "../BaseTest.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {FakePermit} from "../../contracts/test/FakePermit.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/UniversalIntent.sol";
+import {Intent as UniversalIntent, Route as UniversalRoute, Reward as UniversalReward, TokenAmount as UniversalTokenAmount, Call as UniversalCall} from "../../contracts/types/UniversalIntent.sol";
 import {Route as IntentRoute, TokenAmount as IntentTokenAmount, Call as IntentCall} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
@@ -51,11 +51,11 @@ contract TokenSecurityTest is BaseTest {
         // Create intent with malicious token as reward
         TokenAmount[] memory maliciousRewards = new TokenAmount[](2);
         maliciousRewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(maliciousToken)),
+            token: address(maliciousToken),
             amount: MINT_AMOUNT
         });
         maliciousRewards[1] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)),
+            token: address(tokenA),
             amount: MINT_AMOUNT
         });
 
@@ -68,10 +68,7 @@ contract TokenSecurityTest is BaseTest {
 
         // Fund the vault directly with both tokens
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        address vaultAddress = intentSource.intentVaultAddress(
-            intent,
-            routeHash
-        );
+        address vaultAddress = intentSource.intentVaultAddress(intent);
 
         vm.prank(attacker);
         maliciousToken.transfer(vaultAddress, MINT_AMOUNT);
@@ -90,7 +87,7 @@ contract TokenSecurityTest is BaseTest {
 
         // IntentWithdrawn should succeed despite malicious token
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, intent.reward, routeHash);
+        intentSource.withdraw(intent.destination, routeHash, intent.reward);
 
         // Good token should be transferred successfully
         assertEq(
@@ -106,7 +103,7 @@ contract TokenSecurityTest is BaseTest {
         // Create intent with malicious token in route
         TokenAmount[] memory maliciousRouteTokens = new TokenAmount[](1);
         maliciousRouteTokens[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(maliciousToken)),
+            token: address(maliciousToken),
             amount: MINT_AMOUNT
         });
 
@@ -116,7 +113,7 @@ contract TokenSecurityTest is BaseTest {
         // Create corresponding call
         Call[] memory maliciousCalls = new Call[](1);
         maliciousCalls[0] = Call({
-            target: TypeCasts.addressToBytes32(address(maliciousToken)),
+            target: address(maliciousToken),
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
                 recipient,
@@ -150,9 +147,7 @@ contract TokenSecurityTest is BaseTest {
         );
         for (uint256 i = 0; i < destIntent.route.tokens.length; i++) {
             intentTokens[i] = IntentTokenAmount({
-                token: address(
-                    uint160(uint256(destIntent.route.tokens[i].token))
-                ),
+                token: destIntent.route.tokens[i].token,
                 amount: destIntent.route.tokens[i].amount
             });
         }
@@ -161,9 +156,7 @@ contract TokenSecurityTest is BaseTest {
         );
         for (uint256 i = 0; i < destIntent.route.calls.length; i++) {
             intentCalls[i] = IntentCall({
-                target: address(
-                    uint160(uint256(destIntent.route.calls[i].target))
-                ),
+                target: destIntent.route.calls[i].target,
                 data: destIntent.route.calls[i].data,
                 value: destIntent.route.calls[i].value
             });
@@ -171,7 +164,7 @@ contract TokenSecurityTest is BaseTest {
         IntentRoute memory intentRoute = IntentRoute({
             salt: destIntent.route.salt,
             deadline: destIntent.route.deadline,
-            portal: address(uint160(uint256(destIntent.route.portal))),
+            portal: destIntent.route.portal,
             tokens: intentTokens,
             calls: intentCalls
         });
@@ -190,7 +183,7 @@ contract TokenSecurityTest is BaseTest {
         // Create intent with normal token first to ensure proper funding
         TokenAmount[] memory normalRewards = new TokenAmount[](1);
         normalRewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)),
+            token: address(tokenA),
             amount: MINT_AMOUNT
         });
 
@@ -199,10 +192,7 @@ contract TokenSecurityTest is BaseTest {
 
         // Fund vault with normal token
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        address vaultAddress = intentSource.intentVaultAddress(
-            intent,
-            routeHash
-        );
+        address vaultAddress = intentSource.intentVaultAddress(intent);
         vm.prank(creator);
         tokenA.transfer(vaultAddress, MINT_AMOUNT);
 
@@ -213,7 +203,7 @@ contract TokenSecurityTest is BaseTest {
 
         // IntentWithdrawn should succeed and state should be updated
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, intent.reward, routeHash);
+        intentSource.withdraw(intent.destination, routeHash, intent.reward);
 
         // After withdrawal, vault balance should be 0
         assertEq(tokenA.balanceOf(vaultAddress), 0);
@@ -226,7 +216,7 @@ contract TokenSecurityTest is BaseTest {
         // Create intent with normal token
         TokenAmount[] memory normalRewards = new TokenAmount[](1);
         normalRewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)),
+            token: address(tokenA),
             amount: MINT_AMOUNT
         });
 
@@ -247,8 +237,8 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(creator);
         intentSource.fundFor(
             intent.destination,
-            reward,
             routeHash,
+            reward,
             creator,
             address(fakePermit),
             false
@@ -262,10 +252,7 @@ contract TokenSecurityTest is BaseTest {
 
         // Vault should have no tokens
         bytes32 routeHashForVault = keccak256(abi.encode(intent.route));
-        address vaultAddress = intentSource.intentVaultAddress(
-            intent,
-            routeHashForVault
-        );
+        address vaultAddress = intentSource.intentVaultAddress(intent);
         assertEq(tokenA.balanceOf(vaultAddress), 0);
     }
 
@@ -275,7 +262,7 @@ contract TokenSecurityTest is BaseTest {
 
         TokenAmount[] memory usdtRewards = new TokenAmount[](1);
         usdtRewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(usdt)),
+            token: address(usdt),
             amount: MINT_AMOUNT
         });
 
@@ -293,7 +280,7 @@ contract TokenSecurityTest is BaseTest {
         // Should handle USDT properly
         vm.prank(creator);
         bytes32 routeHashForUSDT = keccak256(abi.encode(intent.route));
-        intentSource.publishAndFund(intent, routeHashForUSDT, false);
+        intentSource.publishAndFund(intent, false);
 
         assertTrue(intentSource.isIntentFunded(intent));
 
@@ -306,8 +293,8 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(claimant);
         intentSource.withdraw(
             intent.destination,
-            intent.reward,
-            routeHashForUSDT
+            routeHashForUSDT,
+            intent.reward
         );
 
         assertEq(
@@ -320,10 +307,7 @@ contract TokenSecurityTest is BaseTest {
         // Test that approval race conditions are handled properly
 
         TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)),
-            amount: MINT_AMOUNT
-        });
+        rewards[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         reward.tokens = rewards;
         intent.reward = reward;
@@ -340,7 +324,7 @@ contract TokenSecurityTest is BaseTest {
         vm.expectRevert();
         vm.prank(creator);
         bytes32 rh1 = keccak256(abi.encode(intent.route));
-        intentSource.publishAndFund(intent, rh1, false);
+        intentSource.publishAndFund(intent, false);
 
         // Re-approve and fund
         vm.prank(creator);
@@ -348,7 +332,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(creator);
         bytes32 rh2 = keccak256(abi.encode(intent.route));
-        intentSource.publishAndFund(intent, rh2, false);
+        intentSource.publishAndFund(intent, false);
 
         assertTrue(intentSource.isIntentFunded(intent));
     }
@@ -358,7 +342,7 @@ contract TokenSecurityTest is BaseTest {
 
         TokenAmount[] memory rewards = new TokenAmount[](1);
         rewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)),
+            token: address(tokenA),
             amount: MINT_AMOUNT * 2
         });
 
@@ -376,18 +360,15 @@ contract TokenSecurityTest is BaseTest {
         vm.expectRevert();
         vm.prank(creator);
         bytes32 rh3 = keccak256(abi.encode(intent.route));
-        intentSource.publishAndFund(intent, rh3, false);
+        intentSource.publishAndFund(intent, false);
 
         // With partial funding enabled, should only transfer available balance
         vm.prank(creator);
         bytes32 rh4 = keccak256(abi.encode(intent.route));
-        intentSource.publishAndFund(intent, rh4, true);
+        intentSource.publishAndFund(intent, true);
 
         bytes32 routeHashForVault = keccak256(abi.encode(intent.route));
-        address vaultAddress = intentSource.intentVaultAddress(
-            intent,
-            routeHashForVault
-        );
+        address vaultAddress = intentSource.intentVaultAddress(intent);
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT); // Only transferred what was available
         assertEq(tokenA.balanceOf(creator), 0); // Creator balance is zero
 
@@ -399,17 +380,14 @@ contract TokenSecurityTest is BaseTest {
         // Test that zero amount transfers are handled correctly
 
         TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)),
-            amount: 0
-        });
+        rewards[0] = TokenAmount({token: address(tokenA), amount: 0});
 
         reward.tokens = rewards;
         intent.reward = reward;
 
         vm.prank(creator);
         bytes32 rh5 = keccak256(abi.encode(intent.route));
-        intentSource.publishAndFund(intent, rh5, false);
+        intentSource.publishAndFund(intent, false);
 
         // Should be considered funded even with zero amounts
         assertTrue(intentSource.isIntentFunded(intent));
@@ -424,8 +402,8 @@ contract TokenSecurityTest is BaseTest {
         bytes32 routeHashForWithdraw = keccak256(abi.encode(intent.route));
         intentSource.withdraw(
             intent.destination,
-            intent.reward,
-            routeHashForWithdraw
+            routeHashForWithdraw,
+            intent.reward
         );
 
         // No tokens should be transferred
@@ -437,11 +415,11 @@ contract TokenSecurityTest is BaseTest {
 
         TokenAmount[] memory mixedRewards = new TokenAmount[](2);
         mixedRewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(tokenA)), // Standard ERC20
+            token: address(tokenA), // Standard ERC20
             amount: MINT_AMOUNT
         });
         mixedRewards[1] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(usdt)), // Non-standard ERC20
+            token: address(usdt), // Non-standard ERC20
             amount: MINT_AMOUNT
         });
 
@@ -454,10 +432,7 @@ contract TokenSecurityTest is BaseTest {
 
         // Fund vault directly
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        address vaultAddress = intentSource.intentVaultAddress(
-            intent,
-            routeHash
-        );
+        address vaultAddress = intentSource.intentVaultAddress(intent);
 
         vm.prank(creator);
         tokenA.transfer(vaultAddress, MINT_AMOUNT);
@@ -475,7 +450,7 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalanceUSDT = usdt.balanceOf(claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, intent.reward, routeHash);
+        intentSource.withdraw(intent.destination, routeHash, intent.reward);
 
         // Standard tokens should be transferred
         assertEq(
@@ -502,7 +477,7 @@ contract TokenSecurityTest is BaseTest {
 
         TokenAmount[] memory rewards = new TokenAmount[](1);
         rewards[0] = TokenAmount({
-            token: TypeCasts.addressToBytes32(address(0x123456789)), // Non-existent contract
+            token: address(0x123456789), // Non-existent contract
             amount: MINT_AMOUNT
         });
 
@@ -512,7 +487,7 @@ contract TokenSecurityTest is BaseTest {
         // Publishing should work fine
         vm.prank(creator);
         bytes32 routeHashPub = keccak256(abi.encode(intent.route));
-        intentSource.publish(intent, routeHashPub);
+        intentSource.publish(intent);
 
         // Even if token contract doesn't exist, the intent should still be publishable
         bytes32 routeHash = keccak256(abi.encode(route));
@@ -523,8 +498,8 @@ contract TokenSecurityTest is BaseTest {
         vm.expectRevert();
         intentSource.fundFor(
             intent.destination,
-            reward,
             routeHash,
+            reward,
             creator,
             address(0),
             true

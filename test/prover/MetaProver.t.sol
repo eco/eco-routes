@@ -205,7 +205,7 @@ contract MetaProverTest is BaseTest {
 
         for (uint256 i = 0; i < creators.length; i++) {
             Intent memory testIntent = intent;
-            testIntent.reward.creator = TypeCasts.addressToBytes32(creators[i]);
+            testIntent.reward.creator = creators[i];
             bytes32 intentHash = _hashIntent(testIntent);
 
             bytes32[] memory intentHashes = new bytes32[](1);
@@ -314,7 +314,7 @@ contract MetaProverTest is BaseTest {
 
     function testProveIntentWithZeroCreator() public {
         Intent memory testIntent = intent;
-        testIntent.reward.creator = TypeCasts.addressToBytes32(address(0));
+        testIntent.reward.creator = address(0);
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);

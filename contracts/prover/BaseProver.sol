@@ -100,14 +100,13 @@ abstract contract BaseProver is IProver, ERC165 {
      *      intents are only claimable when executed on their intended destination chains.
      * @param destination The intended destination chain ID
      * @param routeHash The hash of the intent's route
-     * @param reward The reward specification of the intent
+     * @param rewardHash The hash of the reward specification
      */
     function challengeIntentProof(
         uint64 destination,
         bytes32 routeHash,
-        Reward calldata reward
+        bytes32 rewardHash
     ) external {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = keccak256(
             abi.encodePacked(destination, routeHash, rewardHash)
         );

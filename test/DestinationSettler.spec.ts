@@ -333,8 +333,8 @@ describe('Destination Settler Test', (): void => {
     }
     const rewardHash = keccak256(encodeReward(reward))
 
-    // Encode originData as (Route, bytes32)
-    const originData = AbiCoder.defaultAbiCoder().encode(
+    // Encode originData as (bytes, bytes32) - first encode the route, then pack it with rewardHash
+    const encodedRoute = AbiCoder.defaultAbiCoder().encode(
       [
         {
           type: 'tuple',
@@ -361,13 +361,17 @@ describe('Destination Settler Test', (): void => {
             },
           ],
         },
-        'bytes32',
       ],
-      [route, rewardHash],
+      [route],
     )
 
-    expect(
-      await destinationSettler
+    const originData = AbiCoder.defaultAbiCoder().encode(
+      ['bytes', 'bytes32'],
+      [encodedRoute, rewardHash],
+    )
+
+    await expect(
+      destinationSettler
         .connect(solver)
         .fill(intentHash, originData, fillerData, {
           value: 0, // No ETH needed for ERC20 transfers
@@ -376,12 +380,7 @@ describe('Destination Settler Test', (): void => {
       .to.emit(destinationSettler, 'OrderFilled')
       .withArgs(intentHash, solver.address)
       .and.to.emit(inbox, 'IntentFulfilled')
-      .withArgs(
-        intentHash,
-        sourceChainID,
-        addressToBytes32(await prover.getAddress()),
-        addressToBytes32(solver.address),
-      )
+      .withArgs(intentHash, addressToBytes32(solver.address))
 
     expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })

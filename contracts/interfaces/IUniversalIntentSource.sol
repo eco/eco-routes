@@ -16,50 +16,59 @@ import {Intent, Reward} from "../types/UniversalIntent.sol";
 interface IUniversalIntentSource is IVaultStorage {
     /**
      * @notice Computes the hash of an intent
-     * @param intent The intent to hash
-     * @param routeHash Hash of the route component
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route
      */
     function getIntentHash(
-        Intent calldata intent,
-        bytes32 routeHash
-    ) external pure returns (bytes32 intentHash);
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
+    ) external pure returns (bytes32 intentHash, bytes32 routeHash);
 
     /**
      * @notice Computes the deterministic vault address for an intent
-     * @param intent The intent to calculate the vault address for
-     * @param routeHash Hash of the route component
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return Predicted vault address (returns address since vault is on EVM)
      */
     function intentVaultAddress(
-        Intent calldata intent,
-        bytes32 routeHash
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
     ) external view returns (address);
 
     /**
      * @notice Creates a new cross-chain intent with associated rewards
      * @dev Intent must be proven on source chain before expiration for valid reward claims
-     * @param intent The complete intent specification
-     * @param routeHash The hash of the route component (pre-calculated)
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return intentHash Unique identifier of the created intent
      * @return vault Address of the created vault
      */
     function publish(
-        Intent calldata intent,
-        bytes32 routeHash
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
     ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Creates and funds an intent in a single transaction
-     * @param intent The complete intent specification
-     * @param routeHash The hash of the route component (pre-calculated)
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Unique identifier of the created and funded intent
      * @return vault Address of the created vault
      */
     function publishAndFund(
-        Intent calldata intent,
-        bytes32 routeHash,
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward,
         bool allowPartial
     ) external payable returns (bytes32 intentHash, address vault);
 
@@ -99,29 +108,35 @@ interface IUniversalIntentSource is IVaultStorage {
 
     /**
      * @notice Creates and funds an intent on behalf of another address
-     * @param intent The complete intent specification
-     * @param routeHash The hash of the route component (pre-calculated)
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @param funder The bytes32 identifier providing the funding
-     * @param permitContact The bytes32 identifier for token approvals
+     * @param permitContract The bytes32 identifier for token approvals
      * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      * @return vault Address of the created vault
      */
     function publishAndFundFor(
-        Intent calldata intent,
-        bytes32 routeHash,
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Checks if an intent's rewards are valid and fully funded
-     * @param intent The intent to validate
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return True if the intent is properly funded
      */
     function isIntentFunded(
-        Intent calldata intent
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
     ) external view returns (bool);
 
     /**

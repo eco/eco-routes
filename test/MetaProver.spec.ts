@@ -1072,6 +1072,7 @@ describe('MetaProver Test', (): void => {
       await testMsgProver.addProvenIntent(
         intentHash,
         await claimant.getAddress(),
+        sourceChainID,
       )
 
       // Verify the intent is now proven
@@ -1298,10 +1299,12 @@ describe('MetaProver Test', (): void => {
       await testMsgProver.addProvenIntent(
         intentHash0,
         await claimant.getAddress(),
+        sourceChainID,
       )
       await testMsgProver.addProvenIntent(
         intentHash1,
         await claimant.getAddress(),
+        sourceChainID,
       )
 
       // Verify both intents were marked as proven

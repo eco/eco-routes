@@ -21,12 +21,13 @@ import {Route, Reward} from "./UniversalIntent.sol";
  */
 struct OrderData {
     uint64 destination;
-    bytes32 routeHash;
-    Route route;
+    bytes32 portal;
+    uint64 deadline;
+    bytes route;
     Reward reward;
 }
 
 // EIP712 type hash
 bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
-    "OrderData(uint64 destination,bytes32 routeHash,Route route,Reward reward)Route(bytes32 salt,uint64 deadline,bytes32 portal,TokenAmount[] tokens,Call[] calls)Reward(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(bytes32 token,uint256 amount)Call(bytes32 target,bytes data,uint256 value)"
+    "OrderData(uint64 destination,bytes32 portal,uint64 deadline,bytes route,Reward reward)Reward(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(bytes32 token,uint256 amount)"
 );

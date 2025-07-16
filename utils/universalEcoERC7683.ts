@@ -54,32 +54,41 @@ export function encodeUniversalOnchainCrosschainOrderData(
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
 
-  // Define the complete OrderData struct as a single tuple type
+  // Define the complete OrderData struct as a single tuple type - matches new structure
   const orderDataType =
-    'tuple(uint64 destination,bytes32 routeHash,tuple(bytes32 salt,uint64 deadline,bytes32 portal,tuple(bytes32 token,uint256 amount)[] tokens,tuple(bytes32 target,bytes data,uint256 value)[] calls) route,tuple(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,tuple(bytes32 token,uint256 amount)[] tokens) reward)'
+    'tuple(uint64 destination,bytes32 portal,uint64 deadline,bytes route,tuple(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,tuple(bytes32 token,uint256 amount)[] tokens) reward)'
+
+  // Encode the route data
+  const routeType =
+    'tuple(bytes32 salt,uint64 deadline,bytes32 portal,tuple(bytes32 token,uint256 amount)[] tokens,tuple(bytes32 target,bytes data,uint256 value)[] calls)'
+  const encodedRoute = abiCoder.encode(
+    [routeType],
+    [
+      {
+        salt: onchainCrosschainOrderData.route.salt,
+        deadline: onchainCrosschainOrderData.route.deadline,
+        portal: onchainCrosschainOrderData.route.portal,
+        tokens: onchainCrosschainOrderData.route.tokens.map((t) => ({
+          token: t.token,
+          amount: t.amount,
+        })),
+        calls: onchainCrosschainOrderData.route.calls.map((c) => ({
+          target: c.target,
+          data: c.data,
+          value: c.value,
+        })),
+      },
+    ],
+  )
 
   return abiCoder.encode(
     [orderDataType],
     [
       {
         destination: onchainCrosschainOrderData.destination,
-        routeHash:
-          onchainCrosschainOrderData.routeHash ||
-          '0x0000000000000000000000000000000000000000000000000000000000000000',
-        route: {
-          salt: onchainCrosschainOrderData.route.salt,
-          deadline: onchainCrosschainOrderData.route.deadline,
-          portal: onchainCrosschainOrderData.route.portal,
-          tokens: onchainCrosschainOrderData.route.tokens.map((t) => ({
-            token: t.token,
-            amount: t.amount,
-          })),
-          calls: onchainCrosschainOrderData.route.calls.map((c) => ({
-            target: c.target,
-            data: c.data,
-            value: c.value,
-          })),
-        },
+        portal: onchainCrosschainOrderData.route.portal,
+        deadline: onchainCrosschainOrderData.route.deadline,
+        route: encodedRoute,
         reward: {
           deadline: onchainCrosschainOrderData.reward!.deadline,
           creator: onchainCrosschainOrderData.reward!.creator,

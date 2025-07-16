@@ -24,10 +24,12 @@ abstract contract Eco7683DestinationSettler is IDestinationSettler {
         bytes calldata originData,
         bytes calldata fillerData
     ) external payable {
-        (Route memory route, bytes32 rewardHash) = abi.decode(
+        (bytes memory encodedRoute, bytes32 rewardHash) = abi.decode(
             originData,
-            (Route, bytes32)
+            (bytes, bytes32)
         );
+
+        Route memory route = abi.decode(encodedRoute, (Route));
 
         // Check deadline after creating reward
         if (block.timestamp > route.deadline) {

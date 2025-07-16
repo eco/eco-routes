@@ -9,6 +9,7 @@ import {IProver} from "./interfaces/IProver.sol";
 import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
 
 import {Intent, Route, Call, TokenAmount, Reward} from "./types/UniversalIntent.sol";
+import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 
 import {Vault} from "./Vault.sol";
@@ -28,84 +29,118 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
     /**
      * @notice Calculates the hash of an intent and its components
-     * @param intent The intent to hash
-     * @param routeHash Hash of the route component
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route
      */
     function getIntentHash(
-        Intent calldata intent,
-        bytes32 routeHash
-    ) public pure virtual returns (bytes32 intentHash) {
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
+    ) public pure virtual returns (bytes32 intentHash, bytes32 routeHash) {
+        routeHash = keccak256(route);
+        bytes32 rewardHash = keccak256(abi.encode(reward));
         intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+            abi.encodePacked(destination, routeHash, rewardHash)
         );
     }
 
     /**
      * @notice Calculates the deterministic address of the intent vault
-     * @param intent Intent to calculate vault address for
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return Address of the intent vault
      */
     function intentVaultAddress(
-        Intent calldata intent,
-        bytes32 routeHash
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
     ) external view virtual returns (address) {
-        bytes32 intentHash = getIntentHash(intent, routeHash);
+        (bytes32 intentHash, bytes32 routeHash) = getIntentHash(
+            destination,
+            route,
+            reward
+        );
 
         // Direct calculation for Vault address using CREATE2
-        return _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
+        return _getUniversalVaultAddress(intentHash, routeHash, reward);
     }
 
     /**
      * @notice Creates an intent without funding
-     * @param intent The complete intent struct to be published
-     * @param routeHash The hash of the route component (pre-calculated)
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return intentHash Hash of the created intent
      * @return vault Address of the created vault
      */
     function publish(
-        Intent calldata intent,
-        bytes32 routeHash
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
     ) external virtual returns (bytes32 intentHash, address vault) {
-        intentHash = getIntentHash(intent, routeHash);
+        bytes32 routeHash;
+        (intentHash, routeHash) = getIntentHash(destination, route, reward);
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intent, intentHash, routeHash);
 
-        vault = _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
+        emit IntentPublished(
+            intentHash,
+            destination,
+            reward.creator,
+            reward.prover,
+            reward.deadline,
+            reward.nativeValue,
+            reward.tokens,
+            route
+        );
+
+        vault = _getUniversalVaultAddress(intentHash, routeHash, reward);
         return (intentHash, vault);
     }
 
     /**
      * @notice Creates and funds an intent in a single transaction
-     * @param intent The complete intent struct to be published and funded
-     * @param routeHash The hash of the route component (pre-calculated)
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
      * @return vault Address of the created vault
      */
     function publishAndFund(
-        Intent calldata intent,
-        bytes32 routeHash,
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward,
         bool allowPartial
     ) external payable virtual returns (bytes32 intentHash, address vault) {
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
-        );
+        bytes32 routeHash;
+        (intentHash, routeHash) = getIntentHash(destination, route, reward);
         VaultState memory state = vaults[intentHash].state;
 
         _validateInitialFundingState(state, intentHash);
         _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intent, intentHash, routeHash);
 
-        vault = _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
+        emit IntentPublished(
+            intentHash,
+            destination,
+            reward.creator,
+            reward.prover,
+            reward.deadline,
+            reward.nativeValue,
+            reward.tokens,
+            route
+        );
+
+        vault = _getUniversalVaultAddress(intentHash, routeHash, reward);
         _fundUniversalIntent(
             intentHash,
-            intent.reward,
+            reward,
             vault,
             msg.sender,
             allowPartial
@@ -118,41 +153,51 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
     /**
      * @notice Creates and funds an intent using permit/allowance
-     * @param intent The complete intent struct
-     * @param routeHash The hash of the route component (pre-calculated)
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @param funder Address to fund the intent from
-     * @param permitContact Address of the permitContact instance
+     * @param permitContract Address of the permitContract instance
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
      * @return vault Address of the created vault
      */
     function publishAndFundFor(
-        Intent calldata intent,
-        bytes32 routeHash,
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) external virtual returns (bytes32 intentHash, address vault) {
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
-        );
+        bytes32 routeHash;
+        (intentHash, routeHash) = getIntentHash(destination, route, reward);
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intent, intentHash, routeHash);
+
+        emit IntentPublished(
+            intentHash,
+            destination,
+            reward.creator,
+            reward.prover,
+            reward.deadline,
+            reward.nativeValue,
+            reward.tokens,
+            route
+        );
         _validateSourceChain(block.chainid, intentHash);
 
-        vault = _getUniversalVaultAddress(intentHash, routeHash, intent.reward);
+        vault = _getUniversalVaultAddress(intentHash, routeHash, reward);
 
         _fundUniversalIntentFor(
             state,
-            intent.reward,
+            reward,
             intentHash,
             routeHash,
             vault,
             funder,
-            permitContact,
+            permitContract,
             allowPartial
         );
 
@@ -161,24 +206,29 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
     /**
      * @notice Checks if an intent is completely funded
-     * @param intent Intent to validate
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @return True if intent is completely funded, false otherwise
      */
     function isIntentFunded(
-        Intent calldata intent
+        uint64 destination,
+        bytes calldata route,
+        Reward calldata reward
     ) external view virtual returns (bool) {
         // Source chain validation is implicit since intents are created on the source chain
-        // The following check is not needed with the new structure
-
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
-        bytes32 intentHash = getIntentHash(intent, routeHash);
+        (bytes32 intentHash, bytes32 routeHash) = getIntentHash(
+            destination,
+            route,
+            reward
+        );
 
         address vault = _getUniversalVaultAddress(
             intentHash,
             routeHash,
-            intent.reward
+            reward
         );
-        return _isUniversalRewardFunded(intent.reward, vault);
+        return _isUniversalRewardFunded(reward, vault);
     }
 
     /**
@@ -286,6 +336,18 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         address claimant = proof.claimant;
         VaultState memory state = vaults[intentHash].state;
 
+        // If the intent has been proven on a different chain, challenge the proof
+        if (proof.destinationChainID != destination && claimant != address(0)) {
+            // Challenge the proof and emit event
+            IProver(reward.prover.toAddress()).challengeIntentProof(
+                destination,
+                routeHash,
+                rewardHash
+            );
+            emit IntentProofChallenged(intentHash);
+            return;
+        }
+
         // Claim the rewards if the intent has not been claimed
         if (
             claimant != address(0) &&
@@ -301,22 +363,8 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
             emit IntentWithdrawn(intentHash, claimant);
 
-            // Use assembly to deploy Vault with the original reward struct
-            bytes memory code = type(Vault).creationCode;
-            bytes memory initCode = abi.encodePacked(
-                code,
-                abi.encode(intentHash, reward)
-            );
-
-            address vaultAddress;
-            assembly {
-                vaultAddress := create2(
-                    0,
-                    add(initCode, 0x20),
-                    mload(initCode),
-                    routeHash
-                )
-            }
+            // Deploy the vault to execute the claim
+            _deployVault(intentHash, reward, routeHash);
 
             return;
         }
@@ -397,22 +445,8 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
         emit IntentRefunded(intentHash, reward.creator.toAddress());
 
-        // Use assembly to deploy Vault with the original reward struct
-        bytes memory code = type(Vault).creationCode;
-        bytes memory initCode = abi.encodePacked(
-            code,
-            abi.encode(intentHash, reward)
-        );
-
-        address vaultAddress;
-        assembly {
-            vaultAddress := create2(
-                0,
-                add(initCode, 0x20),
-                mload(initCode),
-                routeHash
-            )
-        }
+        // Deploy the vault to execute the refund
+        _deployVault(intentHash, reward, routeHash);
     }
 
     /**
@@ -466,50 +500,8 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
         emit IntentRefunded(intentHash, reward.creator.toAddress());
 
-        // Use assembly to deploy Vault with the original reward struct
-        bytes memory code = type(Vault).creationCode;
-        bytes memory initCode = abi.encodePacked(
-            code,
-            abi.encode(intentHash, reward)
-        );
-
-        address vaultAddress;
-        assembly {
-            vaultAddress := create2(
-                0,
-                add(initCode, 0x20),
-                mload(initCode),
-                routeHash
-            )
-        }
-    }
-
-    /**
-     * @notice Separate function to emit the UniversalIntentPublished event
-     * @dev This helps avoid stack-too-deep errors in the calling function
-     * @param intent The intent being created
-     * @param intentHash Hash of the intent
-     */
-    function _emitIntentPublished(
-        Intent calldata intent,
-        bytes32 intentHash,
-        bytes32 routeHash
-    ) internal virtual {
-        emit IntentPublished(
-            intentHash,
-            routeHash,
-            intent.destination,
-            intent.route.salt,
-            intent.route.deadline,
-            intent.route.portal,
-            intent.route.tokens,
-            intent.route.calls,
-            intent.reward.creator,
-            intent.reward.prover,
-            intent.reward.deadline,
-            intent.reward.nativeValue,
-            intent.reward.tokens
-        );
+        // Deploy the vault to execute the token recovery
+        _deployVault(intentHash, reward, routeHash);
     }
 
     /**
@@ -548,7 +540,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
     function _getUniversalVaultAddress(
         bytes32 intentHash,
         bytes32 routeHash,
-        Reward calldata reward
+        Reward memory reward
     ) internal view returns (address) {
         /* Direct calculation of vault address using CREATE2
            Since abi encode of bytes32 is the same as address for the vault calculation,
@@ -573,6 +565,36 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
                     )
                 )
             );
+    }
+
+    /**
+     * @notice Deploys a new vault using CREATE2 with assembly
+     * @dev Uses assembly to deploy the vault with the original reward struct for consistent ABI encoding
+     * @param intentHash Hash of the full intent
+     * @param reward Universal reward structure
+     * @param routeHash Hash of the route component used as salt
+     * @return vaultAddress The deployed vault address
+     */
+    function _deployVault(
+        bytes32 intentHash,
+        Reward memory reward,
+        bytes32 routeHash
+    ) internal returns (address vaultAddress) {
+        // Use assembly to deploy Vault with the original reward struct
+        bytes memory code = type(Vault).creationCode;
+        bytes memory initCode = abi.encodePacked(
+            code,
+            abi.encode(intentHash, reward)
+        );
+
+        assembly {
+            vaultAddress := create2(
+                0,
+                add(initCode, 0x20),
+                mload(initCode),
+                routeHash
+            )
+        }
     }
 
     /**
@@ -674,7 +696,7 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
         bytes32 routeHash,
         address vault,
         address funder,
-        address permitContact,
+        address permitContract,
         bool allowPartial
     ) internal {
         // Check if native reward is enabled
@@ -692,58 +714,23 @@ abstract contract UniversalSource is IntentSource, IUniversalIntentSource {
 
         state.mode = uint8(VaultMode.Fund);
         state.allowPartialFunding = allowPartial ? 1 : 0;
-        state.usePermit = permitContact != address(0) ? 1 : 0;
+        state.usePermit = permitContract != address(0) ? 1 : 0;
         state.target = funder;
 
-        if (permitContact != address(0)) {
-            vaults[intentHash].permitContract = permitContact;
+        if (permitContract != address(0)) {
+            vaults[intentHash].permitContract = permitContract;
         }
 
         vaults[intentHash].state = state;
 
-        // Use assembly to deploy Vault with the original reward struct
-        // This will ensure that the abi encoding is consistent
-        bytes memory code = type(Vault).creationCode;
-        bytes memory initCode = abi.encodePacked(
-            code,
-            abi.encode(intentHash, reward)
-        );
+        // Deploy the vault to execute the funding
+        _deployVault(intentHash, reward, routeHash);
 
-        address vaultAddress;
-        assembly {
-            vaultAddress := create2(
-                0,
-                add(initCode, 0x20),
-                mload(initCode),
-                routeHash
-            )
-        }
-
-        // Check if vault creation succeeded (has code) or if it's a valid self-destructed vault
-        if (vaultAddress == address(0)) {
-            // CREATE2 failed completely
-            revert VaultCreationFailed(intentHash);
-        }
-
-        // Additional check for permit contracts - verify tokens were transferred
-        if (permitContact != address(0)) {
-            // Check if the intent is actually funded after vault creation
-            if (!_isUniversalRewardFunded(reward, vault)) {
-                // Vault creation succeeded but funding failed
-                // Reset state and revert
-                state.status = uint8(RewardStatus.Initial);
-                state.mode = uint8(VaultMode.Fund);
-                state.allowPartialFunding = 0;
-                state.usePermit = 0;
-                state.target = address(0);
-                vaults[intentHash].state = state;
-                delete vaults[intentHash].permitContract;
-
-                revert InsufficientTokenAllowance(address(0), funder, 0);
-            }
-        }
-
+        // Check if funding was successful and emit appropriate events
         if (state.status == uint8(RewardStatus.Funded)) {
+            if (vault.balance < reward.nativeValue) {
+                revert InsufficientNativeReward(intentHash);
+            }
             emit IntentFunded(intentHash, funder, true);
         } else if (
             state.status == uint8(RewardStatus.PartiallyFunded) &&

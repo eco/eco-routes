@@ -66,13 +66,12 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         // Decode components individually to avoid Solidity's nested struct decoding issues
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        Intent memory intent = Intent(
+        bytes32 orderId = _openIntent(
             orderData.destination,
             orderData.route,
-            orderData.reward
+            orderData.reward,
+            msg.sender
         );
-
-        bytes32 orderId = _openIntent(intent, orderData.routeHash, msg.sender);
 
         emit Open(orderId, _resolve(order.fillDeadline, orderData));
     }
@@ -107,17 +106,16 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        Intent memory intent = Intent(
-            orderData.destination,
-            orderData.route,
-            orderData.reward
-        );
-
         if (order.originChainId != block.chainid) {
             revert OriginChainIDMismatch();
         }
 
-        bytes32 orderId = _openIntent(intent, orderData.routeHash, order.user);
+        bytes32 orderId = _openIntent(
+            orderData.destination,
+            orderData.route,
+            orderData.reward,
+            order.user
+        );
 
         emit Open(orderId, _resolve(order.openDeadline, orderData));
     }
@@ -185,31 +183,37 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
     /**
      * @notice Helper method that actually opens the intent
      * @dev Handles funding transfer and intent publication
-     * @param intent The intent to open
-     * @param routeHash Hash of the route
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward structure
      * @param user Address of the user opening the intent
      * @return intentHash The hash of the opened intent
      */
     function _openIntent(
-        Intent memory intent,
-        bytes32 routeHash,
+        uint64 destination,
+        bytes memory route,
+        Reward memory reward,
         address user
     ) internal returns (bytes32 intentHash) {
-        if (!INTENT_SOURCE.isIntentFunded(intent)) {
-            address vault = INTENT_SOURCE.intentVaultAddress(intent, routeHash);
-            uint256 rewardsLength = intent.reward.tokens.length;
+        if (!INTENT_SOURCE.isIntentFunded(destination, route, reward)) {
+            address vault = INTENT_SOURCE.intentVaultAddress(
+                destination,
+                route,
+                reward
+            );
+            uint256 rewardsLength = reward.tokens.length;
 
-            if (intent.reward.nativeValue > 0) {
-                if (msg.value < intent.reward.nativeValue) {
+            if (reward.nativeValue > 0) {
+                if (msg.value < reward.nativeValue) {
                     revert InsufficientNativeReward();
                 }
 
-                payable(vault).transfer(intent.reward.nativeValue);
+                payable(vault).transfer(reward.nativeValue);
             }
 
             for (uint256 i = 0; i < rewardsLength; ++i) {
-                address token = intent.reward.tokens[i].token.toAddress();
-                uint256 amount = intent.reward.tokens[i].amount;
+                address token = reward.tokens[i].token.toAddress();
+                uint256 amount = reward.tokens[i].amount;
 
                 IERC20(token).safeTransferFrom(user, vault, amount);
             }
@@ -217,8 +221,8 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         payable(msg.sender).transfer(address(this).balance);
 
-        // Use the provided routeHash for the publish function
-        (intentHash, ) = INTENT_SOURCE.publish(intent, routeHash);
+        // Use the new publish function with separate parameters
+        (intentHash, ) = INTENT_SOURCE.publish(destination, route, reward);
         return intentHash;
     }
 
@@ -233,21 +237,10 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         uint32 openDeadline,
         OrderData memory orderData
     ) public view returns (ResolvedCrossChainOrder memory) {
-        // Extract destination from order data
-        uint256 routeTokenCount = orderData.route.tokens.length;
-
-        Output[] memory maxSpent = new Output[](routeTokenCount);
-
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            TokenAmount memory approval = orderData.route.tokens[i];
-
-            maxSpent[i] = Output(
-                approval.token, // Already bytes32 in universal types
-                approval.amount,
-                bytes32(uint256(uint160(address(0)))), //filler is not known
-                orderData.destination
-            );
-        }
+        // For now, we can't extract token information from the route bytes
+        // since it could be encoded in any format (Solana, etc.)
+        // So we return empty maxSpent array
+        Output[] memory maxSpent = new Output[](0);
 
         uint256 rewardTokenCount = orderData.reward.tokens.length;
 
@@ -273,20 +266,20 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             );
         }
 
+        bytes32 routeHash = keccak256(orderData.route);
         bytes32 rewardHash = keccak256(abi.encode(orderData.reward));
         bytes32 intentHash = keccak256(
-            abi.encodePacked(
-                orderData.destination,
-                orderData.routeHash,
-                rewardHash
-            )
+            abi.encodePacked(orderData.destination, routeHash, rewardHash)
         );
+
+        // Decode the route bytes back to Route struct for proper encoding
+        Route memory route = abi.decode(orderData.route, (Route));
 
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
         fillInstructions[0] = FillInstruction(
             orderData.destination,
-            orderData.route.portal,
-            abi.encode(orderData.route, rewardHash)
+            orderData.portal,
+            abi.encode(route, rewardHash)
         );
 
         return
@@ -294,7 +287,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
                 orderData.reward.creator.toAddress(),
                 block.chainid,
                 openDeadline,
-                uint32(orderData.route.deadline),
+                uint32(orderData.deadline),
                 intentHash,
                 maxSpent,
                 minReceived,

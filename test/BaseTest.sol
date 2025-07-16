@@ -12,7 +12,7 @@ import {TestProver} from "../contracts/test/TestProver.sol";
 import {Portal} from "../contracts/Portal.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/UniversalIntent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/Intent.sol";
 import {OrderData} from "../contracts/types/EcoERC7683.sol";
 
 contract BaseTest is Test {
@@ -30,7 +30,7 @@ contract BaseTest is Test {
 
     // Core contracts
     Portal internal portal;
-    Portal internal intentSource; // Backward compatibility alias
+    IIntentSource internal intentSource; // Interface for Portal
     Inbox internal inbox; // Backward compatibility alias
     TestProver internal prover;
 
@@ -60,7 +60,7 @@ contract BaseTest is Test {
         // Deploy core contracts
         portal = new Portal();
         // Set backward compatibility aliases
-        intentSource = portal;
+        intentSource = IIntentSource(address(portal));
         inbox = Inbox(payable(address(portal)));
         prover = new TestProver(address(portal));
 
@@ -80,16 +80,13 @@ contract BaseTest is Test {
 
         // Setup route tokens
         routeTokens.push(
-            TokenAmount({
-                token: TypeCasts.addressToBytes32(address(tokenA)),
-                amount: MINT_AMOUNT
-            })
+            TokenAmount({token: address(tokenA), amount: MINT_AMOUNT})
         );
 
         // Setup calls
         calls.push(
             Call({
-                target: TypeCasts.addressToBytes32(address(tokenA)),
+                target: address(tokenA),
                 data: abi.encodeWithSignature(
                     "transfer(address,uint256)",
                     creator,
@@ -101,16 +98,10 @@ contract BaseTest is Test {
 
         // Setup reward tokens
         rewardTokens.push(
-            TokenAmount({
-                token: TypeCasts.addressToBytes32(address(tokenA)),
-                amount: MINT_AMOUNT
-            })
+            TokenAmount({token: address(tokenA), amount: MINT_AMOUNT})
         );
         rewardTokens.push(
-            TokenAmount({
-                token: TypeCasts.addressToBytes32(address(tokenB)),
-                amount: MINT_AMOUNT * 2
-            })
+            TokenAmount({token: address(tokenB), amount: MINT_AMOUNT * 2})
         );
 
         // Create memory copies of arrays for struct assignment
@@ -137,7 +128,7 @@ contract BaseTest is Test {
         route = Route({
             salt: salt,
             deadline: uint64(expiry),
-            portal: TypeCasts.addressToBytes32(address(portal)),
+            portal: address(portal),
             tokens: routeTokensMemory,
             calls: callsMemory
         });
@@ -145,8 +136,8 @@ contract BaseTest is Test {
         // Setup reward
         reward = Reward({
             deadline: uint64(expiry),
-            creator: TypeCasts.addressToBytes32(creator),
-            prover: TypeCasts.addressToBytes32(address(prover)),
+            creator: creator,
+            prover: address(prover),
             nativeValue: 0,
             tokens: rewardTokensMemory
         });
@@ -185,15 +176,11 @@ contract BaseTest is Test {
         address recipient
     ) internal {
         vm.prank(creator);
-        if (destinationChainId == uint96(block.chainid)) {
-            prover.addProvenIntent(intentHash, recipient);
-        } else {
-            prover.addProvenIntentWithChain(
-                intentHash,
-                recipient,
-                destinationChainId
-            );
-        }
+        prover.addProvenIntent(
+            intentHash,
+            recipient,
+            uint64(destinationChainId)
+        );
     }
 
     function _publishAndFund(
@@ -201,9 +188,7 @@ contract BaseTest is Test {
         bool allowPartial
     ) internal {
         vm.prank(creator);
-        // For Portal/UniversalSource, we need to calculate routeHash
-        bytes32 routeHash = keccak256(abi.encode(_intent.route));
-        intentSource.publishAndFund(_intent, routeHash, allowPartial);
+        intentSource.publishAndFund(_intent, allowPartial);
     }
 
     function _publishAndFundWithValue(
@@ -212,13 +197,7 @@ contract BaseTest is Test {
         uint256 value
     ) internal {
         vm.prank(creator);
-        // For Portal/UniversalSource, we need to calculate routeHash
-        bytes32 routeHash = keccak256(abi.encode(_intent.route));
-        intentSource.publishAndFund{value: value}(
-            _intent,
-            routeHash,
-            allowPartial
-        );
+        intentSource.publishAndFund{value: value}(_intent, allowPartial);
     }
 
     function _timeTravel(uint256 timestamp) internal {

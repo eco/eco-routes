@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
-import {Reward} from "../types/Intent.sol";
 
 /**
  * @title IProver
@@ -78,11 +77,11 @@ interface IProver is ISemver {
      *      intents are only claimable when executed on their intended destination chains.
      * @param destination The intended destination chain ID
      * @param routeHash The hash of the intent's route
-     * @param reward The reward specification of the intent
+     * @param rewardHash The hash of the reward specification
      */
     function challengeIntentProof(
         uint64 destination,
         bytes32 routeHash,
-        Reward calldata reward
+        bytes32 rewardHash
     ) external;
 }
