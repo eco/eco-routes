@@ -24,6 +24,7 @@
 # - HYPERPROVER_CREATEX_ADDRESS: CreateX address for HyperProver contract
 # - HYPERPROVER_2470_ADDRESS: 2470 address for HyperProver contract
 
+
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/utils/load_env.sh"
@@ -39,7 +40,7 @@ if [ -z "$RESULTS_FILE" ]; then
     exit 1
 fi
 
-# Ensure CHAIN_DATA_URL is set
+# Ensure CHAIN_DATA_URL is set,
 if [ -z "$CHAIN_DATA_URL" ]; then
     echo "❌ Error: CHAIN_DATA_URL is not set in .env!"
     exit 1
