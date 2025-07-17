@@ -3,6 +3,7 @@ import path from 'path'
 import { SemanticContext } from '../sr-prepare'
 import { determineSalts } from '../../utils/extract-salt'
 import { deployRoutesContracts } from '../sr-deploy-contracts'
+import { createGuardedSaltForDeployer } from '../../utils/guardedSalt'
 
 // Mock dependencies
 jest.mock('fs', () => ({
@@ -22,8 +23,10 @@ jest.mock('path', () => ({
 
 jest.mock('../../utils/extract-salt', () => ({
   determineSalts: jest.fn().mockResolvedValue({
-    rootSalt: 'test-salt',
-    preprodRootSalt: 'test-preprod-salt',
+    rootSalt:
+      '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    preprodRootSalt:
+      '0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321',
   }),
 }))
 
@@ -46,6 +49,13 @@ jest.mock('viem', () => ({
 // Mock environment variables
 jest.mock('../../utils/envUtils', () => ({
   validateEnvVariables: jest.fn(),
+}))
+
+jest.mock('../../utils/guardedSalt', () => ({
+  createGuardedSaltForDeployer: jest.fn().mockImplementation((salt) => {
+    // Return a mock guarded salt based on the input
+    return `0xguarded${salt.slice(2, 10)}${'0'.repeat(48)}`
+  }),
 }))
 
 // Create a mock for only the deployRoutesContracts function
@@ -80,11 +90,24 @@ jest.mock('../sr-deploy-contracts', () => {
           logger,
         )
 
+        // Generate guarded salts for secure deployment
+        logger.log('Generating guarded salts for deployment...')
+        const guardedRootSalt = createGuardedSaltForDeployer(rootSalt, false)
+        const guardedPreprodRootSalt = createGuardedSaltForDeployer(
+          preprodRootSalt,
+          false,
+        )
+
+        logger.log(`Root salt: ${rootSalt} -> Guarded: ${guardedRootSalt}`)
+        logger.log(
+          `Preprod salt: ${preprodRootSalt} -> Guarded: ${guardedPreprodRootSalt}`,
+        )
+
         // Mock the call to deployToEnv instead of actually executing it
         await mockDeployToEnv(
           [
-            { salt: rootSalt, environment: 'production' },
-            { salt: preprodRootSalt, environment: 'preprod' },
+            { value: guardedRootSalt, environment: 'default' },
+            { value: guardedPreprodRootSalt, environment: 'pre' },
           ],
           logger,
           cwd,
@@ -211,5 +234,83 @@ describe('deployRoutesContracts', () => {
       '❌ Contract deployment failed',
     )
     expect(context.logger.error).toHaveBeenCalledWith('Test error')
+  })
+
+  it('should generate guarded salts for both production and preprod environments', async () => {
+    // Act
+    await deployRoutesContracts(context, 'test-package')
+
+    // Assert
+    expect(createGuardedSaltForDeployer).toHaveBeenCalledWith(
+      '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      false,
+    )
+    expect(createGuardedSaltForDeployer).toHaveBeenCalledWith(
+      '0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321',
+      false,
+    )
+    expect(createGuardedSaltForDeployer).toHaveBeenCalledTimes(2)
+  })
+
+  it('should log guarded salt generation process', async () => {
+    // Act
+    await deployRoutesContracts(context, 'test-package')
+
+    // Assert
+    expect(context.logger.log).toHaveBeenCalledWith(
+      'Generating guarded salts for deployment...',
+    )
+    expect(context.logger.log).toHaveBeenCalledWith(
+      'Root salt: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef -> Guarded: 0xguarded12345678000000000000000000000000000000000000000000000000',
+    )
+    expect(context.logger.log).toHaveBeenCalledWith(
+      'Preprod salt: 0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321 -> Guarded: 0xguardedfedcba09000000000000000000000000000000000000000000000000',
+    )
+  })
+
+  it('should pass guarded salts to deployment process', async () => {
+    // Act
+    await deployRoutesContracts(context, 'test-package')
+
+    // Get the mock function from the module
+    const mockModule = require('../sr-deploy-contracts')
+    const mockDeployToEnv = mockModule.deployToEnv
+
+    // Assert
+    expect(mockDeployToEnv).toHaveBeenCalledWith(
+      [
+        {
+          value:
+            '0xguarded12345678000000000000000000000000000000000000000000000000',
+          environment: 'default',
+        },
+        {
+          value:
+            '0xguardedfedcba09000000000000000000000000000000000000000000000000',
+          environment: 'pre',
+        },
+      ],
+      context.logger,
+      context.cwd,
+    )
+  })
+
+  it('should handle guarded salt generation errors', async () => {
+    // Arrange
+    const saltError = new Error('Guarded salt generation failed')
+    ;(createGuardedSaltForDeployer as jest.Mock).mockImplementationOnce(() => {
+      throw saltError
+    })
+
+    // Act & Assert
+    await expect(
+      deployRoutesContracts(context, 'test-package'),
+    ).rejects.toThrow(saltError)
+    expect(context.logger.error).toHaveBeenCalledWith(
+      '❌ Contract deployment failed',
+    )
+    expect(context.logger.error).toHaveBeenCalledWith(
+      'Guarded salt generation failed',
+    )
   })
 })

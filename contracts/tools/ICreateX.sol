@@ -34,6 +34,33 @@ interface ICreateX {
 
     /**
      * @dev Returns the address where a contract will be stored if deployed via `deployer` using
+     * the `CREATE2` pattern. This function accounts for salt processing done by CreateX.
+     * The deployer in this case is the address of the CreateX contract itself.
+     * @param salt The 32-byte random value used to create the contract address.
+     * @param initCodeHash The keccak256 hash of the creation bytecode.
+     * @return computedAddress The 20-byte address where a contract will be stored.
+     */
+    function computeCreate2Address(
+        bytes32 salt,
+        bytes32 initCodeHash
+    ) external view returns (address computedAddress);
+
+    /**
+     * @dev Returns the address where a contract will be stored if deployed via `deployer` using
+     * the `CREATE2` pattern. This function accounts for salt processing done by CreateX.
+     * @param salt The 32-byte random value used to create the contract address.
+     * @param initCodeHash The keccak256 hash of the creation bytecode.
+     * @param deployer The 20-byte deployer address.
+     * @return computedAddress The 20-byte address where a contract will be stored.
+     */
+    function computeCreate2Address(
+        bytes32 salt,
+        bytes32 initCodeHash,
+        address deployer
+    ) external view returns (address computedAddress);
+
+    /**
+     * @dev Returns the address where a contract will be stored if deployed via `deployer` using
      * the `CREATE3` pattern (i.e. without an initcode factor). Any change in the `salt` value will
      * result in a new destination address.
      * @param salt The 32-byte random value used to create the proxy contract address.
@@ -43,5 +70,5 @@ interface ICreateX {
     function computeCreate3Address(
         bytes32 salt,
         address deployer
-    ) external pure returns (address computedAddress);
+    ) external view returns (address computedAddress);
 }
