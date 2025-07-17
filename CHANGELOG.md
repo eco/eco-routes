@@ -1,3 +1,10 @@
+## [2.8.8](https://github.com/eco/eco-routes/compare/v2.8.7...v2.8.8) (2025-07-17)
+
+
+### Bug Fixes
+
+* correct spelling in package description ([6372c63](https://github.com/eco/eco-routes/commit/6372c63ece68aa54db6e13a9605c42091ab8977b))
+
 ## [2.8.7](https://github.com/eco/eco-routes/compare/v2.8.6...v2.8.7) (2025-07-11)
 
 
