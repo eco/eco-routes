@@ -1,7 +1,13 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, Portal, TestProver } from '../typechain-types'
+import {
+  TestERC20,
+  TestUSDT,
+  Inbox,
+  Portal,
+  TestProver,
+} from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -50,6 +56,7 @@ function universalRouteToRoute(universalRoute: UniversalRoute): Route {
 describe('Inbox Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
+  let testUSDT: TestUSDT
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let dstAddr: SignerWithAddress
@@ -70,6 +77,7 @@ describe('Inbox Test', (): void => {
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
     erc20: TestERC20
+    testUSDT: TestUSDT
     owner: SignerWithAddress
     solver: SignerWithAddress
     dstAddr: SignerWithAddress
@@ -84,9 +92,16 @@ describe('Inbox Test', (): void => {
     await erc20.mint(solver.address, mintAmount)
     await erc20.mint(owner.address, mintAmount)
 
+    // deploy TestUSDT with ERC165 support
+    const testUSDTFactory = await ethers.getContractFactory('TestUSDT')
+    const testUSDT = await testUSDTFactory.deploy('TestUSDT', 'TUSDT')
+    await testUSDT.mint(solver.address, mintAmount)
+    await testUSDT.mint(owner.address, mintAmount)
+
     return {
       inbox,
       erc20,
+      testUSDT,
       owner,
       solver,
       dstAddr,
@@ -151,7 +166,7 @@ describe('Inbox Test', (): void => {
     }
   }
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, erc20, owner, solver, dstAddr } =
+    ;({ inbox, erc20, testUSDT, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
     ;({
       universalIntent,
@@ -412,6 +427,109 @@ describe('Inbox Test', (): void => {
             TypeCasts.addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'IntentAlreadyFulfilled')
+    })
+
+    it('should send ETH if one of the targets is an EOA', async () => {
+      const ethAmount = ethers.parseEther('1.0')
+
+      // Create intent with ETH transfer to EOA
+      const _route: UniversalRoute = {
+        ...universalRoute,
+        calls: [
+          {
+            target: TypeCasts.addressToBytes32(dstAddr.address),
+            data: '0x', // Empty data for ETH transfer
+            value: ethAmount,
+          },
+        ],
+      }
+
+      const _intentHash = hashUniversalIntent({
+        destination: Number((await owner.provider.getNetwork()).chainId),
+        route: _route,
+        reward: universalReward,
+      }).intentHash
+
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      // Check initial balance
+      const initialBalance = await ethers.provider.getBalance(dstAddr.address)
+
+      // Should succeed with ETH transfer to EOA
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            _intentHash,
+            universalRouteToRoute(_route),
+            rewardHash,
+            TypeCasts.addressToBytes32(dstAddr.address),
+            { value: ethAmount },
+          ),
+      )
+        .to.emit(inbox, 'IntentFulfilled')
+        .withArgs(_intentHash, TypeCasts.addressToBytes32(dstAddr.address))
+
+      // Check ETH was transferred
+      const finalBalance = await ethers.provider.getBalance(dstAddr.address)
+      expect(finalBalance - initialBalance).to.equal(ethAmount)
+    })
+
+    it('should succeed when calling a contract with ERC165 support', async () => {
+      // Create intent using TestUSDT which supports ERC165
+      const transferCalldata = testUSDT.interface.encodeFunctionData(
+        'transfer',
+        [dstAddr.address, mintAmount],
+      )
+
+      const _route: UniversalRoute = {
+        ...universalRoute,
+        tokens: [
+          {
+            token: TypeCasts.addressToBytes32(await testUSDT.getAddress()),
+            amount: mintAmount,
+          },
+        ],
+        calls: [
+          {
+            target: TypeCasts.addressToBytes32(await testUSDT.getAddress()),
+            data: transferCalldata,
+            value: 0,
+          },
+        ],
+      }
+
+      const _intentHash = hashUniversalIntent({
+        destination: Number((await owner.provider.getNetwork()).chainId),
+        route: _route,
+        reward: universalReward,
+      }).intentHash
+
+      await testUSDT
+        .connect(solver)
+        .approve(await inbox.getAddress(), mintAmount)
+
+      // Check initial balances
+      expect(await testUSDT.balanceOf(solver.address)).to.equal(mintAmount)
+      expect(await testUSDT.balanceOf(dstAddr.address)).to.equal(0)
+
+      // Should succeed with ERC165 supported contract
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            _intentHash,
+            universalRouteToRoute(_route),
+            rewardHash,
+            TypeCasts.addressToBytes32(dstAddr.address),
+          ),
+      )
+        .to.emit(inbox, 'IntentFulfilled')
+        .withArgs(_intentHash, TypeCasts.addressToBytes32(dstAddr.address))
+
+      // Check tokens were transferred
+      expect(await testUSDT.balanceOf(solver.address)).to.equal(0)
+      expect(await testUSDT.balanceOf(dstAddr.address)).to.equal(mintAmount)
     })
   })
 
