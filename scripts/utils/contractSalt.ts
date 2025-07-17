@@ -1,4 +1,4 @@
-import { keccak256, encodePacked, Hex, hexToBytes, bytesToHex } from 'viem'
+import { keccak256, encodePacked, Hex } from 'viem'
 
 /**
  * Generates a contract salt that matches the Solidity getContractSalt function

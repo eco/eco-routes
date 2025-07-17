@@ -1,3 +1,10 @@
+## [2.8.7](https://github.com/eco/eco-routes/compare/v2.8.6...v2.8.7) (2025-07-11)
+
+
+### Bug Fixes
+
+* world chain and other EIP-155 that dont support he singleton factory are going to use createx instead ([#280](https://github.com/eco/eco-routes/issues/280)) ([e970366](https://github.com/eco/eco-routes/commit/e97036613615f77a9331795cc37607099dff543c))
+
 ## [2.8.6](https://github.com/eco/eco-routes/compare/v2.8.5...v2.8.6) (2025-07-11)
 
 
