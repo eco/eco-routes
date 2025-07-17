@@ -20,6 +20,9 @@
 # - RESULTS_FILE: Path to write deployment results
 # - CHAIN_DATA_URL: URL to chain configuration JSON
 # - APPEND_RESULTS: If "true", append to existing results file
+# - HYPERPROVER_SALT: Salt for HyperProver contract
+# - HYPERPROVER_CREATEX_ADDRESS: CreateX address for HyperProver contract
+# - HYPERPROVER_2470_ADDRESS: 2470 address for HyperProver contract
 
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,10 +99,14 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     echo "🔄 Deploying contracts for Chain ID: $CHAIN_ID"
     echo "📬 Mailbox Contract: $MAILBOX_CONTRACT"
+    echo "📬 SALT: $SALT"
+    echo "📬 SALT: $HYPERPROVER_SALT"
     echo "📬 Meta Prover: $META_PROVER"
+    echo "📬 HyperProver CreateX Address: $HYPERPROVER_CREATEX_ADDRESS"
+    echo "📬 HyperProver 2470 Address: $HYPERPROVER_2470_ADDRESS"
 
     # Construct Foundry command
-    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" forge script scripts/Deploy.s.sol \
+    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" forge script scripts/Deploy.s.sol \
             --rpc-url \"$RPC_URL\" \
             --slow \
             --broadcast \
