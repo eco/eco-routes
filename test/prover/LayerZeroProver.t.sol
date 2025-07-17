@@ -249,4 +249,153 @@ contract LayerZeroProverTest is BaseTest {
         vm.expectRevert();
         lzProver.fetchFee(invalidChainId, intentHashes, claimants, data);
     }
+
+    // ============ Challenge Intent Proof Tests ============
+    // Note: Comprehensive challenge tests are in MetaProver.t.sol
+    // Keeping only LayerZero-specific challenge test
+
+    function testChallengeIntentProofWithWrongChain() public {
+        // Create test data
+        uint64 actualDestination = 1;
+        uint64 wrongDestination = 2;
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(actualDestination, routeHash, rewardHash)
+        );
+
+        // Setup a proof with wrong destination chain
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(wrongDestination), // Wrong destination
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+
+        bytes memory message = abi.encode(intentHashes, claimants);
+
+        // Add the proof with wrong destination
+        vm.prank(address(endpoint));
+        lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
+
+        // Verify proof exists with wrong destination
+        LayerZeroProver.ProofData memory proofBefore = lzProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofBefore.claimant, address(this));
+        assertEq(proofBefore.destinationChainID, wrongDestination);
+
+        // Challenge the proof with correct destination
+        vm.expectEmit(true, true, true, true);
+        emit IntentProven(intentHash, address(0)); // Emits with zero address to indicate removal
+
+        lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
+
+        // Verify proof was cleared
+        LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofAfter.claimant, address(0));
+        assertEq(proofAfter.destinationChainID, 0);
+    }
+
+    // ============================================================================
+    // LayerZero-Specific Challenge Tests
+    // ============================================================================
+
+    function testChallengeIntentProofWithCorrectChain() public {
+        // Create test data
+        uint64 correctDestination = 1;
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(correctDestination, routeHash, rewardHash)
+        );
+
+        // Setup a proof with correct destination chain
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(correctDestination), // Correct destination
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+
+        bytes memory message = abi.encode(intentHashes, claimants);
+
+        // Add the proof with correct destination
+        vm.prank(address(endpoint));
+        lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
+
+        // Verify proof exists with correct destination
+        LayerZeroProver.ProofData memory proofBefore = lzProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofBefore.claimant, address(this));
+        assertEq(proofBefore.destinationChainID, correctDestination);
+
+        // Challenge the proof with correct destination (should do nothing)
+        lzProver.challengeIntentProof(correctDestination, routeHash, rewardHash);
+
+        // Verify proof still exists
+        LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofAfter.claimant, address(this));
+        assertEq(proofAfter.destinationChainID, correctDestination);
+    }
+
+    function testChallengeIntentProofLayerZeroSpecific() public {
+        // Test LayerZero-specific edge cases
+        uint64 actualDestination = 1;
+        uint64 wrongDestination = 2;
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(actualDestination, routeHash, rewardHash)
+        );
+
+        // Test with invalid srcEid
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(wrongDestination), // Wrong destination
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+
+        bytes memory message = abi.encode(intentHashes, claimants);
+
+        // Add proof with wrong srcEid
+        vm.prank(address(endpoint));
+        lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
+
+        // Challenge should succeed for LayerZero-specific validation
+        vm.expectEmit(true, true, true, true);
+        emit IntentProven(intentHash, address(0));
+
+        lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
+
+        // Verify proof was cleared
+        LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofAfter.claimant, address(0));
+        assertEq(proofAfter.destinationChainID, 0);
+    }
+
+    // Helper to import the event for testing
+    event IntentProven(bytes32 indexed hash, address indexed claimant);
 }
