@@ -1,3 +1,11 @@
+## [2.8.9](https://github.com/eco/eco-routes/compare/v2.8.8...v2.8.9) (2025-07-18)
+
+
+### Bug Fixes
+
+* trigger patch release ([857e0dc](https://github.com/eco/eco-routes/commit/857e0dc7ee0aa9c85b7077811387504b0e57a195))
+* update app chain to use metaprover ([#286](https://github.com/eco/eco-routes/issues/286)) ([9ab267f](https://github.com/eco/eco-routes/commit/9ab267f6a8d5a18439796b0d14e49e143c4cd387))
+
 ## [2.8.8](https://github.com/eco/eco-routes/compare/v2.8.7...v2.8.8) (2025-07-17)
 
 
