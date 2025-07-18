@@ -40,6 +40,8 @@ We also implement ERC-7683 and enable the creation and fulfillment of intents in
 
 Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox` and a set of `Prover`s.
 
+The protocol now supports additional chains for enhanced cross-chain functionality.
+
 ### Intent Publishing
 
 The `IntentSource` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `IntentSource` at all - a user can disseminate intent information directly to solvers if they so choose.
