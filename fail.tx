@@ -1,0 +1,6 @@
+- server returned an error response: error code -32603: exceeds block gas limit
+❌ Deployment on Chain ID: 999 failed with exit code 1 (hyperliquid)
+
+
+- server returned an error response: error code -32000: intrinsic gas too low
+❌ Deployment on Chain ID: 466 failed with exit code 1 (AppChain)
