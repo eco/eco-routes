@@ -604,4 +604,137 @@ contract MetaProverTest is BaseTest {
         // Verify custom gas limit was used
         assertEq(metaRouter.gasLimit(), 300000);
     }
+
+    // ===== CHALLENGE INTENT PROOF TESTS =====
+
+    function testChallengeIntentProofWithWrongChain() public {
+        Intent memory testIntent = intent;
+        bytes32 intentHash = _hashIntent(testIntent);
+
+        // First, create a proof by simulating receipt of cross-chain message
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Store proof with wrong destination chain ID
+        uint32 wrongDestinationChainId = 999;
+        vm.prank(address(metaRouter));
+        metaProver.handle(
+            wrongDestinationChainId,
+            bytes32(uint256(uint160(address(prover)))),
+            abi.encode(intentHashes, claimants),
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+
+        // Verify proof exists with wrong chain ID
+        IProver.ProofData memory proofBefore = metaProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofBefore.claimant, claimant);
+        assertEq(proofBefore.destinationChainID, wrongDestinationChainId);
+
+        // Challenge the proof with correct destination chain ID
+        bytes32 routeHash = keccak256(abi.encode(testIntent.route));
+        bytes32 rewardHash = keccak256(abi.encode(testIntent.reward));
+
+        // Anyone can challenge
+        vm.prank(otherPerson);
+        metaProver.challengeIntentProof(
+            testIntent.destination,
+            routeHash,
+            rewardHash
+        );
+
+        // Verify proof was cleared
+        IProver.ProofData memory proofAfter = metaProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofAfter.claimant, address(0));
+        assertEq(proofAfter.destinationChainID, 0);
+    }
+
+    function testChallengeIntentProofWithCorrectChain() public {
+        Intent memory testIntent = intent;
+        bytes32 intentHash = _hashIntent(testIntent);
+
+        // First, create a proof by simulating receipt of cross-chain message
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Store proof with correct destination chain ID
+        vm.prank(address(metaRouter));
+        metaProver.handle(
+            uint32(testIntent.destination),
+            bytes32(uint256(uint160(address(prover)))),
+            abi.encode(intentHashes, claimants),
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+
+        // Verify proof exists
+        IProver.ProofData memory proofBefore = metaProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofBefore.claimant, claimant);
+        assertEq(proofBefore.destinationChainID, testIntent.destination);
+
+        // Challenge the proof with same destination chain ID
+        bytes32 routeHash = keccak256(abi.encode(testIntent.route));
+        bytes32 rewardHash = keccak256(abi.encode(testIntent.reward));
+
+        vm.prank(otherPerson);
+        metaProver.challengeIntentProof(
+            testIntent.destination,
+            routeHash,
+            rewardHash
+        );
+
+        // Verify proof remains unchanged (correct chain ID)
+        IProver.ProofData memory proofAfter = metaProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofAfter.claimant, claimant);
+        assertEq(proofAfter.destinationChainID, testIntent.destination);
+    }
+
+    function testChallengeIntentProofEventEmission() public {
+        Intent memory testIntent = intent;
+        bytes32 intentHash = _hashIntent(testIntent);
+
+        // First, create a proof by simulating receipt of cross-chain message
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Store proof with wrong destination chain ID
+        uint32 wrongDestinationChainId = 999;
+        vm.prank(address(metaRouter));
+        metaProver.handle(
+            wrongDestinationChainId,
+            bytes32(uint256(uint160(address(prover)))),
+            abi.encode(intentHashes, claimants),
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+
+        bytes32 routeHash = keccak256(abi.encode(testIntent.route));
+        bytes32 rewardHash = keccak256(abi.encode(testIntent.reward));
+
+        // Expect event emission for proof clearing
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, address(0));
+
+        // Challenge the proof
+        vm.prank(otherPerson);
+        metaProver.challengeIntentProof(
+            testIntent.destination,
+            routeHash,
+            rewardHash
+        );
+    }
 }

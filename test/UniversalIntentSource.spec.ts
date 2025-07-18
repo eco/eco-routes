@@ -1447,4 +1447,1987 @@ describe('Universal Intent Source Test', (): void => {
       }
     })
   })
+
+  /**
+   * Group 10: Comprehensive Intent Creation Tests
+   * Tests intent creation with various scenarios to match IntentSource.spec.ts
+   */
+  describe('Intent creation (comprehensive)', function () {
+    it('should create properly with erc20 rewards', async function () {
+      // Create intent with ERC20 rewards only
+      const erc20OnlyIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+        },
+      }
+
+      await intentSource.connect(creator).publishAndFund(
+        erc20OnlyIntent,
+        false, // no partial funding
+      )
+
+      expect(await intentSource.isIntentFunded(erc20OnlyIntent)).to.be.true
+    })
+
+    it('should create properly with native token rewards', async function () {
+      // Test with native token rewards and verify excess is refunded
+      const initialBalance = await ethers.provider.getBalance(
+        await creator.getAddress(),
+      )
+
+      const nativeRewardIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: ethers.parseEther('1'),
+        },
+      }
+
+      // Send twice the required amount
+      await intentSource
+        .connect(creator)
+        .publishAndFund(nativeRewardIntent, false, {
+          value: ethers.parseEther('2'),
+        })
+
+      expect(await intentSource.isIntentFunded(nativeRewardIntent)).to.be.true
+
+      // Check vault only received the required amount
+      const vaultAddress =
+        await intentSource.intentVaultAddress(nativeRewardIntent)
+      expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
+        ethers.parseEther('1'),
+      )
+
+      // Creator should have received refund (minus gas costs)
+      const finalBalance = await ethers.provider.getBalance(
+        await creator.getAddress(),
+      )
+      expect(finalBalance).to.be.gt(initialBalance - ethers.parseEther('2'))
+    })
+
+    it('should increment counter and lock up tokens', async function () {
+      const intentWithNative = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: ethers.parseEther('1'),
+        },
+      }
+
+      await intentSource
+        .connect(creator)
+        .publishAndFund(intentWithNative, false, {
+          value: ethers.parseEther('1'),
+        })
+
+      const vaultAddress =
+        await intentSource.intentVaultAddress(intentWithNative)
+
+      // Check token balances in vault
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(Number(mintAmount))
+      expect(await tokenB.balanceOf(vaultAddress)).to.equal(
+        Number(mintAmount * 2n),
+      )
+      expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
+        ethers.parseEther('1'),
+      )
+    })
+
+    it('should emit IntentPublished events with correct parameters', async function () {
+      const intentWithNative = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: ethers.parseEther('1'),
+        },
+      }
+
+      const [intentHash] = await intentSource.getIntentHash(intentWithNative)
+
+      await expect(
+        intentSource.connect(creator).publishAndFund(intentWithNative, false, {
+          value: ethers.parseEther('1'),
+        }),
+      )
+        .to.emit(intentSource, 'IntentPublished')
+        .withArgs(
+          intentHash,
+          intentWithNative.destination,
+          addressToBytes32(await creator.getAddress()),
+          addressToBytes32(await prover.getAddress()),
+          expiry,
+          ethers.parseEther('1'),
+          intentWithNative.reward.tokens.map((t) => [
+            addressToBytes32(t.token),
+            t.amount,
+          ]),
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            [
+              'tuple(bytes32 salt,uint64 deadline,address portal,tuple(address token,uint256 amount)[] tokens,tuple(address target,bytes data,uint256 value)[] calls)',
+            ],
+            [intentWithNative.route],
+          ),
+        )
+    })
+  })
+
+  /**
+   * Group 11: Comprehensive Reward Claiming Tests
+   * Tests all reward claiming scenarios to match IntentSource.spec.ts
+   */
+  describe('Comprehensive reward claiming', function () {
+    beforeEach(async function () {
+      // Set up a funded intent for claiming tests
+      await intentSource.connect(creator).publishAndFund(evmIntent, false, {
+        value: evmIntent.reward.nativeValue,
+      })
+    })
+
+    describe('before expiry, no proof', function () {
+      it('cannot be withdrawn', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdraw(chainId, routeHash, evmIntent.reward),
+        ).to.be.revertedWithCustomError(intentSource, 'UnauthorizedWithdrawal')
+      })
+    })
+
+    describe('before expiry, proof', function () {
+      beforeEach(async function () {
+        const [intentHash] = await intentSource.getIntentHash(evmIntent)
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+      })
+
+      it('gets withdrawn to claimant', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        const initialEthBalance = await ethers.provider.getBalance(
+          await claimant.getAddress(),
+        )
+        const initialTokenABalance = await tokenA.balanceOf(
+          await claimant.getAddress(),
+        )
+        const initialTokenBBalance = await tokenB.balanceOf(
+          await claimant.getAddress(),
+        )
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.true
+
+        await intentSource
+          .connect(otherPerson)
+          .withdraw(chainId, routeHash, evmIntent.reward)
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.false
+        expect(await tokenA.balanceOf(await claimant.getAddress())).to.equal(
+          initialTokenABalance + mintAmount,
+        )
+        expect(await tokenB.balanceOf(await claimant.getAddress())).to.equal(
+          initialTokenBBalance + mintAmount * 2n,
+        )
+        expect(
+          await ethers.provider.getBalance(await claimant.getAddress()),
+        ).to.equal(initialEthBalance + evmIntent.reward.nativeValue)
+      })
+
+      it('emits IntentWithdrawn event', async function () {
+        const [intentHash, routeHash] =
+          await intentSource.getIntentHash(evmIntent)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdraw(chainId, routeHash, evmIntent.reward),
+        )
+          .to.emit(intentSource, 'IntentWithdrawn')
+          .withArgs(intentHash, await claimant.getAddress())
+      })
+
+      it('does not allow repeat withdrawal', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        await intentSource
+          .connect(otherPerson)
+          .withdraw(chainId, routeHash, evmIntent.reward)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdraw(chainId, routeHash, evmIntent.reward),
+        ).to.be.revertedWithCustomError(intentSource, 'RewardsAlreadyWithdrawn')
+      })
+
+      it('allows refund if already claimed', async function () {
+        const [intentHash, routeHash] =
+          await intentSource.getIntentHash(evmIntent)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdraw(chainId, routeHash, evmIntent.reward),
+        )
+          .to.emit(intentSource, 'IntentWithdrawn')
+          .withArgs(intentHash, await claimant.getAddress())
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .refund(chainId, routeHash, evmIntent.reward),
+        )
+          .to.emit(intentSource, 'IntentRefunded')
+          .withArgs(intentHash, evmIntent.reward.creator)
+      })
+    })
+
+    describe('after expiry, no proof', function () {
+      beforeEach(async function () {
+        await time.increase(3601) // Move past expiry
+      })
+
+      it('gets refunded to creator', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        const initialTokenABalance = await tokenA.balanceOf(
+          await creator.getAddress(),
+        )
+        const initialTokenBBalance = await tokenB.balanceOf(
+          await creator.getAddress(),
+        )
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.true
+
+        await intentSource
+          .connect(otherPerson)
+          .refund(chainId, routeHash, evmIntent.reward)
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.false
+        expect(await tokenA.balanceOf(await creator.getAddress())).to.equal(
+          initialTokenABalance + mintAmount,
+        )
+        expect(await tokenB.balanceOf(await creator.getAddress())).to.equal(
+          initialTokenBBalance + mintAmount * 2n,
+        )
+      })
+    })
+
+    describe('after expiry, proof', function () {
+      beforeEach(async function () {
+        const [intentHash] = await intentSource.getIntentHash(evmIntent)
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+        await time.increase(3601) // Move past expiry
+      })
+
+      it('gets withdrawn to claimant', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        const initialTokenABalance = await tokenA.balanceOf(
+          await claimant.getAddress(),
+        )
+        const initialTokenBBalance = await tokenB.balanceOf(
+          await claimant.getAddress(),
+        )
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.true
+
+        await intentSource
+          .connect(otherPerson)
+          .withdraw(chainId, routeHash, evmIntent.reward)
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.false
+        expect(await tokenA.balanceOf(await claimant.getAddress())).to.equal(
+          initialTokenABalance + mintAmount,
+        )
+        expect(await tokenB.balanceOf(await claimant.getAddress())).to.equal(
+          initialTokenBBalance + mintAmount * 2n,
+        )
+      })
+
+      it('calls challengeIntentProof if destinationChainID is wrong', async function () {
+        // Create cross-chain intent for testing proof challenges
+        const crossChainIntent = {
+          ...evmIntent,
+          destination: 1, // Different from test chain
+        }
+
+        // Fund cross-chain intent
+        await mintAndApprove()
+        await intentSource
+          .connect(creator)
+          .publishAndFund(crossChainIntent, false, {
+            value: crossChainIntent.reward.nativeValue,
+          })
+
+        const [crossChainIntentHash, crossChainRouteHash] =
+          await intentSource.getIntentHash(crossChainIntent)
+
+        // Add proof with wrong chain ID
+        await prover.connect(creator).addProvenIntent(
+          crossChainIntentHash,
+          await claimant.getAddress(),
+          chainId, // Wrong chain ID
+        )
+
+        // Attempt withdrawal should trigger challenge
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .withdraw(1, crossChainRouteHash, crossChainIntent.reward),
+        )
+          .to.emit(intentSource, 'IntentProofChallenged')
+          .withArgs(crossChainIntentHash)
+
+        // Verify proof was cleared
+        const proofAfter = await prover.provenIntents(crossChainIntentHash)
+        expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
+      })
+
+      it('cannot refund if intent is proven', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .refund(chainId, routeHash, evmIntent.reward),
+        ).to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
+      })
+    })
+  })
+
+  /**
+   * Group 12: Comprehensive Batch Withdrawal Tests
+   * Tests batch operations extensively to match IntentSource.spec.ts
+   */
+  describe('Comprehensive batch withdrawal', function () {
+    describe('validation and failure cases', function () {
+      it('should fail if called before expiry without proof', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+        await intentSource.connect(creator).publishAndFund(evmIntent, false, {
+          value: evmIntent.reward.nativeValue,
+        })
+
+        await expect(
+          intentSource
+            .connect(otherPerson)
+            .batchWithdraw([chainId], [routeHash], [evmIntent.reward]),
+        ).to.be.revertedWithCustomError(intentSource, 'UnauthorizedWithdrawal')
+      })
+    })
+
+    describe('single intent, complex scenarios', function () {
+      beforeEach(async function () {
+        await intentSource.connect(creator).publishAndFund(evmIntent, false, {
+          value: evmIntent.reward.nativeValue,
+        })
+      })
+
+      it('should work before expiry with proof to claimant', async function () {
+        const [intentHash, routeHash] =
+          await intentSource.getIntentHash(evmIntent)
+
+        const initialEthBalance = await ethers.provider.getBalance(
+          await claimant.getAddress(),
+        )
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.true
+        expect(await tokenA.balanceOf(await claimant.getAddress())).to.equal(0)
+        expect(await tokenB.balanceOf(await claimant.getAddress())).to.equal(0)
+
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw([chainId], [routeHash], [evmIntent.reward])
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.false
+        expect(await tokenA.balanceOf(await claimant.getAddress())).to.equal(
+          Number(mintAmount),
+        )
+        expect(await tokenB.balanceOf(await claimant.getAddress())).to.equal(
+          Number(mintAmount * 2n),
+        )
+        expect(
+          await ethers.provider.getBalance(await claimant.getAddress()),
+        ).to.equal(initialEthBalance + evmIntent.reward.nativeValue)
+      })
+
+      it('should work after expiry without proof to creator', async function () {
+        const [, routeHash] = await intentSource.getIntentHash(evmIntent)
+
+        await time.increase(3601) // Move past expiry
+
+        const initialEthBalance = await ethers.provider.getBalance(
+          await creator.getAddress(),
+        )
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.true
+        expect(await tokenA.balanceOf(await creator.getAddress())).to.equal(0)
+        expect(await tokenB.balanceOf(await creator.getAddress())).to.equal(0)
+
+        await intentSource
+          .connect(otherPerson)
+          .batchWithdraw([chainId], [routeHash], [evmIntent.reward])
+
+        expect(await intentSource.isIntentFunded(evmIntent)).to.be.false
+        expect(await tokenA.balanceOf(await creator.getAddress())).to.equal(
+          Number(mintAmount),
+        )
+        expect(await tokenB.balanceOf(await creator.getAddress())).to.equal(
+          Number(mintAmount * 2n),
+        )
+        expect(
+          await ethers.provider.getBalance(await creator.getAddress()),
+        ).to.equal(initialEthBalance + evmIntent.reward.nativeValue)
+      })
+    })
+  })
+
+  /**
+   * Group 13: Comprehensive Funding Tests
+   * Tests all funding scenarios to match IntentSource.spec.ts
+   */
+  describe('Comprehensive funding', function () {
+    it('should compute valid intent funder address', async function () {
+      const predictedAddress = await universalIntentVaultAddress(
+        await intentSource.getAddress(),
+        universalIntent,
+      )
+
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      const contractAddress = await universalIntentSource.intentVaultAddress(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+
+      expect(contractAddress).to.equal(predictedAddress)
+    })
+
+    it('should fund intent with single token', async function () {
+      const singleTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+          tokens: [{ token: await tokenA.getAddress(), amount: mintAmount }],
+        },
+      }
+
+      const [, routeHash] = await intentSource.getIntentHash(singleTokenIntent)
+      const vaultAddress =
+        await intentSource.intentVaultAddress(singleTokenIntent)
+
+      // Approve tokens to vault
+      await tokenA.connect(creator).approve(vaultAddress, mintAmount)
+
+      // Fund the intent
+      await intentSource
+        .connect(creator)
+        .fundFor(
+          chainId,
+          routeHash,
+          singleTokenIntent.reward,
+          await creator.getAddress(),
+          ethers.ZeroAddress,
+          false,
+        )
+
+      expect(await intentSource.isIntentFunded(singleTokenIntent)).to.be.true
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(Number(mintAmount))
+    })
+
+    it('should fund intent with multiple tokens', async function () {
+      const multiTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+        },
+      }
+
+      const [, routeHash] = await intentSource.getIntentHash(multiTokenIntent)
+      const vaultAddress =
+        await intentSource.intentVaultAddress(multiTokenIntent)
+
+      // Approve tokens to vault
+      await tokenA.connect(creator).approve(vaultAddress, mintAmount)
+      await tokenB.connect(creator).approve(vaultAddress, mintAmount * 2n)
+
+      // Fund the intent
+      await intentSource
+        .connect(creator)
+        .fundFor(
+          chainId,
+          routeHash,
+          multiTokenIntent.reward,
+          await creator.getAddress(),
+          ethers.ZeroAddress,
+          false,
+        )
+
+      expect(await intentSource.isIntentFunded(multiTokenIntent)).to.be.true
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(Number(mintAmount))
+      expect(await tokenB.balanceOf(vaultAddress)).to.equal(
+        Number(mintAmount * 2n),
+      )
+    })
+
+    it('should handle partial funding based on allowance', async function () {
+      const partialIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+        },
+      }
+
+      const [, routeHash] = await intentSource.getIntentHash(partialIntent)
+      const vaultAddress = await intentSource.intentVaultAddress(partialIntent)
+
+      // Approve partial amount
+      await tokenA.connect(creator).approve(vaultAddress, mintAmount / 2n)
+
+      // Fund with partial allowance
+      await intentSource.connect(creator).fundFor(
+        chainId,
+        routeHash,
+        partialIntent.reward,
+        await creator.getAddress(),
+        ethers.ZeroAddress,
+        true, // allow partial
+      )
+
+      expect(await intentSource.isIntentFunded(partialIntent)).to.be.false
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(
+        Number(mintAmount / 2n),
+      )
+    })
+
+    it('should emit IntentFunded event', async function () {
+      const eventIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+        },
+      }
+
+      const [intentHash, routeHash] =
+        await intentSource.getIntentHash(eventIntent)
+      const vaultAddress = await intentSource.intentVaultAddress(eventIntent)
+
+      // Approve tokens
+      await tokenA.connect(creator).approve(vaultAddress, mintAmount)
+      await tokenB.connect(creator).approve(vaultAddress, mintAmount * 2n)
+
+      await expect(
+        intentSource
+          .connect(creator)
+          .fundFor(
+            chainId,
+            routeHash,
+            eventIntent.reward,
+            await creator.getAddress(),
+            ethers.ZeroAddress,
+            false,
+          ),
+      )
+        .to.emit(intentSource, 'IntentFunded')
+        .withArgs(intentHash, await creator.getAddress(), true)
+    })
+  })
+
+  /**
+   * Group 14: Enhanced Edge Cases and Validations
+   * Tests various edge cases and validations
+   */
+  describe('Enhanced edge cases and validations', function () {
+    it('should handle zero token amounts in rewards', async function () {
+      // Create intent with zero token amounts
+      const zeroAmountIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [
+            { token: await tokenA.getAddress(), amount: 0n },
+            { token: await tokenB.getAddress(), amount: 0n },
+          ],
+        },
+      }
+
+      // Publish and fund the intent
+      await intentSource.connect(creator).publishAndFund(
+        zeroAmountIntent,
+        false, // no partial funding
+        { value: zeroAmountIntent.reward.nativeValue },
+      )
+
+      // Intent should be considered funded since there's nothing to fund
+      expect(await intentSource.isIntentFunded(zeroAmountIntent)).to.be.true
+
+      // Check vault balances (should be zero)
+      const vaultAddress =
+        await intentSource.intentVaultAddress(zeroAmountIntent)
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(0)
+      expect(await tokenB.balanceOf(vaultAddress)).to.equal(0)
+    })
+
+    it('should handle empty token array in rewards', async function () {
+      // Create intent with empty token array
+      const emptyTokensIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [],
+        },
+      }
+
+      // Publish and fund the intent
+      await intentSource.connect(creator).publishAndFund(
+        emptyTokensIntent,
+        false, // no partial funding
+        { value: emptyTokensIntent.reward.nativeValue },
+      )
+
+      // Intent should be considered funded since there's nothing to fund
+      expect(await intentSource.isIntentFunded(emptyTokensIntent)).to.be.true
+    })
+
+    it('should handle already funded vaults', async function () {
+      const noNativeIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+        },
+      }
+
+      // Create and fund intent initially
+      await intentSource.connect(creator).publishAndFund(noNativeIntent, false)
+
+      // Try to fund again
+      await mintAndApprove()
+      const [, routeHash] = await intentSource.getIntentHash(noNativeIntent)
+
+      await intentSource
+        .connect(creator)
+        .fundFor(
+          chainId,
+          routeHash,
+          noNativeIntent.reward,
+          await creator.getAddress(),
+          ethers.ZeroAddress,
+          false,
+        )
+
+      expect(await intentSource.isIntentFunded(noNativeIntent)).to.be.true
+
+      const vaultAddress = await intentSource.intentVaultAddress(noNativeIntent)
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(Number(mintAmount))
+    })
+
+    it('should handle overfunded vaults', async function () {
+      const noNativeIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+        },
+      }
+
+      await intentSource.connect(creator).publishAndFund(noNativeIntent, false)
+
+      expect(await intentSource.isIntentFunded(noNativeIntent)).to.be.true
+
+      // Send extra tokens to vault
+      await tokenA.connect(creator).mint(await creator.getAddress(), mintAmount)
+      const vaultAddress = await intentSource.intentVaultAddress(noNativeIntent)
+      await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+
+      // Mark as proven and withdraw
+      const [intentHash, routeHash] =
+        await intentSource.getIntentHash(noNativeIntent)
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+      await intentSource
+        .connect(claimant)
+        .withdraw(chainId, routeHash, noNativeIntent.reward)
+
+      // Should have withdrawn the reward amount, not the overfunded amount
+      expect(await tokenA.balanceOf(await claimant.getAddress())).to.equal(
+        Number(mintAmount),
+      )
+    })
+
+    it('should handle withdraws for rewards with malicious tokens', async function () {
+      const initialClaimantBalance = await tokenA.balanceOf(
+        await claimant.getAddress(),
+      )
+
+      // First, mint bad tokens to creator
+      await badToken
+        .connect(creator)
+        .mint(await creator.getAddress(), mintAmount)
+
+      // Create intent with bad token
+      const badTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+          tokens: [
+            { token: await badToken.getAddress(), amount: mintAmount },
+            { token: await tokenA.getAddress(), amount: mintAmount },
+          ],
+        },
+      }
+
+      const vaultAddress = await intentSource.intentVaultAddress(badTokenIntent)
+      await badToken.connect(creator).transfer(vaultAddress, mintAmount)
+      await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
+
+      expect(await intentSource.isIntentFunded(badTokenIntent)).to.be.true
+
+      const [intentHash, routeHash] =
+        await intentSource.getIntentHash(badTokenIntent)
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+      await expect(
+        intentSource
+          .connect(otherPerson)
+          .withdraw(chainId, routeHash, badTokenIntent.reward),
+      ).to.not.be.reverted
+
+      expect(await tokenA.balanceOf(await claimant.getAddress())).to.equal(
+        initialClaimantBalance + mintAmount,
+      )
+    })
+
+    it('should handle insufficient native reward errors', async function () {
+      const nativeRewardIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: ethers.parseEther('1'),
+        },
+      }
+
+      await expect(
+        intentSource.connect(creator).publishAndFund(
+          nativeRewardIntent,
+          false,
+          { value: ethers.parseEther('0.5') }, // Insufficient
+        ),
+      ).to.be.revertedWithCustomError(intentSource, 'InsufficientNativeReward')
+    })
+  })
+
+  /**
+   * Group 15: Cross-Chain Address Conversion Tests
+   * Tests critical address conversion scenarios for cross-chain compatibility
+   */
+  describe('Cross-chain address conversion', function () {
+    it('should correctly convert EVM addresses to Universal format and back', async function () {
+      const testAddresses = [
+        await creator.getAddress(),
+        await claimant.getAddress(),
+        await tokenA.getAddress(),
+        await tokenB.getAddress(),
+        await prover.getAddress(),
+        ethers.ZeroAddress,
+      ]
+
+      for (const addr of testAddresses) {
+        const bytes32Val = addressToBytes32(addr)
+        const recoveredAddr = bytes32ToAddress(bytes32Val)
+        expect(recoveredAddr.toLowerCase()).to.equal(addr.toLowerCase())
+      }
+    })
+
+    it('should handle mixed case addresses consistently', async function () {
+      const testAddr = await creator.getAddress()
+      const lowerCaseAddr = testAddr.toLowerCase()
+      const checksumAddr = ethers.getAddress(testAddr)
+
+      const bytes32Lower = addressToBytes32(lowerCaseAddr)
+      const bytes32Checksum = addressToBytes32(checksumAddr)
+      const bytes32Mixed = addressToBytes32(testAddr)
+
+      expect(bytes32Lower.toLowerCase()).to.equal(bytes32Checksum.toLowerCase())
+      expect(bytes32Lower.toLowerCase()).to.equal(bytes32Mixed.toLowerCase())
+    })
+
+    it('should validate Universal format addresses correctly', async function () {
+      // Valid Universal address (EVM address with leading zeros)
+      const validUniversalAddr = addressToBytes32(await creator.getAddress())
+      expect(validUniversalAddr.length).to.equal(66) // 0x + 64 hex chars
+      expect(validUniversalAddr.slice(0, 26)).to.equal('0x000000000000000000000000') // 12 leading zero bytes
+
+      // Invalid Universal address (non-zero high bytes)
+      const invalidUniversalAddr = ethers.hexlify(ethers.randomBytes(32))
+      // Most random bytes32 will not be valid EVM addresses
+      expect(invalidUniversalAddr.length).to.equal(66)
+    })
+
+    it('should maintain address integrity across format conversions', async function () {
+      const originalAddrs = [
+        await creator.getAddress(),
+        await tokenA.getAddress(),
+        await prover.getAddress(),
+      ]
+
+      // Test multiple round-trip conversions
+      for (const addr of originalAddrs) {
+        let currentAddr = addr
+        for (let i = 0; i < 5; i++) {
+          const bytes32Val = addressToBytes32(currentAddr)
+          currentAddr = bytes32ToAddress(bytes32Val)
+        }
+        expect(currentAddr.toLowerCase()).to.equal(addr.toLowerCase())
+      }
+    })
+  })
+
+  /**
+   * Group 16: Hash Consistency Tests
+   * Tests that hash calculations are consistent across different address formats
+   */
+  describe('Hash consistency across formats', function () {
+    it('should produce identical hashes for equivalent intents in different formats', async function () {
+      // Create multiple equivalent intents with different address representations
+      const baseIntent = await createEVMIntent()
+      const universalIntent1 = convertToUniversalIntent(baseIntent)
+      
+      // Create another universal intent with different address casing
+      const universalIntent2: UniversalIntent = {
+        ...universalIntent1,
+        route: {
+          ...universalIntent1.route,
+          portal: addressToBytes32(baseIntent.route.portal.toLowerCase()),
+        },
+        reward: {
+          ...universalIntent1.reward,
+          creator: addressToBytes32(ethers.getAddress(baseIntent.reward.creator)),
+        },
+      }
+
+      // Get hashes for all variants
+      const [evmHash] = await intentSource.getIntentHash(baseIntent)
+      const routeBytes1 = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent1.route],
+      )
+      const [universalHash1] = await universalIntentSource.getIntentHash(
+        universalIntent1.destination,
+        routeBytes1,
+        universalIntent1.reward,
+      )
+      const routeBytes2 = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent2.route],
+      )
+      const [universalHash2] = await universalIntentSource.getIntentHash(
+        universalIntent2.destination,
+        routeBytes2,
+        universalIntent2.reward,
+      )
+
+      // All hashes should be identical
+      expect(evmHash).to.equal(universalHash1)
+      expect(evmHash).to.equal(universalHash2)
+    })
+
+    it('should handle hash collisions correctly', async function () {
+      // Create two different intents that might have similar components
+      const intent1 = await createEVMIntent()
+      const intent2 = {
+        ...intent1,
+        route: {
+          ...intent1.route,
+          salt: ethers.randomBytes(32), // Different salt
+        },
+      }
+
+      const [hash1] = await intentSource.getIntentHash(intent1)
+      const [hash2] = await intentSource.getIntentHash(intent2)
+
+      // Hashes should be different
+      expect(hash1).to.not.equal(hash2)
+    })
+
+    it('should produce consistent vault addresses across formats', async function () {
+      const baseIntent = await createEVMIntent()
+      const universalIntent = convertToUniversalIntent(baseIntent)
+
+      // Get vault addresses through different interfaces
+      const evmVault = await intentSource.intentVaultAddress(baseIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      const universalVault = await universalIntentSource.intentVaultAddress(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+
+      expect(evmVault).to.equal(universalVault)
+    })
+  })
+
+  /**
+   * Group 17: Cross-Chain Intent Publishing Tests
+   * Tests intent publishing for cross-chain scenarios
+   */
+  describe('Cross-chain intent publishing', function () {
+    it('should publish intents for different destination chains', async function () {
+      const destChains = [1, 137, 42161, 10] // Ethereum, Polygon, Arbitrum, Optimism
+
+      for (const chainId of destChains) {
+        const crossChainIntent = {
+          ...evmIntent,
+          destination: chainId,
+        }
+        const universalIntent = convertToUniversalIntent(crossChainIntent)
+
+        const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+          [
+            'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+          ],
+          [universalIntent.route],
+        )
+        const tx = await universalIntentSource
+          .connect(creator)
+          .publish(
+            universalIntent.destination,
+            routeBytes,
+            universalIntent.reward,
+          )
+
+        const receipt = await tx.wait()
+        expect(receipt?.status).to.equal(1)
+      }
+    })
+
+    it('should handle large route data correctly', async function () {
+      // Create intent with many calls and tokens
+      const largeCalls = []
+      const largeTokens = []
+
+      for (let i = 0; i < 10; i++) {
+        largeCalls.push({
+          target: addressToBytes32(await tokenA.getAddress()),
+          data: ethers.randomBytes(100), // Large data
+          value: 0n,
+        })
+        largeTokens.push({
+          token: addressToBytes32(await tokenA.getAddress()),
+          amount: mintAmount * BigInt(i + 1),
+        })
+      }
+
+      const largeUniversalIntent: UniversalIntent = {
+        destination: Number(chainId),
+        route: {
+          salt: ethers.randomBytes(32),
+          deadline: expiry,
+          portal: addressToBytes32(await inbox.getAddress()),
+          tokens: largeTokens,
+          calls: largeCalls,
+        },
+        reward: {
+          creator: addressToBytes32(await creator.getAddress()),
+          prover: addressToBytes32(await prover.getAddress()),
+          deadline: expiry,
+          nativeValue: 0n,
+          tokens: [{ token: addressToBytes32(await tokenA.getAddress()), amount: mintAmount }],
+        },
+      }
+
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [largeUniversalIntent.route],
+      )
+      const tx = await universalIntentSource
+        .connect(creator)
+        .publish(
+          largeUniversalIntent.destination,
+          routeBytes,
+          largeUniversalIntent.reward,
+        )
+
+      const receipt = await tx.wait()
+      expect(receipt?.status).to.equal(1)
+    })
+  })
+
+  /**
+   * Group 18: Universal Intent Funding Edge Cases
+   * Tests edge cases in universal intent funding
+   */
+  describe('Universal intent funding edge cases', function () {
+    it('should handle funding with zero amounts correctly', async function () {
+      const zeroAmountIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+          tokens: [{ token: await tokenA.getAddress(), amount: 0n }],
+        },
+      }
+
+      await intentSource.connect(creator).publishAndFund(zeroAmountIntent, false)
+      expect(await intentSource.isIntentFunded(zeroAmountIntent)).to.be.true
+    })
+
+    it('should handle funding with duplicate tokens correctly', async function () {
+      const duplicateTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+          tokens: [
+            { token: await tokenA.getAddress(), amount: mintAmount },
+            { token: await tokenA.getAddress(), amount: mintAmount / 2n },
+          ],
+        },
+      }
+
+      await intentSource.connect(creator).publishAndFund(duplicateTokenIntent, false)
+      expect(await intentSource.isIntentFunded(duplicateTokenIntent)).to.be.true
+    })
+
+    it('should handle funding with maximum token amounts', async function () {
+      // Create tokens with large amounts
+      const maxAmount = ethers.parseEther('1000000') // 1M tokens
+      await tokenA.connect(creator).mint(await creator.getAddress(), maxAmount)
+      await tokenA.connect(creator).approve(await intentSource.getAddress(), maxAmount)
+
+      const maxAmountIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+          tokens: [{ token: await tokenA.getAddress(), amount: maxAmount }],
+        },
+      }
+
+      await intentSource.connect(creator).publishAndFund(maxAmountIntent, false)
+      expect(await intentSource.isIntentFunded(maxAmountIntent)).to.be.true
+    })
+  })
+
+  /**
+   * Group 19: Balance Check for Partial Funding
+   * Tests partial funding scenarios extensively
+   */
+  describe('Balance check for partial funding', function () {
+    it('should use actual balance over allowance for ERC20 tokens when partially funding', async function () {
+      // Set up scenario where user has approved more tokens than they own
+      const requestedAmount = mintAmount * 2n
+      const limitedTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [
+            { token: await tokenA.getAddress(), amount: requestedAmount },
+          ],
+        },
+      }
+
+      // Creator only has mintAmount tokens but approves twice as much
+      expect(await tokenA.balanceOf(await creator.getAddress())).to.equal(
+        Number(mintAmount),
+      )
+      await tokenA
+        .connect(creator)
+        .approve(await intentSource.getAddress(), requestedAmount)
+
+      // Create and fund with allowPartial = true
+      const [intentHash] = await intentSource.getIntentHash(limitedTokenIntent)
+      const tx = await intentSource.connect(creator).publishAndFund(
+        limitedTokenIntent,
+        true, // allow partial
+      )
+
+      // Expect IntentFunded event with complete=false
+      await expect(tx)
+        .to.emit(intentSource, 'IntentFunded')
+        .withArgs(intentHash, await creator.getAddress(), false)
+
+      // Verify only available balance was transferred
+      const vaultAddress =
+        await intentSource.intentVaultAddress(limitedTokenIntent)
+      expect(await tokenA.balanceOf(vaultAddress)).to.equal(Number(mintAmount))
+    })
+
+    it('should revert when balance and allowance are insufficient without allowPartial', async function () {
+      const requestedAmount = mintAmount * 2n
+      const limitedTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          tokens: [
+            { token: await tokenA.getAddress(), amount: requestedAmount },
+          ],
+        },
+      }
+
+      // Reduce allowance to be insufficient
+      await tokenA
+        .connect(creator)
+        .approve(await intentSource.getAddress(), mintAmount / 2n)
+
+      await expect(
+        intentSource.connect(creator).publishAndFund(
+          limitedTokenIntent,
+          false, // no partial funding
+        ),
+      ).to.be.reverted
+    })
+
+    it('should handle partial funding with native tokens based on actual balance', async function () {
+      const nativeRewardIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: ethers.parseEther('1'),
+          tokens: [],
+        },
+      }
+
+      // Try to fund with partial native value
+      const tx = await intentSource.connect(creator).publishAndFund(
+        nativeRewardIntent,
+        true, // allow partial
+        { value: ethers.parseEther('0.5') },
+      )
+
+      const [intentHash] = await intentSource.getIntentHash(nativeRewardIntent)
+      await expect(tx)
+        .to.emit(intentSource, 'IntentFunded')
+        .withArgs(intentHash, await creator.getAddress(), false)
+
+      // Verify partial native funding
+      const vaultAddress =
+        await intentSource.intentVaultAddress(nativeRewardIntent)
+      expect(await ethers.provider.getBalance(vaultAddress)).to.equal(
+        ethers.parseEther('0.5'),
+      )
+    })
+
+    it('should revert with insufficient native reward without allowPartial', async function () {
+      const nativeRewardIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: ethers.parseEther('1'),
+          tokens: [],
+        },
+      }
+
+      await expect(
+        intentSource.connect(creator).publishAndFund(
+          nativeRewardIntent,
+          false, // no partial funding
+          { value: ethers.parseEther('0.5') },
+        ),
+      ).to.be.revertedWithCustomError(intentSource, 'InsufficientNativeReward')
+    })
+
+    it('should handle partial funding and complete it with a second transaction', async function () {
+      // First, do partial funding
+      const partialIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n, // Remove native value to avoid funding errors
+          tokens: [{ token: await tokenA.getAddress(), amount: mintAmount }],
+        },
+      }
+
+      const [, routeHash] = await intentSource.getIntentHash(partialIntent)
+      const vaultAddress = await intentSource.intentVaultAddress(partialIntent)
+
+      // Fund partially
+      await tokenA.connect(creator).approve(vaultAddress, mintAmount / 2n)
+      await intentSource.connect(creator).fundFor(
+        chainId,
+        routeHash,
+        partialIntent.reward,
+        await creator.getAddress(),
+        ethers.ZeroAddress,
+        true, // allow partial
+      )
+
+      expect(await intentSource.isIntentFunded(partialIntent)).to.be.false
+
+      // Complete the funding - need to mint more tokens first
+      await tokenA
+        .connect(creator)
+        .mint(await creator.getAddress(), mintAmount / 2n)
+      await tokenA.connect(creator).approve(vaultAddress, mintAmount / 2n)
+      await intentSource.connect(creator).fundFor(
+        chainId,
+        routeHash,
+        partialIntent.reward,
+        await creator.getAddress(),
+        ethers.ZeroAddress,
+        false, // no partial needed now
+      )
+
+      expect(await intentSource.isIntentFunded(partialIntent)).to.be.true
+    })
+  })
+
+  /**
+   * Group 20: Universal Intent Claiming Tests
+   * Tests claiming rewards through universal interface
+   */
+  describe('Universal intent claiming', function () {
+    beforeEach(async function () {
+      // Set up a funded universal intent
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+    })
+
+    it('should allow claiming through universal interface', async function () {
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Prove the intent
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+      const initialBalance = await tokenA.balanceOf(await claimant.getAddress())
+
+      // Claim through universal interface
+      await universalIntentSource
+        .connect(otherPerson)
+        .withdraw(universalIntent.destination, universalIntent.reward, routeHash)
+
+      const finalBalance = await tokenA.balanceOf(await claimant.getAddress())
+      expect(finalBalance).to.equal(initialBalance + mintAmount)
+    })
+
+    it('should handle batch claiming through universal interface', async function () {
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Prove the intent
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+      const initialBalance = await tokenA.balanceOf(await claimant.getAddress())
+
+      // Batch claim through universal interface
+      await universalIntentSource
+        .connect(otherPerson)
+        .batchWithdraw(
+          [universalIntent.destination],
+          [universalIntent.reward],
+          [routeHash],
+        )
+
+      const finalBalance = await tokenA.balanceOf(await claimant.getAddress())
+      expect(finalBalance).to.equal(initialBalance + mintAmount)
+    })
+  })
+
+  /**
+   * Group 21: Error Handling and Edge Cases
+   * Tests error conditions and edge cases
+   */
+  describe('Error handling and edge cases', function () {
+    it('should handle invalid route data gracefully', async function () {
+      const invalidRouteBytes = ethers.randomBytes(100) // Invalid route data
+      
+      // This should not revert as the contract doesn't validate route structure
+      await expect(
+        universalIntentSource
+          .connect(creator)
+          .publish(
+            evmIntent.destination,
+            invalidRouteBytes,
+            universalIntent.reward,
+          ),
+      ).to.not.be.reverted
+    })
+
+    it('should handle mismatched array lengths in batch operations', async function () {
+      await expect(
+        universalIntentSource
+          .connect(creator)
+          .batchWithdraw(
+            [1, 2], // 2 destinations
+            [universalIntent.reward], // 1 reward
+            [ethers.randomBytes(32)], // 1 route hash
+          ),
+      ).to.be.reverted
+    })
+
+    it('should handle expired intents correctly', async function () {
+      // Create intent with past deadline
+      const expiredIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          deadline: BigInt(await time.latest()) - 1n, // Expired
+        },
+      }
+
+      // Should still be able to publish
+      await intentSource.connect(creator).publishAndFund(expiredIntent, false, {
+        value: expiredIntent.reward.nativeValue,
+      })
+
+      expect(await intentSource.isIntentFunded(expiredIntent)).to.be.true
+    })
+
+    it('should handle zero value transfers correctly', async function () {
+      const zeroValueIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+          tokens: [],
+        },
+      }
+
+      await intentSource.connect(creator).publishAndFund(zeroValueIntent, false)
+      expect(await intentSource.isIntentFunded(zeroValueIntent)).to.be.true
+    })
+  })
+
+  /**
+   * Group 22: Universal Intent Recovery Tests
+   * Tests token recovery functionality
+   */
+  describe('Universal intent recovery', function () {
+    it('should recover mistakenly sent tokens from vault', async function () {
+      // Create and fund an intent
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      // Get vault address
+      const vaultAddress = await universalIntentSource.intentVaultAddress(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Deploy a different token to send to vault (not part of rewards)
+      const testERC20Factory = await ethers.getContractFactory('TestERC20')
+      const extraToken = await testERC20Factory.deploy('ExtraToken', 'EXTRA')
+      await extraToken.connect(creator).mint(await creator.getAddress(), mintAmount)
+      await extraToken.connect(creator).transfer(vaultAddress, mintAmount)
+
+      // Claim the intent first
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+      await universalIntentSource
+        .connect(claimant)
+        .withdraw(universalIntent.destination, universalIntent.reward, routeHash)
+
+      // Now recover the extra tokens
+      const initialBalance = await extraToken.balanceOf(await creator.getAddress())
+      await universalIntentSource
+        .connect(creator)
+        .recoverToken(
+          universalIntent.destination,
+          universalIntent.reward,
+          routeHash,
+          await extraToken.getAddress(),
+        )
+
+      // Creator should have received the extra tokens
+      const finalBalance = await extraToken.balanceOf(await creator.getAddress())
+      expect(finalBalance).to.equal(initialBalance + mintAmount)
+    })
+
+    it('should prevent recovery of reward tokens', async function () {
+      // Create and fund an intent
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      const routeHash = keccak256(routeBytes)
+
+      // Claim the intent first
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+      await universalIntentSource
+        .connect(claimant)
+        .withdraw(universalIntent.destination, universalIntent.reward, routeHash)
+
+      // Try to recover a reward token (should fail)
+      await expect(
+        universalIntentSource
+          .connect(creator)
+          .recoverToken(
+            universalIntent.destination,
+            universalIntent.reward,
+            routeHash,
+            await tokenA.getAddress(), // This is a reward token
+          ),
+      ).to.be.revertedWithCustomError(intentSource, 'InvalidRefundToken')
+    })
+  })
+
+  /**
+   * Group 23: Cross-Chain Proof Challenge Tests
+   * Tests proof challenge functionality for cross-chain scenarios
+   */
+  describe('Cross-chain proof challenge', function () {
+    it('should challenge proofs with wrong destination chain', async function () {
+      // Create cross-chain intent
+      const crossChainIntent = {
+        ...evmIntent,
+        destination: 1, // Different chain
+      }
+      const universalIntent = convertToUniversalIntent(crossChainIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+
+      // Fund intent
+      await mintAndApprove()
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Add proof with wrong chain ID
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId) // Wrong chain
+
+      // Withdraw should trigger challenge
+      await expect(
+        universalIntentSource
+          .connect(otherPerson)
+          .withdraw(universalIntent.destination, universalIntent.reward, routeHash),
+      )
+        .to.emit(intentSource, 'IntentProofChallenged')
+        .withArgs(intentHash)
+    })
+
+    it('should not challenge proofs with correct destination chain', async function () {
+      // Create same-chain intent
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+
+      // Fund intent
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Add proof with correct chain ID
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+      // Withdraw should succeed without challenge
+      await expect(
+        universalIntentSource
+          .connect(otherPerson)
+          .withdraw(universalIntent.destination, universalIntent.reward, routeHash),
+      )
+        .to.emit(intentSource, 'IntentWithdrawn')
+        .withArgs(intentHash, await claimant.getAddress())
+    })
+  })
+
+  /**
+   * Group 24: Universal Intent Refund Tests
+   * Tests refund functionality through universal interface
+   */
+  describe('Universal intent refund', function () {
+    it('should refund expired intents through universal interface', async function () {
+      // Create intent with short expiry
+      const shortExpiryIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          deadline: BigInt(await time.latest()) + 100n, // 100 seconds
+        },
+      }
+      const universalIntent = convertToUniversalIntent(shortExpiryIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+
+      // Fund intent
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Wait for expiry
+      await time.increase(101)
+
+      const initialBalance = await tokenA.balanceOf(await creator.getAddress())
+
+      // Refund through universal interface
+      await expect(
+        universalIntentSource
+          .connect(otherPerson)
+          .refund(universalIntent.destination, universalIntent.reward, routeHash),
+      )
+        .to.emit(intentSource, 'IntentRefunded')
+        .withArgs(intentHash, await creator.getAddress())
+
+      // Creator should have received refund
+      const finalBalance = await tokenA.balanceOf(await creator.getAddress())
+      expect(finalBalance).to.equal(initialBalance + mintAmount)
+    })
+
+    it('should prevent refund of proven intents', async function () {
+      // Create and fund intent
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      const [intentHash] = await universalIntentSource.getIntentHash(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+      )
+      const routeHash = keccak256(routeBytes)
+
+      // Prove the intent
+      await prover
+        .connect(creator)
+        .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+
+      // Move past expiry
+      await time.increase(3601)
+
+      // Try to refund (should fail)
+      await expect(
+        universalIntentSource
+          .connect(otherPerson)
+          .refund(universalIntent.destination, universalIntent.reward, routeHash),
+      ).to.be.revertedWithCustomError(intentSource, 'IntentNotClaimed')
+    })
+  })
+
+  /**
+   * Group 25: Gas Optimization Tests
+   * Tests to ensure gas efficiency
+   */
+  describe('Gas optimization', function () {
+    it('should optimize gas for multiple token transfers', async function () {
+      // Create intent with multiple tokens
+      const multiTokenIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+          tokens: [
+            { token: await tokenA.getAddress(), amount: mintAmount },
+            { token: await tokenB.getAddress(), amount: mintAmount * 2n },
+          ],
+        },
+      }
+
+      const tx = await intentSource.connect(creator).publishAndFund(multiTokenIntent, false)
+      const receipt = await tx.wait()
+      
+      // Gas usage should be reasonable for multiple tokens
+      expect(receipt?.gasUsed).to.be.lessThan(1000000) // Less than 1M gas
+    })
+
+    it('should optimize gas for batch operations', async function () {
+      // Create multiple intents
+      const intents = []
+      const routeHashes = []
+      const rewards = []
+      
+      for (let i = 0; i < 3; i++) {
+        // Mint additional tokens for each intent
+        await mintAndApprove()
+        
+        const intent = {
+          ...evmIntent,
+          route: {
+            ...evmIntent.route,
+            salt: ethers.randomBytes(32),
+          },
+        }
+        intents.push(intent)
+        
+        await intentSource.connect(creator).publishAndFund(intent, false, {
+          value: intent.reward.nativeValue,
+        })
+        
+        const [intentHash, routeHash] = await intentSource.getIntentHash(intent)
+        routeHashes.push(routeHash)
+        rewards.push(intent.reward)
+        
+        // Prove the intent
+        await prover
+          .connect(creator)
+          .addProvenIntent(intentHash, await claimant.getAddress(), chainId)
+      }
+
+      // Batch withdraw should be more efficient than individual withdrawals
+      const batchTx = await intentSource
+        .connect(otherPerson)
+        .batchWithdraw(
+          [chainId, chainId, chainId],
+          routeHashes,
+          rewards,
+        )
+      const batchReceipt = await batchTx.wait()
+      
+      // Should be reasonable gas usage for batch operation
+      expect(batchReceipt?.gasUsed).to.be.lessThan(2000000) // Less than 2M gas
+    })
+  })
+
+  /**
+   * Group 26: Universal Intent Format Validation Tests
+   * Tests validation of universal intent format
+   */
+  describe('Universal intent format validation', function () {
+    it('should validate route encoding format', async function () {
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      
+      // Test valid route encoding
+      const validRouteBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      
+      await expect(
+        universalIntentSource
+          .connect(creator)
+          .publish(
+            universalIntent.destination,
+            validRouteBytes,
+            universalIntent.reward,
+          ),
+      ).to.not.be.reverted
+    })
+
+    it('should handle empty route arrays', async function () {
+      const emptyRouteIntent = {
+        ...evmIntent,
+        route: {
+          ...evmIntent.route,
+          tokens: [],
+          calls: [],
+        },
+      }
+      const universalIntent = convertToUniversalIntent(emptyRouteIntent)
+      
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      
+      await expect(
+        universalIntentSource
+          .connect(creator)
+          .publish(
+            universalIntent.destination,
+            routeBytes,
+            universalIntent.reward,
+          ),
+      ).to.not.be.reverted
+    })
+
+    it('should handle maximum size route data', async function () {
+      // Create intent with maximum reasonable size
+      const largeData = ethers.randomBytes(1000) // 1KB of data
+      const largeRouteIntent = {
+        ...evmIntent,
+        route: {
+          ...evmIntent.route,
+          calls: [
+            {
+              target: await tokenA.getAddress(),
+              data: largeData,
+              value: 0n,
+            },
+          ],
+        },
+      }
+      const universalIntent = convertToUniversalIntent(largeRouteIntent)
+      
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+      
+      await expect(
+        universalIntentSource
+          .connect(creator)
+          .publish(
+            universalIntent.destination,
+            routeBytes,
+            universalIntent.reward,
+          ),
+      ).to.not.be.reverted
+    })
+  })
+
+  /**
+   * Group 27: Universal Intent State Management Tests
+   * Tests intent state transitions
+   */
+  describe('Universal intent state management', function () {
+    it('should track intent funding state correctly', async function () {
+      const universalIntent = convertToUniversalIntent(evmIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+
+      // Initially unfunded
+      expect(
+        await universalIntentSource.isIntentFunded(
+          universalIntent.destination,
+          routeBytes,
+          universalIntent.reward,
+        ),
+      ).to.be.false
+
+      // Fund the intent
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        false,
+        { value: universalIntent.reward.nativeValue },
+      )
+
+      // Should be funded
+      expect(
+        await universalIntentSource.isIntentFunded(
+          universalIntent.destination,
+          routeBytes,
+          universalIntent.reward,
+        ),
+      ).to.be.true
+    })
+
+    it('should handle partial funding state transitions', async function () {
+      const partialIntent = {
+        ...evmIntent,
+        reward: {
+          ...evmIntent.reward,
+          nativeValue: 0n,
+          tokens: [{ token: await tokenA.getAddress(), amount: mintAmount }],
+        },
+      }
+      const universalIntent = convertToUniversalIntent(partialIntent)
+      const routeBytes = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+          'tuple(bytes32 salt, uint64 deadline, bytes32 portal, tuple(bytes32 token, uint256 amount)[] tokens, tuple(bytes32 target, bytes data, uint256 value)[] calls)',
+        ],
+        [universalIntent.route],
+      )
+
+      // Fund partially
+      await tokenA.connect(creator).approve(await universalIntentSource.getAddress(), mintAmount / 2n)
+      await universalIntentSource.connect(creator).publishAndFund(
+        universalIntent.destination,
+        routeBytes,
+        universalIntent.reward,
+        true, // allow partial
+      )
+
+      // Should not be fully funded
+      expect(
+        await universalIntentSource.isIntentFunded(
+          universalIntent.destination,
+          routeBytes,
+          universalIntent.reward,
+        ),
+      ).to.be.false
+
+      // Complete funding
+      await tokenA.connect(creator).mint(await creator.getAddress(), mintAmount / 2n)
+      await tokenA.connect(creator).approve(await universalIntentSource.getAddress(), mintAmount / 2n)
+      
+      const routeHash = keccak256(routeBytes)
+      await universalIntentSource.connect(creator).fund(
+        universalIntent.destination,
+        universalIntent.reward,
+        routeHash,
+        false,
+      )
+
+      // Should now be fully funded
+      expect(
+        await universalIntentSource.isIntentFunded(
+          universalIntent.destination,
+          routeBytes,
+          universalIntent.reward,
+        ),
+      ).to.be.true
+    })
+  })
 })

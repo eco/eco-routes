@@ -1367,4 +1367,279 @@ describe('HyperProver Test', (): void => {
       expect(proofData1Sim.claimant).to.eq(await claimant.getAddress())
     })
   })
+
+  /**
+   * Challenge Intent Proof Tests
+   * Tests the proof challenging mechanism for cross-chain validation
+   */
+  describe('Challenge Intent Proof', () => {
+    let intent: Intent
+    let universalIntent: any
+    let prover: any
+    let trustedProverList: string[]
+
+    beforeEach(async () => {
+      // Create a standard intent for testing
+      intent = {
+        destination: 42161, // Arbitrum
+        route: {
+          salt: ethers.randomBytes(32),
+          deadline: (await time.latest()) + 3600,
+          portal: await inbox.getAddress(),
+          tokens: [{ token: await token.getAddress(), amount: amount }],
+          calls: [
+            {
+              target: await token.getAddress(),
+              data: await encodeTransfer(await claimant.getAddress(), amount),
+              value: 0,
+            },
+          ],
+        },
+        reward: {
+          creator: await owner.getAddress(),
+          prover: await solver.getAddress(),
+          deadline: (await time.latest()) + 3600,
+          nativeValue: 0,
+          tokens: [{ token: await token.getAddress(), amount: amount }],
+        },
+      }
+
+      // Convert to universal intent
+      universalIntent = convertIntentToUniversal(intent)
+
+      // Use TestProver for challenge tests since we need addProvenIntent method
+      prover = await (
+        await ethers.getContractFactory('TestProver')
+      ).deploy(await inbox.getAddress())
+    })
+
+    it('should challenge and clear proof when chain ID mismatches', async () => {
+      const intentHash = hashUniversalIntent(universalIntent).intentHash
+
+      // Create proof with wrong chain ID manually
+      const wrongChainId = 999
+      await prover.addProvenIntent(
+        intentHash,
+        await claimant.getAddress(),
+        wrongChainId,
+      )
+
+      // Verify proof exists with wrong chain ID
+      const proofBefore = await prover.provenIntents(intentHash)
+      expect(proofBefore.claimant).to.equal(await claimant.getAddress())
+      expect(proofBefore.destinationChainID).to.equal(wrongChainId)
+
+      // Challenge the proof with correct destination chain ID
+      const routeHash = hashUniversalIntent(universalIntent).routeHash
+      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+
+      await expect(
+        prover.challengeIntentProof(
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
+      ).to.emit(prover, 'IntentProven')
+        .withArgs(intentHash, ethers.ZeroAddress)
+
+      // Verify proof was cleared
+      const proofAfter = await prover.provenIntents(intentHash)
+      expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
+      expect(proofAfter.destinationChainID).to.equal(0)
+    })
+
+    it('should not clear proof when chain ID matches', async () => {
+      const intentHash = hashUniversalIntent(universalIntent).intentHash
+
+      // Create proof with correct chain ID
+      await prover.addProvenIntent(
+        intentHash,
+        await claimant.getAddress(),
+        intent.destination,
+      )
+
+      // Verify proof exists
+      const proofBefore = await prover.provenIntents(intentHash)
+      expect(proofBefore.claimant).to.equal(await claimant.getAddress())
+      expect(proofBefore.destinationChainID).to.equal(intent.destination)
+
+      // Challenge the proof with same destination chain ID
+      const routeHash = hashUniversalIntent(universalIntent).routeHash
+      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+
+      await prover.challengeIntentProof(
+        intent.destination,
+        routeHash,
+        rewardHash,
+      )
+
+      // Verify proof remains unchanged
+      const proofAfter = await prover.provenIntents(intentHash)
+      expect(proofAfter.claimant).to.equal(await claimant.getAddress())
+      expect(proofAfter.destinationChainID).to.equal(intent.destination)
+    })
+
+    it('should handle challenge for non-existent proof', async () => {
+      const routeHash = hashUniversalIntent(universalIntent).routeHash
+      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+
+      // Challenge non-existent proof should be a no-op
+      await expect(
+        prover.challengeIntentProof(
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
+      ).to.not.be.reverted
+
+      // Verify no proof exists
+      const intentHash = hashUniversalIntent(universalIntent).intentHash
+      const proof = await prover.provenIntents(intentHash)
+      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.destinationChainID).to.equal(0)
+    })
+
+    it('should allow multiple challenges on the same intent', async () => {
+      const intentHash = hashUniversalIntent(universalIntent).intentHash
+      const routeHash = hashUniversalIntent(universalIntent).routeHash
+      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+
+      // Create proof with wrong chain ID
+      const wrongChainId = 999
+      await prover.addProvenIntent(
+        intentHash,
+        await claimant.getAddress(),
+        wrongChainId,
+      )
+
+      // First challenge
+      await prover.challengeIntentProof(
+        intent.destination,
+        routeHash,
+        rewardHash,
+      )
+
+      // Verify proof was cleared
+      let proof = await prover.provenIntents(intentHash)
+      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+
+      // Second challenge (should be no-op)
+      await expect(
+        prover.challengeIntentProof(
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
+      ).to.not.be.reverted
+
+      // Verify proof remains cleared
+      proof = await prover.provenIntents(intentHash)
+      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+    })
+
+    it('should allow anyone to challenge invalid proofs', async () => {
+      const intentHash = hashUniversalIntent(universalIntent).intentHash
+      const routeHash = hashUniversalIntent(universalIntent).routeHash
+      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+
+      // Create proof with wrong chain ID
+      const wrongChainId = 999
+      await prover.addProvenIntent(
+        intentHash,
+        await claimant.getAddress(),
+        wrongChainId,
+      )
+
+      // Challenge from different user
+      await expect(
+        prover.connect(solver).challengeIntentProof(
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
+      ).to.emit(prover, 'IntentProven')
+        .withArgs(intentHash, ethers.ZeroAddress)
+
+      // Verify proof was cleared
+      const proof = await prover.provenIntents(intentHash)
+      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+    })
+
+    it('should handle challenge with edge case chain IDs', async () => {
+      // Test with chain ID 0
+      const edgeIntent = { ...intent, destination: 0 }
+      const edgeUniversalIntent = convertIntentToUniversal(edgeIntent)
+      const edgeIntentHash = hashUniversalIntent(edgeUniversalIntent).intentHash
+
+      // Create proof with different chain ID
+      await prover.addProvenIntent(
+        edgeIntentHash,
+        await claimant.getAddress(),
+        1,
+      )
+
+      // Challenge with chain ID 0
+      await expect(
+        prover.challengeIntentProof(
+          0,
+          hashUniversalIntent(edgeUniversalIntent).routeHash,
+          hashUniversalIntent(edgeUniversalIntent).rewardHash,
+        ),
+      ).to.emit(prover, 'IntentProven')
+        .withArgs(edgeIntentHash, ethers.ZeroAddress)
+
+      // Verify proof was cleared
+      const proof = await prover.provenIntents(edgeIntentHash)
+      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+    })
+
+    it('should handle challenge integration with batched operations', async () => {
+      // Create two intents with different destinations
+      const intent1 = { ...intent, destination: 1 }
+      const intent2 = { ...intent, destination: 137 }
+
+      const universalIntent1 = convertIntentToUniversal(intent1)
+      const universalIntent2 = convertIntentToUniversal(intent2)
+
+      const intentHash1 = hashUniversalIntent(universalIntent1).intentHash
+      const intentHash2 = hashUniversalIntent(universalIntent2).intentHash
+
+      // Add proofs with wrong chain IDs
+      await prover.addProvenIntent(
+        intentHash1,
+        await claimant.getAddress(),
+        999, // Wrong chain ID
+      )
+      await prover.addProvenIntent(
+        intentHash2,
+        await claimant.getAddress(),
+        888, // Wrong chain ID
+      )
+
+      // Challenge both proofs
+      await expect(
+        prover.challengeIntentProof(
+          intent1.destination,
+          hashUniversalIntent(universalIntent1).routeHash,
+          hashUniversalIntent(universalIntent1).rewardHash,
+        ),
+      ).to.emit(prover, 'IntentProven')
+        .withArgs(intentHash1, ethers.ZeroAddress)
+
+      await expect(
+        prover.challengeIntentProof(
+          intent2.destination,
+          hashUniversalIntent(universalIntent2).routeHash,
+          hashUniversalIntent(universalIntent2).rewardHash,
+        ),
+      ).to.emit(prover, 'IntentProven')
+        .withArgs(intentHash2, ethers.ZeroAddress)
+
+      // Verify both proofs were cleared
+      const proof1 = await prover.provenIntents(intentHash1)
+      const proof2 = await prover.provenIntents(intentHash2)
+      expect(proof1.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof2.claimant).to.equal(ethers.ZeroAddress)
+    })
+  })
 })

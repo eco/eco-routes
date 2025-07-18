@@ -1912,4 +1912,172 @@ describe('Intent Source Test', (): void => {
       // through multiple transactions, which is working correctly.
     })
   })
+
+  /**
+   * Additional API Compatibility Tests
+   * Ensuring compatibility with Universal Intent support
+   */
+  describe('API compatibility enhancements', async () => {
+    beforeEach(async (): Promise<void> => {
+      expiry = (await time.latest()) + 123
+      salt = await encodeIdentifier(
+        0,
+        (await ethers.provider.getNetwork()).chainId,
+      )
+      chainId = 31337 // Maintain consistent chain ID for compatibility
+      routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
+      calls = [
+        {
+          target: await tokenA.getAddress(),
+          data: await encodeTransfer(creator.address, mintAmount),
+          value: 0,
+        },
+      ]
+      route = {
+        salt: salt,
+        deadline: expiry,
+        portal: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: calls,
+      }
+    })
+
+    it('should maintain consistent chain ID behavior', async () => {
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+      ]
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+      const intent = { destination: chainId, route, reward }
+      const { intentHash } = hashIntent(intent)
+
+      // Test that chain ID is consistently handled
+      await intentSource.connect(creator).publishAndFund(intent, false)
+      
+      // Verify event structure maintains compatibility
+      const logs = await intentSource.queryFilter(
+        intentSource.getEvent('IntentPublished'),
+      )
+      expect(logs[0].args.destination).to.equal(chainId)
+    })
+
+    it('should handle address format conversions correctly', async () => {
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+      ]
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+      const intent = { destination: chainId, route, reward }
+      const { intentHash } = hashIntent(intent)
+
+      // Test address handling in event emissions
+      await expect(
+        intentSource.connect(creator).publishAndFund(intent, false),
+      )
+        .to.emit(intentSource, 'IntentPublished')
+        .withArgs(
+          intentHash,
+          chainId,
+          addressToBytes32(await creator.getAddress()),
+          addressToBytes32(await prover.getAddress()),
+          expiry,
+          0n,
+          rewardTokens.map((t) => [addressToBytes32(t.token), t.amount]),
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            [
+              'tuple(bytes32 salt,uint64 deadline,address portal,tuple(address token,uint256 amount)[] tokens,tuple(address target,bytes data,uint256 value)[] calls)',
+            ],
+            [route],
+          ),
+        )
+    })
+
+    it('should maintain backward compatibility with existing API signatures', async () => {
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+      ]
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: 0n,
+        tokens: rewardTokens,
+      }
+      const intent = { destination: chainId, route, reward }
+      const { intentHash, routeHash } = hashIntent(intent)
+
+      // Test existing API methods still work
+      await intentSource.connect(creator).publish(intent)
+      await intentSource.connect(creator).fund(chainId, routeHash, reward, false)
+      
+      // Test vault address computation
+      const vaultAddress = await intentSource.intentVaultAddress(intent)
+      expect(vaultAddress).to.be.properAddress
+      
+      // Test funding status check
+      expect(await intentSource.isIntentFunded(intent)).to.be.true
+    })
+
+    it('should handle mixed native and token rewards consistently', async () => {
+      rewardTokens = [
+        { token: await tokenA.getAddress(), amount: mintAmount },
+        { token: await tokenB.getAddress(), amount: mintAmount * 2 },
+      ]
+      reward = {
+        creator: creator.address,
+        prover: await prover.getAddress(),
+        deadline: expiry,
+        nativeValue: ethers.parseEther('1'),
+        tokens: rewardTokens,
+      }
+      const intent = { destination: chainId, route, reward }
+      const { routeHash } = hashIntent(intent)
+
+      // Test mixed rewards work with API compatibility
+      await intentSource.connect(creator).publishAndFund(intent, false, {
+        value: ethers.parseEther('1'),
+      })
+
+      expect(await intentSource.isIntentFunded(intent)).to.be.true
+
+      // Test withdrawal maintains compatibility
+      await prover
+        .connect(creator)
+        .addProvenIntent(
+          (await intentSource.getIntentHash(intent))[0],
+          claimant.address,
+          chainId,
+        )
+
+      const initialBalanceA = await tokenA.balanceOf(claimant.address)
+      const initialBalanceB = await tokenB.balanceOf(claimant.address)
+      const initialBalanceNative = await ethers.provider.getBalance(
+        claimant.address,
+      )
+
+      await intentSource
+        .connect(otherPerson)
+        .withdraw(chainId, routeHash, reward)
+
+      expect(await tokenA.balanceOf(claimant.address)).to.equal(
+        initialBalanceA + BigInt(mintAmount),
+      )
+      expect(await tokenB.balanceOf(claimant.address)).to.equal(
+        initialBalanceB + BigInt(mintAmount * 2),
+      )
+      expect(await ethers.provider.getBalance(claimant.address)).to.equal(
+        initialBalanceNative + ethers.parseEther('1'),
+      )
+    })
+  })
 })
