@@ -601,7 +601,9 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
                     revert InsufficientNativeReward(intentHash);
                 }
 
-                payable(vault).transfer(transferAmount);
+                if (transferAmount > 0) {
+                    payable(vault).transfer(transferAmount);
+                }
             }
         }
 
@@ -656,17 +658,10 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         }
 
         // Update vault state based on funding result
-        VaultState memory state = vaults[intentHash].state;
-
-        if (partiallyFunded) {
-            state.status = uint8(RewardStatus.PartiallyFunded);
-            emit IntentFunded(intentHash, funder, false);
-        } else {
-            state.status = uint8(RewardStatus.Funded);
-            emit IntentFunded(intentHash, funder, true);
-        }
-
-        vaults[intentHash].state = state;
+        vaults[intentHash].state.status = partiallyFunded
+            ? uint8(RewardStatus.PartiallyFunded)
+            : uint8(RewardStatus.Funded);
+        emit IntentFunded(intentHash, funder, !partiallyFunded);
     }
 
     /**
