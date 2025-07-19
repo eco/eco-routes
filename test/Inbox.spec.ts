@@ -22,36 +22,9 @@ import {
   Route,
   Reward,
   TokenAmount,
+  Intent,
 } from '../utils/intent'
 import { addressToBytes32 } from '../utils/typeCasts'
-import {
-  UniversalIntent,
-  UniversalRoute,
-  UniversalReward,
-  hashUniversalIntent,
-  convertIntentToUniversal,
-  encodeUniversalRoute,
-  encodeUniversalReward,
-} from '../utils/universalIntent'
-import { TypeCasts } from '../utils/typeCasts'
-
-// Helper function to convert UniversalRoute to Route for the fulfill function
-function universalRouteToRoute(universalRoute: UniversalRoute): Route {
-  return {
-    salt: universalRoute.salt,
-    deadline: universalRoute.deadline,
-    portal: TypeCasts.bytes32ToAddress(universalRoute.portal),
-    tokens: universalRoute.tokens.map((token) => ({
-      token: TypeCasts.bytes32ToAddress(token.token),
-      amount: token.amount,
-    })),
-    calls: universalRoute.calls.map((call) => ({
-      target: TypeCasts.bytes32ToAddress(call.target),
-      data: call.data,
-      value: call.value,
-    })),
-  }
-}
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
@@ -60,9 +33,9 @@ describe('Inbox Test', (): void => {
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let dstAddr: SignerWithAddress
-  let universalIntent: UniversalIntent
-  let universalRoute: UniversalRoute
-  let universalReward: UniversalReward
+  let intent: Intent
+  let route: Route
+  let reward: Reward
   let rewardHash: string
   let intentHash: string
   let otherHash: string
@@ -112,9 +85,9 @@ describe('Inbox Test', (): void => {
     amount: number,
     timeDelta: number,
   ): Promise<{
-    universalIntent: UniversalIntent
-    universalRoute: UniversalRoute
-    universalReward: UniversalReward
+    intent: Intent
+    route: Route
+    reward: Reward
     rewardHash: string
     intentHash: string
   }> {
@@ -122,8 +95,8 @@ describe('Inbox Test', (): void => {
     const _calldata = await encodeTransfer(dstAddr.address, amount)
     const _timestamp = (await time.latest()) + timeDelta
 
-    // Create address-based intent first
-    const _intent = {
+    // Create intent directly
+    const _intent: Intent = {
       destination: Number((await owner.provider.getNetwork()).chainId),
       route: {
         salt,
@@ -152,15 +125,14 @@ describe('Inbox Test', (): void => {
       },
     }
 
-    // Convert to UniversalIntent
-    const universalIntent = convertIntentToUniversal(_intent)
+    // Hash the intent
     const { rewardHash: _rewardHash, intentHash: _intentHash } =
-      hashUniversalIntent(universalIntent)
+      hashIntent(_intent)
 
     return {
-      universalIntent,
-      universalRoute: universalIntent.route,
-      universalReward: universalIntent.reward,
+      intent: _intent,
+      route: _intent.route,
+      reward: _intent.reward,
       rewardHash: _rewardHash,
       intentHash: _intentHash,
     }
@@ -169,9 +141,9 @@ describe('Inbox Test', (): void => {
     ;({ inbox, erc20, testUSDT, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
     ;({
-      universalIntent,
-      universalRoute,
-      universalReward,
+      intent,
+      route,
+      reward,
       rewardHash,
       intentHash,
     } = await createIntentData(mintAmount, timeDelta))
@@ -184,21 +156,21 @@ describe('Inbox Test', (): void => {
     it('should revert if fulfillment is attempted on an incorrect destination chain', async () => {
       // Create an intent hash for a different destination chain
       const wrongDestination = 123
-      const wrongIntent: UniversalIntent = {
+      const wrongIntent: Intent = {
         destination: wrongDestination,
-        route: universalRoute,
-        reward: universalReward,
+        route: route,
+        reward: reward,
       }
-      const { intentHash: wrongIntentHash } = hashUniversalIntent(wrongIntent)
+      const { intentHash: wrongIntentHash } = hashIntent(wrongIntent)
 
       await expect(
         inbox
           .connect(owner)
           .fulfill(
             wrongIntentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
@@ -215,9 +187,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             goofyHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
@@ -230,15 +202,15 @@ describe('Inbox Test', (): void => {
         await anotherPortal.getAddress(),
       )
 
-      const _route: UniversalRoute = {
-        ...universalRoute,
-        portal: TypeCasts.addressToBytes32(await anotherInbox.getAddress()),
+      const _route: Route = {
+        ...route,
+        portal: await anotherInbox.getAddress(),
       }
 
-      const _intentHash = hashUniversalIntent({
+      const _intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
-        reward: universalReward,
+        reward: reward,
       }).intentHash
 
       await expect(
@@ -246,9 +218,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             _intentHash,
-            universalRouteToRoute(_route),
+            _route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidPortal')
     })
@@ -261,7 +233,7 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
             ethers.ZeroHash,
           ),
@@ -273,57 +245,57 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
     })
     it('should revert if the call fails', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
-      const _route: UniversalRoute = {
-        ...universalRoute,
+      const _route: Route = {
+        ...route,
         calls: [
           {
-            target: TypeCasts.addressToBytes32(await erc20.getAddress()),
+            target: await erc20.getAddress(),
             data: await encodeTransfer(dstAddr.address, mintAmount * 100),
             value: 0,
           },
         ],
       }
 
-      const _intentHash = hashUniversalIntent({
+      const _intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
-        reward: universalReward,
+        reward: reward,
       }).intentHash
       await expect(
         inbox
           .connect(solver)
           .fulfill(
             _intentHash,
-            universalRouteToRoute(_route),
+            _route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
     })
     it('should revert if any of the targets is a prover', async () => {
-      const _route: UniversalRoute = {
-        ...universalRoute,
+      const _route: Route = {
+        ...route,
         calls: [
           {
-            target: TypeCasts.addressToBytes32(await mockProver.getAddress()),
+            target: await mockProver.getAddress(),
             data: '0x',
             value: 0,
           },
         ],
       }
-      const _intentHash = hashUniversalIntent({
+      const _intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
-        reward: universalReward,
+        reward: reward,
       }).intentHash
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
       await expect(
@@ -331,38 +303,38 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             _intentHash,
-            universalRouteToRoute(_route),
+            _route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'CallToProver')
     })
     it('should revert if one of the targets is an EOA', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
-      const _route: UniversalRoute = {
-        ...universalRoute,
+      const _route: Route = {
+        ...route,
         calls: [
           {
-            target: TypeCasts.addressToBytes32(solver.address),
+            target: solver.address,
             data: await encodeTransfer(dstAddr.address, mintAmount * 100),
             value: 0,
           },
         ],
       }
-      const _intentHash = hashUniversalIntent({
+      const _intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
-        reward: universalReward,
+        reward: reward,
       }).intentHash
       await expect(
         inbox
           .connect(solver)
           .fulfill(
             _intentHash,
-            universalRouteToRoute(_route),
+            _route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       )
         .to.be.revertedWithCustomError(inbox, 'CallToEOA')
@@ -385,9 +357,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
@@ -411,9 +383,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.not.be.reverted
       // should revert
@@ -422,9 +394,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.be.revertedWithCustomError(inbox, 'IntentAlreadyFulfilled')
     })
@@ -433,21 +405,21 @@ describe('Inbox Test', (): void => {
       const ethAmount = ethers.parseEther('1.0')
 
       // Create intent with ETH transfer to EOA
-      const _route: UniversalRoute = {
-        ...universalRoute,
+      const _route: Route = {
+        ...route,
         calls: [
           {
-            target: TypeCasts.addressToBytes32(dstAddr.address),
+            target: dstAddr.address,
             data: '0x', // Empty data for ETH transfer
             value: ethAmount,
           },
         ],
       }
 
-      const _intentHash = hashUniversalIntent({
+      const _intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
-        reward: universalReward,
+        reward: reward,
       }).intentHash
 
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
@@ -461,14 +433,14 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             _intentHash,
-            universalRouteToRoute(_route),
+            _route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
             { value: ethAmount },
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
-        .withArgs(_intentHash, TypeCasts.addressToBytes32(dstAddr.address))
+        .withArgs(_intentHash, addressToBytes32(dstAddr.address))
 
       // Check ETH was transferred
       const finalBalance = await ethers.provider.getBalance(dstAddr.address)
@@ -482,27 +454,27 @@ describe('Inbox Test', (): void => {
         [dstAddr.address, mintAmount],
       )
 
-      const _route: UniversalRoute = {
-        ...universalRoute,
+      const _route: Route = {
+        ...route,
         tokens: [
           {
-            token: TypeCasts.addressToBytes32(await testUSDT.getAddress()),
+            token: await testUSDT.getAddress(),
             amount: mintAmount,
           },
         ],
         calls: [
           {
-            target: TypeCasts.addressToBytes32(await testUSDT.getAddress()),
+            target: await testUSDT.getAddress(),
             data: transferCalldata,
             value: 0,
           },
         ],
       }
 
-      const _intentHash = hashUniversalIntent({
+      const _intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
-        reward: universalReward,
+        reward: reward,
       }).intentHash
 
       await testUSDT
@@ -519,13 +491,13 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             _intentHash,
-            universalRouteToRoute(_route),
+            _route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
-        .withArgs(_intentHash, TypeCasts.addressToBytes32(dstAddr.address))
+        .withArgs(_intentHash, addressToBytes32(dstAddr.address))
 
       // Check tokens were transferred
       expect(await testUSDT.balanceOf(solver.address)).to.equal(0)
@@ -548,9 +520,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
           ),
       ).to.not.be.reverted
 
@@ -576,7 +548,7 @@ describe('Inbox Test', (): void => {
       const intentHashes = await mockProver.argIntentHashes(0)
       expect(intentHashes).to.equal(intentHash)
       const claimants = await mockProver.argClaimants(0)
-      expect(claimants).to.equal(TypeCasts.addressToBytes32(dstAddr.address))
+      expect(claimants).to.equal(addressToBytes32(dstAddr.address))
     })
   })
 
@@ -599,9 +571,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfillAndProve(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(dstAddr.address),
+            addressToBytes32(dstAddr.address),
             await mockProver.getAddress(),
             sourceChainID,
             '0x',
@@ -618,7 +590,7 @@ describe('Inbox Test', (): void => {
       const intentHashes = await mockProver.argIntentHashes(0)
       expect(intentHashes).to.equal(intentHash)
       const claimants = await mockProver.argClaimants(0)
-      expect(claimants).to.equal(TypeCasts.addressToBytes32(dstAddr.address))
+      expect(claimants).to.equal(addressToBytes32(dstAddr.address))
     })
 
     it('should handle fulfillAndProve with address claimant', async () => {
@@ -631,9 +603,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfillAndProve(
             intentHash,
-            universalRouteToRoute(universalRoute),
+            route,
             rewardHash,
-            TypeCasts.addressToBytes32(validClaimant),
+            addressToBytes32(validClaimant),
             await mockProver.getAddress(),
             sourceChainID,
             '0x',

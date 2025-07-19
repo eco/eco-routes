@@ -6,7 +6,6 @@ import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
-import {TokenAmount as UniversalTokenAmount} from "../../contracts/types/UniversalIntent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
 contract IntentSourceTest is BaseTest {
@@ -80,25 +79,14 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        // Create memory copy for event emission (convert from EVM to Universal TokenAmount)
-        UniversalTokenAmount[] memory rewardTokens = new UniversalTokenAmount[](
-            intent.reward.tokens.length
-        );
-        for (uint256 i = 0; i < intent.reward.tokens.length; i++) {
-            rewardTokens[i] = UniversalTokenAmount({
-                token: intent.reward.tokens[i].token.toBytes32(),
-                amount: intent.reward.tokens[i].amount
-            });
-        }
-
         emit IIntentSource.IntentPublished(
             intentHash,
             intent.destination,
-            intent.reward.creator.toBytes32(),
-            intent.reward.prover.toBytes32(),
+            intent.reward.creator,
+            intent.reward.prover,
             intent.reward.deadline,
             REWARD_NATIVE_ETH,
-            rewardTokens,
+            intent.reward.tokens,
             abi.encode(intent.route)
         );
 
@@ -923,26 +911,14 @@ contract IntentSourceTest is BaseTest {
         // Test IntentPublished event
         _expectEmit();
 
-        // Create memory copy for event emission (convert from EVM to Universal TokenAmount)
-        UniversalTokenAmount[]
-            memory eventRewardTokens = new UniversalTokenAmount[](
-                intent.reward.tokens.length
-            );
-        for (uint256 i = 0; i < intent.reward.tokens.length; i++) {
-            eventRewardTokens[i] = UniversalTokenAmount({
-                token: intent.reward.tokens[i].token.toBytes32(),
-                amount: intent.reward.tokens[i].amount
-            });
-        }
-
         emit IIntentSource.IntentPublished(
             intentHash,
             intent.destination,
-            intent.reward.creator.toBytes32(),
-            intent.reward.prover.toBytes32(),
+            intent.reward.creator,
+            intent.reward.prover,
             intent.reward.deadline,
             0,
-            eventRewardTokens,
+            intent.reward.tokens,
             abi.encode(intent.route)
         );
 

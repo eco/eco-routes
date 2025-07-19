@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Reward} from "./UniversalIntent.sol";
+import {Reward} from "./Intent.sol";
 
 /**
  * @title EcoERC7683

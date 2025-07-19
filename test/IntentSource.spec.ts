@@ -261,11 +261,11 @@ describe('Intent Source Test', (): void => {
         .withArgs(
           intentHash,
           chainId,
-          addressToBytes32(await creator.getAddress()),
-          addressToBytes32(await prover.getAddress()),
+          await creator.getAddress(),
+          await prover.getAddress(),
           expiry,
           rewardNativeEth,
-          rewardTokens.map((t) => [addressToBytes32(t.token), t.amount]),
+          rewardTokens.map((t) => [t.token, t.amount]),
           ethers.AbiCoder.defaultAbiCoder().encode(
             [
               'tuple(bytes32 salt,uint64 deadline,address portal,tuple(address token,uint256 amount)[] tokens,tuple(address target,bytes data,uint256 value)[] calls)',
@@ -1988,11 +1988,11 @@ describe('Intent Source Test', (): void => {
         .withArgs(
           intentHash,
           chainId,
-          addressToBytes32(await creator.getAddress()),
-          addressToBytes32(await prover.getAddress()),
+          await creator.getAddress(),
+          await prover.getAddress(),
           expiry,
           0n,
-          rewardTokens.map((t) => [addressToBytes32(t.token), t.amount]),
+          rewardTokens.map((t) => [t.token, t.amount]),
           ethers.AbiCoder.defaultAbiCoder().encode(
             [
               'tuple(bytes32 salt,uint64 deadline,address portal,tuple(address token,uint256 amount)[] tokens,tuple(address target,bytes data,uint256 value)[] calls)',

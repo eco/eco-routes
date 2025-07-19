@@ -15,15 +15,15 @@ contract SameChainProver is IProver, Semver {
     using SafeCast for uint256;
 
     /**
-     * @notice Address of the Inbox contract
+     * @notice Address of the Portal contract (Inbox functionality)
      * @dev Immutable to prevent unauthorized changes
      */
-    Inbox private immutable _INBOX;
+    Inbox private immutable _PORTAL;
 
     uint64 private immutable _CHAIN_ID;
 
     constructor(address payable inbox) {
-        _INBOX = Inbox(inbox);
+        _PORTAL = Inbox(inbox);
         _CHAIN_ID = uint64(block.chainid);
     }
 
@@ -36,7 +36,7 @@ contract SameChainProver is IProver, Semver {
     function provenIntents(
         bytes32 intentHash
     ) public view override returns (ProofData memory) {
-        bytes32 fulfilledClaimant = _INBOX.fulfilled(intentHash);
+        bytes32 fulfilledClaimant = _PORTAL.fulfilled(intentHash);
         // Convert bytes32 to address if it's a valid Ethereum address
         address claimant = address(0);
         if (fulfilledClaimant != bytes32(0)) {

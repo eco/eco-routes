@@ -7,7 +7,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IProver} from "./interfaces/IProver.sol";
 import {Intent, Route, Reward} from "./types/Intent.sol";
-import {Call as UniversalCall, TokenAmount as UniversalTokenAmount} from "./types/UniversalIntent.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {Vault} from "./Vault.sol";
@@ -110,7 +109,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intent, intentHash, routeHash);
+        _emitIntentPublished(intentHash, intent.destination, abi.encode(intent.route), intent.reward);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
     }
@@ -133,7 +132,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         _validateInitialFundingState(state, intentHash);
         _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intent, intentHash, routeHash);
+        _emitIntentPublished(intentHash, intent.destination, abi.encode(intent.route), intent.reward);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
         _fundIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
@@ -226,7 +225,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intent, intentHash, routeHash);
+        _emitIntentPublished(intentHash, intent.destination, abi.encode(intent.route), intent.reward);
         _validateSourceChain(block.chainid, intentHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
@@ -537,35 +536,26 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
     /**
      * @notice Separate function to emit the IntentPublished event
      * @dev This helps avoid stack-too-deep errors in the calling function
-     * @param intent The intent being created
      * @param intentHash Hash of the intent
+     * @param destination Destination chain ID
+     * @param route Encoded route data
+     * @param reward Reward specification
      */
     function _emitIntentPublished(
-        Intent calldata intent,
         bytes32 intentHash,
-        bytes32 routeHash
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
     ) internal virtual {
-        uint256 rewardsLength = intent.reward.tokens.length;
-        UniversalTokenAmount[] memory rewardTokens = new UniversalTokenAmount[](
-            rewardsLength
-        );
-
-        for (uint256 i = 0; i < rewardsLength; i++) {
-            rewardTokens[i] = UniversalTokenAmount({
-                token: intent.reward.tokens[i].token.toBytes32(),
-                amount: intent.reward.tokens[i].amount
-            });
-        }
-
         emit IntentPublished(
             intentHash,
-            intent.destination,
-            intent.reward.creator.toBytes32(),
-            intent.reward.prover.toBytes32(),
-            intent.reward.deadline,
-            intent.reward.nativeValue,
-            rewardTokens,
-            abi.encode(intent.route)
+            destination,
+            reward.creator,
+            reward.prover,
+            reward.deadline,
+            reward.nativeValue,
+            reward.tokens,
+            route
         );
     }
 

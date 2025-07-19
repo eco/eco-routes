@@ -15,11 +15,6 @@ import {
 import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount, Intent, Route } from '../utils/intent'
 import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
-import {
-  convertIntentToUniversal,
-  hashUniversalIntent,
-  UniversalRoute,
-} from '../utils/universalIntent'
 
 describe('HyperProver Test', (): void => {
   let inbox: Inbox
@@ -31,24 +26,6 @@ describe('HyperProver Test', (): void => {
   let claimant: SignerWithAddress
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-
-  // Helper function to convert UniversalRoute to Route for the fulfill function
-  function universalRouteToRoute(universalRoute: UniversalRoute): Route {
-    return {
-      salt: universalRoute.salt,
-      deadline: universalRoute.deadline,
-      portal: TypeCasts.bytes32ToAddress(universalRoute.portal),
-      tokens: universalRoute.tokens.map((token) => ({
-        token: TypeCasts.bytes32ToAddress(token.token),
-        amount: token.amount,
-      })),
-      calls: universalRoute.calls.map((call) => ({
-        target: TypeCasts.bytes32ToAddress(call.target),
-        data: call.data,
-        value: call.value,
-      })),
-    }
-  }
 
   async function deployHyperproverFixture(): Promise<{
     inbox: Inbox
@@ -316,10 +293,8 @@ describe('HyperProver Test', (): void => {
         },
       }
 
-      // Convert to universal intent and get hashes
-      const universalIntent = convertIntentToUniversal(intent)
-      const { intentHash, rewardHash, routeHash } =
-        hashUniversalIntent(universalIntent)
+      // Get hashes
+      const { intentHash, rewardHash, routeHash } = hashIntent(intent)
 
       // Mint tokens and approve for funding
       await token.mint(owner.address, amount)
@@ -441,10 +416,8 @@ describe('HyperProver Test', (): void => {
         },
       }
 
-      // Convert to universal intent and get hashes
-      const universalIntent = convertIntentToUniversal(intent)
-      const { intentHash, rewardHash, routeHash } =
-        hashUniversalIntent(universalIntent)
+      // Get hashes
+      const { intentHash, rewardHash, routeHash } = hashIntent(intent)
 
       // Mint tokens and approve for funding
       await token.mint(owner.address, amount)
@@ -558,10 +531,8 @@ describe('HyperProver Test', (): void => {
         },
       }
 
-      // Convert to universal intent and get hashes
-      const universalIntent = convertIntentToUniversal(intent)
-      const { intentHash, rewardHash, routeHash } =
-        hashUniversalIntent(universalIntent)
+      // Get hashes
+      const { intentHash, rewardHash, routeHash } = hashIntent(intent)
 
       // Mint tokens and approve for funding
       await token.mint(owner.address, amount)
@@ -890,11 +861,9 @@ describe('HyperProver Test', (): void => {
         },
       }
 
-      const universalIntent = convertIntentToUniversal(intent)
-      const { intentHash, rewardHash, routeHash } =
-        hashUniversalIntent(universalIntent)
-      const route = universalIntent.route
-      const reward = universalIntent.reward
+      const { intentHash, rewardHash, routeHash } = hashIntent(intent)
+      const route = intent.route
+      const reward = intent.reward
 
       // Approve tokens for funding
       await token.connect(owner).approve(await portal.getAddress(), amount)
@@ -938,16 +907,13 @@ describe('HyperProver Test', (): void => {
         data,
       )
 
-      // Convert UniversalRoute to Route for fulfillAndProve
-      const regularRoute = universalRouteToRoute(universalIntent.route)
-
       // Since non-EVM addresses have non-zero top 12 bytes, the transaction should succeed
       // but the intent should not be proven due to AddressConverter validation
       await inbox
         .connect(solver)
         .fulfillAndProve(
           intentHash,
-          regularRoute,
+          route,
           rewardHash,
           nonAddressClaimant,
           await hyperProver.getAddress(),
@@ -1027,11 +993,9 @@ describe('HyperProver Test', (): void => {
         },
       }
 
-      const universalIntent = convertIntentToUniversal(intent)
-      const { intentHash, rewardHash, routeHash } =
-        hashUniversalIntent(universalIntent)
-      const universalRoute = universalIntent.route
-      const reward = universalIntent.reward
+      const { intentHash, rewardHash, routeHash } = hashIntent(intent)
+      const route = intent.route
+      const reward = intent.reward
 
       // Approve tokens for funding
       await token.connect(owner).approve(await portal.getAddress(), amount)
@@ -1048,8 +1012,7 @@ describe('HyperProver Test', (): void => {
       const isFunded = await intentSource.isIntentFunded(intent)
       expect(isFunded).to.be.true
 
-      // Convert UniversalRoute to Route for fulfillAndProve
-      const route = universalRouteToRoute(universalRoute)
+      // No conversion needed - route is already in the correct format
 
       // Prepare message data
       const metadata = '0x1234'
@@ -1204,12 +1167,11 @@ describe('HyperProver Test', (): void => {
         route,
         reward,
       }
-      const universalIntent0 = convertIntentToUniversal(intent0)
       const {
         intentHash: intentHash0,
         rewardHash: rewardHash0,
         routeHash: routeHash0,
-      } = hashUniversalIntent(universalIntent0)
+      } = hashIntent(intent0)
 
       // Approve tokens and publish/fund first intent
       await token.connect(owner).approve(await portal.getAddress(), amount)
@@ -1260,12 +1222,11 @@ describe('HyperProver Test', (): void => {
         route: route1,
         reward: reward1,
       }
-      const universalIntent1 = convertIntentToUniversal(intent1)
       const {
         intentHash: intentHash1,
         rewardHash: rewardHash1,
         routeHash: routeHash1,
-      } = hashUniversalIntent(universalIntent1)
+      } = hashIntent(intent1)
 
       // Approve tokens and publish/fund second intent
       await token.connect(owner).approve(await portal.getAddress(), amount)
@@ -1374,7 +1335,6 @@ describe('HyperProver Test', (): void => {
    */
   describe('Challenge Intent Proof', () => {
     let intent: Intent
-    let universalIntent: any
     let prover: any
     let trustedProverList: string[]
 
@@ -1404,9 +1364,6 @@ describe('HyperProver Test', (): void => {
         },
       }
 
-      // Convert to universal intent
-      universalIntent = convertIntentToUniversal(intent)
-
       // Use TestProver for challenge tests since we need addProvenIntent method
       prover = await (
         await ethers.getContractFactory('TestProver')
@@ -1414,7 +1371,7 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should challenge and clear proof when chain ID mismatches', async () => {
-      const intentHash = hashUniversalIntent(universalIntent).intentHash
+      const intentHash = hashIntent(intent).intentHash
 
       // Create proof with wrong chain ID manually
       const wrongChainId = 999
@@ -1430,8 +1387,8 @@ describe('HyperProver Test', (): void => {
       expect(proofBefore.destinationChainID).to.equal(wrongChainId)
 
       // Challenge the proof with correct destination chain ID
-      const routeHash = hashUniversalIntent(universalIntent).routeHash
-      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+      const routeHash = hashIntent(intent).routeHash
+      const rewardHash = hashIntent(intent).rewardHash
 
       await expect(
         prover.challengeIntentProof(
@@ -1449,7 +1406,7 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should not clear proof when chain ID matches', async () => {
-      const intentHash = hashUniversalIntent(universalIntent).intentHash
+      const intentHash = hashIntent(intent).intentHash
 
       // Create proof with correct chain ID
       await prover.addProvenIntent(
@@ -1464,8 +1421,8 @@ describe('HyperProver Test', (): void => {
       expect(proofBefore.destinationChainID).to.equal(intent.destination)
 
       // Challenge the proof with same destination chain ID
-      const routeHash = hashUniversalIntent(universalIntent).routeHash
-      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+      const routeHash = hashIntent(intent).routeHash
+      const rewardHash = hashIntent(intent).rewardHash
 
       await prover.challengeIntentProof(
         intent.destination,
@@ -1480,8 +1437,8 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should handle challenge for non-existent proof', async () => {
-      const routeHash = hashUniversalIntent(universalIntent).routeHash
-      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+      const routeHash = hashIntent(intent).routeHash
+      const rewardHash = hashIntent(intent).rewardHash
 
       // Challenge non-existent proof should be a no-op
       await expect(
@@ -1493,16 +1450,16 @@ describe('HyperProver Test', (): void => {
       ).to.not.be.reverted
 
       // Verify no proof exists
-      const intentHash = hashUniversalIntent(universalIntent).intentHash
+      const intentHash = hashIntent(intent).intentHash
       const proof = await prover.provenIntents(intentHash)
       expect(proof.claimant).to.equal(ethers.ZeroAddress)
       expect(proof.destinationChainID).to.equal(0)
     })
 
     it('should allow multiple challenges on the same intent', async () => {
-      const intentHash = hashUniversalIntent(universalIntent).intentHash
-      const routeHash = hashUniversalIntent(universalIntent).routeHash
-      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+      const intentHash = hashIntent(intent).intentHash
+      const routeHash = hashIntent(intent).routeHash
+      const rewardHash = hashIntent(intent).rewardHash
 
       // Create proof with wrong chain ID
       const wrongChainId = 999
@@ -1538,9 +1495,9 @@ describe('HyperProver Test', (): void => {
     })
 
     it('should allow anyone to challenge invalid proofs', async () => {
-      const intentHash = hashUniversalIntent(universalIntent).intentHash
-      const routeHash = hashUniversalIntent(universalIntent).routeHash
-      const rewardHash = hashUniversalIntent(universalIntent).rewardHash
+      const intentHash = hashIntent(intent).intentHash
+      const routeHash = hashIntent(intent).routeHash
+      const rewardHash = hashIntent(intent).rewardHash
 
       // Create proof with wrong chain ID
       const wrongChainId = 999
@@ -1568,8 +1525,7 @@ describe('HyperProver Test', (): void => {
     it('should handle challenge with edge case chain IDs', async () => {
       // Test with chain ID 0
       const edgeIntent = { ...intent, destination: 0 }
-      const edgeUniversalIntent = convertIntentToUniversal(edgeIntent)
-      const edgeIntentHash = hashUniversalIntent(edgeUniversalIntent).intentHash
+      const edgeIntentHash = hashIntent(edgeIntent).intentHash
 
       // Create proof with different chain ID
       await prover.addProvenIntent(
@@ -1582,8 +1538,8 @@ describe('HyperProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(
           0,
-          hashUniversalIntent(edgeUniversalIntent).routeHash,
-          hashUniversalIntent(edgeUniversalIntent).rewardHash,
+          hashIntent(edgeIntent).routeHash,
+          hashIntent(edgeIntent).rewardHash,
         ),
       ).to.emit(prover, 'IntentProven')
         .withArgs(edgeIntentHash, ethers.ZeroAddress)
@@ -1598,11 +1554,8 @@ describe('HyperProver Test', (): void => {
       const intent1 = { ...intent, destination: 1 }
       const intent2 = { ...intent, destination: 137 }
 
-      const universalIntent1 = convertIntentToUniversal(intent1)
-      const universalIntent2 = convertIntentToUniversal(intent2)
-
-      const intentHash1 = hashUniversalIntent(universalIntent1).intentHash
-      const intentHash2 = hashUniversalIntent(universalIntent2).intentHash
+      const intentHash1 = hashIntent(intent1).intentHash
+      const intentHash2 = hashIntent(intent2).intentHash
 
       // Add proofs with wrong chain IDs
       await prover.addProvenIntent(
@@ -1620,8 +1573,8 @@ describe('HyperProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(
           intent1.destination,
-          hashUniversalIntent(universalIntent1).routeHash,
-          hashUniversalIntent(universalIntent1).rewardHash,
+          hashIntent(intent1).routeHash,
+          hashIntent(intent1).rewardHash,
         ),
       ).to.emit(prover, 'IntentProven')
         .withArgs(intentHash1, ethers.ZeroAddress)
@@ -1629,8 +1582,8 @@ describe('HyperProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(
           intent2.destination,
-          hashUniversalIntent(universalIntent2).routeHash,
-          hashUniversalIntent(universalIntent2).rewardHash,
+          hashIntent(intent2).routeHash,
+          hashIntent(intent2).rewardHash,
         ),
       ).to.emit(prover, 'IntentProven')
         .withArgs(intentHash2, ethers.ZeroAddress)

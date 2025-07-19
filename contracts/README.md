@@ -15,25 +15,18 @@ The protocol has been refactored into a modular structure to better support cros
    - Essential helper functions and state storage
    - Common validation methods and error handling
 
-2. **EvmSource**: EVM-specific implementation using address (20 bytes) types
+2. **IntentSource**: EVM-specific implementation using address (20 bytes) types
 
    - Handles all EVM-specific intent operations
    - Manages reward claiming and refunding
 
-3. **UniversalSource**: Cross-chain compatible implementation using bytes32 (32 bytes) types
-
-   - Universal type support for non-EVM chains like Solana
-   - Transparent type conversion for cross-chain compatibility
-
-4. **Portal**: Main entry point combining both implementations
-   - Inherits from both UniversalSource and Inbox
+3. **Portal**: Main entry point combining both implementations
+   - Inherits from both IntentSource and Inbox
    - Presents a unified interface to users
 
 ```
 Portal
-├── UniversalSource (cross-chain implementation)
-│   └── EvmSource (address-based implementation)
-│       └── BaseSource (common functionality)
+├── IntentSource (intent publishing and management)
 └── Inbox (fulfillment functionality)
 ```
 
@@ -47,7 +40,7 @@ The protocol supports both EVM chains and non-EVM chains like Solana through a d
    - Maintains backward compatibility with existing integrations
    - Optimized for EVM-chain interactions
 
-2. **Universal Intent Types (UniversalIntent.sol)**
+2. **Universal Intent Types (Intent.sol)**
    - Uses `bytes32` for address identifiers
    - Compatible with all blockchain platforms including Solana
    - Designed for cross-chain messaging
@@ -115,14 +108,14 @@ If your application needs to interact with both EVM and non-EVM chains:
 1. Import and use the universal types:
 
    ```solidity
-   import { Intent, Route, Reward } from "./types/UniversalIntent.sol";
+   import { Intent, Route, Reward } from "./types/Intent.sol";
    import { AddressConverter } from "./libs/AddressConverter.sol";
    ```
 
 2. Create intents using bytes32 for address identifiers:
 
    ```solidity
-   Intent memory universalIntent = Intent({
+   Intent memory intent = Intent({
        route: Route({
            salt: bytes32(0),
            source: 1,
@@ -135,11 +128,11 @@ If your application needs to interact with both EVM and non-EVM chains:
    });
    ```
 
-3. Use the IUniversalIntentSource interface:
+3. Use the IIntentSource interface:
    ```solidity
    // Use the universal interface with bytes32 types
-   IUniversalIntentSource intentSource = IUniversalIntentSource(portalAddress);
-   bytes32 intentHash = intentSource.publish(universalIntent);
+   IIntentSource intentSource = IIntentSource(portalAddress);
+   bytes32 intentHash = intentSource.publish(intent);
    ```
 
 ## Best Practices
@@ -156,13 +149,11 @@ The system consists of the following key components:
 1. **Intent Types**:
 
    - `Intent.sol`: EVM-specific types using address (20 bytes)
-   - `UniversalIntent.sol`: Universal types using bytes32 (32 bytes)
+   - `Intent.sol`: Universal types using bytes32 (32 bytes)
 
 2. **Source Implementations**:
 
-   - `BaseSource.sol`: Common functionality
-   - `EvmSource.sol`: EVM-specific implementation
-   - `UniversalSource.sol`: Cross-chain implementation
+   - `IntentSource.sol`: Intent publishing and management
    - `Portal.sol`: Combined implementation with Inbox
 
 3. **Conversion Utilities**:
@@ -205,7 +196,7 @@ Parameters:
 - `nativeValue` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) ERC20 token rewards with amounts
 
-<h4><ins>UniversalIntentPublished</ins></h4>
+<h4><ins>IntentPublished</ins></h4>
 <h5>Signals the creation of a new cross-chain intent with Universal types</h5>
 
 Parameters:

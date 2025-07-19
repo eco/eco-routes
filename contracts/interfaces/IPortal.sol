@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IUniversalIntentSource} from "./IUniversalIntentSource.sol";
+import {IIntentSource} from "./IIntentSource.sol";
 import {IInbox} from "./IInbox.sol";
 
 /**
@@ -11,4 +11,4 @@ import {IInbox} from "./IInbox.sol";
  *      destination chain operations (fulfill, prove) in a single interface
  */
 // solhint-disable-next-line no-empty-blocks
-interface IPortal is IUniversalIntentSource, IInbox {}
+interface IPortal is IIntentSource, IInbox {}

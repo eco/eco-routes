@@ -4,8 +4,7 @@ pragma solidity ^0.8.26;
 
 import {IVaultStorage} from "./IVaultStorage.sol";
 
-import {Intent, Reward} from "../types/Intent.sol";
-import {TokenAmount} from "../types/UniversalIntent.sol";
+import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
  * @title IIntentSource
@@ -114,8 +113,8 @@ interface IIntentSource is IVaultStorage {
     event IntentPublished(
         bytes32 indexed hash,
         uint64 destination,
-        bytes32 indexed creator,
-        bytes32 indexed prover,
+        address indexed creator,
+        address indexed prover,
         uint64 rewardDeadline,
         uint256 nativeValue,
         TokenAmount[] rewardTokens,

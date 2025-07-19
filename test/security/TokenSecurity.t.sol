@@ -5,8 +5,7 @@ import "../BaseTest.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {FakePermit} from "../../contracts/test/FakePermit.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
-import {Intent as UniversalIntent, Route as UniversalRoute, Reward as UniversalReward, TokenAmount as UniversalTokenAmount, Call as UniversalCall} from "../../contracts/types/UniversalIntent.sol";
-import {Route as IntentRoute, TokenAmount as IntentTokenAmount, Call as IntentCall} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract TokenSecurityTest is BaseTest {
@@ -141,36 +140,9 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(attacker);
         bytes32 rewardHash = keccak256(abi.encode(destIntent.reward));
         vm.expectRevert();
-        // Convert route to Intent format
-        IntentTokenAmount[] memory intentTokens = new IntentTokenAmount[](
-            destIntent.route.tokens.length
-        );
-        for (uint256 i = 0; i < destIntent.route.tokens.length; i++) {
-            intentTokens[i] = IntentTokenAmount({
-                token: destIntent.route.tokens[i].token,
-                amount: destIntent.route.tokens[i].amount
-            });
-        }
-        IntentCall[] memory intentCalls = new IntentCall[](
-            destIntent.route.calls.length
-        );
-        for (uint256 i = 0; i < destIntent.route.calls.length; i++) {
-            intentCalls[i] = IntentCall({
-                target: destIntent.route.calls[i].target,
-                data: destIntent.route.calls[i].data,
-                value: destIntent.route.calls[i].value
-            });
-        }
-        IntentRoute memory intentRoute = IntentRoute({
-            salt: destIntent.route.salt,
-            deadline: destIntent.route.deadline,
-            portal: destIntent.route.portal,
-            tokens: intentTokens,
-            calls: intentCalls
-        });
         portal.fulfill(
             intentHash,
-            intentRoute,
+            destIntent.route,
             rewardHash,
             bytes32(uint256(uint160(attacker)))
         );

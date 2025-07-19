@@ -8,9 +8,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IOriginSettler} from "./interfaces/ERC7683/IOriginSettler.sol";
-import {IUniversalIntentSource} from "./interfaces/IUniversalIntentSource.sol";
+import {IIntentSource} from "./interfaces/IIntentSource.sol";
 
-import {Intent, Route, Reward, TokenAmount, Call} from "./types/UniversalIntent.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "./types/Intent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction} from "./types/ERC7683.sol";
 import {OrderData, ORDER_DATA_TYPEHASH} from "./types/EcoERC7683.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
@@ -33,20 +33,20 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         );
 
     /// @notice address of Portal contract where intents are actually published
-    IUniversalIntentSource public immutable INTENT_SOURCE;
+    IIntentSource public immutable PORTAL;
 
     /**
      * @notice Initializes the Eco7683OriginSettler
      * @param name the name of the contract for EIP712
      * @param version the version of the contract for EIP712
-     * @param intentSource the address of the Portal contract (implements IUniversalIntentSource)
+     * @param intentSource the address of the Portal contract (implements IIntentSource)
      */
     constructor(
         string memory name,
         string memory version,
         address intentSource
     ) EIP712(name, version) {
-        INTENT_SOURCE = IUniversalIntentSource(intentSource);
+        PORTAL = IIntentSource(intentSource);
     }
 
     /**
@@ -195,12 +195,11 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
         Reward memory reward,
         address user
     ) internal returns (bytes32 intentHash) {
-        if (!INTENT_SOURCE.isIntentFunded(destination, route, reward)) {
-            address vault = INTENT_SOURCE.intentVaultAddress(
-                destination,
-                route,
-                reward
-            );
+        // Decode the route bytes back to Route struct
+        Route memory decodedRoute = abi.decode(route, (Route));
+        Intent memory intent = Intent(destination, decodedRoute, reward);
+        if (!PORTAL.isIntentFunded(intent)) {
+            address vault = PORTAL.intentVaultAddress(intent);
             uint256 rewardsLength = reward.tokens.length;
 
             if (reward.nativeValue > 0) {
@@ -212,7 +211,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
             }
 
             for (uint256 i = 0; i < rewardsLength; ++i) {
-                address token = reward.tokens[i].token.toAddress();
+                address token = reward.tokens[i].token;
                 uint256 amount = reward.tokens[i].amount;
 
                 IERC20(token).safeTransferFrom(user, vault, amount);
@@ -221,8 +220,8 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         payable(msg.sender).transfer(address(this).balance);
 
-        // Use the new publish function with separate parameters
-        (intentHash, ) = INTENT_SOURCE.publish(destination, route, reward);
+        // Publish the intent
+        (intentHash, ) = PORTAL.publish(intent);
         return intentHash;
     }
 
@@ -250,7 +249,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
             minReceived[i] = Output(
-                orderData.reward.tokens[i].token, // Already bytes32 in universal types
+                bytes32(uint256(uint160(orderData.reward.tokens[i].token))), // Convert address to bytes32
                 orderData.reward.tokens[i].amount,
                 bytes32(uint256(uint160(address(0)))), //filler is not known
                 uint256(orderData.destination)
@@ -284,7 +283,7 @@ contract Eco7683OriginSettler is IOriginSettler, Semver, EIP712 {
 
         return
             ResolvedCrossChainOrder(
-                orderData.reward.creator.toAddress(),
+                orderData.reward.creator,
                 block.chainid,
                 openDeadline,
                 uint32(orderData.deadline),

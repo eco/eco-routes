@@ -37,6 +37,9 @@ contract TestMetaRouter {
         bytes message
     );
 
+    // Processor address for message handling simulation
+    address public processor;
+
     constructor(address /* _ignored */) {
         LOCAL_DOMAIN = 31337; // Hardhat local chain ID
     }
@@ -120,6 +123,35 @@ contract TestMetaRouter {
         IMetalayerRecipientMock(_recipient).handle(
             _origin,
             sender,
+            _message,
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+    }
+
+    /**
+     * @notice Set the processor address for message handling
+     * @param _processor Address of the processor contract
+     */
+    function setProcessor(address _processor) external {
+        processor = _processor;
+    }
+
+    /**
+     * @notice Simulate handle message for testing
+     * @param _origin Origin chain ID
+     * @param _sender Sender address as bytes32
+     * @param _message Message body
+     */
+    function simulateHandleMessage(
+        uint32 _origin,
+        bytes32 _sender,
+        bytes calldata _message
+    ) external {
+        require(processor != address(0), "Processor not set");
+        IMetalayerRecipientMock(processor).handle(
+            _origin,
+            _sender,
             _message,
             new ReadOperation[](0),
             new bytes[](0)

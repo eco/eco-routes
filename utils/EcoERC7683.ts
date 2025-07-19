@@ -62,8 +62,8 @@ const OnchainCrosschainOrderDataStruct = [
       },
     ],
   },
-  { name: 'creator', type: 'bytes32' },
-  { name: 'prover', type: 'bytes32' },
+  { name: 'creator', type: 'address' },
+  { name: 'prover', type: 'address' },
   { name: 'nativeValue', type: 'uint256' },
   {
     name: 'rewardTokens',
@@ -95,7 +95,7 @@ const GaslessCrosschainOrderDataStruct = [
       { name: 'value', type: 'uint256' },
     ],
   },
-  { name: 'prover', type: 'bytes32' },
+  { name: 'prover', type: 'address' },
   { name: 'nativeValue', type: 'uint256' },
   {
     name: 'rewardTokens',
