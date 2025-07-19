@@ -1943,9 +1943,7 @@ describe('Intent Source Test', (): void => {
     })
 
     it('should maintain consistent chain ID behavior', async () => {
-      rewardTokens = [
-        { token: await tokenA.getAddress(), amount: mintAmount },
-      ]
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
@@ -1958,7 +1956,7 @@ describe('Intent Source Test', (): void => {
 
       // Test that chain ID is consistently handled
       await intentSource.connect(creator).publishAndFund(intent, false)
-      
+
       // Verify event structure maintains compatibility
       const logs = await intentSource.queryFilter(
         intentSource.getEvent('IntentPublished'),
@@ -1967,9 +1965,7 @@ describe('Intent Source Test', (): void => {
     })
 
     it('should handle address format conversions correctly', async () => {
-      rewardTokens = [
-        { token: await tokenA.getAddress(), amount: mintAmount },
-      ]
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
@@ -1981,9 +1977,7 @@ describe('Intent Source Test', (): void => {
       const { intentHash } = hashIntent(intent)
 
       // Test address handling in event emissions
-      await expect(
-        intentSource.connect(creator).publishAndFund(intent, false),
-      )
+      await expect(intentSource.connect(creator).publishAndFund(intent, false))
         .to.emit(intentSource, 'IntentPublished')
         .withArgs(
           intentHash,
@@ -2003,9 +1997,7 @@ describe('Intent Source Test', (): void => {
     })
 
     it('should maintain backward compatibility with existing API signatures', async () => {
-      rewardTokens = [
-        { token: await tokenA.getAddress(), amount: mintAmount },
-      ]
+      rewardTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       reward = {
         creator: creator.address,
         prover: await prover.getAddress(),
@@ -2018,12 +2010,14 @@ describe('Intent Source Test', (): void => {
 
       // Test existing API methods still work
       await intentSource.connect(creator).publish(intent)
-      await intentSource.connect(creator).fund(chainId, routeHash, reward, false)
-      
+      await intentSource
+        .connect(creator)
+        .fund(chainId, routeHash, reward, false)
+
       // Test vault address computation
       const vaultAddress = await intentSource.intentVaultAddress(intent)
       expect(vaultAddress).to.be.properAddress
-      
+
       // Test funding status check
       expect(await intentSource.isIntentFunded(intent)).to.be.true
     })

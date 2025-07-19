@@ -11,8 +11,21 @@ import {
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, Provider } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
-import { Call, TokenAmount, Route, Reward, Intent, hashIntent, encodeRoute, encodeIntent } from '../utils/intent'
-import { addressToBytes32, bytes32ToAddress, TypeCasts } from '../utils/typeCasts'
+import {
+  Call,
+  TokenAmount,
+  Route,
+  Reward,
+  Intent,
+  hashIntent,
+  encodeRoute,
+  encodeIntent,
+} from '../utils/intent'
+import {
+  addressToBytes32,
+  bytes32ToAddress,
+  TypeCasts,
+} from '../utils/typeCasts'
 import {
   OnchainCrossChainOrderStruct,
   GaslessCrossChainOrderStruct,
@@ -61,7 +74,9 @@ describe('Origin Settler Test', (): void => {
     const tokenB = await TestERC20.deploy('TokenB', 'TKB')
 
     // Deploy the origin settler
-    const OriginSettler = await ethers.getContractFactory('Eco7683OriginSettler')
+    const OriginSettler = await ethers.getContractFactory(
+      'Eco7683OriginSettler',
+    )
     const originSettler = await OriginSettler.deploy(
       'EcoOriginSettler',
       '1.0.0',
@@ -86,8 +101,16 @@ describe('Origin Settler Test', (): void => {
 
   describe('General Flow', (): void => {
     beforeEach(async (): Promise<void> => {
-      ;({ originSettler, portal, prover, inbox, tokenA, tokenB, creator, otherPerson } =
-        await loadFixture(deployOriginSettlerFixture))
+      ;({
+        originSettler,
+        portal,
+        prover,
+        inbox,
+        tokenA,
+        tokenB,
+        creator,
+        otherPerson,
+      } = await loadFixture(deployOriginSettlerFixture))
     })
 
     describe('Gasless Cross-Chain Order', (): void => {
@@ -207,7 +230,9 @@ describe('Origin Settler Test', (): void => {
 
       it('should open a gasless order', async (): Promise<void> => {
         // Approve tokens to settler
-        await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 100)
 
         // Open the order
         await expect(originSettler.connect(otherPerson).open(signedOrder))
@@ -283,7 +308,9 @@ describe('Origin Settler Test', (): void => {
           [order2],
         )
         const orderHash2 = keccak256(orderData2)
-        const signature2 = await creator.signMessage(ethers.getBytes(orderHash2))
+        const signature2 = await creator.signMessage(
+          ethers.getBytes(orderHash2),
+        )
 
         const signedOrder2: GaslessCrossChainOrderStruct = {
           order: orderData2,
@@ -291,8 +318,12 @@ describe('Origin Settler Test', (): void => {
         }
 
         // Approve tokens
-        await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
-        await tokenB.connect(creator).approve(await originSettler.getAddress(), 50)
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 100)
+        await tokenB
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 50)
 
         // Open both orders in batch
         await expect(
@@ -310,7 +341,9 @@ describe('Origin Settler Test', (): void => {
         // Create an invalid signature
         const invalidSignedOrder: GaslessCrossChainOrderStruct = {
           order: signedOrder.order,
-          signature: await otherPerson.signMessage(ethers.getBytes(keccak256(signedOrder.order))),
+          signature: await otherPerson.signMessage(
+            ethers.getBytes(keccak256(signedOrder.order)),
+          ),
         }
 
         // Try to open with invalid signature
@@ -384,7 +417,10 @@ describe('Origin Settler Test', (): void => {
         // Try to open with insufficient reward
         await expect(
           originSettler.connect(otherPerson).open(insufficientSignedOrder),
-        ).to.be.revertedWithCustomError(originSettler, 'InsufficientBatcherReward')
+        ).to.be.revertedWithCustomError(
+          originSettler,
+          'InsufficientBatcherReward',
+        )
       })
     })
 
@@ -449,11 +485,15 @@ describe('Origin Settler Test', (): void => {
         }
 
         // Approve tokens
-        await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 100)
 
         // Open the order with batcher fee
         await expect(
-          originSettler.connect(creator).openFor(onchainOrder, { value: minBatcherReward }),
+          originSettler
+            .connect(creator)
+            .openFor(onchainOrder, { value: minBatcherReward }),
         )
           .to.emit(originSettler, 'Open')
           .withArgs(intentHash, [intentHash])
@@ -499,14 +539,20 @@ describe('Origin Settler Test', (): void => {
         }
 
         // Approve tokens
-        await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
-        await tokenB.connect(creator).approve(await originSettler.getAddress(), 50)
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 100)
+        await tokenB
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 50)
 
         // Open both orders with batcher fee
         await expect(
           originSettler
             .connect(creator)
-            .openFor([onchainOrder1, onchainOrder2], { value: minBatcherReward * 2 }),
+            .openFor([onchainOrder1, onchainOrder2], {
+              value: minBatcherReward * 2,
+            }),
         )
           .to.emit(originSettler, 'Open')
           .withArgs(intentHash, [intentHash, intentHash2])
@@ -522,11 +568,15 @@ describe('Origin Settler Test', (): void => {
           orderData: encodeIntent(intent),
         }
 
-        await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 100)
 
         // Try to open with insufficient fee
         await expect(
-          originSettler.connect(creator).openFor(onchainOrder, { value: minBatcherReward - 1 }),
+          originSettler
+            .connect(creator)
+            .openFor(onchainOrder, { value: minBatcherReward - 1 }),
         ).to.be.revertedWithCustomError(originSettler, 'InsufficientBatcherFee')
       })
 
@@ -536,11 +586,15 @@ describe('Origin Settler Test', (): void => {
           orderData: encodeIntent(intent),
         }
 
-        await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
+        await tokenA
+          .connect(creator)
+          .approve(await originSettler.getAddress(), 100)
 
         // Try to open with excessive fee
         await expect(
-          originSettler.connect(creator).openFor(onchainOrder, { value: maxBatcherFee + 1 }),
+          originSettler
+            .connect(creator)
+            .openFor(onchainOrder, { value: maxBatcherFee + 1 }),
         ).to.be.revertedWithCustomError(originSettler, 'ExcessiveBatcherFee')
       })
     })
@@ -598,8 +652,16 @@ describe('Origin Settler Test', (): void => {
 
   describe('Batcher Rewards', (): void => {
     beforeEach(async (): Promise<void> => {
-      ;({ originSettler, portal, prover, inbox, tokenA, tokenB, creator, otherPerson } =
-        await loadFixture(deployOriginSettlerFixture))
+      ;({
+        originSettler,
+        portal,
+        prover,
+        inbox,
+        tokenA,
+        tokenB,
+        creator,
+        otherPerson,
+      } = await loadFixture(deployOriginSettlerFixture))
     })
 
     it('should allow batcher to claim rewards', async (): Promise<void> => {
@@ -638,14 +700,22 @@ describe('Origin Settler Test', (): void => {
       }
 
       // Approve tokens and open order
-      await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
-      await originSettler.connect(creator).openFor(onchainOrder, { value: minBatcherReward })
+      await tokenA
+        .connect(creator)
+        .approve(await originSettler.getAddress(), 100)
+      await originSettler
+        .connect(creator)
+        .openFor(onchainOrder, { value: minBatcherReward })
 
       // Check batcher balance before claim
-      const balanceBefore = await ethers.provider.getBalance(otherPerson.address)
+      const balanceBefore = await ethers.provider.getBalance(
+        otherPerson.address,
+      )
 
       // Claim rewards as batcher
-      await originSettler.connect(otherPerson).claimBatcherRewards(otherPerson.address)
+      await originSettler
+        .connect(otherPerson)
+        .claimBatcherRewards(otherPerson.address)
 
       // Check balance increased by minBatcherReward (minus gas)
       const balanceAfter = await ethers.provider.getBalance(otherPerson.address)
@@ -693,7 +763,9 @@ describe('Origin Settler Test', (): void => {
       }
 
       // Approve tokens and open all orders
-      await tokenA.connect(creator).approve(await originSettler.getAddress(), 30)
+      await tokenA
+        .connect(creator)
+        .approve(await originSettler.getAddress(), 30)
       await originSettler
         .connect(creator)
         .openFor(orders, { value: minBatcherReward * numOrders })
@@ -706,8 +778,16 @@ describe('Origin Settler Test', (): void => {
 
   describe('Edge Cases', (): void => {
     beforeEach(async (): Promise<void> => {
-      ;({ originSettler, portal, prover, inbox, tokenA, tokenB, creator, otherPerson } =
-        await loadFixture(deployOriginSettlerFixture))
+      ;({
+        originSettler,
+        portal,
+        prover,
+        inbox,
+        tokenA,
+        tokenB,
+        creator,
+        otherPerson,
+      } = await loadFixture(deployOriginSettlerFixture))
     })
 
     it('should handle orders with native value correctly', async (): Promise<void> => {
@@ -752,7 +832,9 @@ describe('Origin Settler Test', (): void => {
         }),
       )
         .to.emit(originSettler, 'Open')
-        .withArgs(hashIntent(intent).intentHash, [hashIntent(intent).intentHash])
+        .withArgs(hashIntent(intent).intentHash, [
+          hashIntent(intent).intentHash,
+        ])
     })
 
     it('should revert on expired orders', async (): Promise<void> => {
@@ -790,11 +872,15 @@ describe('Origin Settler Test', (): void => {
         orderData: encodeIntent(intent),
       }
 
-      await tokenA.connect(creator).approve(await originSettler.getAddress(), 100)
+      await tokenA
+        .connect(creator)
+        .approve(await originSettler.getAddress(), 100)
 
       // Should revert when trying to publish expired intent
       await expect(
-        originSettler.connect(creator).openFor(onchainOrder, { value: minBatcherReward }),
+        originSettler
+          .connect(creator)
+          .openFor(onchainOrder, { value: minBatcherReward }),
       ).to.be.reverted
     })
   })

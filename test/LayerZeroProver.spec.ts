@@ -103,9 +103,7 @@ describe('LayerZeroProver Test', (): void => {
       expect(await layerZeroProver.ENDPOINT()).to.equal(
         await mockEndpoint.getAddress(),
       )
-      expect(await layerZeroProver.PORTAL()).to.equal(
-        await inbox.getAddress(),
-      )
+      expect(await layerZeroProver.PORTAL()).to.equal(await inbox.getAddress())
     })
 
     it('should add constructor-provided provers to the whitelist', async () => {
@@ -720,10 +718,7 @@ describe('LayerZeroProver Test', (): void => {
       const metadata = '0x'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes'],
-        [
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          metadata,
-        ],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), metadata],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -803,10 +798,7 @@ describe('LayerZeroProver Test', (): void => {
       const metadata = '0x'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes'],
-        [
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          metadata,
-        ],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), metadata],
       )
 
       // Create first intent
@@ -916,9 +908,8 @@ describe('LayerZeroProver Test', (): void => {
           ethers.zeroPadValue(await claimant.getAddress(), 32),
         )
 
-      const proofDataBeforeBatch = await layerZeroProver.provenIntents(
-        intentHash1,
-      )
+      const proofDataBeforeBatch =
+        await layerZeroProver.provenIntents(intentHash1)
       expect(proofDataBeforeBatch.claimant).to.eq(ethers.ZeroAddress)
 
       // Prepare message body for batch
@@ -1042,11 +1033,7 @@ describe('LayerZeroProver Test', (): void => {
       const rewardHash = hashIntent(intent).rewardHash
 
       await expect(
-        prover.challengeIntentProof(
-          intent.destination,
-          routeHash,
-          rewardHash,
-        ),
+        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
         .to.emit(prover, 'IntentProven')
         .withArgs(intentHash, ethers.ZeroAddress)
@@ -1094,11 +1081,7 @@ describe('LayerZeroProver Test', (): void => {
 
       // Challenge non-existent proof should be a no-op
       await expect(
-        prover.challengeIntentProof(
-          intent.destination,
-          routeHash,
-          rewardHash,
-        ),
+        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       ).to.not.be.reverted
 
       // Verify no proof exists

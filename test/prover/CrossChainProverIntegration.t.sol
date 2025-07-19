@@ -27,7 +27,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
     TestMailbox internal mailbox;
     MockLayerZeroEndpoint internal lzEndpoint;
     TestMessageBridgeProver internal testBridgeProver;
-    
+
     address internal relayer;
     address internal validator;
     address internal bridgeOperator;
@@ -37,30 +37,44 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
     function setUp() public override {
         super.setUp();
-        
+
         relayer = makeAddr("relayer");
         validator = makeAddr("validator");
         bridgeOperator = makeAddr("bridgeOperator");
         sourceChainId = 1;
         destChainId = 2;
         lzChainId = 101;
-        
+
         // Deploy test infrastructure
         vm.startPrank(deployer);
         mailbox = new TestMailbox(address(portal));
         lzEndpoint = new MockLayerZeroEndpoint();
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(address(prover))));
-        testBridgeProver = new TestMessageBridgeProver(address(portal), provers, 200000);
-        
+        testBridgeProver = new TestMessageBridgeProver(
+            address(portal),
+            provers,
+            200000
+        );
+
         // Deploy provers
         bytes32[] memory hyperProvers = new bytes32[](1);
         hyperProvers[0] = bytes32(uint256(uint160(address(prover))));
-        hyperProver = new HyperProver(address(mailbox), address(portal), hyperProvers, 200000);
+        hyperProver = new HyperProver(
+            address(mailbox),
+            address(portal),
+            hyperProvers,
+            200000
+        );
         bytes32[] memory lzProvers = new bytes32[](1);
         lzProvers[0] = bytes32(uint256(uint160(address(prover))));
-        layerZeroProver = new LayerZeroProver(address(lzEndpoint), address(portal), lzProvers, 200000);
-        
+        layerZeroProver = new LayerZeroProver(
+            address(lzEndpoint),
+            address(portal),
+            lzProvers,
+            200000
+        );
+
         vm.stopPrank();
     }
 
@@ -68,13 +82,15 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
     function testBasicCrossChainProving() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         // Test basic proof addition
         vm.prank(relayer);
         testBridgeProver.addProvenIntent(intentHash, claimant, CHAIN_ID);
-        
+
         // Verify proof was added by checking proof data
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(intentHash);
+        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+            intentHash
+        );
         assertEq(proofData.claimant, claimant);
         assertEq(proofData.destinationChainID, CHAIN_ID);
     }
@@ -82,23 +98,29 @@ contract CrossChainProverIntegrationTest is BaseTest {
     function testBatchProofProcessing() public {
         uint256 batchSize = 3;
         bytes32[] memory intentHashes = new bytes32[](batchSize);
-        
+
         // Create batch of intents
         for (uint256 i = 0; i < batchSize; i++) {
             Intent memory batchIntent = intent;
             batchIntent.route.salt = keccak256(abi.encodePacked(salt, i));
             intentHashes[i] = _hashIntent(batchIntent);
         }
-        
+
         vm.prank(bridgeOperator);
         // Process batch
         for (uint256 i = 0; i < intentHashes.length; i++) {
-            testBridgeProver.addProvenIntent(intentHashes[i], claimant, CHAIN_ID);
+            testBridgeProver.addProvenIntent(
+                intentHashes[i],
+                claimant,
+                CHAIN_ID
+            );
         }
-        
+
         // Verify all proofs were processed
         for (uint256 i = 0; i < intentHashes.length; i++) {
-            IProver.ProofData memory proofData = testBridgeProver.provenIntents(intentHashes[i]);
+            IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+                intentHashes[i]
+            );
             assertEq(proofData.claimant, claimant);
             assertEq(proofData.destinationChainID, CHAIN_ID);
         }
@@ -106,48 +128,56 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
     function testMultiProverScenario() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         // Test with different provers
         vm.prank(relayer);
         testBridgeProver.addProvenIntent(intentHash, claimant, CHAIN_ID);
-        
+
         // Verify proof state
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(intentHash);
+        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+            intentHash
+        );
         assertEq(proofData.claimant, claimant);
         assertEq(proofData.destinationChainID, CHAIN_ID);
-        
+
         // Test with second prover (different intent)
         bytes32 intentHash2 = keccak256(abi.encodePacked(intentHash, "second"));
         vm.prank(relayer);
         testBridgeProver.addProvenIntent(intentHash2, claimant, CHAIN_ID);
-        
-        IProver.ProofData memory proofData2 = testBridgeProver.provenIntents(intentHash2);
+
+        IProver.ProofData memory proofData2 = testBridgeProver.provenIntents(
+            intentHash2
+        );
         assertEq(proofData2.claimant, claimant);
         assertEq(proofData2.destinationChainID, CHAIN_ID);
     }
 
     function testCrossChainMessageHandling() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         // Test message bridge proving
         vm.prank(bridgeOperator);
         testBridgeProver.addProvenIntent(intentHash, claimant, CHAIN_ID);
-        
+
         // Verify message was handled
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(intentHash);
+        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+            intentHash
+        );
         assertEq(proofData.claimant, claimant);
         assertEq(proofData.destinationChainID, CHAIN_ID);
     }
 
     function testProofValidationFailure() public {
         bytes32 intentHash = _hashIntent(intent);
-        
+
         // Test proof with invalid chain ID should be handled gracefully
         vm.prank(relayer);
         testBridgeProver.addProvenIntent(intentHash, claimant, 999);
-        
+
         // Verify proof state (test prover accepts all proofs)
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(intentHash);
+        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+            intentHash
+        );
         assertEq(proofData.claimant, claimant);
         assertEq(proofData.destinationChainID, 999);
     }
@@ -155,31 +185,39 @@ contract CrossChainProverIntegrationTest is BaseTest {
     function testBatchProofProcessingWithFailures() public {
         uint256 batchSize = 3;
         bytes32[] memory intentHashes = new bytes32[](batchSize);
-        
+
         // Create batch of intents
         for (uint256 i = 0; i < batchSize; i++) {
             Intent memory batchIntent = intent;
             batchIntent.route.salt = keccak256(abi.encodePacked(salt, i));
             intentHashes[i] = _hashIntent(batchIntent);
         }
-        
+
         // Process batch (some may fail in real scenarios)
         vm.prank(bridgeOperator);
         for (uint256 i = 0; i < intentHashes.length; i++) {
-            try testBridgeProver.addProvenIntent(intentHashes[i], claimant, CHAIN_ID) {
+            try
+                testBridgeProver.addProvenIntent(
+                    intentHashes[i],
+                    claimant,
+                    CHAIN_ID
+                )
+            {
                 // Success case
             } catch {
                 // Failure case - handled gracefully
             }
         }
-        
+
         // Verify at least processing completed without revert
         assertTrue(true, "Batch processing completed");
     }
 
     // ===== HELPER FUNCTIONS =====
 
-    function _hashIntent(Intent memory _intent) internal pure override returns (bytes32) {
+    function _hashIntent(
+        Intent memory _intent
+    ) internal pure override returns (bytes32) {
         return keccak256(abi.encode(_intent));
     }
 }

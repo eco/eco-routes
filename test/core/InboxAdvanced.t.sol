@@ -29,7 +29,7 @@ contract InboxAdvancedTest is BaseTest {
         // Deploy bad token for testing edge cases
         vm.prank(deployer);
         badToken = new BadERC20("BadToken", "BAD", deployer);
-        
+
         // Deploy USDT-like token for testing
         vm.prank(deployer);
         usdtToken = new TestUSDT("USDT", "USDT");
@@ -45,7 +45,7 @@ contract InboxAdvancedTest is BaseTest {
         badToken.approve(address(portal), MINT_AMOUNT * 10);
         // Allow portal to spend badToken on behalf of deployer
         vm.stopPrank();
-        
+
         vm.startPrank(solver);
         usdtToken.mint(solver, MINT_AMOUNT * 10);
         usdtToken.approve(address(portal), MINT_AMOUNT * 10);
@@ -57,7 +57,10 @@ contract InboxAdvancedTest is BaseTest {
     function testMessageRoutingWithMultipleRecipients() public {
         // Create intent with multiple recipients
         TokenAmount[] memory tokens = new TokenAmount[](2);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT / 2});
+        tokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT / 2
+        });
         tokens[1] = TokenAmount({token: address(tokenB), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](2);
@@ -129,11 +132,7 @@ contract InboxAdvancedTest is BaseTest {
         tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
-        calls[0] = Call({
-            target: address(tokenA),
-            data: complexData,
-            value: 0
-        });
+        calls[0] = Call({target: address(tokenA), data: complexData, value: 0});
 
         Intent memory intent = Intent({
             destination: uint64(block.chainid),
@@ -173,7 +172,7 @@ contract InboxAdvancedTest is BaseTest {
 
     function testMessageRoutingWithNativeETHAndTokens() public {
         uint256 ethAmount = 1 ether;
-        
+
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
@@ -187,11 +186,7 @@ contract InboxAdvancedTest is BaseTest {
             ),
             value: 0
         });
-        calls[1] = Call({
-            target: recipient2,
-            data: "",
-            value: ethAmount
-        });
+        calls[1] = Call({target: recipient2, data: "", value: ethAmount});
 
         Intent memory intent = Intent({
             destination: uint64(block.chainid),
@@ -241,7 +236,7 @@ contract InboxAdvancedTest is BaseTest {
         Intent memory intent = _createBasicIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        
+
         // Create malformed intent hash
         bytes32 malformedHash = keccak256(abi.encodePacked("malformed"));
 
@@ -259,7 +254,11 @@ contract InboxAdvancedTest is BaseTest {
         Intent memory intent = _createBasicIntent();
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, keccak256(abi.encode(intent.route)), rewardHash)
+            abi.encodePacked(
+                intent.destination,
+                keccak256(abi.encode(intent.route)),
+                rewardHash
+            )
         );
 
         // Create mismatched route
@@ -339,9 +338,18 @@ contract InboxAdvancedTest is BaseTest {
     function testComplexScenarioWithMultipleTokenTypes() public {
         // Test with ERC20, bad token, and USDT-like token
         TokenAmount[] memory tokens = new TokenAmount[](3);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT / 3});
-        tokens[1] = TokenAmount({token: address(tokenB), amount: MINT_AMOUNT / 3});
-        tokens[2] = TokenAmount({token: address(usdtToken), amount: MINT_AMOUNT / 3});
+        tokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT / 3
+        });
+        tokens[1] = TokenAmount({
+            token: address(tokenB),
+            amount: MINT_AMOUNT / 3
+        });
+        tokens[2] = TokenAmount({
+            token: address(usdtToken),
+            amount: MINT_AMOUNT / 3
+        });
 
         Call[] memory calls = new Call[](3);
         calls[0] = Call({
@@ -416,21 +424,21 @@ contract InboxAdvancedTest is BaseTest {
         tokenA.mint(solver, MINT_AMOUNT * 3);
         tokenA.approve(address(portal), MINT_AMOUNT * 4);
         vm.stopPrank();
-        
+
         // Create multiple intents and process them
         bytes32[] memory intentHashes = new bytes32[](3);
-        
+
         for (uint256 i = 0; i < 3; i++) {
             Intent memory intent = _createBasicIntent();
             intent.route.salt = keccak256(abi.encodePacked(salt, i));
-            
+
             bytes32 routeHash = keccak256(abi.encode(intent.route));
             bytes32 rewardHash = keccak256(abi.encode(intent.reward));
             bytes32 intentHash = keccak256(
                 abi.encodePacked(intent.destination, routeHash, rewardHash)
             );
             intentHashes[i] = intentHash;
-            
+
             // Fulfill each intent
             vm.prank(solver);
             portal.fulfill(
@@ -440,10 +448,13 @@ contract InboxAdvancedTest is BaseTest {
                 bytes32(uint256(uint160(recipient)))
             );
         }
-        
+
         // Verify all intents were fulfilled
         for (uint256 i = 0; i < 3; i++) {
-            assertEq(portal.fulfilled(intentHashes[i]), bytes32(uint256(uint160(recipient))));
+            assertEq(
+                portal.fulfilled(intentHashes[i]),
+                bytes32(uint256(uint160(recipient)))
+            );
         }
     }
 
@@ -464,22 +475,23 @@ contract InboxAdvancedTest is BaseTest {
             value: 0
         });
 
-        return Intent({
-            destination: uint64(block.chainid),
-            route: Route({
-                salt: salt,
-                deadline: uint64(expiry),
-                portal: address(portal),
-                tokens: tokens,
-                calls: calls
-            }),
-            reward: Reward({
-                deadline: uint64(expiry),
-                creator: creator,
-                prover: address(prover),
-                nativeValue: 0,
-                tokens: new TokenAmount[](0)
-            })
-        });
+        return
+            Intent({
+                destination: uint64(block.chainid),
+                route: Route({
+                    salt: salt,
+                    deadline: uint64(expiry),
+                    portal: address(portal),
+                    tokens: tokens,
+                    calls: calls
+                }),
+                reward: Reward({
+                    deadline: uint64(expiry),
+                    creator: creator,
+                    prover: address(prover),
+                    nativeValue: 0,
+                    tokens: new TokenAmount[](0)
+                })
+            });
     }
 }

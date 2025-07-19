@@ -163,15 +163,13 @@ describe('MetaProver Test', (): void => {
 
     it('should revert when msg.sender is not the router', async () => {
       await expect(
-        metaProver
-          .connect(claimant)
-          .handle(
-            12345, // origin chain ID
-            ethers.zeroPadValue(await inbox.getAddress(), 32),
-            ethers.sha256('0x'),
-            [], // empty operations array
-            [], // empty operationsData array
-          ),
+        metaProver.connect(claimant).handle(
+          12345, // origin chain ID
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.sha256('0x'),
+          [], // empty operations array
+          [], // empty operationsData array
+        ),
       ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedHandle')
     })
 
@@ -841,10 +839,7 @@ describe('MetaProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes'],
-        [
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          metadata,
-        ],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), metadata],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -953,10 +948,7 @@ describe('MetaProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes'],
-        [
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          metadata,
-        ],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), metadata],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1047,10 +1039,7 @@ describe('MetaProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['bytes32', 'bytes'],
-        [
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          metadata,
-        ],
+        [ethers.zeroPadValue(await inbox.getAddress(), 32), metadata],
       )
 
       let salt = ethers.encodeBytes32String('0x987')
@@ -1222,11 +1211,9 @@ describe('MetaProver Test', (): void => {
         .to.emit(simulatedMetaProver, 'IntentProven')
         .withArgs(intentHash1, await claimant.getAddress())
 
-      const proofData0Sim =
-        await simulatedMetaProver.provenIntents(intentHash0)
+      const proofData0Sim = await simulatedMetaProver.provenIntents(intentHash0)
       expect(proofData0Sim.claimant).to.eq(await claimant.getAddress())
-      const proofData1Sim =
-        await simulatedMetaProver.provenIntents(intentHash1)
+      const proofData1Sim = await simulatedMetaProver.provenIntents(intentHash1)
       expect(proofData1Sim.claimant).to.eq(await claimant.getAddress())
     })
   })

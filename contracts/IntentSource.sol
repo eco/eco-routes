@@ -109,7 +109,12 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intentHash, intent.destination, abi.encode(intent.route), intent.reward);
+        _emitIntentPublished(
+            intentHash,
+            intent.destination,
+            abi.encode(intent.route),
+            intent.reward
+        );
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
     }
@@ -132,7 +137,12 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         _validateInitialFundingState(state, intentHash);
         _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intentHash, intent.destination, abi.encode(intent.route), intent.reward);
+        _emitIntentPublished(
+            intentHash,
+            intent.destination,
+            abi.encode(intent.route),
+            intent.reward
+        );
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
         _fundIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
@@ -225,7 +235,12 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(intentHash, intent.destination, abi.encode(intent.route), intent.reward);
+        _emitIntentPublished(
+            intentHash,
+            intent.destination,
+            abi.encode(intent.route),
+            intent.reward
+        );
         _validateSourceChain(block.chainid, intentHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);

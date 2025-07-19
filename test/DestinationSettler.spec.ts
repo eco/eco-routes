@@ -24,7 +24,11 @@ import {
   encodeReward,
   encodeRoute,
 } from '../utils/intent'
-import { addressToBytes32, bytes32ToAddress, TypeCasts } from '../utils/typeCasts'
+import {
+  addressToBytes32,
+  bytes32ToAddress,
+  TypeCasts,
+} from '../utils/typeCasts'
 
 describe('Destination Settler Test', (): void => {
   let inbox: Inbox
@@ -138,7 +142,7 @@ describe('Destination Settler Test', (): void => {
     // Create originData for the settler (encoded route and reward hash)
     originData = AbiCoder.defaultAbiCoder().encode(
       ['bytes', 'bytes32'],
-      [encodedRoute, rewardHash]
+      [encodedRoute, rewardHash],
     )
 
     // Create fillerData
@@ -185,15 +189,13 @@ describe('Destination Settler Test', (): void => {
     const expiredRewardHash = keccak256(encodeReward(expiredIntent.reward))
     const expiredOriginData = AbiCoder.defaultAbiCoder().encode(
       ['bytes', 'bytes32'],
-      [expiredEncodedRoute, expiredRewardHash]
+      [expiredEncodedRoute, expiredRewardHash],
     )
 
     await expect(
-      destinationSettler.connect(solver).fill(
-        expiredIntentHash,
-        expiredOriginData,
-        fillerData,
-      ),
+      destinationSettler
+        .connect(solver)
+        .fill(expiredIntentHash, expiredOriginData, fillerData),
     ).to.revertedWithCustomError(destinationSettler, 'FillDeadlinePassed')
   })
 
@@ -221,11 +223,9 @@ describe('Destination Settler Test', (): void => {
     // Removed - no longer needed
 
     // Call the settler
-    await destinationSettler.connect(solver).fill(
-      intentHash,
-      originData,
-      fillerData,
-    )
+    await destinationSettler
+      .connect(solver)
+      .fill(intentHash, originData, fillerData)
 
     // Verify the fulfill was successful
     expect(await inbox.fulfilled(intentHash)).to.equal(
@@ -234,25 +234,23 @@ describe('Destination Settler Test', (): void => {
     expect(await erc20.balanceOf(solver.address)).to.equal(0)
     expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
 
-    // Verify the prover was called with correct arguments  
+    // Verify the prover was called with correct arguments
     const args = await prover.args()
     expect(args.sender).to.equal(await destinationSettler.getAddress())
     expect(args.sourceChainId).to.equal(sourceChainID)
-    
+
     const argIntentHashes = await prover.argIntentHashes(0)
     expect(argIntentHashes).to.equal(intentHash)
-    
+
     const argClaimants = await prover.argClaimants(0)
     expect(argClaimants).to.equal(addressToBytes32(solver.address))
   })
 
   it('should revert if tokens not approved', async (): Promise<void> => {
     await expect(
-      destinationSettler.connect(solver).fill(
-        intentHash,
-        originData,
-        fillerData,
-      ),
+      destinationSettler
+        .connect(solver)
+        .fill(intentHash, originData, fillerData),
     ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
   })
 
@@ -295,7 +293,7 @@ describe('Destination Settler Test', (): void => {
     const nativeValueRewardHash = keccak256(encodeReward(nativeValueReward))
     const nativeValueOriginData = AbiCoder.defaultAbiCoder().encode(
       ['bytes', 'bytes32'],
-      [nativeValueEncodedRoute, nativeValueRewardHash]
+      [nativeValueEncodedRoute, nativeValueRewardHash],
     )
 
     const creatorBalanceBefore = await ethers.provider.getBalance(
@@ -303,20 +301,17 @@ describe('Destination Settler Test', (): void => {
     )
 
     // Call fill with native value
-    await destinationSettler.connect(solver).fill(
-      nativeValueIntentHash,
-      nativeValueOriginData,
-      fillerData,
-      { value: parseEther('1') },
-    )
+    await destinationSettler
+      .connect(solver)
+      .fill(nativeValueIntentHash, nativeValueOriginData, fillerData, {
+        value: parseEther('1'),
+      })
 
     // Verify the native value was transferred
     const creatorBalanceAfter = await ethers.provider.getBalance(
       creator.address,
     )
-    expect(creatorBalanceAfter - creatorBalanceBefore).to.equal(
-      parseEther('1'),
-    )
+    expect(creatorBalanceAfter - creatorBalanceBefore).to.equal(parseEther('1'))
 
     // Verify the fulfill was successful
     expect(await inbox.fulfilled(nativeValueIntentHash)).to.equal(
@@ -356,12 +351,12 @@ describe('Destination Settler Test', (): void => {
     const nativeValueHashes = hashIntent(nativeValueIntent)
     const nativeValueIntentHash = nativeValueHashes.intentHash
 
-    // Encode native value intent data  
+    // Encode native value intent data
     const nativeValueEncodedRoute = encodeRoute(nativeValueRoute)
     const nativeValueRewardHash = keccak256(encodeReward(nativeValueReward))
     const nativeValueOriginData = AbiCoder.defaultAbiCoder().encode(
       ['bytes', 'bytes32'],
-      [nativeValueEncodedRoute, nativeValueRewardHash]
+      [nativeValueEncodedRoute, nativeValueRewardHash],
     )
 
     await expect(
@@ -426,7 +421,7 @@ describe('Destination Settler Test', (): void => {
     const multiRewardHash = keccak256(encodeReward(reward))
     const multiOriginData = AbiCoder.defaultAbiCoder().encode(
       ['bytes', 'bytes32'],
-      [multiEncodedRoute, multiRewardHash]
+      [multiEncodedRoute, multiRewardHash],
     )
 
     // Approve tokens
@@ -442,12 +437,11 @@ describe('Destination Settler Test', (): void => {
     )
 
     // Call fill
-    await destinationSettler.connect(solver).fill(
-      multiIntentHash,
-      multiOriginData,
-      fillerData,
-      { value: parseEther('0.5') },
-    )
+    await destinationSettler
+      .connect(solver)
+      .fill(multiIntentHash, multiOriginData, fillerData, {
+        value: parseEther('0.5'),
+      })
 
     // Verify all transfers
     expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)

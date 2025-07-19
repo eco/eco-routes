@@ -344,7 +344,11 @@ contract LayerZeroProverTest is BaseTest {
         assertEq(proofBefore.destinationChainID, correctDestination);
 
         // Challenge the proof with correct destination (should do nothing)
-        lzProver.challengeIntentProof(correctDestination, routeHash, rewardHash);
+        lzProver.challengeIntentProof(
+            correctDestination,
+            routeHash,
+            rewardHash
+        );
 
         // Verify proof still exists
         LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(

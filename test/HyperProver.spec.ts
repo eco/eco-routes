@@ -1391,12 +1391,9 @@ describe('HyperProver Test', (): void => {
       const rewardHash = hashIntent(intent).rewardHash
 
       await expect(
-        prover.challengeIntentProof(
-          intent.destination,
-          routeHash,
-          rewardHash,
-        ),
-      ).to.emit(prover, 'IntentProven')
+        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
+      )
+        .to.emit(prover, 'IntentProven')
         .withArgs(intentHash, ethers.ZeroAddress)
 
       // Verify proof was cleared
@@ -1442,11 +1439,7 @@ describe('HyperProver Test', (): void => {
 
       // Challenge non-existent proof should be a no-op
       await expect(
-        prover.challengeIntentProof(
-          intent.destination,
-          routeHash,
-          rewardHash,
-        ),
+        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       ).to.not.be.reverted
 
       // Verify no proof exists
@@ -1482,11 +1475,7 @@ describe('HyperProver Test', (): void => {
 
       // Second challenge (should be no-op)
       await expect(
-        prover.challengeIntentProof(
-          intent.destination,
-          routeHash,
-          rewardHash,
-        ),
+        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       ).to.not.be.reverted
 
       // Verify proof remains cleared
@@ -1509,12 +1498,11 @@ describe('HyperProver Test', (): void => {
 
       // Challenge from different user
       await expect(
-        prover.connect(solver).challengeIntentProof(
-          intent.destination,
-          routeHash,
-          rewardHash,
-        ),
-      ).to.emit(prover, 'IntentProven')
+        prover
+          .connect(solver)
+          .challengeIntentProof(intent.destination, routeHash, rewardHash),
+      )
+        .to.emit(prover, 'IntentProven')
         .withArgs(intentHash, ethers.ZeroAddress)
 
       // Verify proof was cleared
@@ -1541,7 +1529,8 @@ describe('HyperProver Test', (): void => {
           hashIntent(edgeIntent).routeHash,
           hashIntent(edgeIntent).rewardHash,
         ),
-      ).to.emit(prover, 'IntentProven')
+      )
+        .to.emit(prover, 'IntentProven')
         .withArgs(edgeIntentHash, ethers.ZeroAddress)
 
       // Verify proof was cleared
@@ -1576,7 +1565,8 @@ describe('HyperProver Test', (): void => {
           hashIntent(intent1).routeHash,
           hashIntent(intent1).rewardHash,
         ),
-      ).to.emit(prover, 'IntentProven')
+      )
+        .to.emit(prover, 'IntentProven')
         .withArgs(intentHash1, ethers.ZeroAddress)
 
       await expect(
@@ -1585,7 +1575,8 @@ describe('HyperProver Test', (): void => {
           hashIntent(intent2).routeHash,
           hashIntent(intent2).rewardHash,
         ),
-      ).to.emit(prover, 'IntentProven')
+      )
+        .to.emit(prover, 'IntentProven')
         .withArgs(intentHash2, ethers.ZeroAddress)
 
       // Verify both proofs were cleared

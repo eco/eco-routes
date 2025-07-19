@@ -140,13 +140,8 @@ describe('Inbox Test', (): void => {
   beforeEach(async (): Promise<void> => {
     ;({ inbox, erc20, testUSDT, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
-    ;({
-      intent,
-      route,
-      reward,
-      rewardHash,
-      intentHash,
-    } = await createIntentData(mintAmount, timeDelta))
+    ;({ intent, route, reward, rewardHash, intentHash } =
+      await createIntentData(mintAmount, timeDelta))
     mockProver = await (
       await ethers.getContractFactory('TestProver')
     ).deploy(await inbox.getAddress())
@@ -231,12 +226,7 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfill(
-            intentHash,
-            route,
-            rewardHash,
-            ethers.ZeroHash,
-          ),
+          .fulfill(intentHash, route, rewardHash, ethers.ZeroHash),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
     })
     it('should revert if the solver has not approved tokens for transfer', async () => {
