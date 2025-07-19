@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Eco7683DestinationSettler, Route} from "../Eco7683DestinationSettler.sol";
+import {DestinationSettler, Route} from "../ERC7683/DestinationSettler.sol";
 import {Portal} from "../Portal.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {TokenAmount} from "../types/Intent.sol";
 
-contract TestDestinationSettlerComplete is Eco7683DestinationSettler {
+contract TestDestinationSettlerComplete is DestinationSettler {
     using AddressConverter for bytes32;
 
     Portal public immutable PORTAL;

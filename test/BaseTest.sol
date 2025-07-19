@@ -13,7 +13,7 @@ import {Portal} from "../contracts/Portal.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/Intent.sol";
-import {OrderData} from "../contracts/types/EcoERC7683.sol";
+import {OrderData} from "../contracts/types/ERC7683.sol";
 
 contract BaseTest is Test {
     // Constants

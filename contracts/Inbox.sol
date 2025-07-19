@@ -11,7 +11,7 @@ import {IInbox} from "./interfaces/IInbox.sol";
 import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
-import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
+import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
 
 /**
  * @title Inbox
@@ -19,7 +19,7 @@ import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
  * to claim rewards on the source chain by checking the fulfilled mapping
  */
-abstract contract Inbox is Eco7683DestinationSettler, IInbox {
+abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
 
     /**
@@ -87,9 +87,15 @@ abstract contract Inbox is Eco7683DestinationSettler, IInbox {
     )
         public
         payable
-        override(Eco7683DestinationSettler, IInbox)
+        override(DestinationSettler, IInbox)
         returns (bytes[] memory)
     {
+        // Calculate total value needed for route calls
+        uint256 routeValue = 0;
+        for (uint256 i = 0; i < route.calls.length; ++i) {
+            routeValue += route.calls[i].value;
+        }
+
         bytes[] memory result = _fulfill(
             intentHash,
             route,
@@ -100,7 +106,26 @@ abstract contract Inbox is Eco7683DestinationSettler, IInbox {
         bytes32[] memory hashes = new bytes32[](1);
         hashes[0] = intentHash;
 
-        prove(source, prover, hashes, data);
+        // Send remaining value to prover (after route calls)
+        uint256 proverValue = msg.value >= routeValue
+            ? msg.value - routeValue
+            : 0;
+
+        // Get claimants for prove call
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = claimant;
+
+        if (proverValue > 0) {
+            IProver(prover).prove{value: proverValue}(
+                msg.sender,
+                source,
+                hashes,
+                claimants,
+                data
+            );
+        } else {
+            IProver(prover).prove(msg.sender, source, hashes, claimants, data);
+        }
         return result;
     }
 

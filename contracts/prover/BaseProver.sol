@@ -29,7 +29,7 @@ abstract contract BaseProver is IProver, ERC165 {
     /**
      * @notice Get proof data for an intent
      * @param intentHash The intent hash to query
-     * @return ProofData struct containing claimant and destinationChainID
+     * @return ProofData struct containing claimant and destination
      */
     function provenIntents(
         bytes32 intentHash
@@ -49,12 +49,12 @@ abstract contract BaseProver is IProver, ERC165 {
      * @notice Process intent proofs from a cross-chain message
      * @param hashes Array of intent hashes
      * @param claimants Array of claimant addresses
-     * @param destinationChainID Chain ID where the intent is being proven
+     * @param destination Chain ID where the intent is being proven
      */
     function _processIntentProofs(
         bytes32[] memory hashes,
         bytes32[] memory claimants,
-        uint256 destinationChainID
+        uint256 destination
     ) internal {
         // If arrays are empty, just return early
         if (hashes.length == 0) return;
@@ -86,7 +86,7 @@ abstract contract BaseProver is IProver, ERC165 {
             } else {
                 _provenIntents[intentHash] = ProofData({
                     claimant: claimant,
-                    destinationChainID: uint64(destinationChainID)
+                    destination: uint64(destination)
                 });
                 emit IntentProven(intentHash, claimant);
             }
@@ -113,10 +113,7 @@ abstract contract BaseProver is IProver, ERC165 {
         ProofData memory proof = _provenIntents[intentHash];
 
         // Only challenge if proof exists and destination chain ID doesn't match
-        if (
-            proof.claimant != address(0) &&
-            proof.destinationChainID != destination
-        ) {
+        if (proof.claimant != address(0) && proof.destination != destination) {
             delete _provenIntents[intentHash];
             emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
         }

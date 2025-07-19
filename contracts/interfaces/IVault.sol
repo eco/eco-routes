@@ -3,12 +3,20 @@
 pragma solidity ^0.8.26;
 
 import {IVaultStorage} from "./IVaultStorage.sol";
+import {Reward} from "../types/Intent.sol";
 
 /**
  * @title IVault
  * @notice Interface defining errors for the Vault.sol contract
  */
 interface IVault is IVaultStorage {
+    /**
+     * @notice Thrown when the intent hash does not match the expected value
+     * @param expected The expected intent hash
+     * @param actual The actual intent hash provided
+     */
+    error InvalidIntentHash(bytes32 expected, bytes32 actual);
+
     /**
      * @notice Thrown when the vault has insufficient token allowance for reward funding
      * @param token The token address

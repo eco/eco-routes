@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {Reward} from "./Intent.sol";
+
 /**
  * @title GaslessCrossChainOrder CrossChainOrder type
  * @notice Standard order struct to be signed by users, disseminated to fillers, and submitted to origin settler contracts
@@ -27,6 +29,7 @@ struct GaslessCrossChainOrder {
     bytes32 orderDataType;
     bytes orderData;
 }
+
 /**
  * @title OnchainCrossChainOrder CrossChainOrder type
  * @notice Standard order struct for user-opened orders, where the user is the msg.sender.
@@ -36,7 +39,6 @@ struct GaslessCrossChainOrder {
  * Can be used to define tokens, amounts, destination chains, fees, settlement parameters,
  * or any other order-type specific information
  */
-
 struct OnchainCrossChainOrder {
     uint32 fillDeadline;
     bytes32 orderDataType;
@@ -93,12 +95,35 @@ struct Output {
  * @title FillInstruction type
  * @notice Instructions to parameterize each leg of the fill
  * @dev Provides all the origin-generated information required to produce a valid fill leg
- * @param destinationChainId The chain ID that the order is meant to be settled by
+ * @param destination The chain ID that the order is meant to be settled by
  * @param destinationSettler The contract address that the order is meant to be filled on
  * @param originData The data generated on the origin chain needed by the destinationSettler to process the fill
  */
 struct FillInstruction {
-    uint64 destinationChainId;
+    uint64 destination;
     bytes32 destinationSettler;
     bytes originData;
 }
+
+/**
+ * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
+ * is sufficient to publish an intent via Eco Protocol
+ * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData\
+ * @param route the route data
+ * @param creator the address of the intent creator
+ * @param prover the address of the prover contract this intent will be proven against
+ * @param nativeValue the amount of native token offered as a reward
+ * @param tokens the addresses and amounts of reward tokens
+ */
+struct OrderData {
+    uint64 destination;
+    bytes32 portal;
+    uint64 deadline;
+    bytes route;
+    Reward reward;
+}
+
+// EIP712 type hash
+bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
+    "OrderData(uint64 destination,bytes32 portal,uint64 deadline,bytes route,Reward reward)Reward(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(bytes32 token,uint256 amount)"
+);

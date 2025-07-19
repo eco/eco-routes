@@ -12,7 +12,7 @@ contract MockLayerZeroEndpoint {
 
     function send(
         ILayerZeroEndpointV2.MessagingParams calldata params,
-        address refundAddress
+        address /* refundAddress */
     ) external payable returns (ILayerZeroEndpointV2.MessagingReceipt memory) {
         return
             ILayerZeroEndpointV2.MessagingReceipt({
@@ -26,9 +26,9 @@ contract MockLayerZeroEndpoint {
     }
 
     function quote(
-        ILayerZeroEndpointV2.MessagingParams calldata params,
-        bool payInLzToken
-    ) external view returns (ILayerZeroEndpointV2.MessagingFee memory) {
+        ILayerZeroEndpointV2.MessagingParams calldata /* params */,
+        bool /* payInLzToken */
+    ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
             ILayerZeroEndpointV2.MessagingFee({
                 nativeFee: 0.001 ether,
@@ -148,7 +148,7 @@ contract LayerZeroProverTest is BaseTest {
             intentHashes[0]
         );
         assertEq(proofData.claimant, address(this));
-        assertEq(proofData.destinationChainID, SOURCE_CHAIN_ID);
+        assertEq(proofData.destination, SOURCE_CHAIN_ID);
     }
 
     function test_allowInitializePath() public view {
@@ -288,7 +288,7 @@ contract LayerZeroProverTest is BaseTest {
             intentHash
         );
         assertEq(proofBefore.claimant, address(this));
-        assertEq(proofBefore.destinationChainID, wrongDestination);
+        assertEq(proofBefore.destination, wrongDestination);
 
         // Challenge the proof with correct destination
         vm.expectEmit(true, true, true, true);
@@ -301,7 +301,7 @@ contract LayerZeroProverTest is BaseTest {
             intentHash
         );
         assertEq(proofAfter.claimant, address(0));
-        assertEq(proofAfter.destinationChainID, 0);
+        assertEq(proofAfter.destination, 0);
     }
 
     // ============================================================================
@@ -341,7 +341,7 @@ contract LayerZeroProverTest is BaseTest {
             intentHash
         );
         assertEq(proofBefore.claimant, address(this));
-        assertEq(proofBefore.destinationChainID, correctDestination);
+        assertEq(proofBefore.destination, correctDestination);
 
         // Challenge the proof with correct destination (should do nothing)
         lzProver.challengeIntentProof(
@@ -355,7 +355,7 @@ contract LayerZeroProverTest is BaseTest {
             intentHash
         );
         assertEq(proofAfter.claimant, address(this));
-        assertEq(proofAfter.destinationChainID, correctDestination);
+        assertEq(proofAfter.destination, correctDestination);
     }
 
     function testChallengeIntentProofLayerZeroSpecific() public {
@@ -397,7 +397,7 @@ contract LayerZeroProverTest is BaseTest {
             intentHash
         );
         assertEq(proofAfter.claimant, address(0));
-        assertEq(proofAfter.destinationChainID, 0);
+        assertEq(proofAfter.destination, 0);
     }
 
     // Helper to import the event for testing

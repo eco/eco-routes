@@ -234,7 +234,7 @@ contract InboxAdvancedTest is BaseTest {
 
     function testValidationWithMalformedIntentHash() public {
         Intent memory intent = _createBasicIntent();
-        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        // bytes32 routeHash = keccak256(abi.encode(intent.route)); // unused
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
 
         // Create malformed intent hash

@@ -68,6 +68,7 @@ describe('MetaProver Test', (): void => {
 
   async function deployMetaProverFixture(): Promise<{
     inbox: Inbox
+    metaProver: MetaProver
     router: TestMetaRouter
     token: TestERC20
     owner: SignerWithAddress
@@ -77,7 +78,7 @@ describe('MetaProver Test', (): void => {
     const [owner, solver, claimant] = await ethers.getSigners()
     const router = await (
       await ethers.getContractFactory('TestMetaRouter')
-    ).deploy()
+    ).deploy(ethers.ZeroAddress)
 
     const portal = await (await ethers.getContractFactory('Portal')).deploy()
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
@@ -86,8 +87,18 @@ describe('MetaProver Test', (): void => {
       await ethers.getContractFactory('TestERC20')
     ).deploy('token', 'tkn')
 
+    const metaProver = await (
+      await ethers.getContractFactory('MetaProver')
+    ).deploy(
+      await router.getAddress(),
+      await inbox.getAddress(),
+      [], // provers array
+      200000, // default gas limit
+    )
+
     return {
       inbox,
+      metaProver,
       router,
       token,
       owner,
@@ -97,17 +108,12 @@ describe('MetaProver Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, router, token, owner, solver, claimant } = await loadFixture(
-      deployMetaProverFixture,
-    ))
+    ;({ inbox, metaProver, router, token, owner, solver, claimant } =
+      await loadFixture(deployMetaProverFixture))
   })
 
   describe('1. Constructor', () => {
     it('should initialize with the correct router and inbox addresses', async () => {
-      metaProver = await (
-        await ethers.getContractFactory('MetaProver')
-      ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
-
       expect(await metaProver.ROUTER()).to.equal(await router.getAddress())
       expect(await metaProver.PORTAL()).to.equal(await inbox.getAddress())
     })
@@ -166,7 +172,7 @@ describe('MetaProver Test', (): void => {
         metaProver.connect(claimant).handle(
           12345, // origin chain ID
           ethers.zeroPadValue(await inbox.getAddress(), 32),
-          ethers.sha256('0x'),
+          ethers.sha256('0x'), // message
           [], // empty operations array
           [], // empty operationsData array
         ),
@@ -179,9 +185,9 @@ describe('MetaProver Test', (): void => {
 
       await expect(
         router.simulateHandleMessage(
-          ethers.sha256('0x'),
+          12345, // origin chain ID
           ethers.zeroPadValue(await claimant.getAddress(), 32), // Unauthorized sender
-          ethers.sha256('0x'),
+          ethers.sha256('0x'), // message
         ),
       ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedIncomingProof')
     })
@@ -201,7 +207,7 @@ describe('MetaProver Test', (): void => {
 
       await expect(
         router.simulateHandleMessage(
-          ethers.sha256('0x'),
+          12345, // origin chain ID
           ethers.zeroPadValue(await inbox.getAddress(), 32),
           msgBody,
         ),
@@ -225,7 +231,7 @@ describe('MetaProver Test', (): void => {
 
       // First handle call proves the intent
       await router.simulateHandleMessage(
-        ethers.sha256('0x'),
+        12345, // origin chain ID
         ethers.zeroPadValue(await inbox.getAddress(), 32),
         msgBody,
       )
@@ -233,7 +239,7 @@ describe('MetaProver Test', (): void => {
       // Second handle call should emit IntentAlreadyProven
       await expect(
         router.simulateHandleMessage(
-          ethers.sha256('0x'),
+          12345, // origin chain ID
           ethers.zeroPadValue(await inbox.getAddress(), 32),
           msgBody,
         ),
@@ -263,7 +269,7 @@ describe('MetaProver Test', (): void => {
 
       await expect(
         router.simulateHandleMessage(
-          ethers.sha256('0x'),
+          12345, // origin chain ID
           ethers.zeroPadValue(await inbox.getAddress(), 32),
           msgBody,
         ),
@@ -687,7 +693,8 @@ describe('MetaProver Test', (): void => {
         claimants,
         data,
       )
-      expect(fee).to.equal(100000)
+      const routerFee = await router.FEE()
+      expect(fee).to.equal(routerFee)
     })
 
     it('should gracefully return funds to sender if they overpay', async () => {
@@ -715,7 +722,8 @@ describe('MetaProver Test', (): void => {
         claimants,
         data,
       )
-      expect(fee).to.equal(100000)
+      const routerFee = await router.FEE()
+      expect(fee).to.equal(routerFee)
     })
   })
 
@@ -749,7 +757,7 @@ describe('MetaProver Test', (): void => {
       )
 
       await router.simulateHandleMessage(
-        ethers.sha256('0x'),
+        12345, // origin chain ID
         ethers.zeroPadValue(await inbox.getAddress(), 32),
         msgBody,
       )
@@ -976,6 +984,18 @@ describe('MetaProver Test', (): void => {
           { value: fee },
         )
 
+      // Simulate the cross-chain message being received back to record the proof
+      const msgBodyForReturn = abiCoder.encode(
+        ['bytes32[]', 'bytes32[]'],
+        [[intentHash], [ethers.zeroPadValue(await claimant.getAddress(), 32)]],
+      )
+
+      await router.simulateHandleMessage(
+        sourceChainID,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        msgBodyForReturn,
+      )
+
       const proofDataAfter = await metaProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(await claimant.getAddress())
 
@@ -994,13 +1014,13 @@ describe('MetaProver Test', (): void => {
       )
 
       await expect(
-        simulatedMetaProver
-          .connect(owner)
-          .handle(
-            ethers.sha256('0x'),
-            ethers.zeroPadValue(await inbox.getAddress(), 32),
-            msgBody,
-          ),
+        simulatedMetaProver.connect(owner).handle(
+          12345, // origin chain ID
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgBody,
+          [], // empty operations array
+          [], // empty operationsData array
+        ),
       )
         .to.emit(simulatedMetaProver, 'IntentProven')
         .withArgs(intentHash, await claimant.getAddress())
@@ -1183,6 +1203,24 @@ describe('MetaProver Test', (): void => {
           ),
       ).to.changeEtherBalance(solver, -Number(batchFee))
 
+      // Simulate the cross-chain message being received back to record the proofs
+      const batchMsgBody = abiCoder.encode(
+        ['bytes32[]', 'bytes32[]'],
+        [
+          [intentHash0, intentHash1],
+          [
+            ethers.zeroPadValue(await claimant.getAddress(), 32),
+            ethers.zeroPadValue(await claimant.getAddress(), 32),
+          ],
+        ],
+      )
+
+      await router.simulateHandleMessage(
+        sourceChainID,
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        batchMsgBody,
+      )
+
       const proofData0 = await metaProver.provenIntents(intentHash0)
       expect(proofData0.claimant).to.eq(await claimant.getAddress())
       const proofData1 = await metaProver.provenIntents(intentHash1)
@@ -1198,13 +1236,13 @@ describe('MetaProver Test', (): void => {
       )
 
       await expect(
-        simulatedMetaProver
-          .connect(owner)
-          .handle(
-            ethers.sha256('0x'),
-            ethers.zeroPadValue(await inbox.getAddress(), 32),
-            msgbody,
-          ),
+        simulatedMetaProver.connect(owner).handle(
+          12345, // origin chain ID
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          msgbody,
+          [], // empty operations array
+          [], // empty operationsData array
+        ),
       )
         .to.emit(simulatedMetaProver, 'IntentProven')
         .withArgs(intentHash0, await claimant.getAddress())

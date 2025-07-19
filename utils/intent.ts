@@ -4,12 +4,12 @@ import { getCreate2Address, keccak256, solidityPacked, AbiCoder } from 'ethers'
 export type Call = {
   target: string
   data: string
-  value: number
+  value: number | bigint
 }
 
 export type TokenAmount = {
   token: string
-  amount: number
+  amount: number | bigint
 }
 
 export type Route = {

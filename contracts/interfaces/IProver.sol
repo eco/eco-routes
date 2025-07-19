@@ -13,11 +13,11 @@ interface IProver is ISemver {
     /**
      * @notice Proof data stored for each proven intent
      * @param claimant Address eligible to claim the intent rewards
-     * @param destinationChainID Chain ID where the intent was proven
+     * @param destination Chain ID where the intent was proven
      */
     struct ProofData {
         address claimant;
-        uint64 destinationChainID;
+        uint64 destination;
     }
 
     /**

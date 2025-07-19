@@ -49,6 +49,12 @@ describe('LayerZeroProver Test', (): void => {
       message: string,
       extraData: string,
     ): Promise<any>
+    simulateReceive(
+      receiver: string,
+      srcEid: number,
+      sender: string,
+      message: string,
+    ): Promise<any>
   }
 
   async function deployLayerZeroProverFixture(): Promise<{
@@ -61,9 +67,9 @@ describe('LayerZeroProver Test', (): void => {
   }> {
     const [owner, solver, claimant] = await ethers.getSigners()
 
-    // Deploy mock LayerZero endpoint
+    // Deploy test LayerZero endpoint with simulation capability
     MockLayerZeroEndpoint = await ethers.getContractFactory(
-      'MockLayerZeroEndpoint',
+      'TestLayerZeroEndpoint',
     )
     const mockEndpoint = await MockLayerZeroEndpoint.deploy()
 
@@ -195,15 +201,11 @@ describe('LayerZeroProver Test', (): void => {
       const proofDataBefore = await layerZeroProver.provenIntents(intentHash)
       expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
 
-      // Simulate LayerZero message receipt - using lzReceive directly
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
       await expect(
-        layerZeroProver.lzReceive(
-          origin,
-          ethers.randomBytes(32),
-          msgBody,
-          await mockEndpoint.getAddress(),
-          '0x',
-        ),
+        mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
@@ -235,14 +237,11 @@ describe('LayerZeroProver Test', (): void => {
         nonce: BigInt(1),
       }
 
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
       await expect(
-        layerZeroProver.lzReceive(
-          origin,
-          ethers.randomBytes(32),
-          msgBody,
-          await mockEndpoint.getAddress(),
-          '0x',
-        ),
+        mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentProven')
         .withArgs(intentHash, claimantAddress)
@@ -269,24 +268,15 @@ describe('LayerZeroProver Test', (): void => {
         nonce: BigInt(1),
       }
 
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
       // First message proves the intent
-      await layerZeroProver.lzReceive(
-        origin,
-        ethers.randomBytes(32),
-        msgBody,
-        await mockEndpoint.getAddress(),
-        '0x',
-      )
+      await mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody)
 
       // Second message should emit IntentAlreadyProven
       await expect(
-        layerZeroProver.lzReceive(
-          origin,
-          ethers.randomBytes(32),
-          msgBody,
-          await mockEndpoint.getAddress(),
-          '0x',
-        ),
+        mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentAlreadyProven')
         .withArgs(intentHash)
@@ -306,14 +296,11 @@ describe('LayerZeroProver Test', (): void => {
         nonce: BigInt(1),
       }
 
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
       await expect(
-        layerZeroProver.lzReceive(
-          origin,
-          ethers.randomBytes(32),
-          msgBody,
-          await mockEndpoint.getAddress(),
-          '0x',
-        ),
+        mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       ).to.be.revertedWithCustomError(
         layerZeroProver,
         'UnauthorizedIncomingProof',
@@ -627,13 +614,10 @@ describe('LayerZeroProver Test', (): void => {
         nonce: BigInt(1),
       }
 
-      await layerZeroProver.lzReceive(
-        origin,
-        ethers.randomBytes(32),
-        msgBody,
-        await mockEndpoint.getAddress(),
-        '0x',
-      )
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
+      await mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody)
 
       const proofData1 = await layerZeroProver.provenIntents(intentHash1)
       expect(proofData1.claimant).to.eq(await claimant.getAddress())
@@ -743,7 +727,7 @@ describe('LayerZeroProver Test', (): void => {
           await layerZeroProver.getAddress(),
           sourceChainID,
           data,
-          { value: fee.nativeFee },
+          { value: fee },
         )
 
       // Simulate the LayerZero message being received
@@ -758,13 +742,10 @@ describe('LayerZeroProver Test', (): void => {
         nonce: BigInt(1),
       }
 
-      await layerZeroProver.lzReceive(
-        origin,
-        ethers.randomBytes(32),
-        msgBody,
-        await mockEndpoint.getAddress(),
-        '0x',
-      )
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
+      await mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody)
 
       const proofDataAfter = await layerZeroProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(await claimant.getAddress())
@@ -944,9 +925,9 @@ describe('LayerZeroProver Test', (): void => {
             await layerZeroProver.getAddress(),
             [intentHash0, intentHash1],
             data,
-            { value: batchFee.nativeFee },
+            { value: batchFee },
           ),
-      ).to.changeEtherBalance(solver, -Number(batchFee.nativeFee))
+      ).to.changeEtherBalance(solver, -Number(batchFee))
 
       // Simulate LayerZero message receipt for batch
       const origin = {
@@ -955,13 +936,10 @@ describe('LayerZeroProver Test', (): void => {
         nonce: BigInt(1),
       }
 
-      await mockEndpoint.processReceivedMessage(
-        origin,
-        await layerZeroProver.getAddress(),
-        ethers.randomBytes(32),
-        msgBody,
-        '0x',
-      )
+      // Set the LayerZero prover as the receiver and simulate message receipt
+      await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
+
+      await mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody)
 
       // Verify both intents were proven
       const proofData0 = await layerZeroProver.provenIntents(intentHash0)
@@ -1026,7 +1004,7 @@ describe('LayerZeroProver Test', (): void => {
       // Verify proof exists with wrong chain ID
       const proofBefore = await prover.provenIntents(intentHash)
       expect(proofBefore.claimant).to.equal(await claimant.getAddress())
-      expect(proofBefore.destinationChainID).to.equal(wrongChainId)
+      expect(proofBefore.destination).to.equal(wrongChainId)
 
       // Challenge the proof with correct destination chain ID
       const routeHash = hashIntent(intent).routeHash
@@ -1041,7 +1019,7 @@ describe('LayerZeroProver Test', (): void => {
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)
       expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
-      expect(proofAfter.destinationChainID).to.equal(0)
+      expect(proofAfter.destination).to.equal(0)
     })
 
     it('should not clear proof when chain ID matches', async () => {
@@ -1057,7 +1035,7 @@ describe('LayerZeroProver Test', (): void => {
       // Verify proof exists
       const proofBefore = await prover.provenIntents(intentHash)
       expect(proofBefore.claimant).to.equal(await claimant.getAddress())
-      expect(proofBefore.destinationChainID).to.equal(intent.destination)
+      expect(proofBefore.destination).to.equal(intent.destination)
 
       // Challenge the proof with same destination chain ID
       const routeHash = hashIntent(intent).routeHash
@@ -1072,7 +1050,7 @@ describe('LayerZeroProver Test', (): void => {
       // Verify proof remains unchanged
       const proofAfter = await prover.provenIntents(intentHash)
       expect(proofAfter.claimant).to.equal(await claimant.getAddress())
-      expect(proofAfter.destinationChainID).to.equal(intent.destination)
+      expect(proofAfter.destination).to.equal(intent.destination)
     })
 
     it('should handle challenge for non-existent proof', async () => {
@@ -1088,7 +1066,7 @@ describe('LayerZeroProver Test', (): void => {
       const intentHash = hashIntent(intent).intentHash
       const proof = await prover.provenIntents(intentHash)
       expect(proof.claimant).to.equal(ethers.ZeroAddress)
-      expect(proof.destinationChainID).to.equal(0)
+      expect(proof.destination).to.equal(0)
     })
 
     it('should handle LayerZero-specific challenge scenarios', async () => {

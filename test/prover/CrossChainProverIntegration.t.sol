@@ -92,7 +92,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
             intentHash
         );
         assertEq(proofData.claimant, claimant);
-        assertEq(proofData.destinationChainID, CHAIN_ID);
+        assertEq(proofData.destination, CHAIN_ID);
     }
 
     function testBatchProofProcessing() public {
@@ -122,7 +122,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
                 intentHashes[i]
             );
             assertEq(proofData.claimant, claimant);
-            assertEq(proofData.destinationChainID, CHAIN_ID);
+            assertEq(proofData.destination, CHAIN_ID);
         }
     }
 
@@ -138,7 +138,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
             intentHash
         );
         assertEq(proofData.claimant, claimant);
-        assertEq(proofData.destinationChainID, CHAIN_ID);
+        assertEq(proofData.destination, CHAIN_ID);
 
         // Test with second prover (different intent)
         bytes32 intentHash2 = keccak256(abi.encodePacked(intentHash, "second"));
@@ -149,7 +149,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
             intentHash2
         );
         assertEq(proofData2.claimant, claimant);
-        assertEq(proofData2.destinationChainID, CHAIN_ID);
+        assertEq(proofData2.destination, CHAIN_ID);
     }
 
     function testCrossChainMessageHandling() public {
@@ -164,7 +164,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
             intentHash
         );
         assertEq(proofData.claimant, claimant);
-        assertEq(proofData.destinationChainID, CHAIN_ID);
+        assertEq(proofData.destination, CHAIN_ID);
     }
 
     function testProofValidationFailure() public {
@@ -179,7 +179,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
             intentHash
         );
         assertEq(proofData.claimant, claimant);
-        assertEq(proofData.destinationChainID, 999);
+        assertEq(proofData.destination, 999);
     }
 
     function testBatchProofProcessingWithFailures() public {

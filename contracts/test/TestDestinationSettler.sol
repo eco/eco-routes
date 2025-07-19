@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Eco7683DestinationSettler, Route} from "../Eco7683DestinationSettler.sol";
+import {DestinationSettler, Route} from "../ERC7683/DestinationSettler.sol";
 import {Portal} from "../Portal.sol";
 
-contract TestDestinationSettler is Eco7683DestinationSettler {
+contract TestDestinationSettler is DestinationSettler {
     Portal public immutable PORTAL;
 
     constructor(address _portal) {

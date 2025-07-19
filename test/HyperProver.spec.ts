@@ -1384,7 +1384,7 @@ describe('HyperProver Test', (): void => {
       // Verify proof exists with wrong chain ID
       const proofBefore = await prover.provenIntents(intentHash)
       expect(proofBefore.claimant).to.equal(await claimant.getAddress())
-      expect(proofBefore.destinationChainID).to.equal(wrongChainId)
+      expect(proofBefore.destination).to.equal(wrongChainId)
 
       // Challenge the proof with correct destination chain ID
       const routeHash = hashIntent(intent).routeHash
@@ -1399,7 +1399,7 @@ describe('HyperProver Test', (): void => {
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)
       expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
-      expect(proofAfter.destinationChainID).to.equal(0)
+      expect(proofAfter.destination).to.equal(0)
     })
 
     it('should not clear proof when chain ID matches', async () => {
@@ -1415,7 +1415,7 @@ describe('HyperProver Test', (): void => {
       // Verify proof exists
       const proofBefore = await prover.provenIntents(intentHash)
       expect(proofBefore.claimant).to.equal(await claimant.getAddress())
-      expect(proofBefore.destinationChainID).to.equal(intent.destination)
+      expect(proofBefore.destination).to.equal(intent.destination)
 
       // Challenge the proof with same destination chain ID
       const routeHash = hashIntent(intent).routeHash
@@ -1430,7 +1430,7 @@ describe('HyperProver Test', (): void => {
       // Verify proof remains unchanged
       const proofAfter = await prover.provenIntents(intentHash)
       expect(proofAfter.claimant).to.equal(await claimant.getAddress())
-      expect(proofAfter.destinationChainID).to.equal(intent.destination)
+      expect(proofAfter.destination).to.equal(intent.destination)
     })
 
     it('should handle challenge for non-existent proof', async () => {
@@ -1446,7 +1446,7 @@ describe('HyperProver Test', (): void => {
       const intentHash = hashIntent(intent).intentHash
       const proof = await prover.provenIntents(intentHash)
       expect(proof.claimant).to.equal(ethers.ZeroAddress)
-      expect(proof.destinationChainID).to.equal(0)
+      expect(proof.destination).to.equal(0)
     })
 
     it('should allow multiple challenges on the same intent', async () => {

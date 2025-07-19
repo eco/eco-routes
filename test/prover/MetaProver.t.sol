@@ -358,7 +358,7 @@ contract MetaProverTest is BaseTest {
 
         IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
         assertEq(proof.claimant, claimant);
-        assertEq(proof.destinationChainID, uint32(block.chainid));
+        assertEq(proof.destination, uint32(block.chainid));
     }
 
     function testSupportsInterface() public view {
@@ -633,7 +633,7 @@ contract MetaProverTest is BaseTest {
             intentHash
         );
         assertEq(proofBefore.claimant, claimant);
-        assertEq(proofBefore.destinationChainID, wrongDestinationChainId);
+        assertEq(proofBefore.destination, wrongDestinationChainId);
 
         // Challenge the proof with correct destination chain ID
         bytes32 routeHash = keccak256(abi.encode(testIntent.route));
@@ -652,7 +652,7 @@ contract MetaProverTest is BaseTest {
             intentHash
         );
         assertEq(proofAfter.claimant, address(0));
-        assertEq(proofAfter.destinationChainID, 0);
+        assertEq(proofAfter.destination, 0);
     }
 
     function testChallengeIntentProofWithCorrectChain() public {
@@ -680,7 +680,7 @@ contract MetaProverTest is BaseTest {
             intentHash
         );
         assertEq(proofBefore.claimant, claimant);
-        assertEq(proofBefore.destinationChainID, testIntent.destination);
+        assertEq(proofBefore.destination, testIntent.destination);
 
         // Challenge the proof with same destination chain ID
         bytes32 routeHash = keccak256(abi.encode(testIntent.route));
@@ -698,7 +698,7 @@ contract MetaProverTest is BaseTest {
             intentHash
         );
         assertEq(proofAfter.claimant, claimant);
-        assertEq(proofAfter.destinationChainID, testIntent.destination);
+        assertEq(proofAfter.destination, testIntent.destination);
     }
 
     function testChallengeIntentProofEventEmission() public {

@@ -249,7 +249,7 @@ contract HyperProverTest is BaseTest {
             intentHashes[0]
         );
         assertEq(proof.claimant, claimant);
-        assertEq(proof.destinationChainID, CHAIN_ID);
+        assertEq(proof.destination, CHAIN_ID);
     }
 
     function testHandleRejectsNonWhitelistedSender() public {
@@ -341,11 +341,11 @@ contract HyperProverTest is BaseTest {
         // Verify intent is proven (with chain ID = 31337 from the prove call)
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
         assertTrue(proof.claimant != address(0));
-        assertEq(proof.destinationChainID, uint96(block.chainid)); // 31337
+        assertEq(proof.destination, uint96(block.chainid)); // 31337
 
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
         // So challenging with the original intent should clear the proof
-        // because intent.destination (1) != proof.destinationChainID (31337)
+        // because intent.destination (1) != proof.destination (31337)
         vm.prank(creator);
         hyperProver.challengeIntentProof(
             intent.destination,
@@ -387,7 +387,7 @@ contract HyperProverTest is BaseTest {
         // Verify intent is proven
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
         assertTrue(proof.claimant != address(0));
-        assertEq(proof.destinationChainID, uint96(block.chainid));
+        assertEq(proof.destination, uint96(block.chainid));
 
         // Challenge with correct chain (destination matches proof) should do nothing
         vm.prank(creator);
@@ -436,7 +436,7 @@ contract HyperProverTest is BaseTest {
         // Now check the storage
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
         assertEq(proof.claimant, claimant);
-        assertEq(proof.destinationChainID, uint96(block.chainid));
+        assertEq(proof.destination, uint96(block.chainid));
     }
 
     function testSupportsInterface() public view {

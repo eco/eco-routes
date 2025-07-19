@@ -21,7 +21,10 @@ contract TestMetaRouter {
     uint256 public constant FEE = 0.001 ether;
 
     // Mapping to track messages sent and enable verification in tests
-    mapping(bytes32 => bool) public sentMessages;
+    mapping(bytes32 => bool) public sentMessageHashes;
+
+    // Counter for total messages sent
+    uint256 public messageCount;
 
     // Variables to store latest dispatch info for tests
     bool public dispatched;
@@ -78,7 +81,8 @@ contract TestMetaRouter {
         );
 
         // Record that this message was sent
-        sentMessages[messageId] = true;
+        sentMessageHashes[messageId] = true;
+        messageCount++;
 
         // Emit event for test verification
         emit MessageDispatched(_destinationDomain, _recipient, _message);
@@ -100,6 +104,22 @@ contract TestMetaRouter {
     ) external pure returns (uint256) {
         // Return a fixed fee for testing purposes
         return FEE;
+    }
+
+    /**
+     * @notice Returns the total number of messages sent
+     * @return Total number of messages dispatched
+     */
+    function getSentMessageCount() external view returns (uint256) {
+        return messageCount;
+    }
+
+    /**
+     * @notice Returns the total number of messages sent (alias for getSentMessageCount)
+     * @return Total number of messages dispatched
+     */
+    function sentMessages() external view returns (uint256) {
+        return messageCount;
     }
 
     /**

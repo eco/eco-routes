@@ -191,6 +191,24 @@ interface IIntentSource is IVaultStorage {
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
     /**
+     * @notice Computes the hash components of an intent
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return intentHash Combined hash of route and reward components
+     * @return routeHash Hash of the route specifications
+     * @return rewardHash Hash of the reward specifications
+     */
+    function getIntentHash(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    )
+        external
+        pure
+        returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
+
+    /**
      * @notice Computes the deterministic vault address for an intent
      * @param intent The intent to calculate the vault address for
      * @return Predicted vault address
@@ -198,6 +216,41 @@ interface IIntentSource is IVaultStorage {
     function intentVaultAddress(
         Intent calldata intent
     ) external view returns (address);
+
+    /**
+     * @notice Computes the deterministic vault address for an intent
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return Predicted vault address
+     */
+    function intentVaultAddress(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    ) external view returns (address);
+
+    /**
+     * @notice Checks if an intent's rewards are valid and fully funded
+     * @param intent The intent to validate
+     * @return True if the intent is properly funded
+     */
+    function isIntentFunded(
+        Intent calldata intent
+    ) external view returns (bool);
+
+    /**
+     * @notice Checks if an intent's rewards are valid and fully funded
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return True if the intent is properly funded
+     */
+    function isIntentFunded(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    ) external view returns (bool);
 
     /**
      * @notice Creates a new cross-chain intent with associated rewards
@@ -211,6 +264,21 @@ interface IIntentSource is IVaultStorage {
     ) external returns (bytes32 intentHash, address vault);
 
     /**
+     * @notice Creates a new cross-chain intent with associated rewards
+     * @dev Intent must be proven on source chain before expiration for valid reward claims
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return intentHash Unique identifier of the created intent
+     * @return vault Address of the created vault
+     */
+    function publish(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    ) external returns (bytes32 intentHash, address vault);
+
+    /**
      * @notice Creates and funds an intent in a single transaction
      * @param intent The complete intent specification
      * @param allowPartial Whether to allow partial funding
@@ -219,6 +287,22 @@ interface IIntentSource is IVaultStorage {
      */
     function publishAndFund(
         Intent calldata intent,
+        bool allowPartial
+    ) external payable returns (bytes32 intentHash, address vault);
+
+    /**
+     * @notice Creates and funds an intent in a single transaction
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @param allowPartial Whether to allow partial funding
+     * @return intentHash Unique identifier of the created and funded intent
+     * @return vault Address of the created vault
+     */
+    function publishAndFund(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward,
         bool allowPartial
     ) external payable returns (bytes32 intentHash, address vault);
 
@@ -273,13 +357,24 @@ interface IIntentSource is IVaultStorage {
     ) external returns (bytes32 intentHash, address vault);
 
     /**
-     * @notice Checks if an intent's rewards are valid and fully funded
-     * @param intent The intent to validate
-     * @return True if the intent is properly funded
+     * @notice Creates and funds an intent on behalf of another address
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @param funder The address providing the funding
+     * @param permitContract The permit contract for token approvals
+     * @param allowPartial Whether to accept partial funding
+     * @return intentHash The hash of the created and funded intent
+     * @return vault Address of the created vault
      */
-    function isIntentFunded(
-        Intent calldata intent
-    ) external view returns (bool);
+    function publishAndFundFor(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward,
+        address funder,
+        address permitContract,
+        bool allowPartial
+    ) external returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Claims rewards for a successfully fulfilled and proven intent

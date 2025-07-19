@@ -6,29 +6,41 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IProver} from "./interfaces/IProver.sol";
-import {Intent, Route, Reward} from "./types/Intent.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IVault} from "./interfaces/IVault.sol";
-import {Vault} from "./Vault.sol";
 import {IVaultStorage} from "./interfaces/IVaultStorage.sol";
+
+import {Intent, Route, Reward} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
+
+import {OriginSettler} from "./ERC7683/OriginSettler.sol";
+import {Vault} from "./Vault.sol";
 
 /**
  * @title IntentSource
  * @notice Abstract contract for managing cross-chain intents and their associated rewards on the source chain
  * @dev Base contract containing all core intent functionality for EVM chains
  */
-abstract contract IntentSource is IVaultStorage, IIntentSource {
+abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for address;
 
     // Shared state storage across all implementations
     mapping(bytes32 intentHash => VaultStorage) public vaults;
 
-    /**
-     * @notice Event for creating standard EVM intents
-     */
-    // Event IntentPublished is defined in IIntentSource interface
+    /// @dev CREATE2 prefix for address calculation
+    bytes1 private immutable CREATE2_PREFIX;
+
+    constructor() {
+        // TRON support
+        if (block.chainid == 728126428 || block.chainid == 2494104990) {
+            // TRON chain custom CREATE2 prefix
+            CREATE2_PREFIX = hex"41";
+        } else {
+            // first byte of the classic CREATE2 prefix
+            CREATE2_PREFIX = hex"ff";
+        }
+    }
 
     /**
      * @notice Retrieves reward status for a given intent hash
@@ -76,10 +88,37 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         virtual
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
     {
-        routeHash = keccak256(abi.encode(intent.route));
-        rewardHash = keccak256(abi.encode(intent.reward));
+        return
+            getIntentHash(
+                intent.destination,
+                abi.encode(intent.route),
+                intent.reward
+            );
+    }
+
+    /**
+     * @notice Calculates the hash of an intent and its components
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes for cross-VM compatibility
+     * @param reward Reward structure containing distribution details
+     * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route component
+     * @return rewardHash Hash of the reward component
+     */
+    function getIntentHash(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    )
+        public
+        pure
+        virtual
+        returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
+    {
+        routeHash = keccak256(route);
+        rewardHash = keccak256(abi.encode(reward));
         intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+            abi.encodePacked(destination, routeHash, rewardHash)
         );
     }
 
@@ -90,9 +129,82 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      */
     function intentVaultAddress(
         Intent calldata intent
-    ) external view virtual returns (address) {
-        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
-        return _getIntentVaultAddress(intentHash, routeHash, intent.reward);
+    ) public view virtual returns (address) {
+        return
+            intentVaultAddress(
+                intent.destination,
+                abi.encode(intent.route),
+                intent.reward
+            );
+    }
+
+    /**
+     * @notice Calculates the deterministic address of the intent vault
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return Address of the intent vault
+     */
+    function intentVaultAddress(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    )
+        public
+        view
+        virtual
+        override(IIntentSource, OriginSettler)
+        returns (address)
+    {
+        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(
+            destination,
+            route,
+            reward
+        );
+        return _getIntentVaultAddress(intentHash, routeHash, reward);
+    }
+
+    /**
+     * @notice Checks if an intent is completely funded
+     * @param intent Intent to validate
+     * @return True if intent is completely funded, false otherwise
+     */
+    function isIntentFunded(
+        Intent calldata intent
+    ) public view virtual returns (bool) {
+        return
+            isIntentFunded(
+                intent.destination,
+                abi.encode(intent.route),
+                intent.reward
+            );
+    }
+
+    /**
+     * @notice Checks if an intent is fully funded using universal format
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return True if intent is completely funded, false otherwise
+     */
+    function isIntentFunded(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    )
+        public
+        view
+        virtual
+        override(IIntentSource, OriginSettler)
+        returns (bool)
+    {
+        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(
+            destination,
+            route,
+            reward
+        );
+        address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
+        return _isRewardFunded(reward, vault);
     }
 
     /**
@@ -103,20 +215,41 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
      */
     function publish(
         Intent calldata intent
-    ) external virtual returns (bytes32 intentHash, address vault) {
+    ) public virtual returns (bytes32 intentHash, address vault) {
+        return
+            publish(
+                intent.destination,
+                abi.encode(intent.route),
+                intent.reward
+            );
+    }
+
+    /**
+     * @notice Creates an intent without funding
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @return intentHash Hash of the created intent
+     * @return vault Address of the created vault
+     */
+    function publish(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward
+    )
+        public
+        virtual
+        override(IIntentSource, OriginSettler)
+        returns (bytes32 intentHash, address vault)
+    {
         bytes32 routeHash;
-        (intentHash, routeHash, ) = getIntentHash(intent);
+        (intentHash, routeHash, ) = getIntentHash(destination, route, reward);
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(
-            intentHash,
-            intent.destination,
-            abi.encode(intent.route),
-            intent.reward
-        );
+        _emitIntentPublished(intentHash, destination, route, reward);
 
-        vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
+        vault = _getIntentVaultAddress(intentHash, routeHash, reward);
     }
 
     /**
@@ -129,23 +262,42 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) external payable virtual returns (bytes32 intentHash, address vault) {
+    ) public payable virtual returns (bytes32 intentHash, address vault) {
+        return
+            publishAndFund(
+                intent.destination,
+                abi.encode(intent.route),
+                intent.reward,
+                allowPartial
+            );
+    }
+
+    /**
+     * @notice Creates and funds an intent in a single transaction
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @param allowPartial Whether to allow partial funding
+     * @return intentHash Hash of the created and funded intent
+     * @return vault Address of the created vault
+     */
+    function publishAndFund(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward,
+        bool allowPartial
+    ) public payable virtual returns (bytes32 intentHash, address vault) {
         bytes32 routeHash;
-        (intentHash, routeHash, ) = getIntentHash(intent);
+        (intentHash, routeHash, ) = getIntentHash(destination, route, reward);
         VaultState memory state = vaults[intentHash].state;
 
         _validateInitialFundingState(state, intentHash);
         _validateSourceChain(block.chainid, intentHash);
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(
-            intentHash,
-            intent.destination,
-            abi.encode(intent.route),
-            intent.reward
-        );
+        _emitIntentPublished(intentHash, destination, route, reward);
 
-        vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
-        _fundIntent(intentHash, intent.reward, vault, msg.sender, allowPartial);
+        vault = _getIntentVaultAddress(intentHash, routeHash, reward);
+        _fundIntent(intentHash, reward, vault, msg.sender, allowPartial);
 
         _returnExcessEth(intentHash, address(this).balance);
     }
@@ -229,25 +381,50 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) external virtual returns (bytes32 intentHash, address vault) {
+    ) public virtual returns (bytes32 intentHash, address vault) {
+        return
+            publishAndFundFor(
+                intent.destination,
+                abi.encode(intent.route),
+                intent.reward,
+                funder,
+                permitContract,
+                allowPartial
+            );
+    }
+
+    /**
+     * @notice Creates and funds an intent on behalf of another address using universal format
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @param funder The address providing the funding
+     * @param permitContract The permit contract for token approvals
+     * @param allowPartial Whether to accept partial funding
+     * @return intentHash Hash of the created and funded intent
+     * @return vault Address of the created vault
+     */
+    function publishAndFundFor(
+        uint64 destination,
+        bytes memory route,
+        Reward calldata reward,
+        address funder,
+        address permitContract,
+        bool allowPartial
+    ) public virtual returns (bytes32 intentHash, address vault) {
         bytes32 routeHash;
-        (intentHash, routeHash, ) = getIntentHash(intent);
+        (intentHash, routeHash, ) = getIntentHash(destination, route, reward);
         VaultState memory state = vaults[intentHash].state;
 
         _validatePublishState(intentHash, state);
-        _emitIntentPublished(
-            intentHash,
-            intent.destination,
-            abi.encode(intent.route),
-            intent.reward
-        );
+        _emitIntentPublished(intentHash, destination, route, reward);
         _validateSourceChain(block.chainid, intentHash);
 
-        vault = _getIntentVaultAddress(intentHash, routeHash, intent.reward);
+        vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
         _fundIntentFor(
             state,
-            intent.reward,
+            reward,
             intentHash,
             routeHash,
             vault,
@@ -257,26 +434,6 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         );
 
         return (intentHash, vault);
-    }
-
-    /**
-     * @notice Checks if an intent is completely funded
-     * @param intent Intent to validate
-     * @return True if intent is completely funded, false otherwise
-     */
-    function isIntentFunded(
-        Intent calldata intent
-    ) external view virtual returns (bool) {
-        // Source chain validation is implicit since intents are created on the source chain
-
-        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(intent);
-        address vault = _getIntentVaultAddress(
-            intentHash,
-            routeHash,
-            intent.reward
-        );
-
-        return _isRewardFunded(intent.reward, vault);
     }
 
     /**
@@ -302,7 +459,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         // If the intent has been proven on a different chain, challenge the proof
-        if (proof.destinationChainID != destination && claimant != address(0)) {
+        if (proof.destination != destination && claimant != address(0)) {
             // Challenge the proof and emit event
             IProver(reward.prover).challengeIntentProof(
                 destination,
@@ -532,7 +689,7 @@ abstract contract IntentSource is IVaultStorage, IIntentSource {
                     uint256(
                         keccak256(
                             abi.encodePacked(
-                                hex"ff",
+                                CREATE2_PREFIX,
                                 address(this),
                                 routeHash,
                                 keccak256(

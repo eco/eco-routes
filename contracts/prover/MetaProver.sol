@@ -24,7 +24,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Constant indicating this contract uses Metalayer for proving
      */
-    string public constant PROOF_TYPE = "Metalayer";
+    string public constant PROOF_TYPE = "Meta";
 
     /**
      * @notice Address of local Metalayer router
