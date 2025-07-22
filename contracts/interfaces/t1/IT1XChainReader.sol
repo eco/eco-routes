@@ -36,7 +36,7 @@ interface IT1XChainReader {
     function commitProofOfReadRoot(
         uint256 batchIndex,
         bytes32 newRoot
-    ) external payable;
+    ) external;
     function nextBatchIndex() external view returns (uint256);
     function nonce() external view returns (uint256);
     function owner() external view returns (address);
