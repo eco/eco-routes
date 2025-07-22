@@ -78,7 +78,6 @@ contract T1Prover is BaseProver, Semver {
             .ReadRequest({
                 destinationDomain: destinationDomain,
                 targetContract: INBOX,
-                gasLimit: 0,
                 minBlock: 0,
                 callData: callData,
                 requester: msg.sender
@@ -109,7 +108,6 @@ contract T1Prover is BaseProver, Semver {
             .ReadRequest({
                 destinationDomain: destinationDomain,
                 targetContract: PROVER,
-                gasLimit: 0,
                 minBlock: 0,
                 callData: callData,
                 requester: msg.sender

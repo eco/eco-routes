@@ -5,7 +5,6 @@ interface IT1XChainReader {
     struct ReadRequest {
         uint32 destinationDomain;
         address targetContract;
-        uint256 gasLimit;
         uint64 minBlock;
         bytes callData;
         address requester;
