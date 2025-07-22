@@ -66,7 +66,7 @@ contract T1Prover is BaseProver, Semver {
     function requestIntentProof(
         uint32 destinationDomain,
         bytes32 intentHash
-    ) external {
+    ) external payable {
         // create crosschain call data to check if intent is fulfilled
         bytes memory callData = abi.encodeWithSignature(
             "fulfilled(bytes32)",
@@ -83,7 +83,9 @@ contract T1Prover is BaseProver, Semver {
                 requester: msg.sender
             });
 
-        bytes32 requestId = X_CHAIN_READER.requestRead(readRequest);
+        bytes32 requestId = X_CHAIN_READER.requestRead{value: msg.value}(
+            readRequest
+        );
 
         readRequestToIntentRequest[requestId] = IntentRequest({
             destinationDomain: destinationDomain,
