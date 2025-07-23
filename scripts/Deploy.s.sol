@@ -71,7 +71,7 @@ contract Deploy is Script {
             ctx.crossVmProvers = new bytes32[](0);
         }
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
-        ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
+        ctx.deployer = vm.rememberKey(vm.envUint("DEPLOYER_PRIVATE_KEY"));
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
@@ -119,6 +119,68 @@ contract Deploy is Script {
 
         // Write deployment results to file
         writeDeploymentData(ctx);
+    }
+
+    // Public functions for individual deployments
+    function runDeployCreate3Deployer() external {
+        vm.startBroadcast();
+        deployCreate3Deployer();
+        vm.stopBroadcast();
+    }
+
+    function runDeployPortal() external {
+        DeploymentContext memory ctx = _initializeContext();
+        vm.startBroadcast();
+        deployPortal(ctx);
+        vm.stopBroadcast();
+    }
+
+    function runDeployHyperProver() external {
+        DeploymentContext memory ctx = _initializeContext();
+        require(ctx.mailbox != address(0), "MAILBOX_CONTRACT not set");
+        vm.startBroadcast();
+        deployHyperProver(ctx);
+        vm.stopBroadcast();
+    }
+
+    function runDeployMetaProver() external {
+        DeploymentContext memory ctx = _initializeContext();
+        require(ctx.router != address(0), "ROUTER_CONTRACT not set");
+        vm.startBroadcast();
+        deployMetaProver(ctx);
+        vm.stopBroadcast();
+    }
+
+    function runDeployLayerZeroProver() external {
+        DeploymentContext memory ctx = _initializeContext();
+        require(ctx.layerZeroEndpoint != address(0), "LAYERZERO_ENDPOINT not set");
+        vm.startBroadcast();
+        deployLayerZeroProver(ctx);
+        vm.stopBroadcast();
+    }
+
+    // Helper function to initialize context for individual deployments
+    function _initializeContext() internal returns (DeploymentContext memory ctx) {
+        ctx.salt = vm.envBytes32("SALT");
+        ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
+        ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
+        ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
+        
+        try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
+            bytes32[] memory provers
+        ) {
+            ctx.crossVmProvers = provers;
+        } catch {
+            ctx.crossVmProvers = new bytes32[](0);
+        }
+        
+        ctx.deployer = vm.rememberKey(vm.envUint("DEPLOYER_PRIVATE_KEY"));
+        
+        // Compute salts for each contract
+        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
+        ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
+        ctx.metaProverSalt = getContractSalt(ctx.salt, "META_PROVER");
+        ctx.layerZeroProverSalt = getContractSalt(ctx.salt, "LAYERZERO_PROVER");
     }
 
     // Separate function to handle writing deployment data to file

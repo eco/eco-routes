@@ -1,0 +1,92 @@
+{
+  // Ethereum Mainnet
+  "1": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x66A71Dcef29A0fFBDBE3c6a460a3B5BC225Cd675"
+  },
+  // Optimism
+  "10": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x3c2269811836af69497E5F486A85D7316753cf62"
+  },
+  // Unichain
+  "130": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": ""
+  },
+  // Polygon
+  "137": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x1a44076050125825900e736c501f859c50fE728c"
+  },
+  // Mantle Testnet
+  "5000": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": ""
+  },
+  // Mantle Testnet (alt)
+  "5330": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": ""
+  },
+  // Base
+  "8453": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x1a44076050125825900e736c501f859c50fE728c"
+  },
+  // Arbitrum One
+  "42161": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x66A71Dcef29A0fFBDBE3c6a460a3B5BC225Cd675"
+  },
+  // Celo
+  "42220": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x1a44076050125825900e736c501f859c50fE728c"
+  },
+  // Rollux
+  "57073": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0xca29f3A6f966Cb2fc0dE625F8f325c0C46dbE958"
+  },
+  // Base Sepolia
+  "84532": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x1a44076050125825900e736c501f859c50fE728c"
+  },
+  // Mantle
+  "3441006": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": ""
+  },
+  // Sepolia
+  "11155111": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x66A71Dcef29A0fFBDBE3c6a460a3B5BC225Cd675"
+  },
+  // Optimism Sepolia
+  "11155420": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x1a44076050125825900e736c501f859c50fE728c"
+  },
+  // Tron
+  "728126428": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x0Af59750D5dB5460E5d89E268C474d5F7407c061"
+  }
+}
