@@ -56,7 +56,7 @@ interface IProver is ISemver {
      * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
      * @param sender Address of the original transaction sender
      * @param sourceChainId Chain ID of the source chain
-     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data specific to the proving implementation
      */
     function prove(

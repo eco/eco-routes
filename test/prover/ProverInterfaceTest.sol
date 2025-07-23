@@ -39,22 +39,42 @@ contract ProverInterfaceTest is Test {
         // Encode proofs manually
         bytes memory encodedProofs = new bytes(128); // 2 pairs * 64 bytes each
         assembly {
-            // First pair: claimant1 + intent1
-            mstore(add(encodedProofs, 0x20), mload(add(claimants, 0x20)))
-            mstore(add(encodedProofs, 0x40), mload(add(intentHashes, 0x20)))
-            // Second pair: claimant2 + intent2
-            mstore(add(encodedProofs, 0x60), mload(add(claimants, 0x40)))
-            mstore(add(encodedProofs, 0x80), mload(add(intentHashes, 0x40)))
+            // First pair: intent1 + claimant1
+            mstore(add(encodedProofs, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(encodedProofs, 0x40), mload(add(claimants, 0x20)))
+            // Second pair: intent2 + claimant2
+            mstore(add(encodedProofs, 0x60), mload(add(intentHashes, 0x40)))
+            mstore(add(encodedProofs, 0x80), mload(add(claimants, 0x40)))
         }
 
         // Test that we can call prove with new interface
         testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
 
-        // Verify the data was extracted correctly
-        assertEq(testProver.argIntentHashes(0), intentHashes[0]);
-        assertEq(testProver.argIntentHashes(1), intentHashes[1]);
-        assertEq(testProver.argClaimants(0), claimants[0]);
-        assertEq(testProver.argClaimants(1), claimants[1]);
+        // Verify the prove call was tracked
+        (
+            address sender,
+            uint256 sourceChainId,
+            bytes memory data,
+            uint256 value
+        ) = testProver.args();
+        assertEq(sender, makeAddr("sender"));
+        assertEq(sourceChainId, 1);
+        assertEq(data, "");
+        assertEq(value, 0);
+        assertEq(testProver.proveCallCount(), 1);
+
+        // Verify the proofs were processed correctly by checking proven intents
+        TestProver.ProofData memory proof1 = testProver.provenIntents(
+            intentHashes[0]
+        );
+        TestProver.ProofData memory proof2 = testProver.provenIntents(
+            intentHashes[1]
+        );
+
+        assertEq(proof1.claimant, address(uint160(uint256(claimants[0]))));
+        assertEq(proof2.claimant, address(uint160(uint256(claimants[1]))));
+        assertEq(proof1.destination, 1);
+        assertEq(proof2.destination, 1);
     }
 
     function testFetchFeeInterface() public {

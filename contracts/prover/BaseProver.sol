@@ -47,7 +47,7 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Process intent proofs from a cross-chain message
-     * @param data Encoded (claimant, intentHash) pairs
+     * @param data Encoded (intentHash, claimant) pairs
      * @param destination Chain ID where the intent is being proven
      */
     function _processIntentProofs(
@@ -57,7 +57,7 @@ abstract contract BaseProver is IProver, ERC165 {
         // If data is empty, just return early
         if (data.length == 0) return;
 
-        // Ensure data length is multiple of 64 bytes (32 for claimant + 32 for hash)
+        // Ensure data length is multiple of 64 bytes (32 for hash + 32 for claimant)
         if (data.length % 64 != 0) {
             revert ArrayLengthMismatch();
         }
@@ -67,9 +67,9 @@ abstract contract BaseProver is IProver, ERC165 {
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = i * 64;
 
-            // Extract claimant and intentHash using slice
-            bytes32 claimantBytes = bytes32(data[offset:offset + 32]);
-            bytes32 intentHash = bytes32(data[offset + 32:offset + 64]);
+            // Extract intentHash and claimant using slice
+            bytes32 intentHash = bytes32(data[offset:offset + 32]);
+            bytes32 claimantBytes = bytes32(data[offset + 32:offset + 64]);
 
             // Check if the claimant bytes32 represents a valid Ethereum address
             if (!claimantBytes.isValidAddress()) {

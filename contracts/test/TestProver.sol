@@ -4,7 +4,13 @@ pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
 
+/**
+ * @title TestProver
+ * @notice Simple test implementation of BaseProver for unit testing
+ * @dev Focuses on testing the core prove interface and proof storage
+ */
 contract TestProver is BaseProver {
+    // Track the last prove() call for testing
     struct ArgsCheck {
         address sender;
         uint256 sourceChainId;
@@ -13,6 +19,9 @@ contract TestProver is BaseProver {
     }
 
     ArgsCheck public args;
+    uint256 public proveCallCount;
+
+    // Store last processed proofs for test verification
     bytes32[] public argIntentHashes;
     bytes32[] public argClaimants;
 
@@ -22,6 +31,9 @@ contract TestProver is BaseProver {
         return "1.8.14-e2c12e7";
     }
 
+    /**
+     * @notice Helper to manually add proven intents for testing
+     */
     function addProvenIntent(
         bytes32 _hash,
         address _claimant,
@@ -48,61 +60,37 @@ contract TestProver is BaseProver {
         return "storage";
     }
 
+    /**
+     * @notice Implementation of prove that tracks calls and processes proofs
+     * @dev Simply records the call parameters and processes the encoded proofs
+     */
     function prove(
         address _sender,
         uint256 _sourceChainId,
         bytes calldata _encodedProofs,
         bytes calldata _data
     ) external payable override {
-        // Extract intentHashes and claimants from encodedProofs
-        (
-            bytes32[] memory intentHashes,
-            bytes32[] memory claimants
-        ) = _extractFromEncodedProofs(_encodedProofs);
-
+        // Track the call for testing
         args = ArgsCheck({
             sender: _sender,
             sourceChainId: _sourceChainId,
             data: _data,
             value: msg.value
         });
-        argIntentHashes = intentHashes;
-        argClaimants = claimants;
-    }
+        proveCallCount++;
 
-    /**
-     * @notice Extracts intentHashes and claimants from encodedProofs
-     * @dev encodedProofs contains (claimant, intentHash) pairs as bytes, where each pair is 64 bytes
-     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
-     * @return intentHashes Array of intent hashes
-     * @return claimants Array of claimant addresses as bytes32
-     */
-    function _extractFromEncodedProofs(
-        bytes calldata encodedProofs
-    )
-        internal
-        pure
-        returns (bytes32[] memory intentHashes, bytes32[] memory claimants)
-    {
-        // Ensure data length is multiple of 64 bytes (32 for claimant + 32 for hash)
-        if (encodedProofs.length == 0) {
-            return (new bytes32[](0), new bytes32[](0));
-        }
-
-        if (encodedProofs.length % 64 != 0) {
-            revert ArrayLengthMismatch();
-        }
-
-        uint256 numPairs = encodedProofs.length / 64;
-        intentHashes = new bytes32[](numPairs);
-        claimants = new bytes32[](numPairs);
+        // Extract and store proofs for test verification
+        uint256 numPairs = _encodedProofs.length / 64;
+        delete argIntentHashes;
+        delete argClaimants;
 
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = i * 64;
-
-            // Extract claimant and intentHash using slice
-            claimants[i] = bytes32(encodedProofs[offset:offset + 32]);
-            intentHashes[i] = bytes32(encodedProofs[offset + 32:offset + 64]);
+            argIntentHashes.push(bytes32(_encodedProofs[offset:offset + 32]));
+            argClaimants.push(bytes32(_encodedProofs[offset + 32:offset + 64]));
         }
+
+        // Process the encoded proofs to update internal state
+        _processIntentProofs(_encodedProofs, _sourceChainId);
     }
 }

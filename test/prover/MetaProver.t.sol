@@ -450,12 +450,9 @@ contract MetaProverTest is BaseTest {
         intentHashes[1] = keccak256("second intent");
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.expectRevert();
         // This should revert in _packClaimantHashPairs due to array length mismatch
-        bytes memory encodedProofs = _packClaimantHashPairs(
-            intentHashes,
-            claimants
-        );
+        vm.expectRevert("Array length mismatch");
+        _packClaimantHashPairs(intentHashes, claimants);
     }
 
     function testProveWithEmptyArrays() public {
@@ -762,11 +759,11 @@ contract MetaProverTest is BaseTest {
                 let offset := mul(i, 64)
                 mstore(
                     add(add(packed, 0x20), offset),
-                    mload(add(claimants, add(0x20, mul(i, 32))))
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
                 )
                 mstore(
                     add(add(packed, 0x20), add(offset, 32)),
-                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                    mload(add(claimants, add(0x20, mul(i, 32))))
                 )
             }
         }

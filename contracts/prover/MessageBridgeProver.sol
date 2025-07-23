@@ -91,7 +91,7 @@ abstract contract MessageBridgeProver is
      * @dev Common implementation to validate and process cross-chain messages
      * @param sourceChainId Chain ID of the source chain
      * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
-     * @param message Encoded array of (claimant, intentHash) pairs
+     * @param message Encoded array of (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
         uint256 sourceChainId,
@@ -113,7 +113,7 @@ abstract contract MessageBridgeProver is
      * @dev Handles fee calculation, validation, and message dispatch
      * @param sender Address that initiated the proving request
      * @param sourceChainId Chain ID of the source chain
-     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      */
     function prove(
@@ -178,7 +178,7 @@ abstract contract MessageBridgeProver is
      * @notice Abstract function to dispatch message via specific bridge
      * @dev Must be implemented by concrete provers (HyperProver, MetaProver)
      * @param sourceChainId Chain ID of the source chain
-     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
@@ -193,7 +193,7 @@ abstract contract MessageBridgeProver is
      * @notice Fetches fee required for message dispatch
      * @dev Must be implemented by concrete provers to calculate bridge-specific fees
      * @param sourceChainId Chain ID of the source chain
-     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */

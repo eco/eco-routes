@@ -32,7 +32,6 @@ contract SameChainProver is IProver, Semver {
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
-
     function provenIntents(
         bytes32 intentHash
     ) public view override returns (ProofData memory) {
@@ -57,10 +56,10 @@ contract SameChainProver is IProver, Semver {
      * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment
      */
     function prove(
-        address /*sender*/,
-        uint256 /*sourceChainId*/,
-        bytes calldata /*encodedProofs*/,
-        bytes calldata /*data*/
+        address /* sender */,
+        uint256 /* sourceChainId */,
+        bytes calldata /* encodedProofs */,
+        bytes calldata /* data */
     ) external payable {
         // solhint-disable-line no-empty-blocks
         // this function is intentionally left empty as no proof is required

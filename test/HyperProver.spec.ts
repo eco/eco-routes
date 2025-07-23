@@ -16,7 +16,7 @@ import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount, Intent, Route } from '../utils/intent'
 import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
 
-// Helper function to encode message body as (claimant, intentHash) pairs
+// Helper function to encode message body as (intentHash, claimant) pairs
 function encodeMessageBody(
   intentHashes: string[],
   claimants: string[],
@@ -29,8 +29,8 @@ function encodeMessageBody(
       claimants[i].length === 66
         ? claimants[i]
         : ethers.zeroPadValue(claimants[i], 32)
-    parts.push(claimantBytes)
     parts.push(intentHashes[i])
+    parts.push(claimantBytes)
   }
   return ethers.concat(parts)
 }
@@ -768,10 +768,10 @@ describe('HyperProver Test', (): void => {
       // Create message with both valid and invalid claimants
       // We need to use the raw bytes for the non-address claimant
       const msgBody = ethers.concat([
-        validClaimant, // 32 bytes
         intentHash1, // 32 bytes
-        nonAddressClaimant, // 32 bytes
+        validClaimant, // 32 bytes
         intentHash2, // 32 bytes
+        nonAddressClaimant, // 32 bytes
       ])
 
       // Process the message

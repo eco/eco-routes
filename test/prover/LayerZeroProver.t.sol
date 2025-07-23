@@ -27,7 +27,8 @@ contract MockLayerZeroEndpoint {
     }
 
     function quote(
-        ILayerZeroEndpointV2.MessagingParams calldata /* params */,
+        ILayerZeroEndpointV2.MessagingParams calldata,
+        /* params */
         bool /* payInLzToken */
     ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
@@ -57,7 +58,7 @@ contract LayerZeroProverTest is BaseTest {
      * @notice Helper function to encode proofs from separate arrays
      * @param intentHashes Array of intent hashes
      * @param claimants Array of claimant addresses (as bytes32)
-     * @return encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @return encodedProofs Encoded (intentHash, claimant) pairs as bytes
      */
     function encodeProofs(
         bytes32[] memory intentHashes,
@@ -72,15 +73,15 @@ contract LayerZeroProverTest is BaseTest {
         for (uint256 i = 0; i < intentHashes.length; i++) {
             assembly {
                 let offset := mul(i, 64)
-                // Store claimant in first 32 bytes of each pair
+                // Store hash in first 32 bytes of each pair
                 mstore(
                     add(add(encodedProofs, 0x20), offset),
-                    mload(add(claimants, add(0x20, mul(i, 32))))
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
                 )
-                // Store hash in next 32 bytes of each pair
+                // Store claimant in next 32 bytes of each pair
                 mstore(
                     add(add(encodedProofs, 0x20), add(offset, 32)),
-                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                    mload(add(claimants, add(0x20, mul(i, 32))))
                 )
             }
         }
@@ -164,11 +165,11 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack claimant/hash pairs as bytes
+        // Pack hash/claimant pairs as bytes
         bytes memory message = new bytes(64);
         assembly {
-            mstore(add(message, 0x20), mload(add(claimants, 0x20)))
-            mstore(add(message, 0x40), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
         }
 
         vm.prank(address(endpoint));
@@ -306,11 +307,11 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack claimant/hash pairs as bytes
+        // Pack hash/claimant pairs as bytes
         bytes memory message = new bytes(64);
         assembly {
-            mstore(add(message, 0x20), mload(add(claimants, 0x20)))
-            mstore(add(message, 0x40), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
         }
 
         // Add the proof with wrong destination
@@ -368,11 +369,11 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack claimant/hash pairs as bytes
+        // Pack hash/claimant pairs as bytes
         bytes memory message = new bytes(64);
         assembly {
-            mstore(add(message, 0x20), mload(add(claimants, 0x20)))
-            mstore(add(message, 0x40), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
         }
 
         // Add the proof with correct destination
@@ -423,11 +424,11 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack claimant/hash pairs as bytes
+        // Pack hash/claimant pairs as bytes
         bytes memory message = new bytes(64);
         assembly {
-            mstore(add(message, 0x20), mload(add(claimants, 0x20)))
-            mstore(add(message, 0x40), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
         }
 
         // Add proof with wrong srcEid

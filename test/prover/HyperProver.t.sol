@@ -23,7 +23,7 @@ contract HyperProverTest is BaseTest {
      * @notice Helper function to encode proofs from separate arrays
      * @param intentHashes Array of intent hashes
      * @param claimants Array of claimant addresses (as bytes32)
-     * @return encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @return encodedProofs Encoded (intentHash, claimant) pairs as bytes
      */
     function encodeProofs(
         bytes32[] memory intentHashes,
@@ -38,15 +38,15 @@ contract HyperProverTest is BaseTest {
         for (uint256 i = 0; i < intentHashes.length; i++) {
             assembly {
                 let offset := mul(i, 64)
-                // Store claimant in first 32 bytes of each pair
+                // Store hash in first 32 bytes of each pair
                 mstore(
                     add(add(encodedProofs, 0x20), offset),
-                    mload(add(claimants, add(0x20, mul(i, 32))))
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
                 )
-                // Store hash in next 32 bytes of each pair
+                // Store claimant in next 32 bytes of each pair
                 mstore(
                     add(add(encodedProofs, 0x20), add(offset, 32)),
-                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                    mload(add(claimants, add(0x20, mul(i, 32))))
                 )
             }
         }
@@ -213,15 +213,9 @@ contract HyperProverTest is BaseTest {
         intentHashes[1] = keccak256("second intent");
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.expectRevert();
-        vm.prank(address(portal));
-        bytes memory proverData = _encodeProverData(
-            bytes32(uint256(uint160(whitelistedProver))),
-            "",
-            address(0)
-        );
         // This should revert in encodeProofs due to array length mismatch
-        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        vm.expectRevert("Array length mismatch");
+        encodeProofs(intentHashes, claimants);
     }
 
     function testProveWithEmptyArrays() public {
@@ -263,11 +257,11 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        // Pack claimant/hash pairs as bytes
-        bytes memory messageBody = new bytes(64); // 32 bytes for claimant + 32 bytes for hash
+        // Pack hash/claimant pairs as bytes
+        bytes memory messageBody = new bytes(64); // 32 bytes for hash + 32 bytes for claimant
         assembly {
-            mstore(add(messageBody, 0x20), mload(add(claimants, 0x20)))
-            mstore(add(messageBody, 0x40), mload(add(intentHashes, 0x20)))
+            mstore(add(messageBody, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(messageBody, 0x40), mload(add(claimants, 0x20)))
         }
 
         vm.prank(address(mailbox));
@@ -290,7 +284,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
 
         vm.expectRevert();
         vm.prank(address(mailbox));
@@ -308,6 +302,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[1] = keccak256("second intent");
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        // Manually create the encoded message with abi.encode to simulate mismatched arrays
         bytes memory messageBody = abi.encode(intentHashes, claimants);
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
@@ -326,7 +321,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
 
         // First call should succeed
         vm.prank(address(mailbox));
@@ -454,7 +449,7 @@ contract HyperProverTest is BaseTest {
         );
 
         // Now simulate the message being received back by calling handle
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
         vm.prank(address(mailbox));
         hyperProver.handle(
             uint32(block.chainid),
@@ -529,7 +524,7 @@ contract HyperProverTest is BaseTest {
         bytes32[] memory intentHashes = new bytes32[](0);
         bytes32[] memory claimants = new bytes32[](0);
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
 
         // Should handle empty arrays gracefully
         vm.prank(address(mailbox));
