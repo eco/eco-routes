@@ -91,18 +91,22 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Implementation of message dispatch for Hyperlane
      * @dev Called by base prove() function after common validations
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
+        // Extract intentHashes and claimants from encodedProofs
+        (
+            bytes32[] memory intentHashes,
+            bytes32[] memory claimants
+        ) = _extractFromEncodedProofs(encodedProofs);
+
         // Parse incoming data into a structured format for processing
         UnpackedData memory unpacked = _unpackData(data);
 
@@ -131,17 +135,21 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Calculates the fee required for Hyperlane message dispatch
      * @dev Queries the Mailbox contract for accurate fee estimation
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
+        // Extract intentHashes and claimants from encodedProofs
+        (
+            bytes32[] memory intentHashes,
+            bytes32[] memory claimants
+        ) = _extractFromEncodedProofs(encodedProofs);
+
         // Decode structured data from the raw input
         UnpackedData memory unpacked = _unpackData(data);
 
@@ -175,8 +183,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function _fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
@@ -207,6 +215,42 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     }
 
     /**
+     * @notice Extracts intentHashes and claimants from encodedProofs
+     * @dev encodedProofs contains (claimant, intentHash) pairs as bytes, where each pair is 64 bytes
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @return intentHashes Array of intent hashes
+     * @return claimants Array of claimant addresses as bytes32
+     */
+    function _extractFromEncodedProofs(
+        bytes calldata encodedProofs
+    )
+        internal
+        pure
+        returns (bytes32[] memory intentHashes, bytes32[] memory claimants)
+    {
+        // Ensure data length is multiple of 64 bytes (32 for claimant + 32 for hash)
+        if (encodedProofs.length == 0) {
+            return (new bytes32[](0), new bytes32[](0));
+        }
+
+        if (encodedProofs.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
+
+        uint256 numPairs = encodedProofs.length / 64;
+        intentHashes = new bytes32[](numPairs);
+        claimants = new bytes32[](numPairs);
+
+        for (uint256 i = 0; i < numPairs; i++) {
+            uint256 offset = i * 64;
+
+            // Extract claimant and intentHash using slice
+            claimants[i] = bytes32(encodedProofs[offset:offset + 32]);
+            intentHashes[i] = bytes32(encodedProofs[offset + 32:offset + 64]);
+        }
+    }
+
+    /**
      * @notice Formats data for Hyperlane message dispatch with pre-decoded values
      * @dev Prepares all parameters needed for the Mailbox dispatch call
      * @param sourceChainId Chain ID of the source chain
@@ -217,13 +261,15 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function _formatHyperlaneMessage(
         uint256 sourceChainId,
-        bytes32[] calldata hashes,
-        bytes32[] calldata claimants,
+        bytes32[] memory hashes,
+        bytes32[] memory claimants,
         UnpackedData memory unpacked
     ) internal view returns (DispatchParams memory params) {
         // Centralized validation ensures arrays match exactly once in the call flow
         // This prevents security issues where hashes and claimants could be mismatched
-        _validateArrayLengths(hashes, claimants);
+        if (hashes.length != claimants.length) {
+            revert ArrayLengthMismatch();
+        }
 
         // Convert chain ID to Hyperlane domain ID format
         // Validate the chain ID can fit in uint32 to prevent truncation issues
@@ -232,8 +278,23 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;
 
-        // Pack intent hashes and claimant addresses together as the message payload
-        params.messageBody = abi.encode(hashes, claimants);
+        // Pack claimant/hash pairs as the message payload
+        // Format: ((bytes32 claimant, bytes32 intentHash), ...)
+        bytes memory messageBody = new bytes(hashes.length * 64);
+        for (uint256 i = 0; i < hashes.length; i++) {
+            assembly {
+                let offset := mul(i, 64)
+                // Copy claimant from memory to memory
+                let claimantsPtr := add(add(claimants, 0x20), mul(i, 32))
+                let claimantValue := mload(claimantsPtr)
+                mstore(add(add(messageBody, 0x20), offset), claimantValue)
+                // Copy hash from memory to memory
+                let hashesPtr := add(add(hashes, 0x20), mul(i, 32))
+                let hashValue := mload(hashesPtr)
+                mstore(add(add(messageBody, 0x20), add(offset, 32)), hashValue)
+            }
+        }
+        params.messageBody = messageBody;
 
         // Pass through metadata as provided
         params.metadata = unpacked.metadata;

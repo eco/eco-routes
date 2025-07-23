@@ -133,18 +133,22 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @notice Implementation of message dispatch for LayerZero
      * @dev Called by base prove() function after common validations
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
+        // Extract intentHashes and claimants from encodedProofs
+        (
+            bytes32[] memory intentHashes,
+            bytes32[] memory claimants
+        ) = _extractFromEncodedProofs(encodedProofs);
+
         // Parse incoming data into a structured format
         UnpackedData memory unpacked = _unpackData(data);
 
@@ -178,17 +182,21 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @notice Calculates the fee required for LayerZero message dispatch
      * @dev Queries the Endpoint contract for accurate fee estimation
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
+        // Extract intentHashes and claimants from encodedProofs
+        (
+            bytes32[] memory intentHashes,
+            bytes32[] memory claimants
+        ) = _extractFromEncodedProofs(encodedProofs);
+
         // Decode structured data from the raw input
         UnpackedData memory unpacked = _unpackData(data);
 
@@ -234,8 +242,8 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     function _fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
@@ -276,6 +284,42 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     }
 
     /**
+     * @notice Extracts intentHashes and claimants from encodedProofs
+     * @dev encodedProofs contains (claimant, intentHash) pairs as bytes, where each pair is 64 bytes
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @return intentHashes Array of intent hashes
+     * @return claimants Array of claimant addresses as bytes32
+     */
+    function _extractFromEncodedProofs(
+        bytes calldata encodedProofs
+    )
+        internal
+        pure
+        returns (bytes32[] memory intentHashes, bytes32[] memory claimants)
+    {
+        // Ensure data length is multiple of 64 bytes (32 for claimant + 32 for hash)
+        if (encodedProofs.length == 0) {
+            return (new bytes32[](0), new bytes32[](0));
+        }
+
+        if (encodedProofs.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
+
+        uint256 numPairs = encodedProofs.length / 64;
+        intentHashes = new bytes32[](numPairs);
+        claimants = new bytes32[](numPairs);
+
+        for (uint256 i = 0; i < numPairs; i++) {
+            uint256 offset = i * 64;
+
+            // Extract claimant and intentHash using slice
+            claimants[i] = bytes32(encodedProofs[offset:offset + 32]);
+            intentHashes[i] = bytes32(encodedProofs[offset + 32:offset + 64]);
+        }
+    }
+
+    /**
      * @notice Formats data for LayerZero message dispatch with pre-decoded values
      * @dev Prepares all parameters needed for the Endpoint send call
      * @param sourceChainId Chain ID of the source chain
@@ -286,12 +330,14 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     function _formatLayerZeroMessage(
         uint256 sourceChainId,
-        bytes32[] calldata hashes,
-        bytes32[] calldata claimants,
+        bytes32[] memory hashes,
+        bytes32[] memory claimants,
         UnpackedData memory unpacked
     ) internal pure returns (DispatchParams memory params) {
         // Centralized validation ensures arrays match exactly once in the call flow
-        _validateArrayLengths(hashes, claimants);
+        if (hashes.length != claimants.length) {
+            revert ArrayLengthMismatch();
+        }
 
         // Use source chain ID directly as endpoint ID
         // Validate it fits in uint32

@@ -103,28 +103,29 @@ abstract contract Inbox is DestinationSettler, IInbox {
             claimant
         );
 
-        bytes32[] memory hashes = new bytes32[](1);
-        hashes[0] = intentHash;
-
         // Send remaining value to prover (after route calls)
         uint256 proverValue = msg.value >= routeValue
             ? msg.value - routeValue
             : 0;
 
-        // Get claimants for prove call
-        bytes32[] memory claimants = new bytes32[](1);
-        claimants[0] = claimant;
+        // Encode claimant/hash pair as bytes (64 bytes total: 32 for claimant + 32 for hash)
+        bytes memory encodedProofs = new bytes(64);
+        assembly {
+            // Store claimant in first 32 bytes
+            mstore(add(encodedProofs, 0x20), claimant)
+            // Store hash in next 32 bytes
+            mstore(add(encodedProofs, 0x40), intentHash)
+        }
 
         if (proverValue > 0) {
             IProver(prover).prove{value: proverValue}(
                 msg.sender,
                 source,
-                hashes,
-                claimants,
+                encodedProofs,
                 data
             );
         } else {
-            IProver(prover).prove(msg.sender, source, hashes, claimants, data);
+            IProver(prover).prove(msg.sender, source, encodedProofs, data);
         }
         return result;
     }
@@ -144,7 +145,9 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes memory data
     ) public payable virtual {
         uint256 size = intentHashes.length;
-        bytes32[] memory claimants = new bytes32[](size);
+
+        // Encode claimant/hash pairs as bytes
+        bytes memory encodedClaimants = new bytes(size * 64); // 32 bytes for claimant + 32 bytes for hash
 
         for (uint256 i = 0; i < size; ++i) {
             bytes32 claimantBytes = fulfilled[intentHashes[i]];
@@ -152,14 +155,25 @@ abstract contract Inbox is DestinationSettler, IInbox {
             if (claimantBytes == bytes32(0)) {
                 revert IntentNotFulfilled(intentHashes[i]);
             }
-            claimants[i] = claimantBytes;
+
+            // Pack claimant and intent hash into encodedData
+            assembly {
+                let offset := mul(i, 64)
+                mstore(add(add(encodedClaimants, 0x20), offset), claimantBytes)
+                mstore(
+                    add(add(encodedClaimants, 0x20), add(offset, 32)),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+            }
+
+            // Emit IntentProven event
+            emit IntentProven(intentHashes[i], claimantBytes, uint64(source));
         }
 
         IProver(prover).prove{value: msg.value}(
             msg.sender,
             source,
-            intentHashes,
-            claimants,
+            encodedClaimants,
             data
         );
     }

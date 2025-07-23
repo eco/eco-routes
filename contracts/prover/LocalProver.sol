@@ -55,17 +55,11 @@ contract SameChainProver is IProver, Semver {
     /**
      * @notice Initiates proving of intents on the same chain
      * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment
-     * param sender Address that initiated the proving request (unused)
-     * param sourceChainId Chain ID of the source chain (unused)
-     * param intentHashes Array of intent hashes to prove (unused)
-     * param claimants Array of claimant addresses (unused)
-     * param data Additional data for proving (unused)
      */
     function prove(
         address /*sender*/,
         uint256 /*sourceChainId*/,
-        bytes32[] calldata /*intentHashes*/,
-        bytes32[] calldata /*claimants*/,
+        bytes calldata /*encodedProofs*/,
         bytes calldata /*data*/
     ) external payable {
         // solhint-disable-line no-empty-blocks

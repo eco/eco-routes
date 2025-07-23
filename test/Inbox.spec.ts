@@ -499,10 +499,14 @@ describe('Inbox Test', (): void => {
     it('gets the right args', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
+      // Calculate expected encoded data (claimant + intentHash)
+      const claimantBytes32 = addressToBytes32(dstAddr.address)
+      const expectedData = '0x' + claimantBytes32.slice(2) + intentHash.slice(2)
+
       const theArgs = {
         sender: solver.address,
         sourceChainId: BigInt(sourceChainID),
-        data: '0x',
+        data: '0x', // The additional data parameter, not the encoded proofs
         value: 123456789n,
       }
       await expect(
@@ -546,10 +550,14 @@ describe('Inbox Test', (): void => {
     it('works', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
+      // Calculate expected encoded data (claimant + intentHash)
+      const claimantBytes32 = addressToBytes32(dstAddr.address)
+      const expectedData = '0x' + claimantBytes32.slice(2) + intentHash.slice(2)
+
       const theArgs = {
         sender: solver.address,
         sourceChainId: BigInt(sourceChainID),
-        data: '0x',
+        data: '0x', // The additional data parameter, not the encoded proofs
         value: 0n,
       }
 

@@ -51,17 +51,58 @@ contract TestProver is BaseProver {
     function prove(
         address _sender,
         uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
+        bytes calldata _encodedProofs,
         bytes calldata _data
     ) external payable override {
+        // Extract intentHashes and claimants from encodedProofs
+        (
+            bytes32[] memory intentHashes,
+            bytes32[] memory claimants
+        ) = _extractFromEncodedProofs(_encodedProofs);
+
         args = ArgsCheck({
             sender: _sender,
             sourceChainId: _sourceChainId,
             data: _data,
             value: msg.value
         });
-        argIntentHashes = _intentHashes;
-        argClaimants = _claimants;
+        argIntentHashes = intentHashes;
+        argClaimants = claimants;
+    }
+
+    /**
+     * @notice Extracts intentHashes and claimants from encodedProofs
+     * @dev encodedProofs contains (claimant, intentHash) pairs as bytes, where each pair is 64 bytes
+     * @param encodedProofs Encoded (claimant, intentHash) pairs as bytes
+     * @return intentHashes Array of intent hashes
+     * @return claimants Array of claimant addresses as bytes32
+     */
+    function _extractFromEncodedProofs(
+        bytes calldata encodedProofs
+    )
+        internal
+        pure
+        returns (bytes32[] memory intentHashes, bytes32[] memory claimants)
+    {
+        // Ensure data length is multiple of 64 bytes (32 for claimant + 32 for hash)
+        if (encodedProofs.length == 0) {
+            return (new bytes32[](0), new bytes32[](0));
+        }
+
+        if (encodedProofs.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
+
+        uint256 numPairs = encodedProofs.length / 64;
+        intentHashes = new bytes32[](numPairs);
+        claimants = new bytes32[](numPairs);
+
+        for (uint256 i = 0; i < numPairs; i++) {
+            uint256 offset = i * 64;
+
+            // Extract claimant and intentHash using slice
+            claimants[i] = bytes32(encodedProofs[offset:offset + 32]);
+            intentHashes[i] = bytes32(encodedProofs[offset + 32:offset + 64]);
+        }
     }
 }
