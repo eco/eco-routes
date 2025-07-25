@@ -36,6 +36,7 @@ describe('Verify Conditions Function', () => {
     ENV_VARS.PRIVATE_KEY,
     ENV_VARS.ALCHEMY_API_KEY,
     ENV_VARS.NPM_TOKEN,
+    ENV_VARS.VERIFICATION_KEY,
   ]
 
   // Test fixtures

@@ -247,7 +247,11 @@ async function deployContracts(
       // Use the new getHyperProverSalt function to match Solidity implementation
       const deployer = getDeployerAddress()
       // Do secondary keccak256 force a redeploy for version 2.8.* for the hyper prover
-      const hyperProverSalt = createCreateXSalt(deployer, 0, hexToBytes(keccak256(salt)))
+      const hyperProverSalt = createCreateXSalt(
+        deployer,
+        0,
+        hexToBytes(keccak256(salt)),
+      )
       const hyperProverCreateXAddress = await createXCreate3Address(
         deployer,
         hyperProverSalt,
