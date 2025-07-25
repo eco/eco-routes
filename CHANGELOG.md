@@ -1,3 +1,10 @@
+## [2.8.12](https://github.com/eco/eco-routes/compare/v2.8.11...v2.8.12) (2025-07-25)
+
+
+### Bug Fixes
+
+* remove AWS Secrets Manager verification_keys and redeploy hyperprover ([12fea76](https://github.com/eco/eco-routes/commit/12fea76c70a735d130404694d009cc03a9ded67d))
+
 ## [2.8.11](https://github.com/eco/eco-routes/compare/v2.8.10...v2.8.11) (2025-07-25)
 
 
