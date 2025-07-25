@@ -15,8 +15,7 @@
 #
 # Environment variables:
 # - RESULTS_FILE: Path to the CSV file with deployment results
-# - VERIFICATION_KEYS_FILE: Path to JSON with API keys by chain ID
-# - VERIFICATION_KEYS: JSON string with API keys (alternative to file)
+# - VERIFICATION_KEY: Single API key for all chains
 # - CHAIN_DATA_URL: Optional URL to fetch chain RPC URLs
 #
 # CSV format expected:
@@ -39,25 +38,14 @@ if [ ! -f "$RESULTS_FILE" ]; then
   exit 1
 fi
 
-# Load verification keys from environment variable or file
-echo "📝 Loading verification keys"
-VERIFICATION_KEYS_JSON=""
-if [ ! -z "$VERIFICATION_KEYS" ]; then
-  echo "📝 Using verification keys from VERIFICATION_KEYS environment variable"
-  VERIFICATION_KEYS_JSON="$VERIFICATION_KEYS"
-elif [ -f "$VERIFICATION_KEYS_FILE" ]; then
-  echo "📝 Using verification keys from $VERIFICATION_KEYS_FILE"
-  VERIFICATION_KEYS_JSON=$(cat "$VERIFICATION_KEYS_FILE")
-else
-  echo "❌ Error: Neither VERIFICATION_KEYS environment variable nor $VERIFICATION_KEYS_FILE found."
+# Check for single verification key
+echo "📝 Loading verification key"
+if [ -z "$VERIFICATION_KEY" ]; then
+  echo "❌ Error: VERIFICATION_KEY environment variable not found."
   exit 1
 fi
 
-# Validate JSON format for verification keys
-if ! echo "$VERIFICATION_KEYS_JSON" | jq empty 2>/dev/null; then
-  echo "❌ Error: Invalid JSON format in verification keys"
-  exit 1
-fi
+echo "📝 Using single verification key for all chains"
 
 # Load chain data for RPC URLs if CHAIN_DATA_URL is provided
 if [ -n "$CHAIN_DATA_URL" ]; then
@@ -119,75 +107,56 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   echo "   Address: $CONTRACT_ADDRESS"
   echo "   Contract Path: $CONTRACT_PATH"
   
-  # Get the verification key using JQ with simple key access
-  VERIFY_KEY=$(echo "$VERIFICATION_KEYS_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain] // empty')
+  # Use the single verification key for all chains
+  VERIFY_KEY="$VERIFICATION_KEY"
+  echo "   🔑 Using verification key for chain ID $CHAIN_ID"
   
-  # If we have a verification key for this chain
-  if [ -n "$VERIFY_KEY" ] && [ "$VERIFY_KEY" != "null" ]; then
-    echo "   🔑 Using verification key for chain ID $CHAIN_ID"
-    
-    # Get RPC URL for this chain from the chain data if available
-    RPC_URL=""
-    if [ -n "$CHAIN_JSON" ]; then
-      RPC_URL=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].url // empty')
-      if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
-        # Replace environment variable placeholders if necessary
-        RPC_URL=$(eval echo "$RPC_URL")
-        echo "   🌐 Using RPC URL for verification"
-      fi
-    fi
-    
-    # Build verification command
-    VERIFY_CMD="forge verify-contract"
-    VERIFY_CMD+=" --chain $CHAIN_ID"
-    VERIFY_CMD+=" --etherscan-api-key \"$VERIFY_KEY\""
-    
-    # Add RPC URL if available
+  # Get RPC URL for this chain from the chain data if available
+  RPC_URL=""
+  if [ -n "$CHAIN_JSON" ]; then
+    RPC_URL=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].url // empty')
     if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
-      VERIFY_CMD+=" --rpc-url \"$RPC_URL\""
+      # Replace environment variable placeholders if necessary
+      RPC_URL=$(eval echo "$RPC_URL")
+      echo "   🌐 Using RPC URL for verification"
     fi
-    
-    # Add remaining parameters
-    VERIFY_CMD+=" --watch"
-    
-    # Add constructor args if not empty
-    if [ -n "$CONSTRUCTOR_ARGS" ] && [ "$CONSTRUCTOR_ARGS" != "0x" ]; then
-      echo "   🧩 Using constructor arguments: $CONSTRUCTOR_ARGS"
-      VERIFY_CMD+=" --constructor-args \"$CONSTRUCTOR_ARGS\""
-    else
-      echo "   📝 No constructor arguments"
-    fi
-    
-    VERIFY_CMD+=" \"$CONTRACT_ADDRESS\" \"$CONTRACT_PATH\""
-    
-    # Execute verification command
-    echo "   📝 Executing verification command..."
-    eval "$VERIFY_CMD"
-    
-    VERIFY_RESULT=$?
-    if [ $VERIFY_RESULT -eq 0 ]; then
-      echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
-      SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
-    else
-      echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
-      echo "   🔄 Retrying verification in 5 seconds..."
-      sleep 5
-      
-      # Retry once
-      eval "$VERIFY_CMD"
-      VERIFY_RESULT=$?
-      
-      if [ $VERIFY_RESULT -eq 0 ]; then
-        echo "   ✅ Verification succeeded on retry for $CONTRACT_NAME on chain $CHAIN_ID"
-        SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
-      else
-        echo "   ❌ Verification failed again for $CONTRACT_NAME on chain $CHAIN_ID"
-        FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
-      fi
-    fi
+  fi
+  
+  # Build verification command
+  VERIFY_CMD="forge verify-contract"
+  VERIFY_CMD+=" --chain $CHAIN_ID"
+  VERIFY_CMD+=" --etherscan-api-key \"$VERIFY_KEY\""
+  
+  # Add RPC URL if available
+  if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
+    VERIFY_CMD+=" --rpc-url \"$RPC_URL\""
+  fi
+  
+  # Add remaining parameters
+  VERIFY_CMD+=" --watch"
+  VERIFY_CMD+=" --retries 2"
+  
+  # Add constructor args if not empty
+  if [ -n "$CONSTRUCTOR_ARGS" ] && [ "$CONSTRUCTOR_ARGS" != "0x" ]; then
+    echo "   🧩 Using constructor arguments: $CONSTRUCTOR_ARGS"
+    VERIFY_CMD+=" --constructor-args \"$CONSTRUCTOR_ARGS\""
   else
-    echo "   ❌ No verification key found for chain ID $CHAIN_ID"
-    FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
+    echo "   📝 No constructor arguments"
+  fi
+  
+  VERIFY_CMD+=" \"$CONTRACT_ADDRESS\" \"$CONTRACT_PATH\""
+  
+  # Execute verification command
+  echo "   📝 Executing verification command..."
+  eval "$VERIFY_CMD"
+  
+  VERIFY_RESULT=$?
+  if [ $VERIFY_RESULT -eq 0 ]; then
+    echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
+    SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+  else
+    echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
+    echo "   🔄 Retrying verification in 5 seconds..."
   fi
   
   echo ""

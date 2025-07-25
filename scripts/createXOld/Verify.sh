@@ -21,12 +21,12 @@ if [ ! -f "$BYTECODE_FILE" ]; then
     exit 1
 fi
 
-# Check if verification keys are provided in the environment
-if [ -n "$VERIFICATION_KEYS" ]; then
-    echo "📄 Using verification keys from VERIFICATION_KEYS environment variable"
+# Check if verification key is provided in the environment
+if [ -n "$VERIFICATION_KEY" ]; then
+    echo "📄 Using single verification key from VERIFICATION_KEY environment variable"
 else
-    echo "⚠️ No verification keys provided in VERIFICATION_KEYS environment variable."
-    echo "⚠️ Will attempt to use individual API key environment variables for verification."
+    echo "❌ Error: No verification key provided in VERIFICATION_KEY environment variable."
+    exit 1
 fi
 
 # Read the bytecode file to get constructor arguments and contract paths
@@ -68,20 +68,8 @@ while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_NAME ENVIRONMENT; do
         ENCODED_ARGS=""
     fi
 
-    # Try to get the API key from the verification keys json first
-    if [ -n "$VERIFICATION_KEYS" ]; then
-        ETHERSCAN_API_KEY=$(echo "$VERIFICATION_KEYS" | jq -r --arg chain "$CHAIN_ID" '.[$chain] // empty')
-    fi
-    
-    # Fallback to environment variables if not found in VERIFICATION_KEYS
-    if [ -z "$ETHERSCAN_API_KEY" ]; then
-        eval "ETHERSCAN_API_KEY=\$ETHERSCAN_API_KEY_$CHAIN_ID"
-    fi
-
-    if [ -z "$ETHERSCAN_API_KEY" ]; then
-        echo "❌ Error: No API key found for Chain ID $CHAIN_ID, skipping verification."
-        continue
-    fi
+    # Use the single verification key for all chains
+    ETHERSCAN_API_KEY="$VERIFICATION_KEY"
 
     VERIFY_CMD="forge verify-contract \
         --chain-id $CHAIN_ID \
