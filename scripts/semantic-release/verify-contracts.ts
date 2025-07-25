@@ -58,7 +58,7 @@ interface ParallelVerificationConfig {
  * Plugin to handle contract verification during semantic-release process using parallel processing.
  * Will verify contracts deployed during the prepare phase across multiple chains simultaneously.
  * Contract verification makes the contract source code viewable on block explorers.
- * 
+ *
  * This implementation groups contracts by chain ID and processes multiple chains in parallel
  * to significantly reduce verification time while respecting API rate limits.
  */
@@ -130,10 +130,15 @@ export async function verifyContracts(context: SemanticContext): Promise<void> {
     }
 
     // Execute parallel verification
-    await executeParallelVerification(logger, cwd, {
-      maxConcurrentChains: 5, // Configurable concurrency limit
-      resultsFile: deployAllFile,
-    }, chainGroups)
+    await executeParallelVerification(
+      logger,
+      cwd,
+      {
+        maxConcurrentChains: 5, // Configurable concurrency limit
+        resultsFile: deployAllFile,
+      },
+      chainGroups,
+    )
 
     logger.log('✅ Contract verification completed')
   } catch (error) {
@@ -164,8 +169,9 @@ function parseCSVData(fileContent: string, logger: Logger): ContractData[] {
     const line = lines[i].trim()
     if (!line) continue
 
-    const [chainId, address, contractPath, constructorArgs = ''] = line.split(',')
-    
+    const [chainId, address, contractPath, constructorArgs = ''] =
+      line.split(',')
+
     if (chainId && address && contractPath) {
       contracts.push({
         chainId: chainId.trim(),
@@ -178,7 +184,6 @@ function parseCSVData(fileContent: string, logger: Logger): ContractData[] {
 
   return contracts
 }
-
 
 /**
  * Execute verification for multiple chains in parallel
@@ -195,15 +200,19 @@ async function executeParallelVerification(
 ): Promise<void> {
   const chainIds = Object.keys(chainGroups)
   const results: { chainId: string; success: boolean; error?: string }[] = []
-  
-  logger.log(`Starting parallel verification for ${chainIds.length} chains with max concurrency: ${config.maxConcurrentChains}`)
+
+  logger.log(
+    `Starting parallel verification for ${chainIds.length} chains with max concurrency: ${config.maxConcurrentChains}`,
+  )
 
   // Process chains in batches to control concurrency
   for (let i = 0; i < chainIds.length; i += config.maxConcurrentChains) {
     const batch = chainIds.slice(i, i + config.maxConcurrentChains)
-    
-    logger.log(`Processing batch ${Math.floor(i / config.maxConcurrentChains) + 1}: chains [${batch.join(', ')}]`)
-    
+
+    logger.log(
+      `Processing batch ${Math.floor(i / config.maxConcurrentChains) + 1}: chains [${batch.join(', ')}]`,
+    )
+
     // Create promises for this batch
     const batchPromises = batch.map(async (chainId) => {
       try {
@@ -222,19 +231,21 @@ async function executeParallelVerification(
   }
 
   // Log summary
-  const successful = results.filter(r => r.success).length
-  const failed = results.filter(r => !r.success).length
-  
+  const successful = results.filter((r) => r.success).length
+  const failed = results.filter((r) => !r.success).length
+
   logger.log(`📊 Parallel Verification Summary:`)
   logger.log(`Total chains: ${chainIds.length}`)
   logger.log(`Successfully verified: ${successful}`)
   logger.log(`Failed to verify: ${failed}`)
-  
+
   if (failed > 0) {
     logger.warn('Some chain verifications failed:')
-    results.filter(r => !r.success).forEach(r => {
-      logger.warn(`  Chain ${r.chainId}: ${r.error}`)
-    })
+    results
+      .filter((r) => !r.success)
+      .forEach((r) => {
+        logger.warn(`  Chain ${r.chainId}: ${r.error}`)
+      })
   }
 }
 
@@ -251,23 +262,30 @@ async function verifyChainContracts(
   chainId: string,
   contracts: ContractData[],
 ): Promise<void> {
-  logger.log(`🔄 Starting verification for chain ${chainId} (${contracts.length} contracts)`)
-  
+  logger.log(
+    `🔄 Starting verification for chain ${chainId} (${contracts.length} contracts)`,
+  )
+
   // Create temporary CSV file for this chain
-  const tempFile = path.join(cwd, PATHS.OUTPUT_DIR, `temp_chain_${chainId}_verification.csv`)
-  
+  const tempFile = path.join(
+    cwd,
+    PATHS.OUTPUT_DIR,
+    `temp_chain_${chainId}_verification.csv`,
+  )
+
   try {
     // Write CSV data for this chain
     const csvLines = ['ChainID,ContractAddress,ContractPath,ContractArguments']
     for (const contract of contracts) {
-      csvLines.push(`${contract.chainId},${contract.address},${contract.contractPath},${contract.constructorArgs}`)
+      csvLines.push(
+        `${contract.chainId},${contract.address},${contract.contractPath},${contract.constructorArgs}`,
+      )
     }
-    
+
     fs.writeFileSync(tempFile, csvLines.join('\n'), 'utf-8')
-    
+
     // Execute verification script for this chain
     await executeVerificationScript(logger, cwd, tempFile, chainId)
-    
   } finally {
     // Clean up temporary file
     if (fs.existsSync(tempFile)) {
@@ -303,14 +321,12 @@ async function executeVerificationScript(
       callback: (err: Error | null, code: number) => void,
     ) => {
       const verifyProcess = spawn(script, [], options)
-      let output = ''
       let errorOutput = ''
 
       // Capture stdout and stderr for this specific chain
       if (verifyProcess.stdout) {
         verifyProcess.stdout.on('data', (data) => {
           const text = data.toString()
-          output += text
           // Log with chain prefix for identification
           logger.log(`[Chain ${chainId}] ${text.trim()}`)
         })
@@ -326,20 +342,32 @@ async function executeVerificationScript(
 
       verifyProcess.on('close', (code) => {
         if (code !== 0) {
-          logger.error(`[Chain ${chainId}] Verification process exited with code ${code}`)
+          logger.error(
+            `[Chain ${chainId}] Verification process exited with code ${code}`,
+          )
           if (errorOutput) {
-            callback(new Error(`Verification failed: ${errorOutput}`), code || 1)
+            callback(
+              new Error(`Verification failed: ${errorOutput}`),
+              code || 1,
+            )
           } else {
-            callback(new Error(`Verification failed with exit code ${code}`), code || 1)
+            callback(
+              new Error(`Verification failed with exit code ${code}`),
+              code || 1,
+            )
           }
         } else {
-          logger.log(`[Chain ${chainId}] Verification process completed successfully`)
+          logger.log(
+            `[Chain ${chainId}] Verification process completed successfully`,
+          )
           callback(null, 0)
         }
       })
 
       verifyProcess.on('error', (error) => {
-        logger.error(`[Chain ${chainId}] Verification process failed to start: ${error.message}`)
+        logger.error(
+          `[Chain ${chainId}] Verification process failed to start: ${error.message}`,
+        )
         callback(error, 1)
       })
     },
