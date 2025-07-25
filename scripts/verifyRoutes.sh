@@ -134,6 +134,7 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   
   # Add remaining parameters
   VERIFY_CMD+=" --watch"
+  # This takes too long, usually chain is not supported 
   VERIFY_CMD+=" --retries 2"
   
   # Add constructor args if not empty

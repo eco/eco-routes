@@ -24,14 +24,43 @@ import { spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { promisify } from 'util'
+import { groupBy } from 'lodash'
 import { SemanticContext } from './sr-prepare'
 import { PATHS, ENV_VARS, THRESHOLDS } from './constants'
 import { Logger } from './helpers'
 
 /**
- * Plugin to handle contract verification during semantic-release process
- * Will verify contracts deployed during the prepare phase
- * Contract verification makes the contract source code viewable on block explorers
+ * Interface for contract verification data
+ */
+interface ContractData {
+  chainId: string
+  address: string
+  contractPath: string
+  constructorArgs: string
+}
+
+/**
+ * Interface for chain-grouped contracts
+ */
+interface ChainContracts {
+  [chainId: string]: ContractData[]
+}
+
+/**
+ * Configuration for parallel verification
+ */
+interface ParallelVerificationConfig {
+  maxConcurrentChains: number
+  resultsFile: string
+}
+
+/**
+ * Plugin to handle contract verification during semantic-release process using parallel processing.
+ * Will verify contracts deployed during the prepare phase across multiple chains simultaneously.
+ * Contract verification makes the contract source code viewable on block explorers.
+ * 
+ * This implementation groups contracts by chain ID and processes multiple chains in parallel
+ * to significantly reduce verification time while respecting API rate limits.
  */
 export async function verifyContracts(context: SemanticContext): Promise<void> {
   const { nextRelease, logger, cwd } = context
@@ -78,26 +107,33 @@ export async function verifyContracts(context: SemanticContext): Promise<void> {
       return
     }
 
-    const entryCount = fileContent.split('\n').filter(Boolean).length - 1 // Exclude header line
+    // Parse CSV data and group by chain
+    const contracts = parseCSVData(fileContent, logger)
+    const chainGroups = groupBy(contracts, 'chainId')
+    const chainCount = Object.keys(chainGroups).length
+    const totalContracts = contracts.length
+
     logger.log(
-      `Found verification data file with ${entryCount} entries to verify`,
+      `Found ${totalContracts} contracts across ${chainCount} chains to verify`,
     )
 
     // If there are too many entries, provide a warning that verification might take a while
-    if (entryCount > THRESHOLDS.VERIFICATION_ENTRIES_WARNING) {
+    if (totalContracts > THRESHOLDS.VERIFICATION_ENTRIES_WARNING) {
       logger.warn(
-        `Large number of verification entries (${entryCount}) might cause verification to take longer than usual`,
+        `Large number of verification entries (${totalContracts}) might cause verification to take longer than usual`,
       )
     }
 
-    // The chain IDs are already included in the verification file
-    // No need to fetch them separately, Verify.sh will read them directly from the file
-    logger.log('Chain IDs already included in verification data file')
+    // Log chain distribution
+    for (const [chainId, chainContracts] of Object.entries(chainGroups)) {
+      logger.log(`Chain ${chainId}: ${chainContracts.length} contracts`)
+    }
 
-    // Execute verification
-    await executeVerification(logger, cwd, {
+    // Execute parallel verification
+    await executeParallelVerification(logger, cwd, {
+      maxConcurrentChains: 5, // Configurable concurrency limit
       resultsFile: deployAllFile,
-    })
+    }, chainGroups)
 
     logger.log('✅ Contract verification completed')
   } catch (error) {
@@ -108,29 +144,158 @@ export async function verifyContracts(context: SemanticContext): Promise<void> {
 }
 
 /**
- * Execute the verification script using async/await
- * @param logger Logger instance for output messages
- * @param cwd Current working directory
- * @param config Configuration for verification including results file and keys
+ * Parse CSV data into contract objects
+ * @param fileContent Raw CSV file content
+ * @param logger Logger instance
+ * @returns Array of contract data objects
  */
-async function executeVerification(
+function parseCSVData(fileContent: string, logger: Logger): ContractData[] {
+  const lines = fileContent.split('\n').filter(Boolean)
+  const contracts: ContractData[] = []
+
+  // Skip header line if present
+  let startIndex = 0
+  if (lines[0] && lines[0].includes('ChainID')) {
+    logger.log('CSV header detected, skipping first line')
+    startIndex = 1
+  }
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    const [chainId, address, contractPath, constructorArgs = ''] = line.split(',')
+    
+    if (chainId && address && contractPath) {
+      contracts.push({
+        chainId: chainId.trim(),
+        address: address.trim(),
+        contractPath: contractPath.trim(),
+        constructorArgs: constructorArgs.trim(),
+      })
+    }
+  }
+
+  return contracts
+}
+
+
+/**
+ * Execute verification for multiple chains in parallel
+ * @param logger Logger instance
+ * @param cwd Current working directory
+ * @param config Parallel verification configuration
+ * @param chainGroups Contracts grouped by chain ID
+ */
+async function executeParallelVerification(
   logger: Logger,
   cwd: string,
-  config: { resultsFile: string },
+  config: ParallelVerificationConfig,
+  chainGroups: ChainContracts,
 ): Promise<void> {
-  // Path to the verification script
+  const chainIds = Object.keys(chainGroups)
+  const results: { chainId: string; success: boolean; error?: string }[] = []
+  
+  logger.log(`Starting parallel verification for ${chainIds.length} chains with max concurrency: ${config.maxConcurrentChains}`)
+
+  // Process chains in batches to control concurrency
+  for (let i = 0; i < chainIds.length; i += config.maxConcurrentChains) {
+    const batch = chainIds.slice(i, i + config.maxConcurrentChains)
+    
+    logger.log(`Processing batch ${Math.floor(i / config.maxConcurrentChains) + 1}: chains [${batch.join(', ')}]`)
+    
+    // Create promises for this batch
+    const batchPromises = batch.map(async (chainId) => {
+      try {
+        await verifyChainContracts(logger, cwd, chainId, chainGroups[chainId])
+        results.push({ chainId, success: true })
+        logger.log(`✅ Chain ${chainId} verification completed successfully`)
+      } catch (error) {
+        const errorMessage = (error as Error).message
+        results.push({ chainId, success: false, error: errorMessage })
+        logger.error(`❌ Chain ${chainId} verification failed: ${errorMessage}`)
+      }
+    })
+
+    // Wait for all chains in this batch to complete
+    await Promise.allSettled(batchPromises)
+  }
+
+  // Log summary
+  const successful = results.filter(r => r.success).length
+  const failed = results.filter(r => !r.success).length
+  
+  logger.log(`📊 Parallel Verification Summary:`)
+  logger.log(`Total chains: ${chainIds.length}`)
+  logger.log(`Successfully verified: ${successful}`)
+  logger.log(`Failed to verify: ${failed}`)
+  
+  if (failed > 0) {
+    logger.warn('Some chain verifications failed:')
+    results.filter(r => !r.success).forEach(r => {
+      logger.warn(`  Chain ${r.chainId}: ${r.error}`)
+    })
+  }
+}
+
+/**
+ * Verify all contracts for a specific chain
+ * @param logger Logger instance
+ * @param cwd Current working directory
+ * @param chainId Chain ID to verify
+ * @param contracts Contracts for this chain
+ */
+async function verifyChainContracts(
+  logger: Logger,
+  cwd: string,
+  chainId: string,
+  contracts: ContractData[],
+): Promise<void> {
+  logger.log(`🔄 Starting verification for chain ${chainId} (${contracts.length} contracts)`)
+  
+  // Create temporary CSV file for this chain
+  const tempFile = path.join(cwd, PATHS.OUTPUT_DIR, `temp_chain_${chainId}_verification.csv`)
+  
+  try {
+    // Write CSV data for this chain
+    const csvLines = ['ChainID,ContractAddress,ContractPath,ContractArguments']
+    for (const contract of contracts) {
+      csvLines.push(`${contract.chainId},${contract.address},${contract.contractPath},${contract.constructorArgs}`)
+    }
+    
+    fs.writeFileSync(tempFile, csvLines.join('\n'), 'utf-8')
+    
+    // Execute verification script for this chain
+    await executeVerificationScript(logger, cwd, tempFile, chainId)
+    
+  } finally {
+    // Clean up temporary file
+    if (fs.existsSync(tempFile)) {
+      fs.unlinkSync(tempFile)
+    }
+  }
+}
+
+/**
+ * Execute the verification script for a specific chain
+ * @param logger Logger instance
+ * @param cwd Current working directory
+ * @param resultsFile Path to the results file
+ * @param chainId Chain ID being processed
+ */
+async function executeVerificationScript(
+  logger: Logger,
+  cwd: string,
+  resultsFile: string,
+  chainId: string,
+): Promise<void> {
   const verifyScriptPath = path.join(cwd, PATHS.VERIFICATION_SCRIPT)
 
   if (!fs.existsSync(verifyScriptPath)) {
     throw new Error(`Verification script not found at ${verifyScriptPath}`)
   }
 
-  logger.log(
-    `Running verification for deployment results in ${config.resultsFile}`,
-  )
-
   // Use promisify for cleaner async/await handling
-
   const execProcess = promisify(
     (
       script: string,
@@ -138,39 +303,55 @@ async function executeVerification(
       callback: (err: Error | null, code: number) => void,
     ) => {
       const verifyProcess = spawn(script, [], options)
+      let output = ''
+      let errorOutput = ''
+
+      // Capture stdout and stderr for this specific chain
+      if (verifyProcess.stdout) {
+        verifyProcess.stdout.on('data', (data) => {
+          const text = data.toString()
+          output += text
+          // Log with chain prefix for identification
+          logger.log(`[Chain ${chainId}] ${text.trim()}`)
+        })
+      }
+
+      if (verifyProcess.stderr) {
+        verifyProcess.stderr.on('data', (data) => {
+          const text = data.toString()
+          errorOutput += text
+          logger.error(`[Chain ${chainId}] ${text.trim()}`)
+        })
+      }
 
       verifyProcess.on('close', (code) => {
-        logger.log(`Verification process exited with code ${code}`)
-
         if (code !== 0) {
-          logger.error('Verification encountered some failures')
+          logger.error(`[Chain ${chainId}] Verification process exited with code ${code}`)
+          if (errorOutput) {
+            callback(new Error(`Verification failed: ${errorOutput}`), code || 1)
+          } else {
+            callback(new Error(`Verification failed with exit code ${code}`), code || 1)
+          }
+        } else {
+          logger.log(`[Chain ${chainId}] Verification process completed successfully`)
+          callback(null, 0)
         }
-
-        // Always call back with success - we don't want to fail the release
-        callback(null, code || 0)
       })
 
       verifyProcess.on('error', (error) => {
-        logger.error(
-          `Verification process failed to start: ${(error as Error).message}`,
-        )
+        logger.error(`[Chain ${chainId}] Verification process failed to start: ${error.message}`)
         callback(error, 1)
       })
     },
   )
 
-  try {
-    await execProcess(verifyScriptPath, {
-      env: {
-        ...process.env,
-        [ENV_VARS.RESULTS_FILE]: config.resultsFile,
-      },
-      stdio: 'inherit',
-      shell: true,
-      cwd,
-    })
-  } catch (error) {
-    // Log the error but don't throw - we want to continue the release process
-    logger.error(`Verification process error: ${(error as Error).message}`)
-  }
+  await execProcess(verifyScriptPath, {
+    env: {
+      ...process.env,
+      [ENV_VARS.RESULTS_FILE]: resultsFile,
+    },
+    stdio: ['pipe', 'pipe', 'pipe'], // Use pipes to capture output
+    shell: true,
+    cwd,
+  })
 }
