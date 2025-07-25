@@ -21,7 +21,7 @@ import fs from 'fs'
 // eslint-disable-next-line node/no-missing-import
 import { parse as parseCSV } from 'csv-parse/sync'
 import { determineSalts } from '../utils/extract-salt'
-import { getAddress, Hex, hexToBytes } from 'viem'
+import { getAddress, Hex, hexToBytes, keccak256 } from 'viem'
 import { SemanticContext } from './sr-prepare'
 import {
   PATHS,
@@ -246,7 +246,12 @@ async function deployContracts(
       // Generate HyperProver CreateX address using the salt and deployer
       // Use the new getHyperProverSalt function to match Solidity implementation
       const deployer = getDeployerAddress()
-      const hyperProverSalt = createCreateXSalt(deployer, 0, hexToBytes(salt))
+      // Do secondary keccak256 force a redeploy for version 2.8.* for the hyper prover
+      const hyperProverSalt = createCreateXSalt(
+        deployer,
+        0,
+        hexToBytes(keccak256(salt)),
+      )
       const hyperProverCreateXAddress = await createXCreate3Address(
         deployer,
         hyperProverSalt,

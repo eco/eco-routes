@@ -44,55 +44,15 @@ export async function verifyContracts(context: SemanticContext): Promise<void> {
   logger.log(`Preparing to verify contracts for version ${nextRelease.version}`)
 
   try {
-    // Get verification keys from environment variable or file
-    let verificationKeys: Record<string, string> = {}
-
-    // Try environment variable first, this should be local in development
-    // In the CI/CD pipeline, it will be loaded from the AWS secret manager
-    if (process.env[ENV_VARS.VERIFICATION_KEYS]) {
-      try {
-        verificationKeys = JSON.parse(
-          process.env[ENV_VARS.VERIFICATION_KEYS] as string,
-        )
-        logger.log(
-          `Found verification keys in ${ENV_VARS.VERIFICATION_KEYS} environment variable`,
-        )
-      } catch (e) {
-        logger.warn(
-          `Failed to parse ${ENV_VARS.VERIFICATION_KEYS} as JSON: ${(e as Error).message}`,
-        )
-      }
-    }
-    const backupFile =
-      process.env[ENV_VARS.VERIFICATION_KEYS_FILE] ||
-      PATHS.VERIFICATION_KEYS_FILE
-    // If environment variable didn't work, try file fallback
-    if (Object.keys(verificationKeys).length === 0) {
-      try {
-        const keysFile = backupFile
-        if (fs.existsSync(keysFile)) {
-          const keysContent = fs.readFileSync(keysFile, 'utf-8')
-          verificationKeys = JSON.parse(keysContent)
-          logger.log(`Found verification keys in file: ${keysFile}`)
-        } else {
-          logger.warn(`Verification keys file not found: ${keysFile}`)
-        }
-      } catch (e) {
-        logger.error(`Failed to parse keys file: ${(e as Error).message}`)
-      }
-    }
-
-    // Return if we still don't have verification keys
-    if (Object.keys(verificationKeys).length === 0) {
+    // Check for single verification key
+    if (!process.env[ENV_VARS.VERIFICATION_KEY]) {
       logger.error(
-        'No valid verification keys found, skipping contract verification',
+        'No verification key found in VERIFICATION_KEY environment variable, skipping contract verification',
       )
       return
     }
 
-    logger.log(
-      `Found verification keys for ${Object.keys(verificationKeys).length} chain IDs`,
-    )
+    logger.log('Using single verification key for all chains')
 
     // Set up environment for verification
     const deployAllFile = path.join(
@@ -137,7 +97,6 @@ export async function verifyContracts(context: SemanticContext): Promise<void> {
     // Execute verification
     await executeVerification(logger, cwd, {
       resultsFile: deployAllFile,
-      verificationKeys,
     })
 
     logger.log('✅ Contract verification completed')
@@ -157,7 +116,7 @@ export async function verifyContracts(context: SemanticContext): Promise<void> {
 async function executeVerification(
   logger: Logger,
   cwd: string,
-  config: { resultsFile: string; verificationKeys: Record<string, string> },
+  config: { resultsFile: string },
 ): Promise<void> {
   // Path to the verification script
   const verifyScriptPath = path.join(cwd, PATHS.VERIFICATION_SCRIPT)
@@ -169,9 +128,6 @@ async function executeVerification(
   logger.log(
     `Running verification for deployment results in ${config.resultsFile}`,
   )
-
-  // Pass verification keys directly as JSON string
-  const verificationKeysJson = JSON.stringify(config.verificationKeys)
 
   // Use promisify for cleaner async/await handling
 
@@ -208,7 +164,6 @@ async function executeVerification(
       env: {
         ...process.env,
         [ENV_VARS.RESULTS_FILE]: config.resultsFile,
-        [ENV_VARS.VERIFICATION_KEYS]: verificationKeysJson,
       },
       stdio: 'inherit',
       shell: true,

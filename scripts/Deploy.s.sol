@@ -244,7 +244,7 @@ contract Deploy is Script {
         // Check if contract is already deployed
         if (isDeployed(deployedContract)) {
             console.log(
-                "Contract already deployed at address:",
+                "Contract already deployed create2 at address:",
                 deployedContract
             );
             return deployedContract;
@@ -378,7 +378,10 @@ contract Deploy is Script {
             );
             require(isDeployed(deployAddress), "Contract did not get deployed");
         } else {
-            console.log("Contract already deployed at address:", deployAddress);
+            console.log(
+                "Contract already deployed create3 at address:",
+                deployAddress
+            );
             deployAddress = expectedAddress; // Use the expected address if already deployed
         }
     }

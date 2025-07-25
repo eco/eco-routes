@@ -68,7 +68,7 @@ export const ENV_VARS = {
   CI: 'CI',
 
   // Verification related
-  VERIFICATION_KEYS: 'VERIFICATION_KEYS',
+  VERIFICATION_KEY: 'VERIFICATION_KEY',
   // Verification keys file
   VERIFICATION_KEYS_FILE: 'VERIFICATION_KEYS_FILE',
 }
