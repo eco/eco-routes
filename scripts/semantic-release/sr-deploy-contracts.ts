@@ -132,7 +132,10 @@ async function generateDeploymentAddressesJSON(
   logger.log('Creating the deployAddresses.json...')
 
   try {
-    const contractsJson = processContractsForJson(contracts)
+    const contractsJson = {
+      ...processContractsForJson(contracts),
+      ...staticSvmAddresses(),
+    }
 
     // Save to deployed addresses JSON
     const deployedAddressesPath = getDeployedAddressesJsonPath(cwd)
@@ -146,6 +149,23 @@ async function generateDeploymentAddressesJSON(
   } catch (error) {
     logger.error(`Deployment process failed: ${(error as Error).message}`)
     throw error
+  }
+}
+
+/**
+ * Returns static address mappings for networks whose contracts are not
+ * deployed as part of the current release process (e.g. Scroll pre-prod).
+ * These overrides are injected after dynamic deployment data so that they
+ * are always present in the final deployAddresses.json artifact.
+ */
+function staticSvmAddresses(): Record<string, Record<string, string>> {
+  return {
+    '1399811150-pre': {
+      IntentSource: '64Xrmg8iLpvW6ohBcjubTqXe56iNYqRi52yrnMfnbaA6',
+      Inbox: '64Xrmg8iLpvW6ohBcjubTqXe56iNYqRi52yrnMfnbaA6',
+      HyperProver: '8bvpmgp9xbGngm9KmfX5poJer8dW4BJb7LaxuSmfCPZz',
+      MetaProver: '0x0000000000000000000000000000000000000000',
+    },
   }
 }
 
