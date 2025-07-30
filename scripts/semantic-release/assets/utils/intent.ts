@@ -25,6 +25,24 @@ import {
 } from 'viem'
 import { extractAbiStruct } from './utils'
 import { PortalAbi } from '../abi'
+import { PublicKey as SvmAddress } from '@solana/web3.js'
+import { BorshAccountsCoder, IdlTypes } from '@coral-xyz/anchor'
+import portalIdl from '../../../../target/idl/portal.json'
+
+type PortalIdl = typeof portalIdl
+
+/**
+ * VM Type enumeration for different virtual machine types
+ */
+export enum VmType {
+  EVM = 'EVM',
+  SVM = 'SVM',
+}
+
+/**
+ * Coder instance for SVM reward serialization using portal IDL
+ */
+const svmRewardCoder = new BorshAccountsCoder(portalIdl as any)
 
 /**
  * Extracts the functions from an ABI
@@ -104,18 +122,50 @@ export type IntentType = ContractFunctionArgs<
 /**
  * Define the type for the Route struct in Portal
  */
-export type EvmRouteType = IntentType['route']
+export type EvmRouteType = IntentType['route'] & {
+  vm: VmType.EVM
+}
 
 /**
  * Define the type for the Reward struct in Portal
  */
-export type EvmRewardType = IntentType['reward']
+export type EvmRewardType = IntentType['reward'] & {
+  vm: VmType.EVM
+}
+
+export type SvmRewardType = {
+  vm: VmType.SVM
+  creator: SvmAddress,
+  prover: SvmAddress,
+  deadline: bigint;
+  native_amount: bigint;
+  tokens: readonly {
+      token: SvmAddress;
+      amount: bigint;
+  }[];
+}
+
+export type SvmRouteType = {
+  vm: VmType.SVM
+  salt: Hex;
+  deadline: bigint;
+  portal: SvmAddress;
+  tokens: readonly {
+      token: SvmAddress;
+      amount: bigint;
+  }[];
+  calls: readonly {
+      target: SvmAddress;
+      data: Hex;
+      value: bigint;
+  }[];
+}
 
 /**
  * Define the multichaintype for the Route struct in Portal
  */
-export type RouteType = EvmRouteType;
-export type RewardType = EvmRewardType;
+export type RouteType = EvmRouteType | SvmRouteType;
+export type RewardType = EvmRewardType | SvmRewardType;
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -136,10 +186,30 @@ export type RewardType = EvmRewardType;
  * });
  */
 export function encodeRoute(route: RouteType) {
-  return encodeAbiParameters(
-    [{ type: 'tuple', components: RouteStruct }],
-    [route],
-  )
+  if (route.vm === VmType.EVM) {
+    return encodeAbiParameters(
+      [{ type: 'tuple', components: RouteStruct }],
+      [route],
+    )
+  } else {
+    // Encode SVM route using Anchor's BorshAccountsCoder
+    const routeData = {
+      salt: route.salt,
+      deadline: route.deadline,
+      portal: route.portal,
+      tokens: route.tokens.map(token => ({
+        token: token.token,
+        amount: token.amount
+      })),
+      calls: route.calls.map(call => ({
+        target: call.target,
+        data: call.data,
+        value: call.value
+      }))
+    }
+    
+    return svmRewardCoder.encode('Route', routeData)
+  }
 }
 
 /**
@@ -180,10 +250,26 @@ export function decodeRoute(route: Hex): RouteType {
  * });
  */
 export function encodeReward(reward: RewardType) {
-  return encodeAbiParameters(
-    [{ type: 'tuple', components: RewardStruct }],
-    [reward],
-  )
+  if (reward.vm === VmType.EVM) {
+    return encodeAbiParameters(
+      [{ type: 'tuple', components: RewardStruct }],
+      [reward],
+    )
+  } else {
+    // Encode SVM reward using Anchor's BorshAccountsCoder
+    const rewardData = {
+      deadline: reward.deadline,
+      creator: reward.creator,
+      prover: reward.prover,
+      native_amount: reward.native_amount,
+      tokens: reward.tokens.map(token => ({
+        token: token.token,
+        amount: token.amount
+      }))
+    }
+    
+    return svmRewardCoder.encode('Reward', rewardData)
+  }
 }
 
 /**
