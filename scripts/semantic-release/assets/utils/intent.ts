@@ -304,7 +304,7 @@ export function hashReward(reward: RewardType): Hex {
  * });
  * console.log(`Intent hash: ${hashes.intentHash}`);
  */
-export function hashIntent(route: RouteType, reward: RewardType): {
+export function hashIntent(destination: bigint, route: RouteType, reward: RewardType): {
   routeHash: Hex
   rewardHash: Hex
   intentHash: Hex
@@ -313,7 +313,7 @@ export function hashIntent(route: RouteType, reward: RewardType): {
   const rewardHash = hashReward(reward)
 
   const intentHash = keccak256(
-    encodePacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
+    encodePacked(['uint64', 'bytes32', 'bytes32'], [destination, routeHash, rewardHash]),
   )
 
   return {
