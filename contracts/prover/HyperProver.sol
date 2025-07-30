@@ -91,15 +91,13 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Implementation of message dispatch for Hyperlane
      * @dev Called by base prove() function after common validations
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
@@ -110,8 +108,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // to reduce stack usage and improve code maintainability
         DispatchParams memory params = _formatHyperlaneMessage(
             sourceChainId,
-            intentHashes,
-            claimants,
+            encodedProofs,
             unpacked
         );
 
@@ -131,15 +128,13 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @notice Calculates the fee required for Hyperlane message dispatch
      * @dev Queries the Mailbox contract for accurate fee estimation
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
         // Decode structured data from the raw input
@@ -147,7 +142,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
 
         // Process fee calculation using the decoded struct
         // This architecture separates decoding from core business logic
-        return _fetchFee(sourceChainId, intentHashes, claimants, unpacked);
+        return _fetchFee(sourceChainId, encodedProofs, unpacked);
     }
 
     /**
@@ -168,22 +163,19 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     /**
      * @notice Internal function to calculate the fee with pre-decoded data
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param unpacked Struct containing decoded data from data parameter
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
         DispatchParams memory params = _formatHyperlaneMessage(
             sourceChainId,
-            intentHashes,
-            claimants,
+            encodedProofs,
             unpacked
         );
 
@@ -207,23 +199,22 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Formats data for Hyperlane message dispatch with pre-decoded values
+     * @notice Formats data for Hyperlane message dispatch with encoded proofs
      * @dev Prepares all parameters needed for the Mailbox dispatch call
      * @param sourceChainId Chain ID of the source chain
-     * @param hashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param unpacked Struct containing decoded data from data parameter
      * @return params Structured dispatch parameters for Hyperlane message
      */
     function _formatHyperlaneMessage(
         uint256 sourceChainId,
-        bytes32[] calldata hashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (DispatchParams memory params) {
-        // Centralized validation ensures arrays match exactly once in the call flow
-        // This prevents security issues where hashes and claimants could be mismatched
-        _validateArrayLengths(hashes, claimants);
+        // Validate that encodedProofs length is multiple of 64 bytes
+        if (encodedProofs.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
 
         // Convert chain ID to Hyperlane domain ID format
         // Validate the chain ID can fit in uint32 to prevent truncation issues
@@ -232,8 +223,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;
 
-        // Pack intent hashes and claimant addresses together as the message payload
-        params.messageBody = abi.encode(hashes, claimants);
+        // Pass encoded proofs directly as message body
+        params.messageBody = encodedProofs;
 
         // Pass through metadata as provided
         params.metadata = unpacked.metadata;

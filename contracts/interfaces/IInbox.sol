@@ -18,6 +18,20 @@ interface IInbox {
     event IntentFulfilled(bytes32 indexed hash, bytes32 indexed claimant);
 
     /**
+     * @notice Emitted when an intent is proven
+     * @dev Note that this event is emitted by both the Portal on the destination chain,
+     * and the Prover on the source chain.
+     * @param intentHash Hash of the proven intent
+     * @param claimant Cross-VM compatible claimant identifier
+     * @param source Source chain ID where the intent was created
+     */
+    event IntentProven(
+        bytes32 indexed intentHash,
+        bytes32 indexed claimant,
+        uint64 source
+    );
+
+    /**
      * @notice Thrown when an attempt is made to fulfill an intent on the wrong destination chain
      * @param chainID Chain ID of the destination chain on which this intent should be fulfilled
      */

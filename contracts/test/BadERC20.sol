@@ -6,6 +6,7 @@ import {TestERC20} from "./TestERC20.sol";
 
 contract BadERC20 is TestERC20 {
     error TransferNotAllowed();
+
     address private immutable GOD;
 
     constructor(

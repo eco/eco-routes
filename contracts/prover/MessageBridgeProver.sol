@@ -91,7 +91,7 @@ abstract contract MessageBridgeProver is
      * @dev Common implementation to validate and process cross-chain messages
      * @param sourceChainId Chain ID of the source chain
      * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
-     * @param message Encoded array of intent hashes and claimants
+     * @param message Encoded array of (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
         uint256 sourceChainId,
@@ -103,15 +103,9 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(messageSender);
         }
 
-        // Decode message containing intent hashes and claimants
-        (bytes32[] memory hashes, bytes32[] memory claimants) = abi.decode(
-            message,
-            (bytes32[], bytes32[])
-        );
-
-        // Process the intent proofs using shared implementation - array validation happens there
+        // Process the intent proofs directly from bytes data
         // The source chain ID becomes the destination chain ID in the proof
-        _processIntentProofs(hashes, claimants, sourceChainId);
+        _processIntentProofs(message, sourceChainId);
     }
 
     /**
@@ -119,22 +113,20 @@ abstract contract MessageBridgeProver is
      * @dev Handles fee calculation, validation, and message dispatch
      * @param sender Address that initiated the proving request
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      */
     function prove(
         address sender,
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) external payable virtual override {
         // Validate the request is from Portal
         _validateProvingRequest(msg.sender);
 
         // Calculate fee using implementation-specific logic
-        uint256 fee = fetchFee(sourceChainId, intentHashes, claimants, data);
+        uint256 fee = fetchFee(sourceChainId, encodedProofs, data);
 
         // Check if enough fee was provided
         if (msg.value < fee) {
@@ -147,10 +139,8 @@ abstract contract MessageBridgeProver is
             refundAmount = msg.value - fee;
         }
 
-        emit BatchSent(intentHashes, sourceChainId);
-
         // Dispatch message using implementation-specific logic
-        _dispatchMessage(sourceChainId, intentHashes, claimants, data, fee);
+        _dispatchMessage(sourceChainId, encodedProofs, data, fee);
 
         // Send refund if needed
         _sendRefund(sender, refundAmount);
@@ -188,15 +178,13 @@ abstract contract MessageBridgeProver is
      * @notice Abstract function to dispatch message via specific bridge
      * @dev Must be implemented by concrete provers (HyperProver, MetaProver)
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal virtual;
@@ -205,15 +193,13 @@ abstract contract MessageBridgeProver is
      * @notice Fetches fee required for message dispatch
      * @dev Must be implemented by concrete provers to calculate bridge-specific fees
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
-    ) public view virtual override returns (uint256);
+    ) public view virtual returns (uint256);
 }

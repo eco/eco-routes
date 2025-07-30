@@ -21,6 +21,34 @@ describe('LayerZeroProver Test', (): void => {
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
+  // Helper function to encode message body as (intentHash, claimant) pairs
+  function encodeMessageBody(
+    intentHashes: string[],
+    claimants: string[],
+  ): string {
+    const parts: string[] = []
+    for (let i = 0; i < intentHashes.length; i++) {
+      // If claimant is already 32 bytes (66 chars with 0x), use as is
+      // Otherwise, pad it
+      const claimantBytes =
+        claimants[i].length === 66
+          ? claimants[i]
+          : ethers.zeroPadValue(claimants[i], 32)
+      parts.push(intentHashes[i])
+      parts.push(claimantBytes)
+    }
+    return ethers.concat(parts)
+  }
+
+  // Helper function to prepare encoded proofs from fulfilled intents
+  function prepareEncodedProofs(
+    intentHashes: string[],
+    claimants: string[],
+  ): string {
+    // Claimants should already be addresses, just use them as is
+    return encodeMessageBody(intentHashes, claimants)
+  }
+
   // Mock LayerZero Endpoint contract reference
   let MockLayerZeroEndpoint: any
 
@@ -187,10 +215,7 @@ describe('LayerZeroProver Test', (): void => {
     it('should process a single intent proof correctly', async () => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [[intentHash], [ethers.zeroPadValue(claimantAddress, 32)]],
-      )
+      const msgBody = encodeMessageBody([intentHash], [claimantAddress])
 
       const origin = {
         srcEid: 12345,
@@ -208,7 +233,7 @@ describe('LayerZeroProver Test', (): void => {
         mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, claimantAddress, 12345)
 
       const proofDataAfter = await layerZeroProver.provenIntents(intentHash)
       expect(proofDataAfter.claimant).to.eq(claimantAddress)
@@ -220,15 +245,9 @@ describe('LayerZeroProver Test', (): void => {
       const claimantAddress = await claimant.getAddress()
       const otherAddress = await solver.getAddress()
 
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [
-          [intentHash, otherHash],
-          [
-            ethers.zeroPadValue(claimantAddress, 32),
-            ethers.zeroPadValue(otherAddress, 32),
-          ],
-        ],
+      const msgBody = encodeMessageBody(
+        [intentHash, otherHash],
+        [claimantAddress, otherAddress],
       )
 
       const origin = {
@@ -244,9 +263,9 @@ describe('LayerZeroProver Test', (): void => {
         mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress)
+        .withArgs(intentHash, claimantAddress, 12345)
         .to.emit(layerZeroProver, 'IntentProven')
-        .withArgs(otherHash, otherAddress)
+        .withArgs(otherHash, otherAddress, 12345)
 
       const proofData1 = await layerZeroProver.provenIntents(intentHash)
       expect(proofData1.claimant).to.eq(claimantAddress)
@@ -257,10 +276,7 @@ describe('LayerZeroProver Test', (): void => {
     it('should emit event when intent is already proven', async () => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [[intentHash], [ethers.zeroPadValue(claimantAddress, 32)]],
-      )
+      const msgBody = encodeMessageBody([intentHash], [claimantAddress])
 
       const origin = {
         srcEid: 12345,
@@ -285,10 +301,7 @@ describe('LayerZeroProver Test', (): void => {
     it('should reject messages from unauthorized senders', async () => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [[intentHash], [ethers.zeroPadValue(claimantAddress, 32)]],
-      )
+      const msgBody = encodeMessageBody([intentHash], [claimantAddress])
 
       const origin = {
         srcEid: 12345,
@@ -395,10 +408,10 @@ describe('LayerZeroProver Test', (): void => {
         [ethers.zeroPadValue(sourceChainProver, 32), metadata],
       )
 
+      const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
       const fee = await layerZeroProver.fetchFee(
         sourceChainId,
-        intentHashes,
-        claimants,
+        encodedProofs,
         data,
       )
 
@@ -422,10 +435,11 @@ describe('LayerZeroProver Test', (): void => {
         [ethers.zeroPadValue(sourceChainProver, 32), '0x'],
       )
 
+      const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
       await expect(
         layerZeroProver
           .connect(solver)
-          .prove(owner.address, 123, intentHashes, claimants, data),
+          .prove(owner.address, 123, encodedProofs, data),
       ).to.be.revertedWithCustomError(layerZeroProver, 'UnauthorizedProve')
     })
 
@@ -503,10 +517,10 @@ describe('LayerZeroProver Test', (): void => {
         [ethers.zeroPadValue(sourceChainProver, 32), metadata],
       )
 
+      const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
       const fee = await layerZeroProver.fetchFee(
         sourceChainId,
-        intentHashes,
-        claimants,
+        encodedProofs,
         data,
       )
 
@@ -537,10 +551,10 @@ describe('LayerZeroProver Test', (): void => {
         [ethers.zeroPadValue(sourceChainProver, 32), metadata],
       )
 
+      const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
       const fee = await layerZeroProver.fetchFee(
         sourceChainId,
-        intentHashes,
-        claimants,
+        encodedProofs,
         data,
       )
 
@@ -570,10 +584,10 @@ describe('LayerZeroProver Test', (): void => {
         [ethers.zeroPadValue(sourceChainProver, 32), metadata],
       )
 
+      const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
       const fee = await layerZeroProver.fetchFee(
         sourceChainId,
-        intentHashes,
-        claimants,
+        encodedProofs,
         data,
       )
 
@@ -600,13 +614,14 @@ describe('LayerZeroProver Test', (): void => {
         ethers.toUtf8Bytes('non-evm-claimant-identifier'),
       )
 
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [
-          [intentHash1, intentHash2],
-          [validClaimant, nonAddressClaimant],
-        ],
-      )
+      // Create message with both valid and invalid claimants
+      // We need to use the raw bytes for the non-address claimant
+      const msgBody = ethers.concat([
+        intentHash1, // 32 bytes
+        validClaimant, // 32 bytes
+        intentHash2, // 32 bytes
+        nonAddressClaimant, // 32 bytes - Non-EVM address
+      ])
 
       const origin = {
         srcEid: 12345,
@@ -710,10 +725,10 @@ describe('LayerZeroProver Test', (): void => {
       const proofDataBefore = await layerZeroProver.provenIntents(intentHash)
       expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
 
+      // Get fee for fulfillment - Inbox will encode the proofs
       const fee = await layerZeroProver.fetchFee(
         sourceChainID,
-        [intentHash],
-        [ethers.zeroPadValue(await claimant.getAddress(), 32)],
+        '0x', // Empty encoded proofs - Inbox will populate this
         data,
       )
 
@@ -731,9 +746,9 @@ describe('LayerZeroProver Test', (): void => {
         )
 
       // Simulate the LayerZero message being received
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [[intentHash], [ethers.zeroPadValue(await claimant.getAddress(), 32)]],
+      const msgBody = encodeMessageBody(
+        [intentHash],
+        [await claimant.getAddress()],
       )
 
       const origin = {
@@ -894,25 +909,15 @@ describe('LayerZeroProver Test', (): void => {
       expect(proofDataBeforeBatch.claimant).to.eq(ethers.ZeroAddress)
 
       // Prepare message body for batch
-      const msgBody = abiCoder.encode(
-        ['bytes32[]', 'bytes32[]'],
-        [
-          [intentHash0, intentHash1],
-          [
-            ethers.zeroPadValue(await claimant.getAddress(), 32),
-            ethers.zeroPadValue(await claimant.getAddress(), 32),
-          ],
-        ],
+      const msgBody = encodeMessageBody(
+        [intentHash0, intentHash1],
+        [await claimant.getAddress(), await claimant.getAddress()],
       )
 
-      // Get fee for batch
+      // Get fee for batch - Inbox will encode the proofs
       const batchFee = await layerZeroProver.fetchFee(
         sourceChainID,
-        [intentHash0, intentHash1],
-        [
-          ethers.zeroPadValue(await claimant.getAddress(), 32),
-          ethers.zeroPadValue(await claimant.getAddress(), 32),
-        ],
+        '0x', // Empty encoded proofs - Inbox will populate this
         data,
       )
 
@@ -1014,7 +1019,7 @@ describe('LayerZeroProver Test', (): void => {
         prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
         .to.emit(prover, 'IntentProven')
-        .withArgs(intentHash, ethers.ZeroAddress)
+        .withArgs(intentHash, ethers.ZeroAddress, wrongChainId)
 
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)

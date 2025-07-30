@@ -64,17 +64,9 @@ interface IMessageBridgeProver is IProver {
     error SenderCannotBeZeroAddress();
 
     /**
-     * @notice Emitted when a batch of fulfilled intents is sent to be relayed to the source chain
-     * @param hashes Intent hashes sent in the batch
-     * @param sourceChainID ID of the source chain
-     */
-    event BatchSent(bytes32[] indexed hashes, uint256 indexed sourceChainID);
-
-    /**
      * @notice Calculates the fee required for message dispatch
      * @param sourceChainID Chain ID of source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting.
      *        Specific format varies by implementation:
      *        - HyperProver: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
@@ -84,8 +76,7 @@ interface IMessageBridgeProver is IProver {
      */
     function fetchFee(
         uint256 sourceChainID,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) external view returns (uint256);
 }

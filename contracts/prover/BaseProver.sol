@@ -47,33 +47,37 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Process intent proofs from a cross-chain message
-     * @param hashes Array of intent hashes
-     * @param claimants Array of claimant addresses
+     * @param data Encoded (intentHash, claimant) pairs
      * @param destination Chain ID where the intent is being proven
      */
     function _processIntentProofs(
-        bytes32[] memory hashes,
-        bytes32[] memory claimants,
+        bytes calldata data,
         uint256 destination
     ) internal {
-        // If arrays are empty, just return early
-        if (hashes.length == 0) return;
+        // If data is empty, just return early
+        if (data.length == 0) return;
 
-        // Require matching array lengths for security
-        if (hashes.length != claimants.length) {
+        // Ensure data length is multiple of 64 bytes (32 for hash + 32 for claimant)
+        if (data.length % 64 != 0) {
             revert ArrayLengthMismatch();
         }
 
-        for (uint256 i = 0; i < hashes.length; i++) {
-            bytes32 intentHash = hashes[i];
+        uint256 numPairs = data.length / 64;
+
+        for (uint256 i = 0; i < numPairs; i++) {
+            uint256 offset = i * 64;
+
+            // Extract intentHash and claimant using slice
+            bytes32 intentHash = bytes32(data[offset:offset + 32]);
+            bytes32 claimantBytes = bytes32(data[offset + 32:offset + 64]);
 
             // Check if the claimant bytes32 represents a valid Ethereum address
-            if (!claimants[i].isValidAddress()) {
+            if (!claimantBytes.isValidAddress()) {
                 // Skip non-EVM addresses that can't be converted
                 continue;
             }
 
-            address claimant = claimants[i].toAddress();
+            address claimant = claimantBytes.toAddress();
 
             // Validate claimant is not zero address
             if (claimant == address(0)) {
@@ -88,7 +92,7 @@ abstract contract BaseProver is IProver, ERC165 {
                     claimant: claimant,
                     destination: uint64(destination)
                 });
-                emit IntentProven(intentHash, claimant);
+                emit IntentProven(intentHash, claimant, uint64(destination));
             }
         }
     }
@@ -115,7 +119,7 @@ abstract contract BaseProver is IProver, ERC165 {
         // Only challenge if proof exists and destination chain ID doesn't match
         if (proof.claimant != address(0) && proof.destination != destination) {
             delete _provenIntents[intentHash];
-            emit IntentProven(intentHash, address(0)); // Emit with zero address to indicate removal
+            emit IntentProven(intentHash, address(0), proof.destination); // Emit removal of proof
         }
     }
 

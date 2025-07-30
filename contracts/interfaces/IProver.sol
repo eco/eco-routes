@@ -27,10 +27,16 @@ interface IProver is ISemver {
 
     /**
      * @notice Emitted when an intent is successfully proven
-     * @param hash Hash of the proven intent
-     * @param claimant Address eligible to claim the intent's rewards
+     * @dev Emitted by the Prover on the source chain.
+     * @param intentHash Hash of the proven intent
+     * @param claimant Address eligible to claim the intent rewards
+     * @param destination Destination chain ID where the intent was proven
      */
-    event IntentProven(bytes32 indexed hash, address indexed claimant);
+    event IntentProven(
+        bytes32 indexed intentHash,
+        address indexed claimant,
+        uint64 destination
+    );
 
     /**
      * @notice Emitted when attempting to prove an already-proven intent
@@ -50,15 +56,13 @@ interface IProver is ISemver {
      * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
      * @param sender Address of the original transaction sender
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data specific to the proving implementation
      */
     function prove(
         address sender,
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) external payable;
 

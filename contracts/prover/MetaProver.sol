@@ -79,15 +79,13 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @notice Implementation of message dispatch for Metalayer
      * @dev Called by base prove() function after common validations
      * @param sourceChainId Chain ID of the source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
         uint256 sourceChainId,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
@@ -114,8 +112,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             bytes memory message
         ) = _formatMetalayerMessage(
                 sourceChainId,
-                intentHashes,
-                claimants,
+                encodedProofs,
                 sourceChainProver
             );
 
@@ -134,42 +131,32 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @notice Fetches fee required for message dispatch
      * @dev Queries Metalayer router for fee information
      * @param sourceChainID Chain ID of source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
         uint256 sourceChainID,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
         // Decode source chain prover once at the entry point
         bytes32 sourceChainProver = abi.decode(data, (bytes32));
 
         // Delegate to internal function with pre-decoded value
-        return
-            _fetchFee(
-                sourceChainID,
-                intentHashes,
-                claimants,
-                sourceChainProver
-            );
+        return _fetchFee(sourceChainID, encodedProofs, sourceChainProver);
     }
 
     /**
      * @notice Internal function to calculate fee with pre-decoded data
      * @param sourceChainID Chain ID of source chain
-     * @param intentHashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility) (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param sourceChainProver Pre-decoded prover address on source chain
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
         uint256 sourceChainID,
-        bytes32[] calldata intentHashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes32 sourceChainProver
     ) internal view returns (uint256) {
         (
@@ -178,8 +165,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             bytes memory message
         ) = _formatMetalayerMessage(
                 sourceChainID,
-                intentHashes,
-                claimants,
+                encodedProofs,
                 sourceChainProver
             );
 
@@ -200,10 +186,9 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Formats data for Metalayer message dispatch with pre-decoded values
+     * @notice Formats data for Metalayer message dispatch with encoded proofs
      * @param sourceChainID Chain ID of the source chain
-     * @param hashes Array of intent hashes to prove
-     * @param claimants Array of claimant addresses (as bytes32 for cross-chain compatibility)
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param sourceChainProver Pre-decoded prover address on source chain
      * @return domain Metalayer domain ID
      * @return recipient Recipient address encoded as bytes32
@@ -211,16 +196,17 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     function _formatMetalayerMessage(
         uint256 sourceChainID,
-        bytes32[] calldata hashes,
-        bytes32[] calldata claimants,
+        bytes calldata encodedProofs,
         bytes32 sourceChainProver
     )
         internal
         pure
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
-        // Centralized validation ensures arrays match exactly once in the call flow
-        _validateArrayLengths(hashes, claimants);
+        // Validate that encodedProofs length is multiple of 64 bytes
+        if (encodedProofs.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
 
         // Convert and validate chain ID to domain
         domain = _validateChainId(sourceChainID);
@@ -228,7 +214,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Use pre-decoded source chain prover address as recipient
         recipient = sourceChainProver;
 
-        // Pack intent hashes and claimant addresses together as message payload
-        message = abi.encode(hashes, claimants);
+        // Pass encoded proofs directly as message
+        message = encodedProofs;
     }
 }
