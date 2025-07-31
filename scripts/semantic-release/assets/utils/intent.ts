@@ -27,12 +27,11 @@ import {
 import { extractAbiStruct } from './utils'
 import { PortalAbi } from '../abi'
 import { PublicKey as SvmAddress } from '@solana/web3.js'
-import { BorshAccountsCoder, IdlTypes } from '@coral-xyz/anchor'
+import { BorshCoder, type Idl } from '@coral-xyz/anchor'
+import { Portal } from '../../../../target/types/portal'
 import portalIdl from '../../../../target/idl/portal.json'
 
 export type Address = EvmAddress | SvmAddress;
-
-type PortalIdl = typeof portalIdl
 
 /**
  * VM Type enumeration for different virtual machine types
@@ -45,7 +44,7 @@ export enum VmType {
 /**
  * Coder instance for SVM reward serialization using portal IDL
  */
-const svmRewardCoder = new BorshAccountsCoder(portalIdl as any)
+const svmCoder = new BorshCoder(portalIdl as Idl)
 
 /**
  * Extracts the functions from an ABI
@@ -203,7 +202,7 @@ export function encodeRoute(route: RouteType) {
   } else {
     // using anchor's BorshAccountsCoder
     const { salt, deadline, portal, tokens, calls } = route
-    return svmRewardCoder.encode('Route', {
+    return svmCoder.types.encode('route', {
       salt,
       deadline,
       portal,
@@ -250,22 +249,24 @@ export function decodeRoute(route: Hex): RouteType {
  *   recipient: '0x9876...'
  * });
  */
-export function encodeReward(reward: RewardType) {
+export function encodeReward(reward: RewardType): Hex {
   if (reward.vm === VmType.EVM) {
     return encodeAbiParameters(
       [{ type: 'tuple', components: RewardStruct }],
       [reward],
     )
   } else {
-    // using anchor's BorshAccountsCoder
-    const { deadline, creator, prover, nativeAmount: native_amount, tokens } = reward
-    return svmRewardCoder.encode('Reward', {
+    // using anchor's BorshCoder for synchronous encoding
+    const { deadline, creator, prover, nativeAmount, tokens } = reward
+    const encoded = svmCoder.types.encode('reward', {
       deadline,
       creator, 
       prover,
-      native_amount,
+      nativeAmount,
       tokens: tokens.map(({ token, amount }) => ({ token, amount }))
     })
+    console.log('SVM encoded', encoded)
+    return `0x${encoded.toString('hex')}` as Hex
   }
 }
 
