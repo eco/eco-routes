@@ -159,7 +159,7 @@ export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
   creator: TAddress
   prover: TAddress
   deadline: bigint
-  native_amount: bigint
+  nativeAmount: bigint
   tokens: readonly {
     token: TAddress
     amount: bigint
@@ -201,23 +201,15 @@ export function encodeRoute(route: RouteType) {
       [route],
     )
   } else {
-    // Encode SVM route using Anchor's BorshAccountsCoder
-    const routeData = {
-      salt: route.salt,
-      deadline: route.deadline,
-      portal: route.portal,
-      tokens: route.tokens.map(token => ({
-        token: token.token,
-        amount: token.amount
-      })),
-      calls: route.calls.map(call => ({
-        target: call.target,
-        data: call.data,
-        value: call.value
-      }))
-    }
-    
-    return svmRewardCoder.encode('Route', routeData)
+    // using anchor's BorshAccountsCoder
+    const { salt, deadline, portal, tokens, calls } = route
+    return svmRewardCoder.encode('Route', {
+      salt,
+      deadline,
+      portal,
+      tokens: tokens.map(({ token, amount }) => ({ token, amount })),
+      calls: calls.map(({ target, data, value }) => ({ target, data, value }))
+    })
   }
 }
 
@@ -265,19 +257,15 @@ export function encodeReward(reward: RewardType) {
       [reward],
     )
   } else {
-    // Encode SVM reward using Anchor's BorshAccountsCoder
-    const rewardData = {
-      deadline: reward.deadline,
-      creator: reward.creator,
-      prover: reward.prover,
-      native_amount: reward.native_amount,
-      tokens: reward.tokens.map(token => ({
-        token: token.token,
-        amount: token.amount
-      }))
-    }
-    
-    return svmRewardCoder.encode('Reward', rewardData)
+    // using anchor's BorshAccountsCoder
+    const { deadline, creator, prover, nativeAmount: native_amount, tokens } = reward
+    return svmRewardCoder.encode('Reward', {
+      deadline,
+      creator, 
+      prover,
+      native_amount,
+      tokens: tokens.map(({ token, amount }) => ({ token, amount }))
+    })
   }
 }
 
