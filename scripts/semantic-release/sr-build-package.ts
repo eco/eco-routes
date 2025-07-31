@@ -434,7 +434,7 @@ export function getContractAddress<T extends EcoChainIdsEnv>(
 /**
  * The multi-chain address type for the eco protocol.
  */
-export type EcoAddress = EvmAddress | SvmAddress;
+export type Address = EvmAddress | SvmAddress;
 `
 
   // Create index.ts
