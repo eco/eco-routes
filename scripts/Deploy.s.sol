@@ -38,6 +38,7 @@ contract Deploy is Script {
         address mailbox;
         address router;
         address layerZeroEndpoint;
+        address layerZeroDelegate;
         string deployFilePath;
         bytes32[] crossVmProvers;
         address deployer;
@@ -61,6 +62,7 @@ contract Deploy is Script {
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
+        ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
 
         // Load cross-VM provers from environment variable (optional)
         try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
@@ -280,6 +282,7 @@ contract Deploy is Script {
 
         ctx.layerZeroProverConstructorArgs = abi.encode(
             ctx.layerZeroEndpoint,
+            ctx.layerZeroDelegate,
             ctx.portal,
             provers,
             defaultGasLimit

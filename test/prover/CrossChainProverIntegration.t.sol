@@ -70,6 +70,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
         lzProvers[0] = bytes32(uint256(uint160(address(prover))));
         layerZeroProver = new LayerZeroProver(
             address(lzEndpoint),
+            address(this), // delegate
             address(portal),
             lzProvers,
             200000

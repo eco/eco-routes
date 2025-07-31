@@ -129,6 +129,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
@@ -146,6 +147,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [
           ethers.zeroPadValue(additionalProver, 32),
@@ -171,6 +173,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
@@ -183,6 +186,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
@@ -203,6 +207,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [
           ethers.zeroPadValue(await inbox.getAddress(), 32),
@@ -328,6 +333,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
@@ -601,6 +607,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
@@ -649,6 +656,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
@@ -771,6 +779,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
@@ -1080,6 +1089,7 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
+        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,

@@ -97,6 +97,7 @@ contract LayerZeroProverTest is BaseTest {
 
         lzProver = new LayerZeroProver(
             address(endpoint),
+            address(this), // delegate
             address(portal),
             trustedProvers,
             200000
@@ -202,6 +203,7 @@ contract LayerZeroProverTest is BaseTest {
         vm.expectRevert(LayerZeroProver.EndpointCannotBeZeroAddress.selector);
         new LayerZeroProver(
             address(0),
+            address(this), // delegate
             address(portal),
             trustedProvers,
             200000
@@ -219,22 +221,23 @@ contract LayerZeroProverTest is BaseTest {
         lzProver.lzReceive(origin, bytes32(0), "", address(0), "");
     }
 
-    function test_lzReceive_revertInvalidExecutor() public {
-        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
-            srcEid: uint32(SOURCE_CHAIN_ID),
-            sender: SOURCE_PROVER,
-            nonce: 1
-        });
+    // Test removed as executor validation was commented out in the contract
+    // function test_lzReceive_revertInvalidExecutor() public {
+    //     ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+    //         srcEid: uint32(SOURCE_CHAIN_ID),
+    //         sender: SOURCE_PROVER,
+    //         nonce: 1
+    //     });
 
-        vm.prank(address(endpoint));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                LayerZeroProver.InvalidExecutor.selector,
-                address(this)
-            )
-        );
-        lzProver.lzReceive(origin, bytes32(0), "", address(this), "");
-    }
+    //     vm.prank(address(endpoint));
+    //     vm.expectRevert(
+    //         abi.encodeWithSelector(
+    //             LayerZeroProver.InvalidExecutor.selector,
+    //             address(this)
+    //         )
+    //     );
+    //     lzProver.lzReceive(origin, bytes32(0), "", address(this), "");
+    // }
 
     function test_prove_withCustomGasLimit() public {
         bytes32[] memory intentHashes = new bytes32[](1);
