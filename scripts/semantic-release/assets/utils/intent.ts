@@ -28,7 +28,6 @@ import { extractAbiStruct } from './utils'
 import { PortalAbi } from '../abi'
 import { PublicKey as SvmAddress } from '@solana/web3.js'
 import { BorshCoder, type Idl } from '@coral-xyz/anchor'
-import { Portal } from '../../../../target/types/portal'
 import portalIdl from '../../../../target/idl/portal.json'
 
 export type Address = EvmAddress | SvmAddress;
@@ -194,21 +193,25 @@ export type SvmRewardType = RewardType<SvmAddress, VmType.SVM>
  * });
  */
 export function encodeRoute(route: RouteType) {
-  if (route.vm === VmType.EVM) {
-    return encodeAbiParameters(
-      [{ type: 'tuple', components: RouteStruct }],
-      [route],
-    )
-  } else {
-    // using anchor's BorshAccountsCoder
-    const { salt, deadline, portal, tokens, calls } = route
-    return svmCoder.types.encode('route', {
-      salt,
-      deadline,
-      portal,
-      tokens: tokens.map(({ token, amount }) => ({ token, amount })),
-      calls: calls.map(({ target, data, value }) => ({ target, data, value }))
-    })
+  switch (route.vm) {
+    case VmType.EVM:
+      return encodeAbiParameters(
+        [{ type: 'tuple', components: RouteStruct }],
+        [route],
+      )
+    case VmType.SVM:
+      // using anchor's BorshCoder
+      const { salt, deadline, portal, tokens, calls } = route
+      const encoded = svmCoder.types.encode('route', {
+        salt,
+        deadline,
+        portal,
+        tokens: tokens.map(({ token, amount }) => ({ token, amount })),
+        calls: calls.map(({ target, data, value }) => ({ target, data, value }))
+      })
+      return `0x${encoded.toString('hex')}` as Hex
+    default:
+      throw new Error(`Unsupported VM type: ${route.vm}`)
   }
 }
 
@@ -250,23 +253,26 @@ export function decodeRoute(route: Hex): RouteType {
  * });
  */
 export function encodeReward(reward: RewardType): Hex {
-  if (reward.vm === VmType.EVM) {
-    return encodeAbiParameters(
-      [{ type: 'tuple', components: RewardStruct }],
-      [reward],
-    )
-  } else {
-    // using anchor's BorshCoder for synchronous encoding
-    const { deadline, creator, prover, nativeAmount, tokens } = reward
-    const encoded = svmCoder.types.encode('reward', {
-      deadline,
-      creator, 
-      prover,
-      nativeAmount,
-      tokens: tokens.map(({ token, amount }) => ({ token, amount }))
-    })
-    console.log('SVM encoded', encoded)
-    return `0x${encoded.toString('hex')}` as Hex
+  switch (reward.vm) {
+    case VmType.EVM:
+      return encodeAbiParameters(
+        [{ type: 'tuple', components: RewardStruct }],
+        [reward],
+      )
+    case VmType.SVM:
+      // using anchor's BorshCoder for synchronous encoding
+      const { deadline, creator, prover, nativeAmount, tokens } = reward
+      const encoded = svmCoder.types.encode('reward', {
+        deadline,
+        creator, 
+        prover,
+        nativeAmount,
+        tokens: tokens.map(({ token, amount }) => ({ token, amount }))
+      })
+      console.log('SVM encoded', encoded)
+      return `0x${encoded.toString('hex')}` as Hex
+    default:
+      throw new Error(`Unsupported VM type: ${reward.vm}`)
   }
 }
 
