@@ -10,6 +10,7 @@ import {ILayerZeroReceiver} from "../interfaces/layerzero/ILayerZeroReceiver.sol
 contract MockLayerZeroEndpoint {
     uint256 public constant FEE = 0.001 ether;
     bool public dispatched;
+    mapping(address => address) public delegates;
 
     function send(
         ILayerZeroEndpointV2.MessagingParams calldata params,
@@ -41,6 +42,10 @@ contract MockLayerZeroEndpoint {
     ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
             ILayerZeroEndpointV2.MessagingFee({nativeFee: FEE, lzTokenFee: 0});
+    }
+
+    function setDelegate(address delegate) external {
+        delegates[msg.sender] = delegate;
     }
 }
 

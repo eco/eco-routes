@@ -50,6 +50,11 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     error EndpointCannotBeZeroAddress();
 
     /**
+     * @notice LayerZero endpoint address cannot be zero
+     */
+    error DelegateCannotBeZeroAddress();
+
+    /**
      * @notice Invalid executor address
      * @param executor The invalid executor address
      */
@@ -63,35 +68,41 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     constructor(
         address endpoint,
+        address delegate,
         address portal,
         bytes32[] memory provers,
         uint256 defaultGasLimit
     ) MessageBridgeProver(portal, provers, defaultGasLimit) {
         if (endpoint == address(0)) revert EndpointCannotBeZeroAddress();
+        if (delegate == address(0)) revert DelegateCannotBeZeroAddress();
+
+        // Store the LayerZero endpoint address for future reference
         ENDPOINT = endpoint;
+
+        // Set the delegate address on the LayerZero endpoint
+        // The delegate is authorized to configure LayerZero settings on behalf of this contract
+        // This includes setting configs, managing paths, and other administrative functions
+        ILayerZeroEndpointV2(endpoint).setDelegate(delegate);
     }
 
     /**
      * @notice Handles incoming LayerZero messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
      * @param origin Origin information containing source endpoint and sender
+     * param guid Unique identifier for the message (not used here)
      * @param message Encoded array of intent hashes and claimants
-     * @param executor Address of the executor (should be endpoint or zero)
+     * param executor Address of the executor (should be endpoint or zero)
+     * param extraData Additional data for message processing (not used here)
      */
     function lzReceive(
         Origin calldata origin,
         bytes32 /* guid */,
         bytes calldata message,
-        address executor,
+        address /* executor */,
         bytes calldata /* extraData */
     ) external payable override {
         // Verify message is from authorized endpoint
         _validateMessageSender(msg.sender, ENDPOINT);
-
-        // Verify executor is valid (either endpoint or zero address)
-        if (executor != address(0) && executor != ENDPOINT) {
-            revert InvalidExecutor(executor);
-        }
 
         // Use endpoint ID directly as chain ID
         uint256 originChainId = uint256(origin.srcEid);
