@@ -2,16 +2,17 @@
 pragma solidity ^0.8.26;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
+import {IExecutor} from "./interfaces/IExecutor.sol";
 
 import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
+import {Executor} from "./Executor.sol";
 
 /**
  * @title Inbox
@@ -23,21 +24,20 @@ abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
 
     /**
-     * @notice Interface ID for IProver used to detect prover contracts
-     */
-    bytes4 public constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
-
-    /**
      * @notice Mapping of intent hashes to their claimant identifiers
      * @dev Stores the cross-VM compatible claimant identifier for each fulfilled intent
      */
     mapping(bytes32 => bytes32) public fulfilled;
 
+    IExecutor public executor;
+
     /**
      * @notice Initializes the Inbox contract
      * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
-    constructor() {}
+    constructor() {
+        executor = new Executor();
+    }
 
     /**
      * @notice Fulfills an intent to be proven via storage proofs
@@ -200,52 +200,30 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         emit IntentFulfilled(intentHash, claimant);
 
+        // Transfer ERC20 tokens to the executor
         uint256 tokensLength = route.tokens.length;
-        // Transfer ERC20 tokens to the portal
+
         for (uint256 i = 0; i < tokensLength; ++i) {
-            TokenAmount memory approval = route.tokens[i];
-            IERC20(approval.token).safeTransferFrom(
+            TokenAmount memory token = route.tokens[i];
+
+            IERC20(token.token).safeTransferFrom(
                 msg.sender,
-                address(this),
-                approval.amount
+                address(executor),
+                token.amount
             );
         }
 
+        uint256 callsLength = route.calls.length;
         // Store the results of the calls
-        bytes[] memory results = new bytes[](route.calls.length);
+        bytes[] memory results = new bytes[](callsLength);
 
-        for (uint256 i = 0; i < route.calls.length; ++i) {
+        for (uint256 i = 0; i < callsLength; ++i) {
             Call memory call = route.calls[i];
-            address target = call.target;
-            if (target.code.length == 0) {
-                if (call.data.length > 0) {
-                    // no code at this address
-                    revert CallToEOA(target);
-                }
-            } else {
-                try
-                    IERC165(target).supportsInterface(IPROVER_INTERFACE_ID)
-                returns (bool isProverCall) {
-                    if (isProverCall) {
-                        // call to prover
-                        revert CallToProver();
-                    }
-                } catch {
-                    // If target doesn't support ERC-165, continue.
-                }
-            }
 
-            (bool success, bytes memory result) = target.call{
-                value: call.value
-            }(call.data);
-
-            if (!success) {
-                revert IntentCallFailed(target, call.data, call.value, result);
-            }
-
-            results[i] = result;
+            results[i] = executor.execute{value: call.value}(call);
         }
-        return (results);
+
+        return results;
     }
 
     /**
