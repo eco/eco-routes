@@ -345,12 +345,12 @@ describe('HyperProver Test', (): void => {
       const sourceChainProver = await hyperProver.getAddress()
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
-        ],
+        ]],
       )
 
       // Before sendProof, make sure the mailbox hasn't been called
@@ -377,8 +377,8 @@ describe('HyperProver Test', (): void => {
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await solver.getAddress()
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [ethers.zeroPadValue(sourceChainProver, 32), '0x', ethers.ZeroAddress],
+        ['tuple(bytes32,bytes,address)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), '0x', ethers.ZeroAddress]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -467,12 +467,12 @@ describe('HyperProver Test', (): void => {
       const sourceChainProver = await inbox.getAddress() // Use inbox as the source chain prover
       const metadata = '0x' // Use empty metadata for now
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           await mailbox.getAddress(), // Use mailbox as a valid hook address
-        ],
+        ]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -579,12 +579,12 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const customHookAddress = await solver.getAddress() // Use solver as custom hook for testing
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           customHookAddress,
-        ],
+        ]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -618,12 +618,12 @@ describe('HyperProver Test', (): void => {
       const sourceChainProver = await inbox.getAddress() // Use inbox as authorized prover
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(sourceChainProver, 32),
           metadata,
           ethers.ZeroAddress,
-        ],
+        ]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -658,8 +658,8 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const hookAddress = ethers.ZeroAddress
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [ethers.zeroPadValue(sourceChainProver, 32), metadata, hookAddress],
+        ['tuple(bytes32,bytes,address)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), metadata, hookAddress]],
       )
 
       // Call fetchFee which uses processAndFormat internally
@@ -697,8 +697,8 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x'
       const hookAddr = await owner.getAddress()
       const data = abiCoder.encode(
-        ['bytes32', 'bytes', 'address'],
-        [sourceChainProver, metadata, hookAddr],
+        ['tuple(bytes32,bytes,address)'],
+        [[sourceChainProver, metadata, hookAddr]],
       )
 
       // Verify fee calculation which is used during dispatch
@@ -726,8 +726,8 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x'
       const hookAddr = await owner.getAddress()
       const data = abiCoder.encode(
-        ['bytes32', 'bytes', 'address'],
-        [sourceChainProver, metadata, hookAddr],
+        ['tuple(bytes32,bytes,address)'],
+        [[sourceChainProver, metadata, hookAddr]],
       )
 
       // Verify consistent fee calculation
@@ -881,12 +881,12 @@ describe('HyperProver Test', (): void => {
       // Prepare message data
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
           metadata,
           ethers.ZeroAddress,
-        ],
+        ]],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1009,12 +1009,12 @@ describe('HyperProver Test', (): void => {
       // Prepare message data
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
           metadata,
           ethers.ZeroAddress,
-        ],
+        ]],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1118,12 +1118,12 @@ describe('HyperProver Test', (): void => {
       const timeStamp = (await time.latest()) + 1000
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['bytes32', 'bytes', 'address'],
-        [
+        ['tuple(bytes32,bytes,address)'],
+        [[
           ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
           metadata,
           ethers.ZeroAddress,
-        ],
+        ]],
       )
 
       // Create first intent
