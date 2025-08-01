@@ -15,6 +15,7 @@
  */
 
 import {
+  Address as EvmAddress,
   Abi,
   ContractFunctionArgs,
   decodeAbiParameters,
@@ -25,6 +26,25 @@ import {
 } from 'viem'
 import { extractAbiStruct } from './utils'
 import { IntentSourceAbi } from '../abi'
+import { PublicKey as SvmAddress } from '@solana/web3.js'
+import { BorshCoder, type Idl } from '@coral-xyz/anchor'
+import portalIdl from '../../../../target/idl/portal.json'
+
+export type Address = EvmAddress | SvmAddress;
+
+/**
+ * VM Type enumeration for different virtual machine types
+ */
+export enum VmType {
+  EVM = 'EVM',
+  SVM = 'SVM',
+}
+
+/**
+ * Coder instance for SVM reward serialization using portal IDL
+ */
+const svmCoder = new BorshCoder(portalIdl as Idl)
+
 
 /**
  * Extracts the functions from an ABI
@@ -102,14 +122,58 @@ export type IntentType = ContractFunctionArgs<
 >[number]
 
 /**
- * Define the type for the Route struct in IntentSource
+ * Generic Route type that works with both EVM and SVM addresses
  */
-export type RouteType = IntentType['route']
+export type RouteType<TAddress = Address, TVM extends VmType = VmType> = {
+  vm: TVM
+  salt: Hex
+  deadline: bigint
+  portal: TAddress
+  tokens: readonly {
+    token: TAddress
+    amount: bigint
+  }[]
+  calls: readonly {
+    target: TAddress
+    data: Hex
+    value: bigint
+  }[]
+}
 
 /**
- * Define the type for the Reward struct in IntentSource
+ * EVM-specific route type
  */
-export type RewardType = IntentType['reward']
+export type EvmRouteType = RouteType<EvmAddress, VmType.EVM>
+
+/**
+ * SVM-specific route type
+ */
+export type SvmRouteType = RouteType<SvmAddress, VmType.SVM>
+
+/**
+ * Generic Reward type that works with both EVM and SVM addresses
+ */
+export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
+  vm: TVM
+  creator: TAddress
+  prover: TAddress
+  deadline: bigint
+  nativeAmount: bigint
+  tokens: readonly {
+    token: TAddress
+    amount: bigint
+  }[]
+}
+
+/**
+ * EVM-specific reward type
+ */
+export type EvmRewardType = RewardType<EvmAddress, VmType.EVM>
+
+/**
+ * SVM-specific reward type  
+ */
+export type SvmRewardType = RewardType<SvmAddress, VmType.SVM>
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -130,10 +194,26 @@ export type RewardType = IntentType['reward']
  * });
  */
 export function encodeRoute(route: RouteType) {
-  return encodeAbiParameters(
-    [{ type: 'tuple', components: RouteStruct }],
-    [route],
-  )
+  switch (route.vm) {
+    case VmType.EVM:
+      return encodeAbiParameters(
+        [{ type: 'tuple', components: RouteStruct }],
+        [route],
+      )
+    case VmType.SVM:
+      // using anchor's BorshCoder
+      const { salt, deadline, portal, tokens, calls } = route
+      const encoded = svmCoder.types.encode('route', {
+        salt,
+        deadline,
+        portal,
+        tokens: tokens.map(({ token, amount }) => ({ token, amount })),
+        calls: calls.map(({ target, data, value }) => ({ target, data, value }))
+      })
+      return `0x${encoded.toString('hex')}` as Hex
+    default:
+      throw new Error(`Unsupported VM type: ${route.vm}`)
+  }
 }
 
 /**
@@ -173,12 +253,30 @@ export function decodeRoute(route: Hex): RouteType {
  *   recipient: '0x9876...'
  * });
  */
-export function encodeReward(reward: RewardType) {
-  return encodeAbiParameters(
-    [{ type: 'tuple', components: RewardStruct }],
-    [reward],
-  )
+export function encodeReward(reward: RewardType): Hex {
+  switch (reward.vm) {
+    case VmType.EVM:
+      return encodeAbiParameters(
+        [{ type: 'tuple', components: RewardStruct }],
+        [reward],
+      )
+    case VmType.SVM:
+      // using anchor's BorshCoder for synchronous encoding
+      const { deadline, creator, prover, nativeAmount, tokens } = reward
+      const encoded = svmCoder.types.encode('reward', {
+        deadline,
+        creator, 
+        prover,
+        nativeAmount,
+        tokens: tokens.map(({ token, amount }) => ({ token, amount }))
+      })
+      console.log('SVM encoded', encoded)
+      return `0x${encoded.toString('hex')}` as Hex
+    default:
+      throw new Error(`Unsupported VM type: ${reward.vm}`)
+  }
 }
+
 
 /**
  * Decodes ABI-encoded reward data back into a structured TypeScript RewardType object.
@@ -298,16 +396,16 @@ export function hashReward(reward: RewardType): Hex {
  * });
  * console.log(`Intent hash: ${hashes.intentHash}`);
  */
-export function hashIntent(intent: IntentType): {
+export function hashIntent(destination: bigint, route: RouteType, reward: RewardType): {
   routeHash: Hex
   rewardHash: Hex
   intentHash: Hex
 } {
-  const routeHash = hashRoute(intent.route)
-  const rewardHash = hashReward(intent.reward)
+  const routeHash = hashRoute(route)
+  const rewardHash = hashReward(reward)
 
   const intentHash = keccak256(
-    encodePacked(['bytes32', 'bytes32'], [routeHash, rewardHash]),
+    encodePacked(['uint64', 'bytes32', 'bytes32'], [destination, routeHash, rewardHash]),
   )
 
   return {

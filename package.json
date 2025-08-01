@@ -63,6 +63,7 @@
   "devDependencies": {
     "@actions/core": "^1.11.1",
     "@alchemy/aa-core": "^3.19.0",
+    "@coral-xyz/anchor": "^0.30.1",
     "@eth-optimism/contracts-bedrock": "^0.17.2",
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
     "@nomicfoundation/hardhat-ethers": "^3.0.5",
