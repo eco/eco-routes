@@ -208,12 +208,8 @@ export function encodeRoute(route: RouteType) {
         salt,
         deadline,
         portal,
-        tokens: tokens.map(({ token, amount }) => ({ token, amount })),
-        calls: calls.map(({ target, data, value }) => ({
-          target,
-          data,
-          value,
-        })),
+        tokens,
+        calls,
       })
       return `0x${encoded.toString('hex')}` as Hex
     }
@@ -274,7 +270,7 @@ export function encodeReward(reward: RewardType): Hex {
         creator,
         prover,
         nativeAmount,
-        tokens: tokens.map(({ token, amount }) => ({ token, amount })),
+        tokens,
       })
       console.log('SVM encoded', encoded)
       return `0x${encoded.toString('hex')}` as Hex
