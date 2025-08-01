@@ -41,6 +41,18 @@ contract MetaProverTest is BaseTest {
         _mintAndApprove(creator, MINT_AMOUNT);
     }
 
+    function _encodeProverData(
+        bytes32 sourceChainProver,
+        uint256 gasLimit
+    ) internal pure returns (bytes memory) {
+        MetaProver.UnpackedData memory unpacked = MetaProver.UnpackedData({
+            sourceChainProver: sourceChainProver,
+            gasLimit: gasLimit
+        });
+
+        return abi.encode(unpacked);
+    }
+
     // Helper function to fund inbox and call prove
     function _proveWithFunding(
         address sender,
@@ -80,7 +92,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -105,7 +120,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -124,7 +142,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -145,7 +166,10 @@ contract MetaProverTest is BaseTest {
             creator,
             block.chainid,
             _packClaimantHashPairs(intentHashes, claimants),
-            abi.encode(bytes32(uint256(uint160(address(prover)))))
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            )
         );
     }
 
@@ -162,7 +186,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
     }
@@ -189,7 +216,10 @@ contract MetaProverTest is BaseTest {
                 destinations[i],
                 intentHashes,
                 claimants,
-                abi.encode(bytes32(uint256(uint160(address(prover))))),
+                _encodeProverData(
+                    bytes32(uint256(uint160(address(prover)))),
+                    200000
+                ),
                 1 ether
             );
 
@@ -218,7 +248,10 @@ contract MetaProverTest is BaseTest {
                 block.chainid,
                 intentHashes,
                 claimants,
-                abi.encode(bytes32(uint256(uint160(address(prover))))),
+                _encodeProverData(
+                    bytes32(uint256(uint160(address(prover)))),
+                    200000
+                ),
                 1 ether
             );
 
@@ -255,7 +288,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes1,
             claimants1,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
         _proveWithFunding(
@@ -263,7 +299,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes2,
             claimants2,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -286,7 +325,10 @@ contract MetaProverTest is BaseTest {
             0,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -308,7 +350,10 @@ contract MetaProverTest is BaseTest {
             type(uint32).max,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -330,7 +375,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -390,7 +438,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -413,7 +464,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -438,7 +492,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             0
         );
     }
@@ -464,7 +521,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
     }
@@ -515,7 +575,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             overpayment
         );
 
@@ -541,7 +604,10 @@ contract MetaProverTest is BaseTest {
             block.chainid,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
 
@@ -571,7 +637,10 @@ contract MetaProverTest is BaseTest {
             type(uint256).max,
             intentHashes,
             claimants,
-            abi.encode(bytes32(uint256(uint160(address(prover))))),
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                200000
+            ),
             1 ether
         );
     }

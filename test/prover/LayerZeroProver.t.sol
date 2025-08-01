@@ -103,6 +103,21 @@ contract LayerZeroProverTest is BaseTest {
         );
     }
 
+    function _encodeProverData(
+        bytes32 sourceChainProver,
+        bytes memory options,
+        uint256 gasLimit
+    ) internal pure returns (bytes memory) {
+        LayerZeroProver.UnpackedData memory unpacked = LayerZeroProver
+            .UnpackedData({
+                sourceChainProver: sourceChainProver,
+                options: options,
+                gasLimit: gasLimit
+            });
+
+        return abi.encode(unpacked);
+    }
+
     function test_constructor() public view {
         assertEq(lzProver.ENDPOINT(), address(endpoint));
         assertEq(lzProver.PORTAL(), address(portal));
@@ -121,8 +136,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
-        bytes memory data = abi.encode(SOURCE_PROVER, options);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
@@ -136,8 +150,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
-        bytes memory data = abi.encode(SOURCE_PROVER, options);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
@@ -243,9 +256,12 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
         uint256 customGasLimit = 300000;
-        bytes memory data = abi.encode(SOURCE_PROVER, options, customGasLimit);
+        bytes memory data = _encodeProverData(
+            SOURCE_PROVER,
+            "",
+            customGasLimit
+        );
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
@@ -267,8 +283,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
-        bytes memory data = abi.encode(SOURCE_PROVER, options);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         uint256 invalidChainId = uint256(type(uint32).max) + 1;
 

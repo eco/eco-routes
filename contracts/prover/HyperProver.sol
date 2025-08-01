@@ -154,10 +154,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
     function _unpackData(
         bytes calldata data
     ) internal pure returns (UnpackedData memory unpacked) {
-        (unpacked.sourceChainProver, unpacked.metadata, unpacked.hookAddr) = abi
-            .decode(data, (bytes32, bytes, address));
-
-        return unpacked;
+        unpacked = abi.decode(data, (UnpackedData));
     }
 
     /**

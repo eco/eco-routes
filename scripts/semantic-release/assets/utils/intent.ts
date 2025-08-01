@@ -114,8 +114,8 @@ export type EvmRewardType = IntentType['reward']
 /**
  * Define the multichaintype for the Route struct in Portal
  */
-export type RouteType = EvmRouteType;
-export type RewardType = EvmRewardType;
+export type RouteType = EvmRouteType
+export type RewardType = EvmRewardType
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -304,7 +304,11 @@ export function hashReward(reward: RewardType): Hex {
  * });
  * console.log(`Intent hash: ${hashes.intentHash}`);
  */
-export function hashIntent(destination: bigint, route: RouteType, reward: RewardType): {
+export function hashIntent(
+  destination: bigint,
+  route: RouteType,
+  reward: RewardType,
+): {
   routeHash: Hex
   rewardHash: Hex
   intentHash: Hex
@@ -313,7 +317,10 @@ export function hashIntent(destination: bigint, route: RouteType, reward: Reward
   const rewardHash = hashReward(reward)
 
   const intentHash = keccak256(
-    encodePacked(['uint64', 'bytes32', 'bytes32'], [destination, routeHash, rewardHash]),
+    encodePacked(
+      ['uint64', 'bytes32', 'bytes32'],
+      [destination, routeHash, rewardHash],
+    ),
   )
 
   return {

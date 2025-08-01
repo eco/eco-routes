@@ -200,23 +200,11 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     function _unpackData(
         bytes calldata data
     ) internal view returns (UnpackedData memory unpacked) {
-        // Decode basic parameters
-        (unpacked.sourceChainProver, unpacked.options) = abi.decode(
-            data,
-            (bytes32, bytes)
-        );
+        unpacked = abi.decode(data, (UnpackedData));
 
-        // Extract gas limit if provided in data
-        unpacked.gasLimit = DEFAULT_GAS_LIMIT;
-        if (data.length >= 96) {
-            // Gas limit is at position 64-96 if provided
-            unpacked.gasLimit = uint256(bytes32(data[64:96]));
-            if (unpacked.gasLimit == 0) {
-                unpacked.gasLimit = DEFAULT_GAS_LIMIT;
-            }
+        if (unpacked.gasLimit == 0) {
+            unpacked.gasLimit = DEFAULT_GAS_LIMIT; // Default gas limit if not specified
         }
-
-        return unpacked;
     }
 
     /**
@@ -297,16 +285,12 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         params.messageBody = encodedProofs;
 
         // Use provided options or create default options with gas limit
-        if (unpacked.options.length > 0) {
-            params.options = unpacked.options;
-        } else {
-            // Create default options with gas limit
-            // Option type 3 is for gas limit
-            params.options = abi.encodePacked(
-                uint16(3), // option type
+        params.options = unpacked.options.length > 0
+            ? unpacked.options
+            : abi.encodePacked(
+                uint16(3), // option type for gas limit
                 unpacked.gasLimit // gas amount
             );
-        }
 
         // Default to paying in native token
         params.payInLzToken = false;

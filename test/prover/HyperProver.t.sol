@@ -94,7 +94,13 @@ contract HyperProverTest is BaseTest {
         bytes memory metadata,
         address hookAddr
     ) internal pure returns (bytes memory) {
-        return abi.encode(sourceChainProver, metadata, hookAddr);
+        HyperProver.UnpackedData memory unpacked = HyperProver.UnpackedData({
+            sourceChainProver: sourceChainProver,
+            metadata: metadata,
+            hookAddr: hookAddr
+        });
+
+        return abi.encode(unpacked);
     }
 
     function testInitializesCorrectly() public view {

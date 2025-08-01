@@ -22,6 +22,15 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     using SafeCast for uint256;
 
     /**
+     * @notice Struct for unpacked data from _data parameter
+     * @dev Contains fields decoded from the _data parameter
+     */
+    struct UnpackedData {
+        bytes32 sourceChainProver; // Address of prover on source chain
+        uint256 gasLimit; // Gas limit for execution
+    }
+
+    /**
      * @notice Constant indicating this contract uses Metalayer for proving
      */
     string public constant PROOF_TYPE = "Meta";
@@ -76,6 +85,22 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     }
 
     /**
+     * @notice Decodes the raw cross-chain message data into a structured format
+     * @dev Parses ABI-encoded parameters into the UnpackedData struct
+     * @param data Raw message data containing source chain information
+     * @return unpacked Structured representation of the decoded parameters
+     */
+    function _unpackData(
+        bytes calldata data
+    ) internal view returns (UnpackedData memory unpacked) {
+        unpacked = abi.decode(data, (UnpackedData));
+
+        if (unpacked.gasLimit == 0) {
+            unpacked.gasLimit = DEFAULT_GAS_LIMIT; // Default gas limit if not specified
+        }
+    }
+
+    /**
      * @notice Implementation of message dispatch for Metalayer
      * @dev Called by base prove() function after common validations
      * @param sourceChainId Chain ID of the source chain
@@ -89,21 +114,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes calldata data,
         uint256 fee
     ) internal override {
-        // Decode source chain prover address only once
-        bytes32 sourceChainProver = abi.decode(data, (bytes32));
-
-        // Decode any additional gas limit data from the data parameter
-        uint256 gasLimit = DEFAULT_GAS_LIMIT;
-
-        // For Metalayer, we expect data to include sourceChainProver(32 bytes)
-        // If data is long enough, the gas limit is packed at position 64-96
-        // will only use custom gas limit if it is greater than the default
-        if (data.length >= 64) {
-            uint256 customGasLimit = uint256(bytes32(data[32:64]));
-            if (customGasLimit > DEFAULT_GAS_LIMIT) {
-                gasLimit = customGasLimit;
-            }
-        }
+        // Parse incoming data into a structured format
+        UnpackedData memory unpacked = _unpackData(data);
 
         // Format message for dispatch using pre-decoded value
         (
@@ -113,7 +125,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         ) = _formatMetalayerMessage(
                 sourceChainId,
                 encodedProofs,
-                sourceChainProver
+                unpacked.sourceChainProver
             );
 
         // Call Metalayer router's send message function
@@ -123,7 +135,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             new ReadOperation[](0),
             message,
             FinalityState.INSTANT,
-            gasLimit
+            unpacked.gasLimit
         );
     }
 
@@ -140,11 +152,12 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
-        // Decode source chain prover once at the entry point
-        bytes32 sourceChainProver = abi.decode(data, (bytes32));
+        // Parse incoming data into a structured format
+        UnpackedData memory unpacked = _unpackData(data);
 
         // Delegate to internal function with pre-decoded value
-        return _fetchFee(sourceChainID, encodedProofs, sourceChainProver);
+        return
+            _fetchFee(sourceChainID, encodedProofs, unpacked.sourceChainProver);
     }
 
     /**
