@@ -76,7 +76,12 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         if (endpoint == address(0)) revert EndpointCannotBeZeroAddress();
         if (delegate == address(0)) revert DelegateCannotBeZeroAddress();
 
+        // Store the LayerZero endpoint address for future reference
         ENDPOINT = endpoint;
+
+        // Set the delegate address on the LayerZero endpoint
+        // The delegate is authorized to configure LayerZero settings on behalf of this contract
+        // This includes setting configs, managing paths, and other administrative functions
         ILayerZeroEndpointV2(endpoint).setDelegate(delegate);
     }
 
