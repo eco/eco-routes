@@ -30,21 +30,22 @@ import { PublicKey as SvmAddress } from '@solana/web3.js'
 import { BorshCoder, type Idl } from '@coral-xyz/anchor'
 import portalIdl from '../../../../target/idl/portal.json'
 
-export type Address = EvmAddress | SvmAddress;
+export type Address = EvmAddress | SvmAddress
 
 /**
  * VM Type enumeration for different virtual machine types
  */
+/* eslint-disable no-unused-vars */
 export enum VmType {
   EVM = 'EVM',
   SVM = 'SVM',
 }
+/* eslint-enable no-unused-vars */
 
 /**
  * Coder instance for SVM reward serialization using portal IDL
  */
 const svmCoder = new BorshCoder(portalIdl as Idl)
-
 
 /**
  * Extracts the functions from an ABI
@@ -171,7 +172,7 @@ export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
 export type EvmRewardType = RewardType<EvmAddress, VmType.EVM>
 
 /**
- * SVM-specific reward type  
+ * SVM-specific reward type
  */
 export type SvmRewardType = RewardType<SvmAddress, VmType.SVM>
 
@@ -200,7 +201,7 @@ export function encodeRoute(route: RouteType) {
         [{ type: 'tuple', components: RouteStruct }],
         [route],
       )
-    case VmType.SVM:
+    case VmType.SVM: {
       // using anchor's BorshCoder
       const { salt, deadline, portal, tokens, calls } = route
       const encoded = svmCoder.types.encode('route', {
@@ -208,9 +209,14 @@ export function encodeRoute(route: RouteType) {
         deadline,
         portal,
         tokens: tokens.map(({ token, amount }) => ({ token, amount })),
-        calls: calls.map(({ target, data, value }) => ({ target, data, value }))
+        calls: calls.map(({ target, data, value }) => ({
+          target,
+          data,
+          value,
+        })),
       })
       return `0x${encoded.toString('hex')}` as Hex
+    }
     default:
       throw new Error(`Unsupported VM type: ${route.vm}`)
   }
@@ -260,23 +266,23 @@ export function encodeReward(reward: RewardType): Hex {
         [{ type: 'tuple', components: RewardStruct }],
         [reward],
       )
-    case VmType.SVM:
+    case VmType.SVM: {
       // using anchor's BorshCoder for synchronous encoding
       const { deadline, creator, prover, nativeAmount, tokens } = reward
       const encoded = svmCoder.types.encode('reward', {
         deadline,
-        creator, 
+        creator,
         prover,
         nativeAmount,
-        tokens: tokens.map(({ token, amount }) => ({ token, amount }))
+        tokens: tokens.map(({ token, amount }) => ({ token, amount })),
       })
       console.log('SVM encoded', encoded)
       return `0x${encoded.toString('hex')}` as Hex
+    }
     default:
       throw new Error(`Unsupported VM type: ${reward.vm}`)
   }
 }
-
 
 /**
  * Decodes ABI-encoded reward data back into a structured TypeScript RewardType object.
@@ -396,7 +402,11 @@ export function hashReward(reward: RewardType): Hex {
  * });
  * console.log(`Intent hash: ${hashes.intentHash}`);
  */
-export function hashIntent(destination: bigint, route: RouteType, reward: RewardType): {
+export function hashIntent(
+  destination: bigint,
+  route: RouteType,
+  reward: RewardType,
+): {
   routeHash: Hex
   rewardHash: Hex
   intentHash: Hex
@@ -405,7 +415,10 @@ export function hashIntent(destination: bigint, route: RouteType, reward: Reward
   const rewardHash = hashReward(reward)
 
   const intentHash = keccak256(
-    encodePacked(['uint64', 'bytes32', 'bytes32'], [destination, routeHash, rewardHash]),
+    encodePacked(
+      ['uint64', 'bytes32', 'bytes32'],
+      [destination, routeHash, rewardHash],
+    ),
   )
 
   return {
