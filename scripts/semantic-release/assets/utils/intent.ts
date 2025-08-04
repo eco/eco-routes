@@ -25,20 +25,22 @@ import {
   keccak256,
 } from 'viem'
 import { extractAbiStruct } from './utils'
-import { PortalAbi } from '../abi'
+import { PortalAbi } from './abi'
 import { PublicKey as SvmAddress } from '@solana/web3.js'
 import { BorshCoder, type Idl } from '@coral-xyz/anchor'
 import portalIdl from '../../../../target/idl/portal.json'
 
-export type Address = EvmAddress | SvmAddress;
-
 /**
  * VM Type enumeration for different virtual machine types
  */
+/* eslint-disable no-unused-vars */
 export enum VmType {
   EVM = 'EVM',
   SVM = 'SVM',
 }
+/* eslint-enable no-unused-vars */
+
+export type Address<TVM extends VmType = VmType> = TVM extends VmType.EVM ? EvmAddress : SvmAddress
 
 /**
  * Coder instance for SVM reward serialization using portal IDL
@@ -59,12 +61,12 @@ export type ExtractAbiFunctions<abi extends Abi> = Extract<
 type GetIntentHashFunction = Extract<
   ExtractAbiFunctions<typeof PortalAbi>,
   { name: 'getIntentHash' }
->['inputs'][number]
+>
 
 type GetIntentHashFunctionComponents = Extract<
-  ExtractAbiFunctions<typeof PortalAbi>,
-  { name: 'getIntentHash' }
->['inputs'][number]['components'][number]
+  GetIntentHashFunction['inputs'][number],
+  { components: any }
+>['components'][number]
 
 /**
  * The Route struct abi
@@ -123,17 +125,17 @@ export type IntentType = ContractFunctionArgs<
 /**
  * Generic Route type that works with both EVM and SVM addresses
  */
-export type RouteType<TAddress = Address, TVM extends VmType = VmType> = {
+export type RouteType<TVM extends VmType = VmType> = {
   vm: TVM
   salt: Hex
   deadline: bigint
-  portal: TAddress
+  portal: Address<TVM>
   tokens: readonly {
-    token: TAddress
+    token: Address<TVM>
     amount: bigint
   }[]
   calls: readonly {
-    target: TAddress
+    target: Address<TVM>
     data: Hex
     value: bigint
   }[]
@@ -142,24 +144,24 @@ export type RouteType<TAddress = Address, TVM extends VmType = VmType> = {
 /**
  * EVM-specific route type
  */
-export type EvmRouteType = RouteType<EvmAddress, VmType.EVM>
+export type EvmRouteType = RouteType<VmType.EVM>
 
 /**
  * SVM-specific route type
  */
-export type SvmRouteType = RouteType<SvmAddress, VmType.SVM>
+export type SvmRouteType = RouteType<VmType.SVM>
 
 /**
  * Generic Reward type that works with both EVM and SVM addresses
  */
-export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
+export type RewardType<TVM extends VmType = VmType> = {
   vm: TVM
-  creator: TAddress
-  prover: TAddress
+  creator: Address<TVM>
+  prover: Address<TVM>
   deadline: bigint
   nativeAmount: bigint
   tokens: readonly {
-    token: TAddress
+    token: Address<TVM>
     amount: bigint
   }[]
 }
@@ -167,12 +169,12 @@ export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
 /**
  * EVM-specific reward type
  */
-export type EvmRewardType = RewardType<EvmAddress, VmType.EVM>
+export type EvmRewardType = RewardType<VmType.EVM>
 
 /**
  * SVM-specific reward type  
  */
-export type SvmRewardType = RewardType<SvmAddress, VmType.SVM>
+export type SvmRewardType = RewardType<VmType.SVM>
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -197,7 +199,7 @@ export function encodeRoute(route: RouteType) {
     case VmType.EVM:
       return encodeAbiParameters(
         [{ type: 'tuple', components: RouteStruct }],
-        [route],
+        [route as EvmRouteType],
       )
     case VmType.SVM:
       // using anchor's BorshCoder
@@ -228,11 +230,19 @@ export function encodeRoute(route: RouteType) {
  * const route = decodeRoute('0x...');
  * console.log(`Transfer from chain ${route.fromChain} to ${route.toChain}`);
  */
-export function decodeRoute(route: Hex): RouteType {
-  return decodeAbiParameters(
-    [{ type: 'tuple', components: RouteStruct }],
-    route,
-  )[0]
+export function decodeRoute(vm: VmType, route: Hex): RouteType {
+  switch (vm) {
+    case VmType.EVM:
+      return {
+        vm: VmType.EVM,
+        ...decodeAbiParameters(
+          [{ type: 'tuple', components: RouteStruct }],
+          route, 
+        )[0]
+      }
+    case VmType.SVM:
+      return svmCoder.types.decode('route', Buffer.from(route, 'hex'))
+  }
 }
 
 /**
@@ -257,7 +267,7 @@ export function encodeReward(reward: RewardType): Hex {
     case VmType.EVM:
       return encodeAbiParameters(
         [{ type: 'tuple', components: RewardStruct }],
-        [reward],
+        [{ ...reward, nativeValue: reward.nativeAmount } as any], // need to cast to any because of nativeAmount -> nativeValue
       )
     case VmType.SVM:
       // using anchor's BorshCoder for synchronous encoding
@@ -289,11 +299,25 @@ export function encodeReward(reward: RewardType): Hex {
  * const reward = decodeReward('0x...');
  * console.log(`Reward of ${reward.rewardAmount} tokens available until ${new Date(Number(reward.deadline) * 1000)}`);
  */
-export function decodeReward(reward: Hex): RewardType {
-  return decodeAbiParameters(
-    [{ type: 'tuple', components: RewardStruct }],
-    reward,
-  )[0]
+export function decodeReward(vm: VmType, reward: Hex): RewardType {
+  switch (vm) {
+    case VmType.EVM: {
+      const decoded = decodeAbiParameters(
+        [{ type: 'tuple', components: RewardStruct }],
+        reward,
+      )[0]
+      return {
+        vm: VmType.EVM,
+        ...decoded,
+        nativeAmount: decoded.nativeValue,
+      }
+    }
+    case VmType.SVM: {
+      return svmCoder.types.decode('reward', Buffer.from(reward, 'hex'))
+    }
+    default:
+      throw new Error(`Unsupported VM type: ${vm}`)
+  }
 }
 
 /**
@@ -311,8 +335,15 @@ export function decodeReward(reward: Hex): RewardType {
  *   reward: { rewardToken: '0x1234...', rewardAmount: 1000000n, ... }
  * });
  */
-export function encodeIntent(intent: IntentType) {
-  return encodePacked(IntentStruct, [intent.route, intent.reward])
+export function encodeIntent(destination: bigint, route: RouteType, reward: RewardType) {
+  return encodePacked(
+    [{ type: 'tuple', components: IntentStruct }],
+    [{
+      destination,
+      route: route as EvmRouteType,
+      reward: { ...reward, nativeValue: reward.nativeAmount } as any
+    }]
+  )
 }
 
 /**
