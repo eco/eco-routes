@@ -4,17 +4,12 @@ pragma solidity ^0.8.26;
 import {BaseTest} from "../BaseTest.sol";
 import {Executor} from "../../contracts/Executor.sol";
 import {IExecutor} from "../../contracts/interfaces/IExecutor.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
-import {TestProver} from "../../contracts/test/TestProver.sol";
-import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {Call} from "../../contracts/types/Intent.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 contract ExecutorTest is BaseTest {
     Executor internal executor;
     address internal unauthorizedUser;
     address internal eoaTarget;
-    TestProver internal testProver;
     MockContract internal mockContract;
 
     function setUp() public override {
@@ -22,7 +17,6 @@ contract ExecutorTest is BaseTest {
         unauthorizedUser = makeAddr("unauthorizedUser");
         eoaTarget = makeAddr("eoaTarget");
 
-        testProver = new TestProver(address(portal));
         mockContract = new MockContract();
 
         vm.prank(address(portal));
@@ -30,7 +24,8 @@ contract ExecutorTest is BaseTest {
     }
 
     function test_constructor_setsPortalCorrectly() public {
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: address(mockContract),
             value: 0,
             data: abi.encodeWithSignature("succeed()")
@@ -41,11 +36,12 @@ contract ExecutorTest is BaseTest {
         Executor testExecutor = new Executor();
 
         vm.prank(testPortal);
-        testExecutor.execute(call);
+        testExecutor.execute(calls);
     }
 
     function test_execute_revertUnauthorized() public {
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: address(tokenA),
             value: 0,
             data: abi.encodeWithSignature(
@@ -62,13 +58,14 @@ contract ExecutorTest is BaseTest {
                 unauthorizedUser
             )
         );
-        executor.execute(call);
+        executor.execute(calls);
     }
 
     function test_execute_success_authorizedCaller() public {
         tokenA.mint(address(executor), 1000);
 
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: address(tokenA),
             value: 0,
             data: abi.encodeWithSignature(
@@ -81,18 +78,19 @@ contract ExecutorTest is BaseTest {
         uint256 balanceBefore = tokenA.balanceOf(otherPerson);
 
         vm.prank(address(portal));
-        bytes memory result = executor.execute(call);
+        bytes[] memory results = executor.execute(calls);
 
         uint256 balanceAfter = tokenA.balanceOf(otherPerson);
 
         assertEq(balanceAfter, balanceBefore + 100);
-        assertTrue(abi.decode(result, (bool)));
+        assertTrue(abi.decode(results[0], (bool)));
     }
 
     function test_execute_success_withValue() public {
         vm.deal(address(portal), 10 ether);
 
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: address(mockContract),
             value: 1 ether,
             data: abi.encodeWithSignature("receiveEther()")
@@ -101,27 +99,29 @@ contract ExecutorTest is BaseTest {
         uint256 contractBalanceBefore = address(mockContract).balance;
 
         vm.prank(address(portal));
-        executor.execute{value: 1 ether}(call);
+        executor.execute{value: 1 ether}(calls);
 
         uint256 contractBalanceAfter = address(mockContract).balance;
         assertEq(contractBalanceAfter, contractBalanceBefore + 1 ether);
     }
 
     function test_execute_success_returnsData() public {
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: address(mockContract),
             value: 0,
             data: abi.encodeWithSignature("returnData()")
         });
 
         vm.prank(address(portal));
-        bytes memory result = executor.execute(call);
+        bytes[] memory results = executor.execute(calls);
 
-        assertEq(result, abi.encode(uint256(42), "test"));
+        assertEq(results[0], abi.encode(uint256(42), "test"));
     }
 
     function test_execute_revertCallToEOA_withCalldata() public {
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: eoaTarget,
             value: 0,
             data: abi.encodeWithSignature("someFunction()")
@@ -131,57 +131,88 @@ contract ExecutorTest is BaseTest {
         vm.expectRevert(
             abi.encodeWithSelector(IExecutor.CallToEOA.selector, eoaTarget)
         );
-        executor.execute(call);
+        executor.execute(calls);
     }
 
     function test_execute_success_EOAWithoutCalldata() public {
         vm.deal(address(portal), 10 ether);
 
-        Call memory call = Call({target: eoaTarget, value: 1 ether, data: ""});
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({target: eoaTarget, value: 1 ether, data: ""});
 
         uint256 balanceBefore = eoaTarget.balance;
 
         vm.prank(address(portal));
-        executor.execute{value: 1 ether}(call);
+        executor.execute{value: 1 ether}(calls);
 
         uint256 balanceAfter = eoaTarget.balance;
         assertEq(balanceAfter, balanceBefore + 1 ether);
     }
 
     function test_execute_success_contractWithEmptyCalldata() public {
-        Call memory call = Call({
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({target: address(mockContract), value: 0, data: ""});
+
+        vm.prank(address(portal));
+        bytes[] memory results = executor.execute(calls);
+
+        assertEq(results[0].length, 0);
+    }
+
+    function test_execute_revertCallFailed() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
             target: address(mockContract),
             value: 0,
-            data: ""
+            data: abi.encodeWithSignature("fail()")
         });
 
         vm.prank(address(portal));
-        bytes memory result = executor.execute(call);
-
-        assertEq(result.length, 0);
+        vm.expectRevert();
+        executor.execute(calls);
     }
 
-    function test_execute_revertCallToProver() public {
-        Call memory call = Call({
-            target: address(testProver),
+    function test_execute_revertCallFailed_insufficientValue() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: address(mockContract),
+            value: 1 ether,
+            data: abi.encodeWithSignature("receiveEther()")
+        });
+
+        vm.prank(address(portal));
+        vm.expectRevert();
+        executor.execute(calls);
+    }
+
+    function test_execute_revertCallFailed_invalidFunction() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: address(tokenA),
             value: 0,
-            data: abi.encodeWithSignature("version()")
+            data: abi.encodeWithSignature("nonExistentFunction()")
         });
 
         vm.prank(address(portal));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IExecutor.CallToProver.selector,
-                address(testProver)
-            )
-        );
-        executor.execute(call);
+        vm.expectRevert();
+        executor.execute(calls);
     }
 
-    function test_execute_success_contractNotImplementingIProver() public {
+    function test_execute_success_emptyDataToContract() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({target: address(mockContract), value: 0, data: ""});
+
+        vm.prank(address(portal));
+        bytes[] memory results = executor.execute(calls);
+
+        assertEq(results[0].length, 0);
+    }
+
+    function test_execute_success_batchCalls() public {
         tokenA.mint(address(executor), 1000);
 
-        Call memory call = Call({
+        Call[] memory calls = new Call[](3);
+        calls[0] = Call({
             target: address(tokenA),
             value: 0,
             data: abi.encodeWithSignature(
@@ -190,60 +221,28 @@ contract ExecutorTest is BaseTest {
                 100
             )
         });
-
-        vm.prank(address(portal));
-        bytes memory result = executor.execute(call);
-
-        assertTrue(abi.decode(result, (bool)));
-    }
-
-    function test_execute_revertCallFailed() public {
-        Call memory call = Call({
+        calls[1] = Call({
             target: address(mockContract),
             value: 0,
-            data: abi.encodeWithSignature("fail()")
+            data: abi.encodeWithSignature("succeed()")
         });
-
-        vm.prank(address(portal));
-        vm.expectRevert();
-        executor.execute(call);
-    }
-
-    function test_execute_revertCallFailed_insufficientValue() public {
-        Call memory call = Call({
-            target: address(mockContract),
-            value: 1 ether,
-            data: abi.encodeWithSignature("receiveEther()")
-        });
-
-        vm.prank(address(portal));
-        vm.expectRevert();
-        executor.execute(call);
-    }
-
-    function test_execute_revertCallFailed_invalidFunction() public {
-        Call memory call = Call({
-            target: address(tokenA),
-            value: 0,
-            data: abi.encodeWithSignature("nonExistentFunction()")
-        });
-
-        vm.prank(address(portal));
-        vm.expectRevert();
-        executor.execute(call);
-    }
-
-    function test_execute_success_emptyDataToContract() public {
-        Call memory call = Call({
+        calls[2] = Call({
             target: address(mockContract),
             value: 0,
-            data: ""
+            data: abi.encodeWithSignature("returnData()")
         });
 
-        vm.prank(address(portal));
-        bytes memory result = executor.execute(call);
+        uint256 balanceBefore = tokenA.balanceOf(otherPerson);
 
-        assertEq(result.length, 0);
+        vm.prank(address(portal));
+        bytes[] memory results = executor.execute(calls);
+
+        uint256 balanceAfter = tokenA.balanceOf(otherPerson);
+
+        assertEq(balanceAfter, balanceBefore + 100);
+        assertTrue(abi.decode(results[0], (bool)));
+        assertTrue(abi.decode(results[1], (bool)));
+        assertEq(results[2], abi.encode(uint256(42), "test"));
     }
 }
 

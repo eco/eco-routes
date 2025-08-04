@@ -5,9 +5,11 @@ import {Call} from "../types/Intent.sol";
 
 /**
  * @title IExecutor
- * @notice Interface for secure execution of intent calls
- * @dev Provides controlled execution with built-in safety checks to prevent
- * calls to provers and EOAs with calldata
+ * @notice Interface for secure batch execution of intent calls
+ * @dev Provides controlled execution with built-in safety checks and authorization
+ * - Restricts execution to authorized portal contracts only
+ * - Prevents calls to EOAs with calldata
+ * - Supports batch execution for multiple calls in a single transaction
  */
 interface IExecutor {
     /**
@@ -36,15 +38,14 @@ interface IExecutor {
     error CallFailed(Call call, bytes reason);
 
     /**
-     * @notice Executes a intent call with safety checks
-     * @dev Validates the target address and executes the call if safe
+     * @notice Executes multiple intent calls with safety checks
+     * @dev Validates each target address and executes calls if safe
      * - Prevents calls to EOAs that include calldata
-     * - Prevents calls to prover contracts
-     * - Reverts if the target call fails
-     * @param call The call data containing target, value, and calldata
-     * @return The return data from the executed call
+     * - Reverts if any target call fails
+     * @param calls Array of call data containing target, value, and calldata
+     * @return Array of return data from the executed calls
      */
     function execute(
-        Call calldata call
-    ) external payable returns (bytes memory);
+        Call[] calldata calls
+    ) external payable returns (bytes[] memory);
 }

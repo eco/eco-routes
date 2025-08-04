@@ -1,28 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-
-import {IProver} from "./interfaces/IProver.sol";
 import {IExecutor} from "./interfaces/IExecutor.sol";
 
 import {Call} from "./types/Intent.sol";
 
 /**
  * @title Executor
- * @notice Contract for secure execution of intent calls
- * @dev Implements IExecutor with safety checks to prevent malicious calls
+ * @notice Contract for secure batch execution of intent calls
+ * @dev Implements IExecutor with comprehensive safety checks and authorization controls
+ * - Only the portal contract can execute calls (onlyPortal modifier)
+ * - Prevents malicious calls through EOA validation
+ * - Supports batch execution for multiple calls in a single transaction
  */
 contract Executor is IExecutor {
     /**
-     * @notice Interface ID for IProver used to detect prover contracts
-     */
-    bytes4 private constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
-
-    /**
      * @notice Address of the portal contract authorized to call execute
      */
-    address private portal;
+    address private immutable portal;
 
     /**
      * @notice Initializes the Executor contract
@@ -45,23 +40,29 @@ contract Executor is IExecutor {
     }
 
     /**
-     * @notice Executes a intent call with comprehensive safety checks
-     * @dev Performs multiple validation steps before execution:
+     * @notice Executes multiple intent calls with comprehensive safety checks
+     * @dev Performs validation and execution for each call in the batch:
      * 1. Prevents calls to EOAs that include calldata (potential phishing protection)
-     * 2. Prevents calls to prover contracts (prevents circular execution)
-     * 3. Executes the call and returns the result or reverts on failure
-     * @param call The call data containing target address, value, and calldata
-     * @return The return data from the successfully executed call
+     * 2. Executes each call and returns results or reverts on any failure
+     * @param calls Array of call data containing target addresses, values, and calldata
+     * @return Array of return data from the successfully executed calls
      */
     function execute(
-        Call calldata call
-    ) external payable override onlyPortal returns (bytes memory) {
-        if (_isCallToEoa(call)) {
-            revert CallToEOA(call.target);
+        Call[] calldata calls
+    ) external payable override onlyPortal returns (bytes[] memory) {
+        uint256 callsLength = calls.length;
+        bytes[] memory results = new bytes[](callsLength);
+
+        for (uint256 i = 0; i < callsLength; i++) {
+            results[i] = execute(calls[i]);
         }
 
-        if (_isProver(call.target)) {
-            revert CallToProver(call.target);
+        return results;
+    }
+
+    function execute(Call calldata call) internal returns (bytes memory) {
+        if (_isCallToEoa(call)) {
+            revert CallToEOA(call.target);
         }
 
         (bool success, bytes memory result) = call.target.call{
@@ -84,26 +85,5 @@ contract Executor is IExecutor {
      */
     function _isCallToEoa(Call calldata call) internal view returns (bool) {
         return call.target.code.length == 0 && call.data.length > 0;
-    }
-
-    /**
-     * @notice Checks if the target address is a prover contract
-     * @dev Uses ERC165 interface detection to identify prover contracts
-     * Prevents calls to provers to avoid circular execution and maintain system integrity
-     * @param target The address to check
-     * @return bool True if the target implements the IProver interface
-     */
-    function _isProver(address target) internal view returns (bool) {
-        if (target.code.length == 0) {
-            return false;
-        }
-
-        try IERC165(target).supportsInterface(IPROVER_INTERFACE_ID) returns (
-            bool isProver
-        ) {
-            return isProver;
-        } catch {
-            return false;
-        }
     }
 }

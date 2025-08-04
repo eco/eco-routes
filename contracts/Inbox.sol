@@ -214,16 +214,12 @@ abstract contract Inbox is DestinationSettler, IInbox {
         }
 
         uint256 callsLength = route.calls.length;
-        // Store the results of the calls
-        bytes[] memory results = new bytes[](callsLength);
-
+        uint256 callsValue = 0;
         for (uint256 i = 0; i < callsLength; ++i) {
-            Call memory call = route.calls[i];
-
-            results[i] = executor.execute{value: call.value}(call);
+            callsValue += route.calls[i].value;
         }
 
-        return results;
+        return executor.execute{value: callsValue}(route.calls);
     }
 
     /**

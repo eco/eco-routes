@@ -271,38 +271,6 @@ describe('Inbox Test', (): void => {
       ).to.be.revertedWithCustomError(executor, 'CallFailed')
     })
 
-    it('should revert if any of the targets is a prover', async () => {
-      const mockProverAddress = await mockProver.getAddress()
-      const _route: Route = {
-        ...route,
-        calls: [
-          {
-            target: mockProverAddress,
-            data: '0x',
-            value: 0,
-          },
-        ],
-      }
-      const intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
-        route: _route,
-        reward: reward,
-      }).intentHash
-      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
-      await expect(
-        inbox
-          .connect(solver)
-          .fulfill(
-            intentHash,
-            _route,
-            rewardHash,
-            addressToBytes32(dstAddr.address),
-          ),
-      )
-        .to.be.revertedWithCustomError(executor, 'CallToProver')
-        .withArgs(mockProverAddress)
-    })
-
     it('should revert if one of the targets is an EOA', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 

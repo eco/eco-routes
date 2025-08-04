@@ -346,11 +346,13 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(sourceChainProver, 32),
-          metadata,
-          ethers.ZeroAddress,
-        ]],
+        [
+          [
+            ethers.zeroPadValue(sourceChainProver, 32),
+            metadata,
+            ethers.ZeroAddress,
+          ],
+        ],
       )
 
       // Before sendProof, make sure the mailbox hasn't been called
@@ -378,7 +380,13 @@ describe('HyperProver Test', (): void => {
       const sourceChainProver = await solver.getAddress()
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[ethers.zeroPadValue(sourceChainProver, 32), '0x', ethers.ZeroAddress]],
+        [
+          [
+            ethers.zeroPadValue(sourceChainProver, 32),
+            '0x',
+            ethers.ZeroAddress,
+          ],
+        ],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -468,11 +476,13 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x' // Use empty metadata for now
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(sourceChainProver, 32),
-          metadata,
-          await mailbox.getAddress(), // Use mailbox as a valid hook address
-        ]],
+        [
+          [
+            ethers.zeroPadValue(sourceChainProver, 32),
+            metadata,
+            await mailbox.getAddress(), // Use mailbox as a valid hook address
+          ],
+        ],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -580,11 +590,13 @@ describe('HyperProver Test', (): void => {
       const customHookAddress = await solver.getAddress() // Use solver as custom hook for testing
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(sourceChainProver, 32),
-          metadata,
-          customHookAddress,
-        ]],
+        [
+          [
+            ethers.zeroPadValue(sourceChainProver, 32),
+            metadata,
+            customHookAddress,
+          ],
+        ],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -619,11 +631,13 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(sourceChainProver, 32),
-          metadata,
-          ethers.ZeroAddress,
-        ]],
+        [
+          [
+            ethers.zeroPadValue(sourceChainProver, 32),
+            metadata,
+            ethers.ZeroAddress,
+          ],
+        ],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -882,11 +896,13 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
-          metadata,
-          ethers.ZeroAddress,
-        ]],
+        [
+          [
+            ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
+            metadata,
+            ethers.ZeroAddress,
+          ],
+        ],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1010,11 +1026,13 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
-          metadata,
-          ethers.ZeroAddress,
-        ]],
+        [
+          [
+            ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
+            metadata,
+            ethers.ZeroAddress,
+          ],
+        ],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -1119,11 +1137,13 @@ describe('HyperProver Test', (): void => {
       const metadata = '0x1234'
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,bytes,address)'],
-        [[
-          ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
-          metadata,
-          ethers.ZeroAddress,
-        ]],
+        [
+          [
+            ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
+            metadata,
+            ethers.ZeroAddress,
+          ],
+        ],
       )
 
       // Create first intent
