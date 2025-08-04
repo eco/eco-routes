@@ -5,21 +5,24 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { LayerZeroProver, Inbox, Portal, TestERC20 } from '../typechain-types'
+import {
+  LayerZeroProver,
+  Inbox,
+  TestERC20,
+  TestLayerZeroEndpoint,
+} from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount, Intent, Route } from '../utils/intent'
-import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
+import { hashIntent, TokenAmount, Intent } from '../utils/intent'
 
 describe('LayerZeroProver Test', (): void => {
   let inbox: Inbox
   let layerZeroProver: LayerZeroProver
-  let mockEndpoint: MockLayerZeroEndpoint
+  let mockEndpoint: TestLayerZeroEndpoint
   let token: TestERC20
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
   const amount: number = 1234567890
-  const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
   // Helper function to encode message body as (intentHash, claimant) pairs
   function encodeMessageBody(
@@ -49,45 +52,9 @@ describe('LayerZeroProver Test', (): void => {
     return encodeMessageBody(intentHashes, claimants)
   }
 
-  // Mock LayerZero Endpoint contract reference
-  let MockLayerZeroEndpoint: any
-
-  // Mock LayerZero Endpoint interface
-  interface MockLayerZeroEndpoint {
-    getAddress(): Promise<string>
-    send(
-      dstEid: number,
-      path: string,
-      message: string,
-      options: string,
-      fee: { nativeFee: bigint; lzTokenFee: bigint },
-    ): Promise<any>
-    setDelegate(delegate: string): Promise<any>
-    quote(
-      dstEid: number,
-      message: string,
-      options: string,
-      payInLzToken: boolean,
-    ): Promise<{ nativeFee: bigint; lzTokenFee: bigint }>
-    endpoint(): Promise<string>
-    processReceivedMessage(
-      origin: { srcEid: number; sender: string; nonce: bigint },
-      receiver: string,
-      guid: string,
-      message: string,
-      extraData: string,
-    ): Promise<any>
-    simulateReceive(
-      receiver: string,
-      srcEid: number,
-      sender: string,
-      message: string,
-    ): Promise<any>
-  }
-
   async function deployLayerZeroProverFixture(): Promise<{
     inbox: Inbox
-    mockEndpoint: MockLayerZeroEndpoint
+    mockEndpoint: TestLayerZeroEndpoint
     token: TestERC20
     owner: SignerWithAddress
     solver: SignerWithAddress
@@ -95,11 +62,9 @@ describe('LayerZeroProver Test', (): void => {
   }> {
     const [owner, solver, claimant] = await ethers.getSigners()
 
-    // Deploy test LayerZero endpoint with simulation capability
-    MockLayerZeroEndpoint = await ethers.getContractFactory(
-      'TestLayerZeroEndpoint',
-    )
-    const mockEndpoint = await MockLayerZeroEndpoint.deploy()
+    const mockEndpoint = await ethers
+      .getContractFactory('TestLayerZeroEndpoint')
+      .then((factory) => factory.deploy())
 
     const portal = await (await ethers.getContractFactory('Portal')).deploy()
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())

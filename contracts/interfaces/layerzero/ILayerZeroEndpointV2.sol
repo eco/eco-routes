@@ -60,12 +60,12 @@ interface ILayerZeroEndpointV2 {
     /**
      * @notice Quote the fee for sending a message
      * @param params Messaging parameters
-     * @param payInLzToken Whether fees will be paid in LZ token
+     * @param sender Address of the message sender
      * @return fee The messaging fee quote
      */
     function quote(
         MessagingParams calldata params,
-        bool payInLzToken
+        address sender
     ) external view returns (MessagingFee memory fee);
 
     /**
