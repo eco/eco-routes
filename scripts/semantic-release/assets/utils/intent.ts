@@ -25,12 +25,11 @@ import {
   keccak256,
 } from 'viem'
 import { extractAbiStruct } from './utils'
-import { IntentSourceAbi } from '../abi'
+import { IntentSourceAbi } from "./abi"
 import { PublicKey as SvmAddress } from '@solana/web3.js'
 import { BorshCoder, type Idl } from '@coral-xyz/anchor'
 import portalIdl from '../../../../target/idl/portal.json'
 
-export type Address = EvmAddress | SvmAddress
 
 /**
  * VM Type enumeration for different virtual machine types
@@ -41,6 +40,9 @@ export enum VmType {
   SVM = 'SVM',
 }
 /* eslint-enable no-unused-vars */
+
+
+export type Address<TVM extends VmType = VmType> = TVM extends VmType.EVM ? EvmAddress : SvmAddress
 
 /**
  * Coder instance for SVM reward serialization using portal IDL
@@ -125,17 +127,17 @@ export type IntentType = ContractFunctionArgs<
 /**
  * Generic Route type that works with both EVM and SVM addresses
  */
-export type RouteType<TAddress = Address, TVM extends VmType = VmType> = {
+export type RouteType<TVM extends VmType = VmType> = {
   vm: TVM
   salt: Hex
   deadline: bigint
-  portal: TAddress
+  portal: Address<TVM>
   tokens: readonly {
-    token: TAddress
+    token: Address<TVM>
     amount: bigint
   }[]
   calls: readonly {
-    target: TAddress
+    target: Address<TVM>
     data: Hex
     value: bigint
   }[]
@@ -144,24 +146,24 @@ export type RouteType<TAddress = Address, TVM extends VmType = VmType> = {
 /**
  * EVM-specific route type
  */
-export type EvmRouteType = RouteType<EvmAddress, VmType.EVM>
+export type EvmRouteType = RouteType<VmType.EVM>
 
 /**
  * SVM-specific route type
  */
-export type SvmRouteType = RouteType<SvmAddress, VmType.SVM>
+export type SvmRouteType = RouteType<VmType.SVM>
 
 /**
  * Generic Reward type that works with both EVM and SVM addresses
  */
-export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
+export type RewardType<TVM extends VmType = VmType> = {
   vm: TVM
-  creator: TAddress
-  prover: TAddress
+  creator: Address<TVM>
+  prover: Address<TVM>
   deadline: bigint
   nativeAmount: bigint
   tokens: readonly {
-    token: TAddress
+    token: Address<TVM>
     amount: bigint
   }[]
 }
@@ -169,12 +171,12 @@ export type RewardType<TAddress = Address, TVM extends VmType = VmType> = {
 /**
  * EVM-specific reward type
  */
-export type EvmRewardType = RewardType<EvmAddress, VmType.EVM>
+export type EvmRewardType = RewardType<VmType.EVM>
 
 /**
  * SVM-specific reward type
  */
-export type SvmRewardType = RewardType<SvmAddress, VmType.SVM>
+export type SvmRewardType = RewardType<VmType.SVM>
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -194,7 +196,7 @@ export type SvmRewardType = RewardType<SvmAddress, VmType.SVM>
  *   targetAddress: '0x9876...'
  * });
  */
-export function encodeRoute(route: RouteType) {
+export function encodeRoute(route: RouteType): Hex {
   switch (route.vm) {
     case VmType.EVM:
       return encodeAbiParameters(
@@ -272,7 +274,6 @@ export function encodeReward(reward: RewardType): Hex {
         nativeAmount,
         tokens,
       })
-      console.log('SVM encoded', encoded)
       return `0x${encoded.toString('hex')}` as Hex
     }
     default:
