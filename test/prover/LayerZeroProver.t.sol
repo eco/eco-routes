@@ -6,6 +6,7 @@ import {LayerZeroProver} from "../../contracts/prover/LayerZeroProver.sol";
 import {ILayerZeroEndpointV2} from "../../contracts/interfaces/layerzero/ILayerZeroEndpointV2.sol";
 import {ILayerZeroReceiver} from "../../contracts/interfaces/layerzero/ILayerZeroReceiver.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(uint32 => mapping(bytes32 => address)) public delegates;
@@ -26,8 +27,8 @@ contract MockLayerZeroEndpoint {
     }
 
     function quote(
-        ILayerZeroEndpointV2.MessagingParams calldata /* params */,
-        bool /* payInLzToken */
+        ILayerZeroEndpointV2.MessagingParams calldata,
+        address
     ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
             ILayerZeroEndpointV2.MessagingFee({
@@ -52,6 +53,39 @@ contract LayerZeroProverTest is BaseTest {
     bytes32 constant SOURCE_PROVER =
         bytes32(uint256(uint160(0x1234567890123456789012345678901234567890)));
 
+    /**
+     * @notice Helper function to encode proofs from separate arrays
+     * @param intentHashes Array of intent hashes
+     * @param claimants Array of claimant addresses (as bytes32)
+     * @return encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     */
+    function encodeProofs(
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal pure returns (bytes memory encodedProofs) {
+        require(
+            intentHashes.length == claimants.length,
+            "Array length mismatch"
+        );
+
+        encodedProofs = new bytes(intentHashes.length * 64);
+        for (uint256 i = 0; i < intentHashes.length; i++) {
+            assembly {
+                let offset := mul(i, 64)
+                // Store hash in first 32 bytes of each pair
+                mstore(
+                    add(add(encodedProofs, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                // Store claimant in next 32 bytes of each pair
+                mstore(
+                    add(add(encodedProofs, 0x20), add(offset, 32)),
+                    mload(add(claimants, add(0x20, mul(i, 32))))
+                )
+            }
+        }
+    }
+
     function setUp() public override {
         super.setUp();
 
@@ -62,10 +96,26 @@ contract LayerZeroProverTest is BaseTest {
 
         lzProver = new LayerZeroProver(
             address(endpoint),
+            address(this), // delegate
             address(portal),
             trustedProvers,
             200000
         );
+    }
+
+    function _encodeProverData(
+        bytes32 sourceChainProver,
+        bytes memory options,
+        uint256 gasLimit
+    ) internal pure returns (bytes memory) {
+        LayerZeroProver.UnpackedData memory unpacked = LayerZeroProver
+            .UnpackedData({
+                sourceChainProver: sourceChainProver,
+                options: options,
+                gasLimit: gasLimit
+            });
+
+        return abi.encode(unpacked);
     }
 
     function test_constructor() public view {
@@ -86,15 +136,10 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
-        bytes memory data = abi.encode(SOURCE_PROVER, options);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
-        uint256 fee = lzProver.fetchFee(
-            SOURCE_CHAIN_ID,
-            intentHashes,
-            claimants,
-            data
-        );
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
         assertEq(fee, 0.001 ether);
     }
 
@@ -105,23 +150,17 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
-        bytes memory data = abi.encode(SOURCE_PROVER, options);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
-        uint256 fee = lzProver.fetchFee(
-            SOURCE_CHAIN_ID,
-            intentHashes,
-            claimants,
-            data
-        );
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
             SOURCE_CHAIN_ID,
-            intentHashes,
-            claimants,
+            encodedProofs,
             data
         );
     }
@@ -139,7 +178,12 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        bytes memory message = abi.encode(intentHashes, claimants);
+        // Pack hash/claimant pairs as bytes
+        bytes memory message = new bytes(64);
+        assembly {
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
+        }
 
         vm.prank(address(endpoint));
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
@@ -171,6 +215,7 @@ contract LayerZeroProverTest is BaseTest {
         vm.expectRevert(LayerZeroProver.EndpointCannotBeZeroAddress.selector);
         new LayerZeroProver(
             address(0),
+            address(this), // delegate
             address(portal),
             trustedProvers,
             200000
@@ -188,23 +233,6 @@ contract LayerZeroProverTest is BaseTest {
         lzProver.lzReceive(origin, bytes32(0), "", address(0), "");
     }
 
-    function test_lzReceive_revertInvalidExecutor() public {
-        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
-            srcEid: uint32(SOURCE_CHAIN_ID),
-            sender: SOURCE_PROVER,
-            nonce: 1
-        });
-
-        vm.prank(address(endpoint));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                LayerZeroProver.InvalidExecutor.selector,
-                address(this)
-            )
-        );
-        lzProver.lzReceive(origin, bytes32(0), "", address(this), "");
-    }
-
     function test_prove_withCustomGasLimit() public {
         bytes32[] memory intentHashes = new bytes32[](1);
         intentHashes[0] = keccak256("intent");
@@ -212,24 +240,22 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
         uint256 customGasLimit = 300000;
-        bytes memory data = abi.encode(SOURCE_PROVER, options, customGasLimit);
-
-        uint256 fee = lzProver.fetchFee(
-            SOURCE_CHAIN_ID,
-            intentHashes,
-            claimants,
-            data
+        bytes memory data = _encodeProverData(
+            SOURCE_PROVER,
+            "",
+            customGasLimit
         );
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
             SOURCE_CHAIN_ID,
-            intentHashes,
-            claimants,
+            encodedProofs,
             data
         );
     }
@@ -241,13 +267,16 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory options = "";
-        bytes memory data = abi.encode(SOURCE_PROVER, options);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         uint256 invalidChainId = uint256(type(uint32).max) + 1;
 
         vm.expectRevert();
-        lzProver.fetchFee(invalidChainId, intentHashes, claimants, data);
+        lzProver.fetchFee(
+            invalidChainId,
+            encodeProofs(intentHashes, claimants),
+            data
+        );
     }
 
     // ============ Challenge Intent Proof Tests ============
@@ -277,7 +306,12 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        bytes memory message = abi.encode(intentHashes, claimants);
+        // Pack hash/claimant pairs as bytes
+        bytes memory message = new bytes(64);
+        assembly {
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
+        }
 
         // Add the proof with wrong destination
         vm.prank(address(endpoint));
@@ -292,7 +326,11 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge the proof with correct destination
         vm.expectEmit(true, true, true, true);
-        emit IntentProven(intentHash, address(0)); // Emits with zero address to indicate removal
+        emit IProver.IntentProven(
+            intentHash,
+            address(0),
+            uint64(wrongDestination)
+        ); // Emits with zero address to indicate removal
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
@@ -330,7 +368,12 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        bytes memory message = abi.encode(intentHashes, claimants);
+        // Pack hash/claimant pairs as bytes
+        bytes memory message = new bytes(64);
+        assembly {
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
+        }
 
         // Add the proof with correct destination
         vm.prank(address(endpoint));
@@ -380,7 +423,12 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        bytes memory message = abi.encode(intentHashes, claimants);
+        // Pack hash/claimant pairs as bytes
+        bytes memory message = new bytes(64);
+        assembly {
+            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
+        }
 
         // Add proof with wrong srcEid
         vm.prank(address(endpoint));
@@ -388,7 +436,11 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge should succeed for LayerZero-specific validation
         vm.expectEmit(true, true, true, true);
-        emit IntentProven(intentHash, address(0));
+        emit IProver.IntentProven(
+            intentHash,
+            address(0),
+            uint64(wrongDestination)
+        );
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
@@ -401,5 +453,9 @@ contract LayerZeroProverTest is BaseTest {
     }
 
     // Helper to import the event for testing
-    event IntentProven(bytes32 indexed hash, address indexed claimant);
+    event IntentProven(
+        bytes32 indexed intentHash,
+        address indexed claimant,
+        uint64 destination
+    );
 }

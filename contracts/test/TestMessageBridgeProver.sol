@@ -6,16 +6,14 @@ import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
 /**
  * @title TestMessageBridgeProver
  * @notice Test implementation of MessageBridgeProver for unit testing
- * @dev Provides dummy implementations of required methods and adds helper methods for testing
+ * @dev Focuses on testing the MessageBridgeProver interface and whitelist functionality
  */
 contract TestMessageBridgeProver is MessageBridgeProver {
+    // Track dispatch state for testing
     bool public dispatched = false;
-    uint256 public lastSourceChainId;
-    bytes32[] public lastIntentHashes;
-    bytes32[] public lastClaimants;
-    bytes32 public lastSourceChainProver;
-    bytes public lastData;
+    uint256 public dispatchCallCount = 0;
 
+    // Fee configuration for testing
     uint256 public feeAmount = 100000;
 
     // No events needed for testing
@@ -65,32 +63,28 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     /**
      * @notice Mock implementation of prove
-     * @dev Records arguments and marks dispatched = true
+     * @dev Simply processes the proofs without actual dispatch
      */
     function prove(
-        address /* _sender */,
+        address _sender,
         uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        bytes32[] calldata _claimants,
-        bytes calldata _data
+        bytes calldata _encodedProofs,
+        bytes calldata /* _data */
     ) external payable override {
+        // Basic validation
+        require(_encodedProofs.length > 0, "Empty proofs");
+        require(_encodedProofs.length % 64 == 0, "Invalid proofs length");
+
+        // Process the intent proofs using the base implementation
+        _handleCrossChainMessage(
+            _sourceChainId,
+            bytes32(uint256(uint160(_sender))),
+            _encodedProofs
+        );
+
+        // For testing, we don't actually dispatch, just mark it
         dispatched = true;
-        lastSourceChainId = _sourceChainId;
-
-        // Store arrays for later verification
-        delete lastIntentHashes;
-        delete lastClaimants;
-
-        for (uint256 i = 0; i < _intentHashes.length; i++) {
-            lastIntentHashes.push(_intentHashes[i]);
-        }
-
-        for (uint256 i = 0; i < _claimants.length; i++) {
-            lastClaimants.push(_claimants[i]);
-        }
-
-        lastSourceChainProver = abi.decode(_data, (bytes32));
-        lastData = _data;
+        dispatchCallCount++;
     }
 
     /**
@@ -99,8 +93,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function fetchFee(
         uint256 /* _sourceChainId */,
-        bytes32[] calldata /* _intentHashes */,
-        bytes32[] calldata /* _claimants */,
+        bytes calldata /* _encodedProofs */,
         bytes calldata /* _data */
     ) public view override returns (uint256) {
         return feeAmount;
@@ -108,25 +101,20 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
     /**
      * @notice Mock implementation of _dispatchMessage
-     * @dev Does nothing for testing purposes
+     * @dev Just tracks that dispatch was called
      */
     function _dispatchMessage(
         uint256 /* sourceChainId */,
-        bytes32[] calldata /* intentHashes */,
-        bytes32[] calldata /* claimants */,
+        bytes calldata /* encodedProofs */,
         bytes calldata /* data */,
         uint256 /* fee */
-    ) internal pure override {
-        // solhint-disable-previous-line no-unused-vars
-        // Mock implementation - does nothing
-        return;
+    ) internal override {
+        dispatched = true;
+        dispatchCallCount++;
     }
 
     /**
-     * @notice Helper method to manually add proven intents for testing
-     * @param _hash Intent hash
-     * @param _claimant Claimant address
-     * @param _destination Destination chain ID
+     * @notice Helper to manually add proven intents for testing
      */
     function addProvenIntent(
         bytes32 _hash,
@@ -137,6 +125,21 @@ contract TestMessageBridgeProver is MessageBridgeProver {
             claimant: _claimant,
             destination: _destination
         });
+    }
+
+    /**
+     * @notice Helper to set fee amount for testing
+     */
+    function setFeeAmount(uint256 _feeAmount) public {
+        feeAmount = _feeAmount;
+    }
+
+    /**
+     * @notice Helper to reset dispatch state for testing
+     */
+    function resetDispatchState() public {
+        dispatched = false;
+        dispatchCallCount = 0;
     }
 
     /**

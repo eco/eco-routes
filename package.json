@@ -42,7 +42,7 @@
     "depcheck": "depcheck --ignore-bin-package --ignores @openzeppelin/contracts,@openzeppelin/contracts-upgradeable,prettier-plugin-solidity,solhint-plugin-eco,concurrently,@types/mocha",
     "lint": "yarn format",
     "build": "hardhat compile",
-    "test": "yarn test:hardhat && yarn test:ts",
+    "test": "yarn test:hardhat && yarn test:ts && forge test",
     "test:hardhat": "hardhat test",
     "test:ts": "jest",
     "clean": "hardhat clean && yarn pub:clean",

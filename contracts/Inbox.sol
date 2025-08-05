@@ -2,16 +2,17 @@
 pragma solidity ^0.8.26;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
+import {IExecutor} from "./interfaces/IExecutor.sol";
 
 import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 
 import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
+import {Executor} from "./Executor.sol";
 
 /**
  * @title Inbox
@@ -23,21 +24,20 @@ abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
 
     /**
-     * @notice Interface ID for IProver used to detect prover contracts
-     */
-    bytes4 public constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
-
-    /**
      * @notice Mapping of intent hashes to their claimant identifiers
      * @dev Stores the cross-VM compatible claimant identifier for each fulfilled intent
      */
     mapping(bytes32 => bytes32) public fulfilled;
 
+    IExecutor public executor;
+
     /**
      * @notice Initializes the Inbox contract
      * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
-    constructor() {}
+    constructor() {
+        executor = new Executor();
+    }
 
     /**
      * @notice Fulfills an intent to be proven via storage proofs
@@ -90,12 +90,6 @@ abstract contract Inbox is DestinationSettler, IInbox {
         override(DestinationSettler, IInbox)
         returns (bytes[] memory)
     {
-        // Calculate total value needed for route calls
-        uint256 routeValue = 0;
-        for (uint256 i = 0; i < route.calls.length; ++i) {
-            routeValue += route.calls[i].value;
-        }
-
         bytes[] memory result = _fulfill(
             intentHash,
             route,
@@ -103,29 +97,13 @@ abstract contract Inbox is DestinationSettler, IInbox {
             claimant
         );
 
-        bytes32[] memory hashes = new bytes32[](1);
-        hashes[0] = intentHash;
+        // Create array with single intent hash
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
 
-        // Send remaining value to prover (after route calls)
-        uint256 proverValue = msg.value >= routeValue
-            ? msg.value - routeValue
-            : 0;
+        // Call prove with the intent hash array
+        prove(source, prover, intentHashes, data);
 
-        // Get claimants for prove call
-        bytes32[] memory claimants = new bytes32[](1);
-        claimants[0] = claimant;
-
-        if (proverValue > 0) {
-            IProver(prover).prove{value: proverValue}(
-                msg.sender,
-                source,
-                hashes,
-                claimants,
-                data
-            );
-        } else {
-            IProver(prover).prove(msg.sender, source, hashes, claimants, data);
-        }
         return result;
     }
 
@@ -144,7 +122,9 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes memory data
     ) public payable virtual {
         uint256 size = intentHashes.length;
-        bytes32[] memory claimants = new bytes32[](size);
+
+        // Encode intent hash/claimant pairs as bytes
+        bytes memory encodedClaimants = new bytes(size * 64); // 32 bytes for intent hash + 32 bytes for claimant
 
         for (uint256 i = 0; i < size; ++i) {
             bytes32 claimantBytes = fulfilled[intentHashes[i]];
@@ -152,14 +132,28 @@ abstract contract Inbox is DestinationSettler, IInbox {
             if (claimantBytes == bytes32(0)) {
                 revert IntentNotFulfilled(intentHashes[i]);
             }
-            claimants[i] = claimantBytes;
+
+            // Pack intent hash and claimant into encodedData
+            assembly {
+                let offset := mul(i, 64)
+                mstore(
+                    add(add(encodedClaimants, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                mstore(
+                    add(add(encodedClaimants, 0x20), add(offset, 32)),
+                    claimantBytes
+                )
+            }
+
+            // Emit IntentProven event
+            emit IntentProven(intentHashes[i], claimantBytes, uint64(source));
         }
 
-        IProver(prover).prove{value: msg.value}(
+        IProver(prover).prove{value: address(this).balance}(
             msg.sender,
             source,
-            intentHashes,
-            claimants,
+            encodedClaimants,
             data
         );
     }
@@ -206,52 +200,26 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         emit IntentFulfilled(intentHash, claimant);
 
+        // Transfer ERC20 tokens to the executor
         uint256 tokensLength = route.tokens.length;
-        // Transfer ERC20 tokens to the portal
+
         for (uint256 i = 0; i < tokensLength; ++i) {
-            TokenAmount memory approval = route.tokens[i];
-            IERC20(approval.token).safeTransferFrom(
+            TokenAmount memory token = route.tokens[i];
+
+            IERC20(token.token).safeTransferFrom(
                 msg.sender,
-                address(this),
-                approval.amount
+                address(executor),
+                token.amount
             );
         }
 
-        // Store the results of the calls
-        bytes[] memory results = new bytes[](route.calls.length);
-
-        for (uint256 i = 0; i < route.calls.length; ++i) {
-            Call memory call = route.calls[i];
-            address target = call.target;
-            if (target.code.length == 0) {
-                if (call.data.length > 0) {
-                    // no code at this address
-                    revert CallToEOA(target);
-                }
-            } else {
-                try
-                    IERC165(target).supportsInterface(IPROVER_INTERFACE_ID)
-                returns (bool isProverCall) {
-                    if (isProverCall) {
-                        // call to prover
-                        revert CallToProver();
-                    }
-                } catch {
-                    // If target doesn't support ERC-165, continue.
-                }
-            }
-
-            (bool success, bytes memory result) = target.call{
-                value: call.value
-            }(call.data);
-
-            if (!success) {
-                revert IntentCallFailed(target, call.data, call.value, result);
-            }
-
-            results[i] = result;
+        uint256 callsLength = route.calls.length;
+        uint256 callsValue = 0;
+        for (uint256 i = 0; i < callsLength; ++i) {
+            callsValue += route.calls[i].value;
         }
-        return (results);
+
+        return executor.execute{value: callsValue}(route.calls);
     }
 
     /**

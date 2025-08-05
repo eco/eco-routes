@@ -56,6 +56,11 @@ jobs:
         with:
           cmd: build # will run `yarn build` command
 
+      - name: install foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: "v0.3.0"
+
       - name: Run Test
         uses: borales/actions-yarn@v5
         with:

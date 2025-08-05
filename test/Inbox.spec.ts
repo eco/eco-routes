@@ -5,8 +5,8 @@ import {
   TestERC20,
   TestUSDT,
   Inbox,
-  Portal,
   TestProver,
+  Executor,
 } from '../typechain-types'
 import {
   time,
@@ -14,41 +14,31 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer } from '../utils/encode'
 import { keccak256 } from 'ethers'
-import {
-  encodeReward,
-  encodeRoute,
-  hashIntent,
-  Call,
-  Route,
-  Reward,
-  TokenAmount,
-  Intent,
-} from '../utils/intent'
+import { hashIntent, Route, Reward, Intent } from '../utils/intent'
 import { addressToBytes32 } from '../utils/typeCasts'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
+  let executor: Executor
   let erc20: TestERC20
   let testUSDT: TestUSDT
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let dstAddr: SignerWithAddress
-  let intent: Intent
   let route: Route
   let reward: Reward
   let rewardHash: string
   let intentHash: string
-  let otherHash: string
   let mockProver: TestProver
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
   const mintAmount = 1000
   const sourceChainID = 123
-  let fee: BigInt
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
+    executor: Executor
     erc20: TestERC20
     testUSDT: TestUSDT
     owner: SignerWithAddress
@@ -59,6 +49,11 @@ describe('Inbox Test', (): void => {
     const portalFactory = await ethers.getContractFactory('Portal')
     const portal = await portalFactory.deploy()
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
+    const executor = await ethers.getContractAt(
+      'Executor',
+      await inbox.executor(),
+    )
+
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
     const erc20 = await erc20Factory.deploy('eco', 'eco')
@@ -73,6 +68,7 @@ describe('Inbox Test', (): void => {
 
     return {
       inbox,
+      executor,
       erc20,
       testUSDT,
       owner,
@@ -85,28 +81,27 @@ describe('Inbox Test', (): void => {
     amount: number,
     timeDelta: number,
   ): Promise<{
-    intent: Intent
     route: Route
     reward: Reward
     rewardHash: string
     intentHash: string
   }> {
     erc20Address = await erc20.getAddress()
-    const _calldata = await encodeTransfer(dstAddr.address, amount)
-    const _timestamp = (await time.latest()) + timeDelta
+    const data = await encodeTransfer(dstAddr.address, amount)
+    const deadline = (await time.latest()) + timeDelta
 
     // Create intent directly
-    const _intent: Intent = {
+    const intent: Intent = {
       destination: Number((await owner.provider.getNetwork()).chainId),
       route: {
         salt,
-        deadline: _timestamp,
+        deadline,
         portal: await inbox.getAddress(),
         tokens: [{ token: await erc20.getAddress(), amount: amount }],
         calls: [
           {
             target: erc20Address,
-            data: _calldata,
+            data,
             value: 0,
           },
         ],
@@ -114,7 +109,7 @@ describe('Inbox Test', (): void => {
       reward: {
         creator: solver.address,
         prover: solver.address,
-        deadline: _timestamp,
+        deadline,
         nativeValue: 0n,
         tokens: [
           {
@@ -126,25 +121,27 @@ describe('Inbox Test', (): void => {
     }
 
     // Hash the intent
-    const { rewardHash: _rewardHash, intentHash: _intentHash } =
-      hashIntent(_intent)
+    const { rewardHash, intentHash } = hashIntent(intent)
 
     return {
-      intent: _intent,
-      route: _intent.route,
-      reward: _intent.reward,
-      rewardHash: _rewardHash,
-      intentHash: _intentHash,
+      route: intent.route,
+      reward: intent.reward,
+      rewardHash,
+      intentHash,
     }
   }
+
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, erc20, testUSDT, owner, solver, dstAddr } =
+    ;({ inbox, executor, erc20, testUSDT, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
-    ;({ intent, route, reward, rewardHash, intentHash } =
-      await createIntentData(mintAmount, timeDelta))
-    mockProver = await (
-      await ethers.getContractFactory('TestProver')
-    ).deploy(await inbox.getAddress())
+    ;({ route, reward, rewardHash, intentHash } = await createIntentData(
+      mintAmount,
+      timeDelta,
+    ))
+
+    const factory = await ethers.getContractFactory('TestProver')
+    const inboxAddress = await inbox.getAddress()
+    mockProver = await factory.deploy(inboxAddress)
   })
 
   describe('fulfill when the intent is invalid', () => {
@@ -229,6 +226,7 @@ describe('Inbox Test', (): void => {
           .fulfill(intentHash, route, rewardHash, ethers.ZeroHash),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
     })
+
     it('should revert if the solver has not approved tokens for transfer', async () => {
       await expect(
         inbox
@@ -241,6 +239,7 @@ describe('Inbox Test', (): void => {
           ),
       ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
     })
+
     it('should revert if the call fails', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
@@ -269,36 +268,9 @@ describe('Inbox Test', (): void => {
             rewardHash,
             addressToBytes32(dstAddr.address),
           ),
-      ).to.be.revertedWithCustomError(inbox, 'IntentCallFailed')
+      ).to.be.revertedWithCustomError(executor, 'CallFailed')
     })
-    it('should revert if any of the targets is a prover', async () => {
-      const _route: Route = {
-        ...route,
-        calls: [
-          {
-            target: await mockProver.getAddress(),
-            data: '0x',
-            value: 0,
-          },
-        ],
-      }
-      const _intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
-        route: _route,
-        reward: reward,
-      }).intentHash
-      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
-      await expect(
-        inbox
-          .connect(solver)
-          .fulfill(
-            _intentHash,
-            _route,
-            rewardHash,
-            addressToBytes32(dstAddr.address),
-          ),
-      ).to.be.revertedWithCustomError(inbox, 'CallToProver')
-    })
+
     it('should revert if one of the targets is an EOA', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
@@ -312,7 +284,7 @@ describe('Inbox Test', (): void => {
           },
         ],
       }
-      const _intentHash = hashIntent({
+      const intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
         reward: reward,
@@ -321,13 +293,13 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            _intentHash,
+            intentHash,
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
           ),
       )
-        .to.be.revertedWithCustomError(inbox, 'CallToEOA')
+        .to.be.revertedWithCustomError(executor, 'CallToEOA')
         .withArgs(solver.address)
     })
 
@@ -406,7 +378,7 @@ describe('Inbox Test', (): void => {
         ],
       }
 
-      const _intentHash = hashIntent({
+      const intentHash = hashIntent({
         destination: Number((await owner.provider.getNetwork()).chainId),
         route: _route,
         reward: reward,
@@ -422,7 +394,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
-            _intentHash,
+            intentHash,
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
@@ -430,7 +402,7 @@ describe('Inbox Test', (): void => {
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
-        .withArgs(_intentHash, addressToBytes32(dstAddr.address))
+        .withArgs(intentHash, addressToBytes32(dstAddr.address))
 
       // Check ETH was transferred
       const finalBalance = await ethers.provider.getBalance(dstAddr.address)
@@ -499,10 +471,14 @@ describe('Inbox Test', (): void => {
     it('gets the right args', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
+      // Calculate expected encoded data (claimant + intentHash)
+      const claimantBytes32 = addressToBytes32(dstAddr.address)
+      const expectedData = '0x' + claimantBytes32.slice(2) + intentHash.slice(2)
+
       const theArgs = {
         sender: solver.address,
         sourceChainId: BigInt(sourceChainID),
-        data: '0x',
+        data: '0x', // The additional data parameter, not the encoded proofs
         value: 123456789n,
       }
       await expect(
@@ -546,10 +522,14 @@ describe('Inbox Test', (): void => {
     it('works', async () => {
       await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
 
+      // Calculate expected encoded data (claimant + intentHash)
+      const claimantBytes32 = addressToBytes32(dstAddr.address)
+      const expectedData = '0x' + claimantBytes32.slice(2) + intentHash.slice(2)
+
       const theArgs = {
         sender: solver.address,
         sourceChainId: BigInt(sourceChainID),
-        data: '0x',
+        data: '0x', // The additional data parameter, not the encoded proofs
         value: 0n,
       }
 

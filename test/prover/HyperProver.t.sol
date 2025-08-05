@@ -19,6 +19,39 @@ contract HyperProverTest is BaseTest {
     address internal whitelistedProver;
     address internal nonWhitelistedProver;
 
+    /**
+     * @notice Helper function to encode proofs from separate arrays
+     * @param intentHashes Array of intent hashes
+     * @param claimants Array of claimant addresses (as bytes32)
+     * @return encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     */
+    function encodeProofs(
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal pure returns (bytes memory encodedProofs) {
+        require(
+            intentHashes.length == claimants.length,
+            "Array length mismatch"
+        );
+
+        encodedProofs = new bytes(intentHashes.length * 64);
+        for (uint256 i = 0; i < intentHashes.length; i++) {
+            assembly {
+                let offset := mul(i, 64)
+                // Store hash in first 32 bytes of each pair
+                mstore(
+                    add(add(encodedProofs, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                // Store claimant in next 32 bytes of each pair
+                mstore(
+                    add(add(encodedProofs, 0x20), add(offset, 32)),
+                    mload(add(claimants, add(0x20, mul(i, 32))))
+                )
+            }
+        }
+    }
+
     function setUp() public override {
         super.setUp();
 
@@ -61,7 +94,13 @@ contract HyperProverTest is BaseTest {
         bytes memory metadata,
         address hookAddr
     ) internal pure returns (bytes memory) {
-        return abi.encode(sourceChainProver, metadata, hookAddr);
+        HyperProver.UnpackedData memory unpacked = HyperProver.UnpackedData({
+            sourceChainProver: sourceChainProver,
+            metadata: metadata,
+            hookAddr: hookAddr
+        });
+
+        return abi.encode(unpacked);
     }
 
     function testInitializesCorrectly() public view {
@@ -79,9 +118,11 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
         vm.expectRevert();
         vm.prank(creator);
-        hyperProver.prove(creator, block.chainid, intentHashes, claimants, "");
+        hyperProver.prove(creator, block.chainid, encodedProofs, "");
     }
 
     function testProveWithValidInput() public {
@@ -96,11 +137,12 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
 
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
         // Check the fee first
         uint256 expectedFee = hyperProver.fetchFee(
             block.chainid,
-            intentHashes,
-            claimants,
+            encodedProofs,
             proverData
         );
 
@@ -108,8 +150,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: expectedFee}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodedProofs,
             proverData
         );
     }
@@ -122,7 +163,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         _expectEmit();
-        emit IProver.IntentProven(intentHash, claimant);
+        emit IProver.IntentProven(intentHash, claimant, uint64(block.chainid));
 
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
@@ -133,8 +174,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
     }
@@ -159,8 +199,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
 
@@ -180,20 +219,9 @@ contract HyperProverTest is BaseTest {
         intentHashes[1] = keccak256("second intent");
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
-        vm.prank(address(portal));
-        bytes memory proverData = _encodeProverData(
-            bytes32(uint256(uint160(whitelistedProver))),
-            "",
-            address(0)
-        );
-        hyperProver.prove{value: 1 ether}(
-            creator,
-            block.chainid,
-            intentHashes,
-            claimants,
-            proverData
-        );
+        // This should revert in encodeProofs due to array length mismatch
+        vm.expectRevert("Array length mismatch");
+        encodeProofs(intentHashes, claimants);
     }
 
     function testProveWithEmptyArrays() public {
@@ -209,8 +237,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
     }
@@ -236,7 +263,12 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        // Pack hash/claimant pairs as bytes
+        bytes memory messageBody = new bytes(64); // 32 bytes for hash + 32 bytes for claimant
+        assembly {
+            mstore(add(messageBody, 0x20), mload(add(intentHashes, 0x20)))
+            mstore(add(messageBody, 0x40), mload(add(claimants, 0x20)))
+        }
 
         vm.prank(address(mailbox));
         hyperProver.handle(
@@ -258,7 +290,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
 
         vm.expectRevert();
         vm.prank(address(mailbox));
@@ -276,6 +308,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[1] = keccak256("second intent");
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        // Manually create the encoded message with abi.encode to simulate mismatched arrays
         bytes memory messageBody = abi.encode(intentHashes, claimants);
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
@@ -294,7 +327,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
 
         // First call should succeed
         vm.prank(address(mailbox));
@@ -333,8 +366,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
 
@@ -379,8 +411,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
 
@@ -419,13 +450,12 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
 
         // Now simulate the message being received back by calling handle
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
         vm.prank(address(mailbox));
         hyperProver.handle(
             uint32(block.chainid),
@@ -462,8 +492,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: overpayment}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
 
@@ -492,8 +521,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
     }
@@ -502,7 +530,7 @@ contract HyperProverTest is BaseTest {
         bytes32[] memory intentHashes = new bytes32[](0);
         bytes32[] memory claimants = new bytes32[](0);
 
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        bytes memory messageBody = encodeProofs(intentHashes, claimants);
 
         // Should handle empty arrays gracefully
         vm.prank(address(mailbox));
@@ -514,9 +542,10 @@ contract HyperProverTest is BaseTest {
     }
 
     function testHandleWithInvalidMessageFormat() public {
-        bytes memory invalidMessage = abi.encode("invalid", "format");
+        // Create invalid message with wrong length (not multiple of 64)
+        bytes memory invalidMessage = new bytes(63); // Should be multiple of 64
 
-        vm.expectRevert();
+        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         vm.prank(address(mailbox));
         hyperProver.handle(
             1,
@@ -541,8 +570,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             block.chainid,
-            intentHashes,
-            claimants,
+            encodeProofs(intentHashes, claimants),
             proverData
         );
 

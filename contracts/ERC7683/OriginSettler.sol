@@ -29,6 +29,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         keccak256(
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
         );
+
     /**
      * @notice Initializes the Eco7683OriginSettler
      */
