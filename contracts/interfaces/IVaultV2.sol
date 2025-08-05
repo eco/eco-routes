@@ -5,34 +5,71 @@ pragma solidity ^0.8.26;
 import {Reward} from "../types/Intent.sol";
 import {IPermit} from "./IPermit.sol";
 
+/**
+ * @title IVaultV2
+ * @notice Interface for Vault V2 contract that manages reward escrow functionality
+ * @dev Handles funding, withdrawal, and refund operations for cross-chain rewards
+ */
 interface IVaultV2 {
+    /// @notice Thrown when caller is not the portal contract
     error NotPortalCaller(address caller);
+
+    /// @notice Thrown when vault status is invalid for funding operation
     error InvalidStatusForFunding(Status status);
+
+    /// @notice Thrown when vault status is invalid for withdrawal operation
     error InvalidStatusForWithdrawal(Status status);
+
+    /// @notice Thrown when vault status is invalid for refund operation or deadline not reached
     error InvalidStatusForRefund(
         Status status,
         uint256 currentTime,
         uint256 deadline
     );
+
+    /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
+
+    /// @notice Thrown when claimant address is invalid
     error InvalidClaimant(address claimant);
 
+    /// @notice Vault lifecycle status
     enum Status {
-        Initial,
-        Funded,
-        Withdrawn,
-        Refunded
+        Initial, /// @dev Vault created, may be partially funded but not fully funded
+        Funded, /// @dev Vault has been fully funded with all required rewards
+        Withdrawn, /// @dev Rewards have been withdrawn by claimant
+        Refunded /// @dev Rewards have been refunded to creator
     }
 
+    /**
+     * @notice Funds the vault with reward tokens and native currency
+     * @param reward The reward structure containing tokens and amounts
+     * @param funder Address providing the funding
+     * @param permit Optional permit contract for token transfers
+     * @return bool True if vault was successfully fully funded
+     */
     function fund(
         Reward calldata reward,
         address funder,
         IPermit permit
     ) external payable returns (bool);
 
+    /**
+     * @notice Withdraws rewards from the vault to the claimant
+     * @param reward The reward structure to withdraw
+     * @param claimant Address that will receive the rewards
+     */
     function withdraw(Reward calldata reward, address claimant) external;
 
+    /**
+     * @notice Refunds rewards back to the original creator
+     * @param reward The reward structure to refund
+     */
     function refund(Reward calldata reward) external;
 
+    /**
+     * @notice Gets the current status of the vault
+     * @return Status Current vault status
+     */
     function getStatus() external view returns (Status);
 }
