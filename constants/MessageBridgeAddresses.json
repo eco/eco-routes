@@ -87,6 +87,12 @@
   "728126428": {
     "HyperlaneMailbox": "",
     "MetalayerRouter": "",
-    "LayerZeroEndpoint": "0x0Af59750D5dB5460E5d89E268C474d5F7407c061"
+    "LayerZeroEndpoint": "0x0Af59750D5dB5460E5d89E268C474d5F7407c061" //bytes32 encoded
+  }
+  // Tron Shasta
+  "2494104990": {
+    "HyperlaneMailbox": "",
+    "MetalayerRouter": "",
+    "LayerZeroEndpoint": "0x1b356f3030CE0c1eF9D3e1E250Bf0BB11D81b2d1"
   }
 }

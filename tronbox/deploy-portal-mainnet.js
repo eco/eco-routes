@@ -1,11 +1,19 @@
 const TronWeb = require('tronweb')
 const fs = require('fs')
+require('dotenv').config()
+
+// Read private key from environment
+const privateKey = process.env.PRIVATE_KEY_TRON
+if (!privateKey) {
+  throw new Error(
+    'PRIVATE_KEY_TRON not found in environment. Please set your private key: export PRIVATE_KEY_TRON=your_private_key_here',
+  )
+}
 
 // Initialize TronWeb for TRON mainnet
 const tronWeb = new TronWeb.TronWeb({
   fullHost: 'https://api.trongrid.io',
-  privateKey:
-    'CB933CFBBE4FDB37DC2E1C8B1943142FCEB533554971DD408C6E3B09D33C67C5',
+  privateKey,
 })
 
 console.log('🚀 Deploying Portal contract to TRON mainnet...')
@@ -16,12 +24,12 @@ async function deployPortal() {
   try {
     // Read the pre-compiled Portal contract
     const portalArtifact = JSON.parse(
-      fs.readFileSync('./build/contracts/Portal.json', 'utf8'),
+      fs.readFileSync('./out/Portal.sol/Portal.json', 'utf8'),
     )
 
     console.log('📄 Loaded Portal contract artifact')
-    console.log('Contract name:', portalArtifact.contractName)
-    console.log('Bytecode length:', portalArtifact.bytecode.length)
+    console.log('Contract name: Portal')
+    console.log('Bytecode length:', portalArtifact.bytecode.object.length)
 
     // Deploy using raw transaction
     console.log('⏳ Deploying contract to mainnet...')
@@ -30,7 +38,7 @@ async function deployPortal() {
     const transaction = await tronWeb.transactionBuilder.createSmartContract(
       {
         abi: portalArtifact.abi,
-        bytecode: portalArtifact.bytecode,
+        bytecode: portalArtifact.bytecode.object,
         feeLimit: 1000000000, // 1 TRX
         callValue: 0,
         userFeePercentage: 100, // Mainnet fee percentage

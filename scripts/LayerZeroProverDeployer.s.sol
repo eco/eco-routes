@@ -134,12 +134,12 @@ contract LayerZeroProverDeployer is Script {
 
     // Simplified deployment function that uses environment variables
     function deployLayerZeroProverWithEnv() external returns (address) {
-        address endpoint = vm.envAddress("LAYERZERO_ENDPOINT");
-        address portal = vm.envAddress("PORTAL_ADDRESS");
-        uint256 defaultGasLimit = vm.envUint("DEFAULT_GAS_LIMIT");
+        address endpoint = vm.envAddress("OP_LAYERZERO_ENDPOINT");
+        address portal = vm.envAddress("OP_PORTAL_ADDRESS");
+        uint256 defaultGasLimit = vm.envUint("OP_DEFAULT_GAS_LIMIT");
         
         // Read provers from environment variable (comma-separated addresses)
-        string memory proversStr = vm.envString("PROVERS");
+        string memory proversStr = vm.envString("OP_PROVERS");
         bytes32[] memory provers = parseProversString(proversStr);
         
         return this.deployLayerZeroProverWithConstructor(endpoint, portal, provers, defaultGasLimit);

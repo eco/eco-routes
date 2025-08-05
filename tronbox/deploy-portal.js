@@ -1,8 +1,13 @@
 const { execSync } = require('child_process')
 
-// Set the private key environment variable
-process.env.PRIVATE_KEY_TRON =
-  'CB933CFBBE4FDB37DC2E1C8B1943142FCEB533554971DD408C6E3B09D33C67C5'
+// Check if private key is set in environment
+if (!process.env.PRIVATE_KEY_TRON) {
+  console.error('❌ Error: PRIVATE_KEY_TRON not found in environment')
+  console.error(
+    'Please set your private key: export PRIVATE_KEY_TRON=your_private_key_here',
+  )
+  process.exit(1)
+}
 
 console.log('🚀 Deploying Portal contract to Shasta testnet...')
 console.log(
