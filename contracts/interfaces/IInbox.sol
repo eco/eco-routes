@@ -66,31 +66,6 @@ interface IInbox {
     error ZeroClaimant();
 
     /**
-     * @notice Call during intent execution failed
-     * @param addr Target contract address
-     * @param data Call data that failed
-     * @param value Native token value sent
-     * @param returnData Error data returned
-     */
-    error IntentCallFailed(
-        address addr,
-        bytes data,
-        uint256 value,
-        bytes returnData
-    );
-
-    /**
-     * @notice Attempted call to a destination-chain prover
-     */
-    error CallToProver();
-
-    /**
-     * @notice Attempted call to an EOA
-     * @param eoa EOA address to which call was attempted
-     */
-    error CallToEOA(address eoa);
-
-    /**
      * @notice Attempted to batch an unfulfilled intent
      * @param hash Hash of the unfulfilled intent
      */
