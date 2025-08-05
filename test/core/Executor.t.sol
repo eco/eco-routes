@@ -54,7 +54,7 @@ contract ExecutorTest is BaseTest {
         vm.prank(unauthorizedUser);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IExecutor.Unauthorized.selector,
+                IExecutor.NonPortalCaller.selector,
                 unauthorizedUser
             )
         );

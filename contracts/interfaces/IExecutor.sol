@@ -13,16 +13,10 @@ import {Call} from "../types/Intent.sol";
  */
 interface IExecutor {
     /**
-     * @notice Thrown when caller is not authorized to execute calls
+     * @notice Thrown when caller is not the portal to execute calls
      * @param caller The unauthorized address that attempted the call
      */
-    error Unauthorized(address caller);
-
-    /**
-     * @notice Attempted call to a destination-chain prover
-     * @param target Prover address to which call was attempted
-     */
-    error CallToProver(address target);
+    error NonPortalCaller(address caller);
 
     /**
      * @notice Attempted call to an EOA

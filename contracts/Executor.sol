@@ -29,11 +29,11 @@ contract Executor is IExecutor {
 
     /**
      * @notice Restricts function access to the portal contract only
-     * @dev Reverts with Unauthorized error if caller is not the portal
+     * @dev Reverts with NonPortalCaller error if caller is not the portal
      */
     modifier onlyPortal() {
         if (msg.sender != portal) {
-            revert Unauthorized(msg.sender);
+            revert NonPortalCaller(msg.sender);
         }
 
         _;
