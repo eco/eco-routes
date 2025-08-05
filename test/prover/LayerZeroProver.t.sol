@@ -28,8 +28,7 @@ contract MockLayerZeroEndpoint {
 
     function quote(
         ILayerZeroEndpointV2.MessagingParams calldata,
-        /* params */
-        bool /* payInLzToken */
+        address
     ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
             ILayerZeroEndpointV2.MessagingFee({

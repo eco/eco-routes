@@ -250,10 +250,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Query LayerZero endpoint for accurate fee estimate
         ILayerZeroEndpointV2.MessagingFee memory fee = ILayerZeroEndpointV2(
             ENDPOINT
-        ).quote(
-                lzParams,
-                false // payInLzToken
-            );
+        ).quote(lzParams, address(this));
 
         return fee.nativeFee;
     }
