@@ -44,7 +44,7 @@ contract VaultV2 is IVaultV2 {
     }
 
     /// @notice Ensures vault can be funded (must be in Initial status)
-    modifier canFund() {
+    modifier onlyFundable() {
         if (status != Status.Initial) {
             revert InvalidStatusForFunding(status);
         }
@@ -53,7 +53,7 @@ contract VaultV2 is IVaultV2 {
     }
 
     /// @notice Ensures vault can be withdrawn from and claimant is valid
-    modifier canWithdraw(address claimant) {
+    modifier onlyWithdrawable(address claimant) {
         if (status != Status.Initial && status != Status.Funded) {
             revert InvalidStatusForWithdrawal(status);
         }
@@ -66,7 +66,7 @@ contract VaultV2 is IVaultV2 {
     }
 
     /// @notice Ensures vault can be refunded (deadline must have passed)
-    modifier canRefund(uint256 deadline) {
+    modifier onlyRefundable(uint256 deadline) {
         if (
             (status == Status.Initial || status == Status.Funded) &&
             block.timestamp < deadline
@@ -88,18 +88,19 @@ contract VaultV2 is IVaultV2 {
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable override onlyPortal canFund returns (bool) {
+    ) external payable override onlyPortal onlyFundable returns (bool) {
         bool funded = address(this).balance >= reward.nativeValue;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
 
-            bool tokenFunded = fundFrom(
+            bool tokenFunded = _fundFrom(
                 funder,
                 token,
                 reward.tokens[i].amount
-            ) || fundFromPermit(funder, token, reward.tokens[i].amount, permit);
+            ) ||
+                _fundFromPermit(funder, token, reward.tokens[i].amount, permit);
             funded = funded && tokenFunded;
         }
 
@@ -118,7 +119,7 @@ contract VaultV2 is IVaultV2 {
     function withdraw(
         Reward calldata reward,
         address claimant
-    ) external override onlyPortal canWithdraw(claimant) {
+    ) external override onlyPortal onlyWithdrawable(claimant) {
         status = Status.Withdrawn;
 
         uint256 rewardsLength = reward.tokens.length;
@@ -150,7 +151,7 @@ contract VaultV2 is IVaultV2 {
      */
     function refund(
         Reward calldata reward
-    ) external override onlyPortal canRefund(reward.deadline) {
+    ) external override onlyPortal onlyRefundable(reward.deadline) {
         address refundee = reward.creator;
 
         status = Status.Refunded;
@@ -191,7 +192,7 @@ contract VaultV2 is IVaultV2 {
      * @param rewardAmount Required token amount for the reward
      * @return bool True if vault has sufficient balance after transfer attempt
      */
-    function fundFrom(
+    function _fundFrom(
         address funder,
         IERC20 token,
         uint256 rewardAmount
@@ -224,7 +225,7 @@ contract VaultV2 is IVaultV2 {
      * @param permit Permit contract for gasless approvals
      * @return bool True if vault has sufficient balance after transfer attempt
      */
-    function fundFromPermit(
+    function _fundFromPermit(
         address funder,
         IERC20 token,
         uint256 rewardAmount,
@@ -232,12 +233,12 @@ contract VaultV2 is IVaultV2 {
     ) internal returns (bool) {
         uint256 balance = token.balanceOf(address(this));
 
-        if (address(permit) == address(0)) {
-            return balance >= rewardAmount;
-        }
-
         if (balance >= rewardAmount) {
             return true;
+        }
+
+        if (address(permit) == address(0)) {
+            return balance >= rewardAmount;
         }
 
         (uint160 allowance, , ) = permit.allowance(
