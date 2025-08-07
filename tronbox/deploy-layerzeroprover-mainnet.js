@@ -1,12 +1,12 @@
 const TronWeb = require('tronweb')
 const fs = require('fs')
-require('dotenv').config()
+require('dotenv').config({ path: '../.env' })
 
 // Read private key from environment
-const privateKey = process.env.PRIVATE_KEY_TRON
+const privateKey = process.env.TRON_PRIVATE_KEY
 if (!privateKey) {
   throw new Error(
-    'PRIVATE_KEY_TRON not found in environment. Please set your private key: export PRIVATE_KEY_TRON=your_private_key_here',
+    'TRON_PRIVATE_KEY not found in environment. Please set your private key: export TRON_PRIVATE_KEY=your_private_key_here',
   )
 }
 
@@ -22,28 +22,42 @@ console.log('Deployer address:', tronWeb.defaultAddress.base58)
 
 async function deployLayerZeroProver() {
   try {
-    // Read the pre-compiled LayerZeroProver contract
+    // Read the pre-compiled LayerZeroProver contract from TronBox build
     const proverArtifact = JSON.parse(
-      fs.readFileSync('./out/LayerZeroProver.sol/LayerZeroProver.json', 'utf8'),
+      fs.readFileSync('./build/contracts/LayerZeroProver.json', 'utf8'),
     )
 
     console.log('📄 Loaded LayerZeroProver contract artifact')
     console.log('Contract name: LayerZeroProver')
-    console.log('Bytecode length:', proverArtifact.bytecode.object.length)
+    console.log('Bytecode length:', proverArtifact.bytecode.length)
 
     // Constructor arguments for LayerZeroProver
     const endpoint = 'TAy9xwjYjBBN6kutzrZJaAZJHCAejjK1V9' // LayerZero endpoint
+    const delegate = 'TJJYsUz2F4fURzX2Rf4jDWDNdKf5Y86fnk' // Deployer as delegate
     const portal = 'TEQEU8Q23BVFgV2jfCSt2gKdAkbh8BFUbU' // Portal address
 
-    // Provers array - contains the Optimism LayerZeroProver address as bytes32
-    const optimisimProverAddress = '0x68dEE1F4F344D0182c3D2c49D987C1E6846f5534'
-    // For Tron, we need to encode this as a proper bytes32 array
-    const provers = [optimisimProverAddress.padEnd(66, '0')] // Pad to 32 bytes
+    // Provers array - read from environment variable
+    const proversStr = process.env.TRON_PROVERS
+    if (!proversStr) {
+      throw new Error(
+        'TRON_PROVERS not found in environment. Please set TRON_PROVERS=prover_address_here',
+      )
+    }
+
+    // Parse provers string (comma-separated addresses)
+    const proverAddresses = proversStr.split(',').map((addr) => addr.trim())
+    const provers = proverAddresses.map((addr) => {
+      // Remove '0x' prefix if present
+      const cleanAddr = addr.startsWith('0x') ? addr.slice(2) : addr
+      // Left-pad with zeroes to 64 characters (32 bytes)
+      return '0x' + cleanAddr.padStart(64, '0')
+    })
 
     const defaultGasLimit = 0 // Not used for Tron - we use energy/bandwidth instead
 
     console.log('🔧 Constructor arguments:')
     console.log('  - Endpoint:', endpoint)
+    console.log('  - Delegate:', delegate)
     console.log('  - Portal:', portal)
     console.log('  - Provers:', provers)
     console.log(
@@ -58,12 +72,12 @@ async function deployLayerZeroProver() {
     const transaction = await tronWeb.transactionBuilder.createSmartContract(
       {
         abi: proverArtifact.abi,
-        bytecode: proverArtifact.bytecode.object,
-        feeLimit: 1000000000, // 1 TRX
+        bytecode: proverArtifact.bytecode,
+        feeLimit: 5000000000, // 5 TRX
         callValue: 0,
         userFeePercentage: 100, // Mainnet fee percentage
-        originEnergyLimit: 10000000, // 10M energy for contract deployment
-        parameters: [endpoint, portal, provers, defaultGasLimit], // Pass constructor parameters
+        originEnergyLimit: 5000000, // 5M energy for contract deployment
+        parameters: [endpoint, delegate, portal, provers, defaultGasLimit], // Pass constructor parameters
       },
       tronWeb.defaultAddress.base58,
     )

@@ -9,7 +9,7 @@
   "10": {
     "HyperlaneMailbox": "",
     "MetalayerRouter": "",
-    "LayerZeroEndpoint": "0x3c2269811836af69497E5F486A85D7316753cf62"
+    "LayerZeroEndpoint": "0x1a44076050125825900e736c501f859c50fE728c"
   },
   // Unichain
   "130": {
@@ -88,7 +88,7 @@
     "HyperlaneMailbox": "",
     "MetalayerRouter": "",
     "LayerZeroEndpoint": "0x0Af59750D5dB5460E5d89E268C474d5F7407c061" //bytes32 encoded
-  }
+  },
   // Tron Shasta
   "2494104990": {
     "HyperlaneMailbox": "",
