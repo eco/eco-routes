@@ -51,4 +51,11 @@ interface IT1XChainReader {
     function verifyProofOfRead(
         bytes memory encodedProofOfRead
     ) external view returns (bytes32, bytes memory);
+    function verifyProofOfReadWithResult(
+        bytes calldata encodedProofOfRead,
+        bytes calldata result
+    )
+        external
+        view
+        returns (bytes32);
 }
