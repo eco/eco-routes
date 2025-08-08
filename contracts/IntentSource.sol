@@ -76,7 +76,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @return rewardHash Hash of the reward component
      */
     function getIntentHash(
-        Intent calldata intent
+        Intent memory intent
     )
         public
         pure
@@ -102,7 +102,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     function getIntentHash(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
+        Reward memory reward
     )
         public
         pure
@@ -127,7 +127,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     function getIntentHash(
         uint64 destination,
         bytes32 _routeHash,
-        Reward calldata reward
+        Reward memory reward
     )
         public
         pure
@@ -167,7 +167,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward
-    ) public view override(IIntentSource, OriginSettler) returns (address) {
+    ) public view returns (address) {
         (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
 
         return _getVault(intentHash);
@@ -198,7 +198,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward
-    ) public view override(IIntentSource, OriginSettler) returns (bool) {
+    ) public view returns (bool) {
         (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
 
         return
@@ -234,12 +234,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     function publish(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
-    )
-        public
-        override(IIntentSource, OriginSettler)
-        returns (bytes32 intentHash, address vault)
-    {
+        Reward memory reward
+    ) public returns (bytes32 intentHash, address vault) {
         (intentHash, , ) = getIntentHash(destination, route, reward);
         vault = _getVault(intentHash);
 
@@ -282,10 +278,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward calldata reward,
         bool allowPartial
     ) public payable returns (bytes32 intentHash, address vault) {
-        (intentHash, vault) = publish(destination, route, reward);
-
-        _fundIntent(intentHash, vault, reward, msg.sender, allowPartial);
-        _returnExcessEth(intentHash, address(this).balance);
+        return
+            _publishAndFund(
+                destination,
+                route,
+                reward,
+                msg.sender,
+                allowPartial
+            );
     }
 
     /**
@@ -530,7 +530,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bytes32 intentHash,
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
+        Reward memory reward
     ) internal {
         emit IntentPublished(
             intentHash,
@@ -545,8 +545,37 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Handles the funding of an intent
+     * @notice Core OriginSettler implementation for atomic intent creation and funding
+     * @dev Implements the unified _publishAndFund method for both open() and openFor()
+     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Handles excess ETH return for optimal user experience
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @param funder The address providing the funding
+     * @param allowPartial Whether to accept partial funding
+     * @return intentHash Hash of the created and funded intent
+     * @return vault Address of the created vault
+     */
+    function _publishAndFund(
+        uint64 destination,
+        bytes memory route,
+        Reward memory reward,
+        address funder,
+        bool allowPartial
+    ) internal override returns (bytes32 intentHash, address vault) {
+        (intentHash, vault) = publish(destination, route, reward);
+
+        _fundIntent(intentHash, vault, reward, funder, allowPartial);
+        _returnExcessEth(intentHash, address(this).balance);
+    }
+
+    /**
+     * @notice Handles the funding of an intent - OriginSettler implementation
+     * @dev Called by _publishAndFund to atomically fund intents after creation
+     * @dev Updates reward status and validates funding completeness
      * @param intentHash Hash of the intent
+     * @param vault Address of the intent's vault
      * @param reward Reward structure to fund
      * @param funder Address providing the funds
      * @param allowPartial Whether to allow partial funding
@@ -554,10 +583,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     function _fundIntent(
         bytes32 intentHash,
         address vault,
-        Reward calldata reward,
+        Reward memory reward,
         address funder,
         bool allowPartial
     ) internal {
+        if (rewardStatuses[intentHash] == IVaultV2.Status.Funded) {
+            return;
+        }
+
         bool fullyFunded = _fundNative(vault, reward.nativeValue);
 
         uint256 rewardsLength = reward.tokens.length;
@@ -566,7 +599,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
             fullyFunded =
                 fullyFunded &&
-                _fundToken(vault, token, reward.tokens[i].amount);
+                _fundToken(vault, funder, token, reward.tokens[i].amount);
         }
 
         if (!allowPartial && !fullyFunded) {
@@ -615,6 +648,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      */
     function _fundToken(
         address vault,
+        address funder,
         IERC20 token,
         uint256 rewardAmount
     ) internal returns (bool funded) {
@@ -626,11 +660,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         uint256 remaining = rewardAmount - balance;
         uint256 transferAmount = remaining
-            .min(token.allowance(msg.sender, address(this)))
-            .min(token.balanceOf(msg.sender));
+            .min(token.allowance(funder, address(this)))
+            .min(token.balanceOf(funder));
 
         if (transferAmount > 0) {
-            token.safeTransferFrom(msg.sender, vault, transferAmount);
+            token.safeTransferFrom(funder, vault, transferAmount);
         }
 
         return balance + transferAmount >= rewardAmount;
@@ -698,14 +732,13 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Returns excess ETH to the sender
-     * @param intentHash Hash of the intent
+     * @notice Returns excess ETH to the sender - OriginSettler implementation
+     * @dev Called by _publishAndFund to return any ETH overpayment to the sender
+     * @dev Essential for user experience when overfunding native token rewards
+     * @param intentHash Hash of the intent (used for error context)
      * @param amount Amount of ETH to return
      */
-    function _returnExcessEth(
-        bytes32 intentHash,
-        uint256 amount
-    ) internal virtual {
+    function _returnExcessEth(bytes32 intentHash, uint256 amount) internal {
         if (amount == 0) return;
 
         (bool success, ) = payable(msg.sender).call{value: amount}("");

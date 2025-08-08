@@ -7,6 +7,7 @@ import "../../types/ERC7683.sol";
 /**
  * @title IOriginSettler
  * @notice Standard interface for settlement contracts on the origin chain
+ * @dev Updated interface supporting enhanced validation, replay protection, and ERC-7683 compliance
  */
 interface IOriginSettler {
     /// @notice Thrown when the sent native token amount is less than the required reward amount
@@ -15,14 +16,17 @@ interface IOriginSettler {
     /// @notice Thrown when data type signature does not match the expected value
     error TypeSignatureMismatch();
 
-    /// @notice Thrown when the source chain's chainID does not match the expected value
-    error OriginChainIDMismatch();
+    /// @notice Thrown when the origin chain ID in the order does not match the current chain
+    error InvalidOriginChainId(uint256 expected, uint256 actual);
 
     /// @notice Thrown when attempting to open an order after the open deadline has passed
     error OpenDeadlinePassed();
 
-    /// @notice Thrown when signature does not match the expected value
-    error BadSignature();
+    /// @notice Thrown when the provided signature is invalid or does not match the order
+    error InvalidSignature();
+
+    /// @notice Thrown when the origin settler address in the order does not match this contract
+    error InvalidOriginSettler(address expected, address actual);
 
     /**
      * @notice Signals that an order has been opened
@@ -32,22 +36,25 @@ interface IOriginSettler {
     event Open(bytes32 indexed orderId, ResolvedCrossChainOrder resolvedOrder);
 
     /**
-     * @notice Opens a cross-chain order
-     * @dev To be called by the user
-     * @dev This method must emit the Open event
-     * @dev This method has been made payable, in contrast to original interface
-     * @param order The OnchainCrossChainOrder definition
+     * @notice Opens a cross-chain order directly by the user
+     * @dev Called by the user to create and fund an intent
+     * @dev Validates order data type and handles intent funding
+     * @dev Emits Open event with resolved order data
+     * @dev Made payable to support native token rewards
+     * @param order The OnchainCrossChainOrder definition with embedded OrderData
      */
     function open(OnchainCrossChainOrder calldata order) external payable;
 
     /**
-     * @notice Opens a gasless cross-chain order on behalf of a user.
-     * @dev To be called by the filler.
-     * @dev This method must emit the Open event
-     * @dev This method has been made payable, in contrast to original interface
-     * @param order The GaslessCrossChainOrder definition
-     * @param signature The user's signature over the order
-     * @param originFillerData Any filler-defined data required by the settler
+     * @notice Opens a gasless cross-chain order on behalf of a user
+     * @dev Called by a solver to create an intent for a user via signature
+     * @dev Validates signature, deadlines, chain IDs, and origin settler address
+     * @dev Includes replay protection through vault state checking
+     * @dev Emits Open event with resolved order data
+     * @dev Made payable to support native token rewards
+     * @param order The GaslessCrossChainOrder definition with user signature
+     * @param signature The user's EIP-712 signature authorizing the order
+     * @param originFillerData Any filler-defined data (currently unused)
      */
     function openFor(
         GaslessCrossChainOrder calldata order,
@@ -56,11 +63,13 @@ interface IOriginSettler {
     ) external payable;
 
     /**
-     * @notice Resolves a specific GaslessCrossChainOrder into a generic ResolvedCrossChainOrder
-     * @dev Intended to improve standardized integration of various order types and settlement contracts
-     * @param order The GaslessCrossChainOrder definition
-     * @param originFillerData Any filler-defined data required by the settler
-     * @return ResolvedCrossChainOrder hydrated order data including the inputs and outputs of the order
+     * @notice Resolves a gasless order into ERC-7683 compliant ResolvedCrossChainOrder
+     * @dev Converts OrderData to standardized format for off-chain solvers
+     * @dev Uses orderData.maxSpent directly and corrects chainId assignments
+     * @dev FillInstruction.originData contains (route, rewardHash) not full intent
+     * @param order The GaslessCrossChainOrder definition with embedded OrderData
+     * @param originFillerData Any filler-defined data (currently unused)
+     * @return ResolvedCrossChainOrder ERC-7683 compliant order with proper field mappings
      */
     function resolveFor(
         GaslessCrossChainOrder calldata order,
@@ -68,10 +77,12 @@ interface IOriginSettler {
     ) external view returns (ResolvedCrossChainOrder memory);
 
     /**
-     * @notice Resolves a specific OnchainCrossChainOrder into a generic ResolvedCrossChainOrder
-     * @dev Intended to improve standardized integration of various order types and settlement contracts
-     * @param order The OnchainCrossChainOrder definition
-     * @return ResolvedCrossChainOrder hydrated order data including the inputs and outputs of the order
+     * @notice Resolves an onchain order into ERC-7683 compliant ResolvedCrossChainOrder
+     * @dev Converts OrderData to standardized format for off-chain solvers
+     * @dev Uses orderData.maxSpent directly and corrects chainId assignments
+     * @dev FillInstruction.originData contains (route, rewardHash) not full intent
+     * @param order The OnchainCrossChainOrder definition with embedded OrderData
+     * @return ResolvedCrossChainOrder ERC-7683 compliant order with proper field mappings
      */
     function resolve(
         OnchainCrossChainOrder calldata order
