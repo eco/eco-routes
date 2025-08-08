@@ -26,9 +26,17 @@ import {
 } from 'viem'
 import { extractAbiStruct } from './utils'
 import { PortalAbi } from './abi'
-import { PublicKey as SvmAddress } from '@solana/web3.js'
+import { PublicKey } from '@solana/web3.js'
 import { BorshCoder, type Idl } from '@coral-xyz/anchor'
 import portalIdl from '../../../../target/idl/portal.json'
+
+export type SvmAddress = string & { readonly __brand: 'SvmAddress' }
+
+export const toSvmAddress = (publicKey: PublicKey): SvmAddress =>
+  publicKey.toString() as SvmAddress
+
+export const toPublicKey = (address: SvmAddress): PublicKey =>
+  new PublicKey(address)
 
 /**
  * VM Type enumeration for different virtual machine types
