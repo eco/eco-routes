@@ -6,7 +6,6 @@ import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, Provider, AbiCoder } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
-  encodeReward,
   encodeRoute,
   Call,
   TokenAmount,
@@ -24,8 +23,6 @@ import {
 import {
   GaslessCrosschainOrderData,
   OnchainCrosschainOrderData,
-  encodeGaslessCrosschainOrderData,
-  encodeOnchainCrosschainOrderData,
 } from '../utils/EcoERC7683'
 
 describe('Origin Settler Test', (): void => {
@@ -38,7 +35,6 @@ describe('Origin Settler Test', (): void => {
   let creator: SignerWithAddress
   let otherPerson: SignerWithAddress
   const mintAmount: number = 1000
-  const minBatcherReward = 12345
 
   let salt: BytesLike
   let nonce: number
@@ -52,8 +48,6 @@ describe('Origin Settler Test', (): void => {
   let route: Route
   let reward: Reward
   let intent: Intent
-  let routeHash: BytesLike
-  let rewardHash: BytesLike
   let intentHash: BytesLike
   let onchainCrosschainOrder: OnchainCrossChainOrderStruct
   let onchainCrosschainOrderData: OnchainCrosschainOrderData
@@ -64,7 +58,7 @@ describe('Origin Settler Test', (): void => {
   // Use the correct ORDER_DATA_TYPEHASH from the contract
   const ORDER_DATA_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-      'OrderData(uint64 destination,bytes32 portal,uint64 deadline,bytes route,Reward reward)Reward(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(bytes32 token,uint256 amount)',
+      'OrderData(uint64 destination,bytes32 portal,uint64 deadline,bytes route,Reward reward)Reward(uint64 deadline,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)',
     ),
   )
 
@@ -163,10 +157,7 @@ describe('Origin Settler Test', (): void => {
         tokens: rewardTokens,
       }
       intent = { destination: chainId, route: route, reward: reward }
-      const hashes = hashIntent(intent)
-      routeHash = hashes.routeHash
-      rewardHash = hashes.rewardHash
-      intentHash = hashes.intentHash
+      intentHash = hashIntent(intent).intentHash
 
       onchainCrosschainOrderData = {
         destination: chainId,
