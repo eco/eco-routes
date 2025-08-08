@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {SetConfigParam} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
+
 /**
  * @title ILayerZeroEndpointV2
  * @notice Interface for LayerZero V2 endpoint contract
@@ -70,14 +72,14 @@ interface ILayerZeroEndpointV2 {
 
     /**
      * @notice Set configuration for a specific endpoint and config type
-     * @param eid Endpoint ID
-     * @param configType Configuration type
-     * @param config Configuration data
+     * @param _oapp Address of the OAPP contract 
+     * @param _lib Address of the message library
+     * @param _params Configuration parameters
      */
     function setConfig(
-        uint32 eid,
-        uint32 configType,
-        bytes calldata config
+        address _oapp,
+        address _lib,
+        SetConfigParam[] calldata _params
     ) external;
 
     /**

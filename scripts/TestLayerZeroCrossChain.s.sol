@@ -7,8 +7,11 @@ import {Portal} from "../contracts/Portal.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/Intent.sol";
 import {IProver} from "../contracts/interfaces/IProver.sol";
+import {OptionsBuilder} from "../contracts/libs/OptionsBuilder.sol";
+
 
 contract TestLayerZeroCrossChain is Script {
+    using OptionsBuilder for bytes;
     // Contract addresses on Optimism - will be loaded from .env
     address public OPTIMISM_PORTAL;
     address public OPTIMISM_LAYERZERO_PROVER;
@@ -19,7 +22,7 @@ contract TestLayerZeroCrossChain is Script {
     // Chain IDs
     uint64 constant OPTIMISM_CHAIN_ID = 10;
     uint64 constant TRON_CHAIN_ID = 728126428; // Tron mainnet chain ID
-    uint64 constant TRON_ENDPOINT_ID = 30324; // LayerZero endpoint ID for Tron
+    uint64 constant TRON_ENDPOINT_ID = 30420; // LayerZero endpoint ID for Tron
     
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -53,12 +56,14 @@ contract TestLayerZeroCrossChain is Script {
         
         // Get Tron prover address from .env (already converted to bytes32)
         bytes32 tronProverAddressBytes32 = vm.envBytes32("TRON_LAYERZERO_PROVER_ADDRESS_BYTES32");
+
+        bytes memory _options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(200000, 0);
         
         // Create minimal lzData with default values
         bytes memory lzData = abi.encode(
             LayerZeroProver.UnpackedData({
                 sourceChainProver: tronProverAddressBytes32, // Use Tron prover address
-                options: "", // Empty options
+                options: _options,
                 gasLimit: 0 // Let it use default gas limit
             })
         );
@@ -68,8 +73,6 @@ contract TestLayerZeroCrossChain is Script {
         console.logBytes(lzData);
         console.log("=====================");
         
-        // Comment out fulfill for now to test proving
-        /*
         console.log("=== STEP 1: Fulfilling Intent ===");
         
         // Call fulfill first
@@ -89,10 +92,6 @@ contract TestLayerZeroCrossChain is Script {
         bytes32 fulfilledClaimant = portal.fulfilled(intentHash);
         console.log("Intent fulfilled with claimant:");
         console.logBytes32(fulfilledClaimant);
-        */
-        
-        console.log("=== STEP 1: Fulfilling Intent (SKIPPED) ===");
-        console.log("Fulfillment skipped to test proving directly");
         
         // Uncomment fee calculation and proving
         // Get fee for the proof - using TRON_ENDPOINT_ID as destination
@@ -143,8 +142,7 @@ contract TestLayerZeroCrossChain is Script {
         console.log("  - fee:");
         console.logUint(fee);
         
-        // Call prove with the fee
-        Portal portal = Portal(payable(OPTIMISM_PORTAL));
+        // Call prove with the fee (reuse existing portal variable)
         portal.prove{value: fee}(
             TRON_ENDPOINT_ID, // V2 Endpoint ID
             OPTIMISM_LAYERZERO_PROVER,

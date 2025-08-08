@@ -135,10 +135,13 @@
     "@axelar-network/axelar-gmp-sdk-solidity": "^6.0.4",
     "@hyperlane-xyz/registry": "^4.2.0",
     "@hyperlane-xyz/sdk": "^5.1.0",
+    "@layerzerolabs/lz-v2-utilities": "^3.0.121",
+    "@layerzerolabs/oapp-evm": "^0.3.2",
     "@metalayer/contracts": "^0.0.7",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
     "global": "^4.4.0",
+    "solidity-bytes-utils": "^0.8.4",
     "tronbox": "^4.2.1",
     "tronweb": "^6.0.3",
     "viem": "^2.22.21"
