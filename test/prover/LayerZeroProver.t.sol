@@ -122,7 +122,7 @@ contract LayerZeroProverTest is BaseTest {
         assertEq(lzProver.ENDPOINT(), address(endpoint));
         assertEq(lzProver.PORTAL(), address(portal));
         assertTrue(lzProver.isWhitelisted(SOURCE_PROVER));
-        assertEq(lzProver.DEFAULT_GAS_LIMIT(), 200000);
+        assertEq(lzProver.MIN_GAS_LIMIT(), 200000);
     }
 
     function test_getProofType() public view {
@@ -276,6 +276,52 @@ contract LayerZeroProverTest is BaseTest {
             invalidChainId,
             encodeProofs(intentHashes, claimants),
             data
+        );
+    }
+
+    function test_prove_enforcesMinimumGasLimit() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = keccak256("intent");
+
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
+        uint256 belowMinGasLimit = 50000; // Below 200k minimum
+        bytes memory data = _encodeProverData(
+            SOURCE_PROVER,
+            "",
+            belowMinGasLimit
+        );
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+
+        vm.deal(address(portal), fee);
+        vm.prank(address(portal));
+        lzProver.prove{value: fee}(
+            address(portal),
+            SOURCE_CHAIN_ID,
+            encodedProofs,
+            data
+        );
+
+        // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
+        bytes memory zeroGasData = _encodeProverData(SOURCE_PROVER, "", 0);
+
+        uint256 zeroGasFee = lzProver.fetchFee(
+            SOURCE_CHAIN_ID,
+            encodedProofs,
+            zeroGasData
+        );
+
+        vm.deal(address(portal), zeroGasFee);
+        vm.prank(address(portal));
+        lzProver.prove{value: zeroGasFee}(
+            address(portal),
+            SOURCE_CHAIN_ID,
+            encodedProofs,
+            zeroGasData
         );
     }
 

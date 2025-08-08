@@ -45,15 +45,16 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param router Address of local Metalayer router
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if not specified or zero)
      */
     constructor(
         address router,
         address portal,
         bytes32[] memory provers,
-        uint256 defaultGasLimit
-    ) MessageBridgeProver(portal, provers, defaultGasLimit) {
+        uint256 minGasLimit
+    ) MessageBridgeProver(portal, provers, minGasLimit) {
         if (router == address(0)) revert RouterCannotBeZeroAddress();
+
         ROUTER = router;
     }
 
@@ -86,17 +87,18 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Decodes the raw cross-chain message data into a structured format
-     * @dev Parses ABI-encoded parameters into the UnpackedData struct
+     * @dev Parses ABI-encoded parameters into the UnpackedData struct and enforces minimum gas limit
      * @param data Raw message data containing source chain information
-     * @return unpacked Structured representation of the decoded parameters
+     * @return unpacked Structured representation of the decoded parameters with validated gas limit
      */
     function _unpackData(
         bytes calldata data
     ) internal view returns (UnpackedData memory unpacked) {
         unpacked = abi.decode(data, (UnpackedData));
 
-        if (unpacked.gasLimit == 0) {
-            unpacked.gasLimit = DEFAULT_GAS_LIMIT; // Default gas limit if not specified
+        // Enforce minimum gas limit to prevent underfunded transactions
+        if (unpacked.gasLimit < MIN_GAS_LIMIT) {
+            unpacked.gasLimit = MIN_GAS_LIMIT;
         }
     }
 

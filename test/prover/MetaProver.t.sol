@@ -587,6 +587,41 @@ contract MetaProverTest is BaseTest {
         assertEq(creator.balance, initialBalance + overpayment - 0.001 ether);
     }
 
+    function testProveWithMinimumGasLimitEnforcement() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
+        _proveWithFunding(
+            creator,
+            block.chainid,
+            intentHashes,
+            claimants,
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                50000 // Below 200k minimum
+            ),
+            1 ether
+        );
+
+        // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
+        _proveWithFunding(
+            creator,
+            block.chainid,
+            intentHashes,
+            claimants,
+            _encodeProverData(
+                bytes32(uint256(uint160(address(prover)))),
+                0 // Zero gas limit
+            ),
+            1 ether
+        );
+
+        assertTrue(metaRouter.dispatched());
+    }
+
     function testCrossVMClaimantSupport() public {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);

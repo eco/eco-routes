@@ -17,10 +17,10 @@ abstract contract MessageBridgeProver is
     Whitelist
 {
     /**
-     * @notice Default gas limit for cross-chain message dispatch
-     * @dev Set at deployment and cannot be changed afterward
+     * @notice Minimum gas limit for cross-chain message dispatch
+     * @dev Set at deployment and cannot be changed afterward. Gas limits below this value will be increased to this minimum.
      */
-    uint256 public immutable DEFAULT_GAS_LIMIT;
+    uint256 public immutable MIN_GAS_LIMIT;
 
     /**
      * @notice Chain ID is too large to fit in uint32
@@ -32,16 +32,16 @@ abstract contract MessageBridgeProver is
      * @notice Initializes the MessageBridgeProver contract
      * @param portal Address of the Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if not specified or zero)
      */
     constructor(
         address portal,
         bytes32[] memory provers,
-        uint256 defaultGasLimit
+        uint256 minGasLimit
     ) BaseProver(portal) Whitelist(provers) {
         if (portal == address(0)) revert PortalCannotBeZeroAddress();
 
-        DEFAULT_GAS_LIMIT = defaultGasLimit > 0 ? defaultGasLimit : 200_000;
+        MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
     }
 
     /**
