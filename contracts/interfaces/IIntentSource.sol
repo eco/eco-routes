@@ -123,7 +123,7 @@ interface IIntentSource {
      * @return rewardHash Hash of the reward specifications
      */
     function getIntentHash(
-        Intent calldata intent
+        Intent memory intent
     )
         external
         pure
@@ -141,7 +141,7 @@ interface IIntentSource {
     function getIntentHash(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
+        Reward memory reward
     )
         external
         pure
@@ -214,7 +214,7 @@ interface IIntentSource {
     function publish(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
+        Reward memory reward
     ) external returns (bytes32 intentHash, address vault);
 
     /**
@@ -241,7 +241,7 @@ interface IIntentSource {
     function publishAndFund(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward,
+        Reward memory reward,
         bool allowPartial
     ) external payable returns (bytes32 intentHash, address vault);
 
