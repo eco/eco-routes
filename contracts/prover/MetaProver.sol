@@ -7,8 +7,9 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
 // Import Semver for versioning support
 import {Semver} from "../libs/Semver.sol";
-import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
+import {StandardHookMetadata} from "@hyperlane-xyz/core/contracts/hooks/libs/StandardHookMetadata.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {IMetalayerRouterExt} from "../interfaces/IMetalayerRouterExt.sol";
 
 /**
  * @title MetaProver
@@ -36,9 +37,16 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     string public constant PROOF_TYPE = "Meta";
 
     /**
+     * @notice ETH message value used in fee calculation metadata
+     * @dev Set to very high value (1e36) to avoid fee calculation failures
+     *      in the Metalayer router's quote dispatch function
+     */
+    uint256 private immutable ETH_QUOTE_VALUE = 1e36;
+
+    /**
      * @notice Address of local Metalayer router
      */
-    address public immutable ROUTER;
+    IMetalayerRouterExt public immutable ROUTER;
 
     /**
      * @notice Initializes the MetaProver contract
@@ -55,7 +63,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     ) MessageBridgeProver(portal, provers, minGasLimit) {
         if (router == address(0)) revert RouterCannotBeZeroAddress();
 
-        ROUTER = router;
+        ROUTER = IMetalayerRouterExt(router);
     }
 
     /**
@@ -74,7 +82,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes[] calldata /* operationsData */
     ) external payable {
         // Verify message is from authorized router
-        _validateMessageSender(msg.sender, ROUTER);
+        _validateMessageSender(msg.sender, address(ROUTER));
 
         // Verify origin and sender are valid
         if (origin == 0) revert InvalidOriginChainId();
@@ -131,7 +139,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             );
 
         // Call Metalayer router's send message function
-        IMetalayerRouter(ROUTER).dispatch{value: fee}(
+        ROUTER.dispatch{value: fee}(
             sourceChainDomain,
             recipient,
             new ReadOperation[](0),
@@ -143,10 +151,11 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
 
     /**
      * @notice Fetches fee required for message dispatch
-     * @dev Queries Metalayer router for fee information
+     * @dev Uses custom hook metadata with actual gas limit to ensure accurate fee estimation.
+     *      Fixes issue where 3-parameter quoteDispatch used hardcoded 100k gas limit.
      * @param sourceChainID Chain ID of source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
-     * @param data Additional data for message formatting
+     * @param data Additional data containing gas limit that will be used in dispatch
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
@@ -154,25 +163,22 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
-        // Parse incoming data into a structured format
-        UnpackedData memory unpacked = _unpackData(data);
-
         // Delegate to internal function with pre-decoded value
-        return
-            _fetchFee(sourceChainID, encodedProofs, unpacked.sourceChainProver);
+        return _fetchFee(sourceChainID, encodedProofs, _unpackData(data));
     }
 
     /**
      * @notice Internal function to calculate fee with pre-decoded data
+     * @dev Uses actual gas limit from unpacked data to ensure accurate fee estimation
      * @param sourceChainID Chain ID of source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
-     * @param sourceChainProver Pre-decoded prover address on source chain
+     * @param unpacked Pre-decoded data including actual gas limit that will be used
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
         uint256 sourceChainID,
         bytes calldata encodedProofs,
-        bytes32 sourceChainProver
+        UnpackedData memory unpacked
     ) internal view returns (uint256) {
         (
             uint32 sourceChainDomain,
@@ -181,14 +187,23 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         ) = _formatMetalayerMessage(
                 sourceChainID,
                 encodedProofs,
-                sourceChainProver
+                unpacked.sourceChainProver
             );
 
+        // Create custom hook metadata with the actual gas limit that will be used in dispatch
+        bytes memory feeHookMetadata = StandardHookMetadata.formatMetadata(
+            ETH_QUOTE_VALUE,
+            unpacked.gasLimit, // Use actual gas limit (min 200k)
+            msg.sender, // Refund address
+            bytes("") // Optional custom metadata
+        );
+
         return
-            IMetalayerRouter(ROUTER).quoteDispatch(
+            ROUTER.quoteDispatch(
                 sourceChainDomain,
                 recipient,
-                message
+                message,
+                feeHookMetadata
             );
     }
 
