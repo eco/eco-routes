@@ -31,15 +31,17 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     /// @dev CREATE2 prefix for address calculation
     bytes1 private immutable CREATE2_PREFIX;
 
+    /// @dev Tron Mainnet chain ID
+    uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
+    /// @dev Tron Testnet (Nile) chain ID
+    uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
+
     constructor() {
         // TRON support
-        if (block.chainid == 728126428 || block.chainid == 2494104990) {
-            // TRON chain custom CREATE2 prefix
-            CREATE2_PREFIX = hex"41";
-        } else {
-            // first byte of the classic CREATE2 prefix
-            CREATE2_PREFIX = hex"ff";
-        }
+        CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
+            block.chainid == TRON_TESTNET_CHAIN_ID
+            ? bytes1(0x41) // TRON chain custom CREATE2 prefix
+            : bytes1(0xff);
     }
 
     /**
