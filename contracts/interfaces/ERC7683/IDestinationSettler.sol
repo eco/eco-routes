@@ -14,9 +14,6 @@ interface IDestinationSettler {
      */
     event OrderFilled(bytes32 orderId, address solver);
 
-    /// @notice Thrown when attempting to fill an order after the fill deadline has passed
-    error FillDeadlinePassed();
-
     /**
      * @notice Fills a single leg of a particular order on the destination chain
      * @dev This method has been made payable, in contrast to original interface

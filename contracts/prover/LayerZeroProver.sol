@@ -23,18 +23,6 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Struct for LayerZero dispatch parameters
-     * @dev Consolidates message dispatch parameters to reduce stack usage
-     */
-    struct DispatchParams {
-        uint32 destinationEid; // LayerZero endpoint ID
-        bytes32 recipientAddress; // Recipient address encoded as bytes32
-        bytes messageBody; // Encoded message body with intent hashes and claimants
-        bytes options; // LayerZero execution options
-        bool payInLzToken; // Whether to pay in LZ token
-    }
-
-    /**
      * @notice Constant indicating this contract uses LayerZero for proving
      */
     string public constant PROOF_TYPE = "LayerZero";
@@ -157,27 +145,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Parse incoming data into a structured format
         UnpackedData memory unpacked = _unpackData(data);
 
-        // Prepare parameters for cross-chain message dispatch
-        DispatchParams memory params = _formatLayerZeroMessage(
-            sourceChainId,
-            encodedProofs,
-            unpacked
-        );
-
         // Create messaging parameters for LayerZero
         ILayerZeroEndpointV2.MessagingParams
-            memory lzParams = ILayerZeroEndpointV2.MessagingParams({
-                dstEid: params.destinationEid,
-                receiver: params.recipientAddress,
-                message: params.messageBody,
-                options: params.options,
-                payInLzToken: params.payInLzToken
-            });
+            memory params = _formatLayerZeroMessage(
+                sourceChainId,
+                encodedProofs,
+                unpacked
+            );
 
         // Send the message through LayerZero endpoint
         // solhint-disable-next-line check-send-result
         ILayerZeroEndpointV2(ENDPOINT).send{value: fee}(
-            lzParams,
+            params,
             msg.sender // refund address
         );
     }
@@ -230,27 +209,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
-        // Format and prepare message parameters for dispatch
-        DispatchParams memory params = _formatLayerZeroMessage(
-            sourceChainId,
-            encodedProofs,
-            unpacked
-        );
-
-        // Create messaging parameters for quote
+        // Create messaging parameters for LayerZero
         ILayerZeroEndpointV2.MessagingParams
-            memory lzParams = ILayerZeroEndpointV2.MessagingParams({
-                dstEid: params.destinationEid,
-                receiver: params.recipientAddress,
-                message: params.messageBody,
-                options: params.options,
-                payInLzToken: params.payInLzToken
-            });
+            memory params = _formatLayerZeroMessage(
+                sourceChainId,
+                encodedProofs,
+                unpacked
+            );
 
         // Query LayerZero endpoint for accurate fee estimate
         ILayerZeroEndpointV2.MessagingFee memory fee = ILayerZeroEndpointV2(
             ENDPOINT
-        ).quote(lzParams, address(this));
+        ).quote(params, address(this));
 
         return fee.nativeFee;
     }
@@ -275,7 +245,11 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         uint256 sourceChainId,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
-    ) internal pure returns (DispatchParams memory params) {
+    )
+        internal
+        pure
+        returns (ILayerZeroEndpointV2.MessagingParams memory params)
+    {
         // Validate that encodedProofs length is multiple of 64 bytes
         if (encodedProofs.length % 64 != 0) {
             revert ArrayLengthMismatch();
@@ -284,23 +258,16 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Use source chain ID directly as endpoint ID
         // Validate it fits in uint32
         _validateChainId(sourceChainId);
-        params.destinationEid = uint32(sourceChainId);
 
-        // Use the source chain prover address as the message recipient
-        params.recipientAddress = unpacked.sourceChainProver;
-
-        // Pass encoded proofs directly as message body
-        params.messageBody = encodedProofs;
-
-        // Use provided options or create default options with gas limit
+        params.dstEid = uint32(sourceChainId);
+        params.receiver = unpacked.sourceChainProver;
+        params.message = encodedProofs;
         params.options = unpacked.options.length > 0
             ? unpacked.options
             : abi.encodePacked(
                 uint16(3), // option type for gas limit
                 unpacked.gasLimit // gas amount
             );
-
-        // Default to paying in native token
         params.payInLzToken = false;
     }
 }
