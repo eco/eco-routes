@@ -295,7 +295,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
 
     /// @notice EIP712 domain separator
     function domainSeparatorV4() public view returns (bytes32) {
-        return domainSeparatorV4();
+        return EIP712._domainSeparatorV4();
     }
 
     /**
