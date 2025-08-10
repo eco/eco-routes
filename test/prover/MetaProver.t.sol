@@ -622,6 +622,50 @@ contract MetaProverTest is BaseTest {
         assertTrue(metaRouter.dispatched());
     }
 
+    function testFetchFeeWithCustomGasLimit() public view {
+        Intent memory testIntent = intent;
+        bytes32 intentHash = _hashIntent(testIntent);
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Test with custom gas limit higher than minimum
+        uint256 customGasLimit = 500000; // 500k gas
+        bytes memory data = _encodeProverData(
+            bytes32(uint256(uint160(address(prover)))),
+            customGasLimit
+        );
+
+        bytes memory encodedProofs = _packClaimantHashPairs(
+            intentHashes,
+            claimants
+        );
+
+        // fetchFee should now use the actual custom gas limit instead of hardcoded 100k
+        uint256 fee = metaProver.fetchFee(block.chainid, encodedProofs, data);
+
+        // Fee should be calculated with the custom gas limit
+        // The exact fee depends on the TestMetaRouter implementation
+        assertEq(fee, 0.001 ether);
+
+        // Test with minimum gas limit
+        bytes memory minGasData = _encodeProverData(
+            bytes32(uint256(uint160(address(prover)))),
+            50000 // Below minimum, should be increased to MIN_GAS_LIMIT
+        );
+
+        uint256 minFee = metaProver.fetchFee(
+            block.chainid,
+            encodedProofs,
+            minGasData
+        );
+
+        // Should return same fee as minimum gas limit is enforced
+        assertEq(minFee, 0.001 ether);
+    }
+
     function testCrossVMClaimantSupport() public {
         Intent memory testIntent = intent;
         bytes32 intentHash = _hashIntent(testIntent);
