@@ -204,17 +204,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
     /**
      * @notice Decodes the raw cross-chain message data into a structured format
-     * @dev Parses ABI-encoded parameters into the UnpackedData struct
+     * @dev Parses ABI-encoded parameters into the UnpackedData struct and enforces minimum gas limit
      * @param data Raw message data containing source chain information
-     * @return unpacked Structured representation of the decoded parameters
+     * @return unpacked Structured representation of the decoded parameters with validated gas limit
      */
     function _unpackData(
         bytes calldata data
     ) internal view returns (UnpackedData memory unpacked) {
         unpacked = abi.decode(data, (UnpackedData));
 
-        if (unpacked.gasLimit == 0) {
-            unpacked.gasLimit = DEFAULT_GAS_LIMIT; // Default gas limit if not specified
+        // Enforce minimum gas limit to prevent underfunded transactions
+        if (unpacked.gasLimit < MIN_GAS_LIMIT) {
+            unpacked.gasLimit = MIN_GAS_LIMIT;
         }
     }
 
