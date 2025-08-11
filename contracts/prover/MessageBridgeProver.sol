@@ -89,7 +89,7 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param destinatinoChainDomainID Chain ID of the destination chain (unused, kept for compatibility)
+     * @param destinationChainDomainID Chain ID of the destination chain (unused, kept for compatibility)
      * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
      * @param message Encoded message with chain ID prepended, followed by (intentHash, claimant) pairs
      */

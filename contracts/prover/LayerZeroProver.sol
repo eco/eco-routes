@@ -276,7 +276,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         uint256 domainID,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
-    ) internal pure returns (DispatchParams memory params) {
+    ) internal view returns (DispatchParams memory params) {
         // Validate that encodedProofs length is multiple of 64 bytes
         if (encodedProofs.length % 64 != 0) {
             revert ArrayLengthMismatch();

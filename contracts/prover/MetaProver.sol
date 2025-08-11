@@ -230,7 +230,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes32 sourceChainProver
     )
         internal
-        pure
+        view
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
         // Validate that encodedProofs length is multiple of 64 bytes
