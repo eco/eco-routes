@@ -139,7 +139,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
         assertEq(fee, 0.001 ether);
     }
 
@@ -153,13 +153,13 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
             data
         );
@@ -244,33 +244,14 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
-            data
-        );
-    }
-
-    function test_prove_chainIdValidation() public {
-        bytes32[] memory intentHashes = new bytes32[](1);
-        intentHashes[0] = keccak256("intent");
-
-        bytes32[] memory claimants = new bytes32[](1);
-        claimants[0] = bytes32(uint256(uint160(address(this))));
-
-        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
-
-        uint256 invalidChainId = uint256(type(uint32).max) + 1;
-
-        vm.expectRevert();
-        lzProver.fetchFee(
-            invalidChainId,
-            encodeProofs(intentHashes, claimants),
             data
         );
     }
@@ -291,13 +272,13 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
             data
         );
@@ -306,7 +287,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory zeroGasData = _encodeProverData(SOURCE_PROVER, "", 0);
 
         uint256 zeroGasFee = lzProver.fetchFee(
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
             zeroGasData
         );
@@ -315,7 +296,7 @@ contract LayerZeroProverTest is BaseTest {
         vm.prank(address(portal));
         lzProver.prove{value: zeroGasFee}(
             address(portal),
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
             zeroGasData
         );

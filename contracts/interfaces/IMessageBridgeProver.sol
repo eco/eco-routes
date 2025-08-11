@@ -79,7 +79,7 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external view returns (uint256);

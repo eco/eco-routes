@@ -132,7 +132,7 @@ abstract contract MessageBridgeProver is
      */
     function prove(
         address sender,
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external payable virtual override {
@@ -175,18 +175,6 @@ abstract contract MessageBridgeProver is
         }
     }
 
-    /**
-     * @notice Validates and converts domain ID to uint32
-     * @dev Common validation for domain ID conversion
-     * @param domainID Domain ID to validate
-     * @return uint32 representation of the domain ID
-     */
-    function _validateDomainID(uint256 domainID) internal pure returns (uint32) {
-        if (domainID > type(uint32).max) {
-            revert ChainIdTooLarge(domainID);
-        }
-        return uint32(domainID);
-    }
 
     /**
      * @notice Validates that current chain ID fits in uint64
@@ -209,7 +197,7 @@ abstract contract MessageBridgeProver is
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
-        uint256 sourceChainId,
+        uint64 sourceChainId,
         bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
@@ -224,7 +212,7 @@ abstract contract MessageBridgeProver is
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 sourceChainId,
+        uint64 sourceChainId,
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view virtual returns (uint256);

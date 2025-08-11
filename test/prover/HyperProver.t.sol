@@ -122,7 +122,7 @@ contract HyperProverTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(creator);
-        hyperProver.prove(creator, block.chainid, encodedProofs, "");
+        hyperProver.prove(creator, uint64(block.chainid), encodedProofs, "");
     }
 
     function testProveWithValidInput() public {
@@ -141,7 +141,7 @@ contract HyperProverTest is BaseTest {
 
         // Check the fee first
         uint256 expectedFee = hyperProver.fetchFee(
-            block.chainid,
+            uint64(block.chainid),
             encodedProofs,
             proverData
         );
@@ -149,7 +149,7 @@ contract HyperProverTest is BaseTest {
         vm.prank(address(portal));
         hyperProver.prove{value: expectedFee}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodedProofs,
             proverData
         );
@@ -173,7 +173,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -198,7 +198,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -236,7 +236,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -361,7 +361,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -406,7 +406,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -445,7 +445,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -487,7 +487,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: overpayment}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -516,7 +516,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );
@@ -565,7 +565,7 @@ contract HyperProverTest is BaseTest {
         );
         hyperProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
         );

@@ -168,7 +168,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         IProver(prover).prove{value: address(this).balance}(
             msg.sender,
-            sourceChainDomainID,
+            uint64(sourceChainDomainID),
             encodedClaimants,
             data
         );

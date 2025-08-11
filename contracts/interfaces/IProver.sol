@@ -69,7 +69,7 @@ interface IProver is ISemver {
      */
     function prove(
         address sender,
-        uint256 sourceChainDomainID,
+        uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external payable;

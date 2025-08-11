@@ -56,7 +56,7 @@ contract MetaProverTest is BaseTest {
     // Helper function to fund inbox and call prove
     function _proveWithFunding(
         address sender,
-        uint256 sourceChainId,
+        uint64 sourceChainId,
         bytes32[] memory intentHashes,
         bytes32[] memory claimants,
         bytes memory data,
@@ -89,7 +89,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -111,14 +111,14 @@ contract MetaProverTest is BaseTest {
 
         // Calculate expected message body (with chain ID prefix)
         bytes memory expectedBody = _formatMessageWithChainId(
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants
         );
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -140,7 +140,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -165,7 +165,7 @@ contract MetaProverTest is BaseTest {
         vm.prank(creator);
         metaProver.prove{value: 1 ether}(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             _packClaimantHashPairs(intentHashes, claimants),
             _encodeProverData(
                 bytes32(uint256(uint160(address(prover)))),
@@ -184,7 +184,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -214,7 +214,7 @@ contract MetaProverTest is BaseTest {
 
             _proveWithFunding(
                 creator,
-                destinations[i],
+                uint64(destinations[i]),
                 intentHashes,
                 claimants,
                 _encodeProverData(
@@ -246,7 +246,7 @@ contract MetaProverTest is BaseTest {
 
             _proveWithFunding(
                 creator,
-                block.chainid,
+                uint64(block.chainid),
                 intentHashes,
                 claimants,
                 _encodeProverData(
@@ -257,7 +257,7 @@ contract MetaProverTest is BaseTest {
             );
 
             bytes memory expectedBody = _formatMessageWithChainId(
-                block.chainid,
+                uint64(block.chainid),
                 intentHashes,
                 claimants
             );
@@ -287,7 +287,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes1,
             claimants1,
             _encodeProverData(
@@ -298,7 +298,7 @@ contract MetaProverTest is BaseTest {
         );
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes2,
             claimants2,
             _encodeProverData(
@@ -374,7 +374,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -385,7 +385,7 @@ contract MetaProverTest is BaseTest {
         );
 
         bytes memory expectedBody = _formatMessageWithChainId(
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants
         );
@@ -438,7 +438,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -464,7 +464,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -492,7 +492,7 @@ contract MetaProverTest is BaseTest {
         vm.expectRevert();
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -523,7 +523,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -552,7 +552,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             gasLimitData,
@@ -577,7 +577,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -601,7 +601,7 @@ contract MetaProverTest is BaseTest {
         // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -614,7 +614,7 @@ contract MetaProverTest is BaseTest {
         // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -649,7 +649,7 @@ contract MetaProverTest is BaseTest {
         );
 
         // fetchFee should now use the actual custom gas limit instead of hardcoded 100k
-        uint256 fee = metaProver.fetchFee(block.chainid, encodedProofs, data);
+        uint256 fee = metaProver.fetchFee(uint64(block.chainid), encodedProofs, data);
 
         // Fee should be calculated with the custom gas limit
         // The exact fee depends on the TestMetaRouter implementation
@@ -662,7 +662,7 @@ contract MetaProverTest is BaseTest {
         );
 
         uint256 minFee = metaProver.fetchFee(
-            block.chainid,
+            uint64(block.chainid),
             encodedProofs,
             minGasData
         );
@@ -685,7 +685,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             _encodeProverData(
@@ -698,36 +698,11 @@ contract MetaProverTest is BaseTest {
         // Verify the message was dispatched with the non-address claimant
         assertTrue(metaRouter.dispatched());
         bytes memory expectedBody = _formatMessageWithChainId(
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants
         );
         assertEq(metaRouter.messageBody(), expectedBody);
-    }
-
-    function testSafeCastOverflowProtection() public {
-        Intent memory testIntent = intent;
-        // Testing with very large chain ID as source
-        bytes32 intentHash = _hashIntent(testIntent);
-
-        bytes32[] memory intentHashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
-        intentHashes[0] = intentHash;
-        claimants[0] = bytes32(uint256(uint160(claimant)));
-
-        // Should revert on overflow when casting to uint32
-        vm.expectRevert();
-        _proveWithFunding(
-            creator,
-            type(uint256).max,
-            intentHashes,
-            claimants,
-            _encodeProverData(
-                bytes32(uint256(uint160(address(prover)))),
-                200000
-            ),
-            1 ether
-        );
     }
 
     function testProveIntentWithComplexData() public {
@@ -749,7 +724,7 @@ contract MetaProverTest is BaseTest {
 
         _proveWithFunding(
             creator,
-            block.chainid,
+            uint64(block.chainid),
             intentHashes,
             claimants,
             complexData,

@@ -149,7 +149,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
@@ -191,7 +191,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
@@ -227,7 +227,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
@@ -273,7 +273,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @return params Structured dispatch parameters for LayerZero message
      */
     function _formatLayerZeroMessage(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (DispatchParams memory params) {
@@ -283,8 +283,6 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         }
 
         // Use domain ID directly as endpoint ID
-        // Validate it fits in uint32
-        _validateDomainID(domainID);
         params.destinationEid = uint32(domainID);
 
         // Use the source chain prover address as the message recipient

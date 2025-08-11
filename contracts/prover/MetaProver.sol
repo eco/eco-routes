@@ -119,7 +119,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
@@ -159,7 +159,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
@@ -176,7 +176,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
@@ -225,7 +225,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @return message Encoded message body with intent hashes and claimants
      */
     function _formatMetalayerMessage(
-        uint256 domainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes32 sourceChainProver
     )
@@ -238,8 +238,8 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Convert and validate domain ID to domain
-        domain = _validateDomainID(domainID);
+        // Convert domain ID to domain
+        domain = uint32(domainID);
 
         // Use pre-decoded source chain prover address as recipient
         recipient = sourceChainProver;
