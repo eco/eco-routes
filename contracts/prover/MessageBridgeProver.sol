@@ -162,16 +162,16 @@ abstract contract MessageBridgeProver is
     }
 
     /**
-     * @notice Validates and converts chain ID to uint32
-     * @dev Common validation for chain ID conversion
-     * @param chainId Chain ID to validate
-     * @return uint32 representation of the chain ID
+     * @notice Validates and converts domain ID to uint32
+     * @dev Common validation for domain ID conversion
+     * @param domainID Domain ID to validate
+     * @return uint32 representation of the domain ID
      */
-    function _validateChainId(uint256 chainId) internal pure returns (uint32) {
-        if (chainId > type(uint32).max) {
-            revert ChainIdTooLarge(chainId);
+    function _validateDomainID(uint256 domainID) internal pure returns (uint32) {
+        if (domainID > type(uint32).max) {
+            revert ChainIdTooLarge(domainID);
         }
-        return uint32(chainId);
+        return uint32(domainID);
     }
 
     /**

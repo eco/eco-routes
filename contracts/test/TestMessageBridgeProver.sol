@@ -92,7 +92,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint256 /* _sourceChainId */,
+        uint256 /* domainID */,
         bytes calldata /* _encodedProofs */,
         bytes calldata /* _data */
     ) public view override returns (uint256) {
@@ -104,7 +104,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Just tracks that dispatch was called
      */
     function _dispatchMessage(
-        uint256 /* sourceChainId */,
+        uint256 /* domainID */,
         bytes calldata /* encodedProofs */,
         bytes calldata /* data */,
         uint256 /* fee */

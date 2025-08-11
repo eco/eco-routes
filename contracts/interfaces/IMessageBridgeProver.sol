@@ -65,7 +65,7 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Calculates the fee required for message dispatch
-     * @param sourceChainID Chain ID of source chain
+     * @param domainID Domain ID of source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting.
      *        Specific format varies by implementation:
@@ -75,7 +75,7 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 sourceChainID,
+        uint256 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external view returns (uint256);
