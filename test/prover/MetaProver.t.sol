@@ -931,6 +931,6 @@ contract MetaProverTest is BaseTest {
         bytes32[] memory claimants
     ) internal pure returns (bytes memory) {
         bytes memory rawProofs = _packClaimantHashPairs(intentHashes, claimants);
-        return abi.encodePacked(uint96(chainId), rawProofs);
+        return abi.encodePacked(uint64(chainId), rawProofs);
     }
 }

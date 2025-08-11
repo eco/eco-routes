@@ -34,9 +34,9 @@ function encodeMessageBody(
     parts.push(claimantBytes)
   }
   
-  // Use solidityPacked to match Solidity's abi.encodePacked(uint96(chainId), packed)
+  // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
   const packedParts = ethers.concat(parts)
-  return ethers.solidityPacked(['uint96', 'bytes'], [chainId, packedParts])
+  return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
 }
 
 // Helper function to prepare encoded proofs from fulfilled intents

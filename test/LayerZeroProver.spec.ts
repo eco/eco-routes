@@ -42,9 +42,9 @@ describe('LayerZeroProver Test', (): void => {
       parts.push(claimantBytes)
     }
     
-    // Use solidityPacked to match Solidity's abi.encodePacked(uint96(chainId), packed)
+    // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
     const packedParts = ethers.concat(parts)
-    return ethers.solidityPacked(['uint96', 'bytes'], [chainId, packedParts])
+    return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
   }
 
   // Helper function to prepare encoded proofs from fulfilled intents
@@ -613,7 +613,7 @@ describe('LayerZeroProver Test', (): void => {
         intentHash2, // 32 bytes
         nonAddressClaimant, // 32 bytes - Non-EVM address
       ])
-      const msgBody = ethers.solidityPacked(['uint96', 'bytes'], [12345, rawPacked])
+      const msgBody = ethers.solidityPacked(['uint64', 'bytes'], [12345, rawPacked])
 
       const origin = {
         srcEid: 12345,

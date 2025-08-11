@@ -104,15 +104,15 @@ abstract contract MessageBridgeProver is
         }
 
         // Extract the chain ID from the beginning of the message
-        // Message format: [chainId (12 bytes as uint96)] + [encodedProofs]
-        if (message.length < 12) {
+        // Message format: [chainId (8 bytes as uint64)] + [encodedProofs]
+        if (message.length < 8) {
             revert ArrayLengthMismatch();
         }
         
-        // Convert raw 12 bytes to uint96 - the chain ID is stored as big-endian bytes
-        bytes12 chainIdBytes = bytes12(message[0:12]);
-        uint256 actualChainId = uint256(uint96(chainIdBytes));
-        bytes calldata encodedProofs = message[12:];
+        // Convert raw 8 bytes to uint64 - the chain ID is stored as big-endian bytes
+        bytes8 chainIdBytes = bytes8(message[0:8]);
+        uint256 actualChainId = uint256(uint64(chainIdBytes));
+        bytes calldata encodedProofs = message[8:];
 
         // Process the intent proofs using the chain ID extracted from the message
         _processIntentProofs(encodedProofs, actualChainId);
@@ -189,15 +189,15 @@ abstract contract MessageBridgeProver is
     }
 
     /**
-     * @notice Validates that current chain ID fits in uint96
+     * @notice Validates that current chain ID fits in uint64
      * @dev Common validation for message construction
-     * @return uint96 representation of block.chainid
+     * @return uint64 representation of block.chainid
      */
-    function _validateCurrentChainID() internal view returns (uint96) {
-        if (block.chainid > type(uint96).max) {
+    function _validateCurrentChainID() internal view returns (uint64) {
+        if (block.chainid > type(uint64).max) {
             revert ChainIdTooLarge(block.chainid);
         }
-        return uint96(block.chainid);
+        return uint64(block.chainid);
     }
 
     /**

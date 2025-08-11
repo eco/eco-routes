@@ -599,6 +599,6 @@ contract HyperProverTest is BaseTest {
                 )
             }
         }
-        return abi.encodePacked(uint96(chainId), packed);
+        return abi.encodePacked(uint64(chainId), packed);
     }
 }
