@@ -64,7 +64,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) public view override returns (IVaultV2.Status status) {
+    ) public view returns (IVaultV2.Status status) {
         return rewardStatuses[intentHash];
     }
 
@@ -80,7 +80,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     )
         public
         pure
-        override
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
     {
         return
@@ -107,7 +106,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     )
         public
         pure
-        override
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
     {
         (intentHash, routeHash, rewardHash) = getIntentHash(
@@ -149,7 +147,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      */
     function intentVaultAddress(
         Intent calldata intent
-    ) public view override returns (address) {
+    ) public view returns (address) {
         return
             intentVaultAddress(
                 intent.destination,
@@ -180,9 +178,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param intent Intent to validate
      * @return True if intent is completely funded, false otherwise
      */
-    function isIntentFunded(
-        Intent calldata intent
-    ) public view override returns (bool) {
+    function isIntentFunded(Intent calldata intent) public view returns (bool) {
         return
             isIntentFunded(
                 intent.destination,
@@ -218,7 +214,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      */
     function publish(
         Intent calldata intent
-    ) public override returns (bytes32 intentHash, address vault) {
+    ) public returns (bytes32 intentHash, address vault) {
         return
             publish(
                 intent.destination,
@@ -261,7 +257,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) public payable override returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address vault) {
         return
             publishAndFund(
                 intent.destination,
@@ -285,7 +281,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bytes memory route,
         Reward calldata reward,
         bool allowPartial
-    ) public payable override returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address vault) {
         (intentHash, ) = publish(destination, route, reward);
 
         vault = _fundIntent(intentHash, reward, msg.sender, allowPartial);
@@ -305,7 +301,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bytes32 routeHash,
         Reward calldata reward,
         bool allowPartial
-    ) external payable override returns (bytes32 intentHash) {
+    ) external payable returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(destination, routeHash, reward);
 
         _fundIntent(intentHash, reward, msg.sender, allowPartial);
@@ -329,7 +325,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) external payable override returns (bytes32 intentHash) {
+    ) external payable returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(destination, routeHash, reward);
 
         _fundIntentFor(
@@ -354,7 +350,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) public payable override returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address vault) {
         return
             publishAndFundFor(
                 intent.destination,
@@ -384,7 +380,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) public payable override returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address vault) {
         (intentHash, ) = publish(destination, route, reward);
 
         vault = _fundIntentFor(
@@ -406,7 +402,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
-    ) public override {
+    ) public {
         (bytes32 intentHash, , bytes32 rewardHash) = getIntentHash(
             destination,
             routeHash,
@@ -450,7 +446,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64[] calldata destinations,
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
-    ) external override {
+    ) external {
         uint256 length = routeHashes.length;
 
         if (length != rewards.length || length != destinations.length) {
@@ -472,7 +468,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
-    ) external override {
+    ) external {
         (bytes32 intentHash, , ) = getIntentHash(
             destination,
             routeHash,
@@ -503,7 +499,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bytes32 routeHash,
         Reward calldata reward,
         address token
-    ) external override {
+    ) external {
         (bytes32 intentHash, , ) = getIntentHash(
             destination,
             routeHash,

@@ -118,14 +118,7 @@ contract VaultV2 is IVaultV2 {
         Reward calldata reward,
         address funder,
         IPermit permit
-    )
-        external
-        payable
-        override
-        onlyPortal
-        onlyFundable(status)
-        returns (bool funded)
-    {
+    ) external payable onlyPortal onlyFundable(status) returns (bool funded) {
         if (status == Status.Funded) {
             return true;
         }
@@ -156,7 +149,7 @@ contract VaultV2 is IVaultV2 {
         Status status,
         Reward calldata reward,
         address claimant
-    ) external override onlyPortal onlyWithdrawable(status, claimant) {
+    ) external onlyPortal onlyWithdrawable(status, claimant) {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
@@ -188,7 +181,7 @@ contract VaultV2 is IVaultV2 {
     function refund(
         Status status,
         Reward calldata reward
-    ) external override onlyPortal onlyRefundable(status, reward.deadline) {
+    ) external onlyPortal onlyRefundable(status, reward.deadline) {
         address refundee = reward.creator;
 
         uint256 rewardsLength = reward.tokens.length;
@@ -220,7 +213,7 @@ contract VaultV2 is IVaultV2 {
     function recover(
         Reward calldata reward,
         address token
-    ) external override onlyPortal onlyRecoverable(reward, token) {
+    ) external onlyPortal onlyRecoverable(reward, token) {
         IERC20 tokenContract = IERC20(token);
         uint256 balance = tokenContract.balanceOf(address(this));
 
