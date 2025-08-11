@@ -87,4 +87,17 @@ interface ILayerZeroEndpointV2 {
      * @param delegate Address of the delegate
      */
     function setDelegate(address delegate) external;
+
+    function setSendLibrary(
+        address _oapp,
+        uint32 _eid,
+        address _newLib,
+    ) external;
+
+    function setReceiveLibrary(
+        address _oapp,
+        uint32 _eid,
+        address _newLib,
+        uint256_ gracePeriod
+    ) external;
 }
