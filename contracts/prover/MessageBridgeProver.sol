@@ -89,12 +89,12 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param sourceChainId Chain ID of the source chain
+     * @param sourceChainDomainID Chain ID of the source chain (unused, kept for compatibility)
      * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
-     * @param message Encoded array of (intentHash, claimant) pairs
+     * @param message Encoded message with chain ID prepended, followed by (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
-        uint256 sourceChainId,
+        uint256 sourceChainDomainID,
         bytes32 messageSender,
         bytes calldata message
     ) internal {
@@ -103,9 +103,17 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(messageSender);
         }
 
-        // Process the intent proofs directly from bytes data
-        // The source chain ID becomes the destination chain ID in the proof
-        _processIntentProofs(message, sourceChainId);
+        // Extract the chain ID from the beginning of the message
+        // Message format: [chainId (12 bytes as uint96)] + [encodedProofs]
+        if (message.length < 12) {
+            revert ArrayLengthMismatch();
+        }
+        
+        uint256 actualChainId = uint256(abi.decode(message[:12], (uint96)));
+        bytes calldata encodedProofs = message[12:];
+
+        // Process the intent proofs using the chain ID extracted from the message
+        _processIntentProofs(encodedProofs, actualChainId);
     }
 
     /**
@@ -172,6 +180,18 @@ abstract contract MessageBridgeProver is
             revert ChainIdTooLarge(domainID);
         }
         return uint32(domainID);
+    }
+
+    /**
+     * @notice Validates that current chain ID fits in uint96
+     * @dev Common validation for message construction
+     * @return uint96 representation of block.chainid
+     */
+    function _validateCurrentChainID() internal view returns (uint96) {
+        if (block.chainid > type(uint96).max) {
+            revert ChainIdTooLarge(block.chainid);
+        }
+        return uint96(block.chainid);
     }
 
     /**

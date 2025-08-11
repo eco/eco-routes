@@ -220,8 +220,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;
 
-        // Pass encoded proofs directly as message body
-        params.messageBody = encodedProofs;
+        // Validate and prepend current chain ID to the message body with encoded proofs
+        params.messageBody = abi.encodePacked(_validateCurrentChainID(), encodedProofs);
 
         // Pass through metadata as provided
         params.metadata = unpacked.metadata;

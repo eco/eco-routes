@@ -244,7 +244,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Use pre-decoded source chain prover address as recipient
         recipient = sourceChainProver;
 
-        // Pass encoded proofs directly as message
-        message = encodedProofs;
+        // Validate and prepend current chain ID to the message with encoded proofs
+        message = abi.encodePacked(_validateCurrentChainID(), encodedProofs);
     }
 }
