@@ -109,7 +109,9 @@ abstract contract MessageBridgeProver is
             revert ArrayLengthMismatch();
         }
         
-        uint256 actualChainId = uint256(abi.decode(message[:12], (uint96)));
+        // Convert raw 12 bytes to uint96 - the chain ID is stored as big-endian bytes
+        bytes12 chainIdBytes = bytes12(message[0:12]);
+        uint256 actualChainId = uint256(uint96(chainIdBytes));
         bytes calldata encodedProofs = message[12:];
 
         // Process the intent proofs using the chain ID extracted from the message
