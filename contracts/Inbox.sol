@@ -72,9 +72,17 @@ abstract contract Inbox is DestinationSettler, IInbox {
      * @param rewardHash The hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
      * @param prover Address of prover on the destination chain
-     * @param source The source chain ID where the intent was created
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
      * @param data Additional data for message formatting
      * @return Array of execution results
+     * 
+     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
+     *      Each bridge provider uses their own domain ID mapping system:
+     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
+     *      - LayerZero: Uses endpoint IDs that map to chains differently
+     *      - Metalayer: Uses domain IDs specific to their routing system
+     *      You MUST consult the specific bridge provider's documentation to determine
+     *      the correct domain ID for the source chain.
      */
     function fulfillAndProve(
         bytes32 intentHash,
@@ -82,7 +90,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes32 rewardHash,
         bytes32 claimant,
         address prover,
-        uint64 source,
+        uint64 sourceChainDomainID,
         bytes memory data
     )
         public
@@ -102,7 +110,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         intentHashes[0] = intentHash;
 
         // Call prove with the intent hash array
-        prove(source, prover, intentHashes, data);
+        prove(sourceChainDomainID, prover, intentHashes, data);
 
         return result;
     }
@@ -110,13 +118,21 @@ abstract contract Inbox is DestinationSettler, IInbox {
     /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
-     * @param source Chain ID of the source chain
+     * @param sourceChainDomainID Domain ID of the source chain
      * @param prover Address of prover on the destination chain
      * @param intentHashes Array of intent hashes to prove
      * @param data Additional data for message formatting
+     * 
+     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
+     *      Each bridge provider uses their own domain ID mapping system:
+     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
+     *      - LayerZero: Uses endpoint IDs that map to chains differently
+     *      - Metalayer: Uses domain IDs specific to their routing system
+     *      You MUST consult the specific bridge provider's documentation to determine
+     *      the correct domain ID for the source chain.
      */
     function prove(
-        uint256 source,
+        uint256 sourceChainDomainID,
         address prover,
         bytes32[] memory intentHashes,
         bytes memory data
@@ -147,12 +163,12 @@ abstract contract Inbox is DestinationSettler, IInbox {
             }
 
             // Emit IntentProven event
-            emit IntentProven(intentHashes[i], claimantBytes, uint64(source));
+            emit IntentProven(intentHashes[i], claimantBytes, uint64(sourceChainDomainID));
         }
 
         IProver(prover).prove{value: address(this).balance}(
             msg.sender,
-            source,
+            sourceChainDomainID,
             encodedClaimants,
             data
         );
