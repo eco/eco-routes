@@ -271,7 +271,7 @@ contract InboxTest is BaseTest {
         // Now initiate proving for all fulfilled intents
         vm.prank(solver);
         portal.prove{value: 1 ether}(
-            block.chainid,
+            uint64(block.chainid),
             address(prover),
             intentHashes,
             "test_data"

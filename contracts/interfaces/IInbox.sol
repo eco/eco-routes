@@ -23,12 +23,10 @@ interface IInbox {
      * and the Prover on the source chain.
      * @param intentHash Hash of the proven intent
      * @param claimant Cross-VM compatible claimant identifier
-     * @param source Source chain ID where the intent was created
      */
     event IntentProven(
         bytes32 indexed intentHash,
-        bytes32 indexed claimant,
-        uint64 source
+        bytes32 indexed claimant
     );
 
     /**
@@ -134,7 +132,7 @@ interface IInbox {
      *      the correct domain ID for the source chain.
      */
     function prove(
-        uint256 sourceChainDomainID,
+        uint64 sourceChainDomainID,
         address prover,
         bytes32[] memory intentHashes,
         bytes memory data

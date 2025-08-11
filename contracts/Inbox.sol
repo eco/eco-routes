@@ -132,7 +132,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
      *      the correct domain ID for the source chain.
      */
     function prove(
-        uint256 sourceChainDomainID,
+        uint64 sourceChainDomainID,
         address prover,
         bytes32[] memory intentHashes,
         bytes memory data
@@ -163,7 +163,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
             }
 
             // Emit IntentProven event
-            emit IntentProven(intentHashes[i], claimantBytes, uint64(sourceChainDomainID));
+            emit IntentProven(intentHashes[i], claimantBytes);
         }
 
         IProver(prover).prove{value: address(this).balance}(

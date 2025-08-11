@@ -64,6 +64,11 @@ interface IMessageBridgeProver is IProver {
     error SenderCannotBeZeroAddress();
 
     /**
+     * @notice message is invalid
+     */
+    error InvalidProofMessage();
+
+    /**
      * @notice Calculates the fee required for message dispatch
      * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
      *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own

@@ -89,12 +89,11 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param destinationChainDomainID Chain ID of the destination chain (unused, kept for compatibility)
      * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
      * @param message Encoded message with chain ID prepended, followed by (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
-        uint256 destinationChainDomainID,
+        uint256 /* destinationChainDomainID */,
         bytes32 messageSender,
         bytes calldata message
     ) internal {
@@ -106,7 +105,7 @@ abstract contract MessageBridgeProver is
         // Extract the chain ID from the beginning of the message
         // Message format: [chainId (8 bytes as uint64)] + [encodedProofs]
         if (message.length < 8) {
-            revert ArrayLengthMismatch();
+            revert InvalidProofMessage();
         }
         
         // Convert raw 8 bytes to uint64 - the chain ID is stored as big-endian bytes

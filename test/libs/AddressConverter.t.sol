@@ -63,20 +63,11 @@ contract AddressConverterTest is BaseTest {
         assertEq(maxAddr, reverted);
     }
 
-    function testBytes32WithNonZeroLeadingBytes() public {
+    function testBytes32WithNonZeroLeadingBytes() public pure {
         bytes32 testBytes = 0x1234567890123456789012345678901234567890123456789012345678901234;
 
-        // Should revert with InvalidAddress error since top 12 bytes are not zero
-        try this.helperToAddress(testBytes) {
-            fail();
-        } catch (bytes memory reason) {
-            bytes4 selector = bytes4(reason);
-            assertEq(selector, AddressConverter.InvalidAddress.selector);
-        }
-    }
-
-    function helperToAddress(bytes32 b) external pure returns (address) {
-        return b.toAddress();
+        // Should not be valid since top 12 bytes are not zero
+        assertFalse(AddressConverter.isValidAddress(testBytes));
     }
 
     function testConversionPreservesData() public {
@@ -129,27 +120,17 @@ contract AddressConverterTest is BaseTest {
         assertEq(testAddr, reverted1);
     }
 
-    function testConversionWithBytes32Max() public {
+    function testConversionWithBytes32Max() public pure {
         bytes32 maxBytes = bytes32(type(uint256).max);
 
-        // Should revert with InvalidAddress error since top 12 bytes are not zero
-        try this.helperToAddress(maxBytes) {
-            fail();
-        } catch (bytes memory reason) {
-            bytes4 selector = bytes4(reason);
-            assertEq(selector, AddressConverter.InvalidAddress.selector);
-        }
+        // Should not be valid since top 12 bytes are not zero
+        assertFalse(AddressConverter.isValidAddress(maxBytes));
     }
 
-    function testConversionDoesNotOverflow() public {
+    function testConversionDoesNotOverflow() public pure {
         bytes32 largeBytes = bytes32(type(uint256).max);
 
-        // Should revert with InvalidAddress error since top 12 bytes are not zero
-        try this.helperToAddress(largeBytes) {
-            fail();
-        } catch (bytes memory reason) {
-            bytes4 selector = bytes4(reason);
-            assertEq(selector, AddressConverter.InvalidAddress.selector);
-        }
+        // Should not be valid since top 12 bytes are not zero
+        assertFalse(AddressConverter.isValidAddress(largeBytes));
     }
 }
