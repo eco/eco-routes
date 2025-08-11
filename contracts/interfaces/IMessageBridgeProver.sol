@@ -65,7 +65,11 @@ interface IMessageBridgeProver is IProver {
 
     /**
      * @notice Calculates the fee required for message dispatch
-     * @param domainID Domain ID of source chain
+     * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
+     *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own
+     *        domain ID mapping system. You MUST check with the specific bridge provider
+     *        (Hyperlane, LayerZero, Metalayer) documentation to determine the correct
+     *        domain ID for the source chain.
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting.
      *        Specific format varies by implementation:

@@ -120,13 +120,17 @@ abstract contract MessageBridgeProver is
      * @notice Common prove function implementation for message bridge provers
      * @dev Handles fee calculation, validation, and message dispatch
      * @param sender Address that initiated the proving request
-     * @param sourceChainId Chain ID of the source chain
+     * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
+     *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own
+     *        domain ID mapping system. You MUST check with the specific bridge provider
+     *        (Hyperlane, LayerZero, Metalayer) documentation to determine the correct
+     *        domain ID for the source chain.
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      */
     function prove(
         address sender,
-        uint256 sourceChainId,
+        uint256 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external payable virtual override {
@@ -134,7 +138,7 @@ abstract contract MessageBridgeProver is
         _validateProvingRequest(msg.sender);
 
         // Calculate fee using implementation-specific logic
-        uint256 fee = fetchFee(sourceChainId, encodedProofs, data);
+        uint256 fee = fetchFee(domainID, encodedProofs, data);
 
         // Check if enough fee was provided
         if (msg.value < fee) {
@@ -148,7 +152,7 @@ abstract contract MessageBridgeProver is
         }
 
         // Dispatch message using implementation-specific logic
-        _dispatchMessage(sourceChainId, encodedProofs, data, fee);
+        _dispatchMessage(domainID, encodedProofs, data, fee);
 
         // Send refund if needed
         _sendRefund(sender, refundAmount);
