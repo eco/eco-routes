@@ -178,12 +178,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(SOURCE_CHAIN_ID, intentHashes, claimants);
 
         vm.prank(address(endpoint));
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
@@ -352,12 +348,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(wrongDestination, intentHashes, claimants);
 
         // Add the proof with wrong destination
         vm.prank(address(endpoint));
@@ -414,12 +406,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(correctDestination, intentHashes, claimants);
 
         // Add the proof with correct destination
         vm.prank(address(endpoint));
@@ -469,12 +457,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(wrongDestination, intentHashes, claimants);
 
         // Add proof with wrong srcEid
         vm.prank(address(endpoint));
@@ -504,4 +488,30 @@ contract LayerZeroProverTest is BaseTest {
         address indexed claimant,
         uint64 destination
     );
+
+    function _formatMessageWithChainId(
+        uint256 chainId,
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal pure returns (bytes memory) {
+        require(
+            intentHashes.length == claimants.length,
+            "Array length mismatch"
+        );
+        bytes memory packed = new bytes(intentHashes.length * 64);
+        for (uint256 i = 0; i < intentHashes.length; i++) {
+            assembly {
+                let offset := mul(i, 64)
+                mstore(
+                    add(add(packed, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                mstore(
+                    add(add(packed, 0x20), add(offset, 32)),
+                    mload(add(claimants, add(0x20, mul(i, 32))))
+                )
+            }
+        }
+        return abi.encodePacked(uint96(chainId), packed);
+    }
 }

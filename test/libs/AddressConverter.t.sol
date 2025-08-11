@@ -67,13 +67,16 @@ contract AddressConverterTest is BaseTest {
         bytes32 testBytes = 0x1234567890123456789012345678901234567890123456789012345678901234;
 
         // Should revert with InvalidAddress error since top 12 bytes are not zero
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AddressConverter.InvalidAddress.selector,
-                testBytes
-            )
-        );
-        testBytes.toAddress();
+        try this.helperToAddress(testBytes) {
+            fail();
+        } catch (bytes memory reason) {
+            bytes4 selector = bytes4(reason);
+            assertEq(selector, AddressConverter.InvalidAddress.selector);
+        }
+    }
+
+    function helperToAddress(bytes32 b) external pure returns (address) {
+        return b.toAddress();
     }
 
     function testConversionPreservesData() public {
@@ -130,25 +133,23 @@ contract AddressConverterTest is BaseTest {
         bytes32 maxBytes = bytes32(type(uint256).max);
 
         // Should revert with InvalidAddress error since top 12 bytes are not zero
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AddressConverter.InvalidAddress.selector,
-                maxBytes
-            )
-        );
-        maxBytes.toAddress();
+        try this.helperToAddress(maxBytes) {
+            fail();
+        } catch (bytes memory reason) {
+            bytes4 selector = bytes4(reason);
+            assertEq(selector, AddressConverter.InvalidAddress.selector);
+        }
     }
 
     function testConversionDoesNotOverflow() public {
         bytes32 largeBytes = bytes32(type(uint256).max);
 
         // Should revert with InvalidAddress error since top 12 bytes are not zero
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                AddressConverter.InvalidAddress.selector,
-                largeBytes
-            )
-        );
-        largeBytes.toAddress();
+        try this.helperToAddress(largeBytes) {
+            fail();
+        } catch (bytes memory reason) {
+            bytes4 selector = bytes4(reason);
+            assertEq(selector, AddressConverter.InvalidAddress.selector);
+        }
     }
 }
