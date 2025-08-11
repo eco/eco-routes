@@ -53,11 +53,11 @@ contract T1Prover is BaseProver, Semver {
     error IntentNotFufilled();
 
     constructor(
-        address _inbox,
+        address _portal,
         uint32 _localDomain,
         address _xChainReader,
         address _prover
-    ) BaseProver(_inbox) {
+    ) BaseProver(_portal) {
         LOCAL_DOMAIN = _localDomain;
         X_CHAIN_READER = IT1XChainReader(_xChainReader);
         PROVER = _prover;
@@ -77,7 +77,7 @@ contract T1Prover is BaseProver, Semver {
         IT1XChainReader.ReadRequest memory readRequest = IT1XChainReader
             .ReadRequest({
                 destinationDomain: destinationDomain,
-                targetContract: INBOX,
+                targetContract: PORTAL,
                 minBlock: 0,
                 callData: callData,
                 requester: msg.sender
@@ -128,11 +128,12 @@ contract T1Prover is BaseProver, Semver {
 
     // can be extended to handle multiple proofs at once eventually like Polymer
     function handleReadResultWithProof(
-        bytes calldata encodedProofOfRead
+        bytes calldata encodedProofOfRead,
+        bytes calldata result
     ) external {
         // decode proof of read
-        (bytes32 requestId, bytes memory result) = X_CHAIN_READER
-            .verifyProofOfRead(encodedProofOfRead);
+        bytes32 requestId = X_CHAIN_READER
+            .verifyProofOfReadWithResult(encodedProofOfRead, result);
 
         // get intent hash from requestId
         IntentRequest memory intentRequest = readRequestToIntentRequest[
@@ -143,34 +144,28 @@ contract T1Prover is BaseProver, Semver {
         delete readRequestToIntentRequest[requestId];
 
         // check if intent is fufilled by decoding the result
-        address claimant = abi.decode(result, (address));
+        (,bytes32 claimant) = abi.decode(result, (bytes32, bytes32));
 
         // check if intent is fufilled
-        if (claimant == address(0)) {
+        if (claimant == bytes32(0)) {
             revert IntentNotFufilled();
         }
 
-        // Create arrays for single intent proof processing
-        bytes32[] memory hashes = new bytes32[](1);
-        address[] memory claimants = new address[](1);
-        hashes[0] = intentRequest.intentHash;
-        claimants[0] = claimant;
-
         _processIntentProofs(
-            uint96(intentRequest.destinationDomain),
-            hashes,
-            claimants
+            result,
+            uint256(intentRequest.destinationDomain)
         );
 
         emit IntentProofVerified(requestId);
     }
 
     function handleReadResultWithProofBatch(
-        bytes calldata encodedProofOfRead
+        bytes calldata encodedProofOfRead,
+        bytes calldata result
     ) external {
         // decode proof of read
-        (bytes32 requestId, bytes memory result) = X_CHAIN_READER
-            .verifyProofOfRead(encodedProofOfRead);
+        bytes32 requestId = X_CHAIN_READER
+            .verifyProofOfReadWithResult(encodedProofOfRead, result);
 
         // get intent hashes from requestId
         IntentBatchRequest
@@ -192,9 +187,8 @@ contract T1Prover is BaseProver, Semver {
         }
 
         _processIntentProofs(
-            uint96(intentBatchRequest.destinationDomain),
-            intentBatchRequest.intentHashes,
-            claimants
+            result,
+            uint256(intentBatchRequest.destinationDomain)
         );
     }
 
@@ -205,17 +199,16 @@ contract T1Prover is BaseProver, Semver {
                 keccak256(abi.encode(_intent.reward))
             )
         );
-        uint96 trueDestinationChainID = uint96(_intent.route.destination);
 
         ProofData storage proofData = _provenIntents[intentHash];
 
-        if (trueDestinationChainID != proofData.destinationChainID) {
-            if (proofData.destinationChainID != 0) {
+        if (_intent.destination != proofData.destination) {
+            if (proofData.destination != 0) {
                 proofData.claimant = address(0);
                 emit BadProofCleared(intentHash);
             }
 
-            proofData.destinationChainID = trueDestinationChainID;
+            proofData.destination = _intent.destination;
         }
     }
 
@@ -228,27 +221,27 @@ contract T1Prover is BaseProver, Semver {
     /**
      * @notice Gets claimant addresses for a batch of intents from local inbox
      * @param _intentHashes Array of intent hashes to check
-     * @return claimants Array of claimant addresses (zero address if not fulfilled)
+     * @return claimants Encoded array of intent hashes + claimant addresses (zero address if not fulfilled)
      */
     function fulfilledBatch(
         bytes32[] calldata _intentHashes
-    ) external view returns (address[] memory claimants) {
+    ) external view returns (bytes[] memory claimants) {
         uint256 size = _intentHashes.length;
-        claimants = new address[](size);
+        claimants = new bytes[](size);
 
         for (uint256 i = 0; i < size; i++) {
-            claimants[i] = Inbox(payable(INBOX)).fulfilled(_intentHashes[i]);
+            bytes32 claimaint = Inbox(payable(PORTAL)).fulfilled(_intentHashes[i]);
+            claimants[i] = abi.encode(_intentHashes[i], claimaint);
         }
 
         return claimants;
     }
 
     function prove(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
+        address sender,
+        uint256 sourceChainId,
+        bytes calldata encodedProofs,
+        bytes calldata data
     ) external payable override {
         // we don't need to do anything here because we are using pull based verification
         // we will just request the proof and then handle the result in the handleReadResultWithProof function
