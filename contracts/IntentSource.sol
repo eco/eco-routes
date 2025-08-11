@@ -38,7 +38,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
 
     /// @dev Implementation contract address for vault cloning
-    address private immutable VAULT;
+    address private immutable VAULT_IMPL;
     /// @dev Tracks the lifecycle status of each intent's rewards
     mapping(bytes32 => IVaultV2.Status) private rewardStatuses;
 
@@ -54,7 +54,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             ? bytes1(0x41) // TRON chain custom CREATE2 prefix
             : bytes1(0xff);
 
-        VAULT = address(new VaultV2());
+        VAULT_IMPL = address(new VaultV2());
     }
 
     /**
@@ -763,9 +763,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @return Address of the vault (existing or newly deployed)
      */
     function _getOrDeployVault(bytes32 intentHash) internal returns (address) {
-        address vault = VAULT.predict(intentHash, CREATE2_PREFIX);
+        address vault = _getVault(intentHash);
 
-        return vault.code.length > 0 ? vault : VAULT.clone(intentHash);
+        return vault.code.length > 0 ? vault : VAULT_IMPL.clone(intentHash);
     }
 
     /**
@@ -774,6 +774,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @return Predicted address of the vault
      */
     function _getVault(bytes32 intentHash) internal view returns (address) {
-        return VAULT.predict(intentHash, CREATE2_PREFIX);
+        return VAULT_IMPL.predict(intentHash, CREATE2_PREFIX);
     }
 }

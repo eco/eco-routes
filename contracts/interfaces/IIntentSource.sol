@@ -86,6 +86,14 @@ interface IIntentSource {
      */
     event IntentRefunded(bytes32 hash, address indexed recipient);
 
+    /**
+     * @notice Signals successful token recovery from an intent vault
+     * @dev Emitted when tokens that were accidentally sent to a vault are recovered
+     *      Only tokens not part of the intent's reward structure can be recovered
+     * @param intentHash The hash of the intent whose vault had tokens recovered
+     * @param refundee The address receiving the recovered tokens (typically the intent creator)
+     * @param token The address of the token contract that was recovered
+     */
     event IntentTokenRecovered(
         bytes32 intentHash,
         address indexed refundee,
