@@ -75,15 +75,11 @@ abstract contract MessageBridgeProver is
      * @param amount Amount to refund
      */
     function _sendRefund(address recipient, uint256 amount) internal {
-        if (amount > 0 && recipient != address(0)) {
-            (bool success, ) = payable(recipient).call{
-                value: amount,
-                gas: 3000
-            }("");
-            if (!success) {
-                revert NativeTransferFailed();
-            }
+        if (recipient == address(0) || amount == 0) {
+            return;
         }
+
+        payable(recipient).transfer(amount);
     }
 
     /**
@@ -147,21 +143,6 @@ abstract contract MessageBridgeProver is
     }
 
     /**
-     * @notice Validates that arrays have matching lengths
-     * @dev Common validation used by both HyperProver and MetaProver
-     * @param hashes Array of intent hashes
-     * @param claimants Array of claimant addresses
-     */
-    function _validateArrayLengths(
-        bytes32[] calldata hashes,
-        bytes32[] calldata claimants
-    ) internal pure {
-        if (hashes.length != claimants.length) {
-            revert ArrayLengthMismatch();
-        }
-    }
-
-    /**
      * @notice Validates and converts chain ID to uint32
      * @dev Common validation for chain ID conversion
      * @param chainId Chain ID to validate
@@ -171,6 +152,7 @@ abstract contract MessageBridgeProver is
         if (chainId > type(uint32).max) {
             revert ChainIdTooLarge(chainId);
         }
+
         return uint32(chainId);
     }
 

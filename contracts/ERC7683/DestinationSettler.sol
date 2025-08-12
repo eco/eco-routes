@@ -29,13 +29,6 @@ abstract contract DestinationSettler is IDestinationSettler {
             (bytes, bytes32)
         );
 
-        Route memory route = abi.decode(encodedRoute, (Route));
-
-        // Check deadline after creating reward
-        if (block.timestamp > route.deadline) {
-            revert FillDeadlinePassed();
-        }
-
         emit OrderFilled(orderId, msg.sender);
 
         (
@@ -47,7 +40,7 @@ abstract contract DestinationSettler is IDestinationSettler {
 
         fulfillAndProve(
             orderId,
-            route,
+            abi.decode(encodedRoute, (Route)),
             rewardHash,
             claimant,
             prover,
