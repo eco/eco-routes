@@ -93,5 +93,11 @@ interface IMessageBridgeProver is IProver {
      * @notice Chain ID is too large to fit in uint64
      * @param chainId The chain ID that is too large
      */
-    error MessageBridgeProverChainIdTooLarge(uint256 chainId);
+    error ChainIdTooLarge(uint256 chainId);
+
+    /**
+     * @notice Domain ID is too large to fit in uint32
+     * @param domainId The domain ID that is too large
+     */
+    error DomainIdTooLarge(uint64 domainId);
 }

@@ -238,7 +238,10 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Convert domain ID to domain
+        // Convert domain ID to domain with overflow check
+        if (domainID > type(uint32).max) {
+            revert DomainIdTooLarge(domainID);
+        }
         domain = uint32(domainID);
 
         // Use pre-decoded source chain prover address as recipient

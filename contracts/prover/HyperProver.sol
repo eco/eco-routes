@@ -213,7 +213,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Convert domain ID to Hyperlane domain ID format
+        // Convert domain ID to Hyperlane domain ID format with overflow check
+        if (domainID > type(uint32).max) {
+            revert DomainIdTooLarge(domainID);
+        }
         params.destinationDomain = uint32(domainID);
 
         // Use the source chain prover address as the message recipient

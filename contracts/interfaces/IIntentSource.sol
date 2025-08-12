@@ -105,6 +105,7 @@ interface IIntentSource is IVaultStorage {
      */
     error IntentSourceChainIdTooLarge(uint256 chainId);
 
+
     /**
      * @notice Signals the creation of a new cross-chain intent
      * @param hash Unique identifier of the intent

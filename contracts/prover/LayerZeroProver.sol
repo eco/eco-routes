@@ -282,7 +282,10 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Use domain ID directly as endpoint ID
+        // Use domain ID directly as endpoint ID with overflow check
+        if (domainID > type(uint32).max) {
+            revert DomainIdTooLarge(domainID);
+        }
         params.destinationEid = uint32(domainID);
 
         // Use the source chain prover address as the message recipient

@@ -46,7 +46,7 @@ abstract contract MessageBridgeProver is
         
         // Validate that chain ID fits in uint64 and store it
         if (block.chainid > type(uint64).max) {
-            revert MessageBridgeProverChainIdTooLarge(block.chainid);
+            revert ChainIdTooLarge(block.chainid);
         }
         CHAIN_ID = uint64(block.chainid);
     }
