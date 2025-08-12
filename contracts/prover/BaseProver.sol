@@ -33,7 +33,7 @@ abstract contract BaseProver is IProver, ERC165 {
      */
     function provenIntents(
         bytes32 intentHash
-    ) external view override returns (ProofData memory) {
+    ) external view returns (ProofData memory) {
         return _provenIntents[intentHash];
     }
 
