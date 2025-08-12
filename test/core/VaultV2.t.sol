@@ -675,12 +675,7 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVaultV2.InvalidClaimant.selector,
-                address(0)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(IVaultV2.ZeroClaimant.selector));
         vault.withdraw(IVaultV2.Status.Funded, reward, address(0));
     }
 

@@ -36,8 +36,8 @@ interface IVaultV2 {
     /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
 
-    /// @notice Thrown when claimant address is invalid
-    error InvalidClaimant(address claimant);
+    /// @notice Thrown when claimant address is address zero
+    error ZeroClaimant();
 
     /// @notice Vault lifecycle status
     enum Status {

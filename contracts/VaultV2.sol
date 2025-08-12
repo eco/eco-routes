@@ -65,7 +65,7 @@ contract VaultV2 is IVaultV2 {
         }
 
         if (claimant == address(0)) {
-            revert InvalidClaimant(claimant);
+            revert ZeroClaimant();
         }
 
         _;
