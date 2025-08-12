@@ -79,7 +79,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         _validateMessageSender(msg.sender, MAILBOX);
 
         // Verify origin and sender are valid
-        if (origin == 0) revert InvalidOriginChainId();
+        if (origin == 0) revert ZeroDomainID();
 
         // Validate sender is not zero
         if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
@@ -219,8 +219,8 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;
 
-        // Validate and prepend current chain ID to the message body with encoded proofs
-        params.messageBody = abi.encodePacked(_validateCurrentChainID(), encodedProofs);
+        // Prepend current chain ID to the message body with encoded proofs
+        params.messageBody = abi.encodePacked(CHAIN_ID, encodedProofs);
 
         // Pass through metadata as provided
         params.metadata = unpacked.metadata;

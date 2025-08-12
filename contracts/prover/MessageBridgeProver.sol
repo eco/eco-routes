@@ -23,10 +23,11 @@ abstract contract MessageBridgeProver is
     uint256 public immutable MIN_GAS_LIMIT;
 
     /**
-     * @notice Chain ID is too large to fit in uint32
-     * @param chainId The chain ID that is too large
+     * @notice Chain ID stored as uint64 immutable for efficient access
+     * @dev Set once at construction time with validation
      */
-    error ChainIdTooLarge(uint256 chainId);
+    uint64 internal immutable CHAIN_ID;
+
 
     /**
      * @notice Initializes the MessageBridgeProver contract
@@ -42,6 +43,12 @@ abstract contract MessageBridgeProver is
         if (portal == address(0)) revert PortalCannotBeZeroAddress();
 
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
+        
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert MessageBridgeProverChainIdTooLarge(block.chainid);
+        }
+        CHAIN_ID = uint64(block.chainid);
     }
 
     /**
@@ -93,7 +100,7 @@ abstract contract MessageBridgeProver is
      * @param message Encoded message with chain ID prepended, followed by (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
-        uint256 /* destinationChainDomainID */,
+        uint64 /* destinationChainDomainID */,
         bytes32 messageSender,
         bytes calldata message
     ) internal {
@@ -110,7 +117,7 @@ abstract contract MessageBridgeProver is
         
         // Convert raw 8 bytes to uint64 - the chain ID is stored as big-endian bytes
         bytes8 chainIdBytes = bytes8(message[0:8]);
-        uint256 actualChainId = uint256(uint64(chainIdBytes));
+        uint64 actualChainId = uint64(chainIdBytes);
         bytes calldata encodedProofs = message[8:];
 
         // Process the intent proofs using the chain ID extracted from the message
@@ -175,17 +182,6 @@ abstract contract MessageBridgeProver is
     }
 
 
-    /**
-     * @notice Validates that current chain ID fits in uint64
-     * @dev Common validation for message construction
-     * @return uint64 representation of block.chainid
-     */
-    function _validateCurrentChainID() internal view returns (uint64) {
-        if (block.chainid > type(uint64).max) {
-            revert ChainIdTooLarge(block.chainid);
-        }
-        return uint64(block.chainid);
-    }
 
     /**
      * @notice Abstract function to dispatch message via specific bridge

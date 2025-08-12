@@ -100,6 +100,12 @@ interface IIntentSource is IVaultStorage {
     error ArrayLengthMismatch();
 
     /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error IntentSourceChainIdTooLarge(uint256 chainId);
+
+    /**
      * @notice Signals the creation of a new cross-chain intent
      * @param hash Unique identifier of the intent
      * @param destination Destination chain ID

@@ -54,9 +54,9 @@ interface IMessageBridgeProver is IProver {
     error PortalCannotBeZeroAddress();
 
     /**
-     * @notice Invalid chain ID for the origin
+     * @notice Domain ID cannot be zero
      */
-    error InvalidOriginChainId();
+    error ZeroDomainID();
 
     /**
      * @notice Sender address cannot be zero
@@ -88,4 +88,10 @@ interface IMessageBridgeProver is IProver {
         bytes calldata encodedProofs,
         bytes calldata data
     ) external view returns (uint256);
+
+    /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error MessageBridgeProverChainIdTooLarge(uint256 chainId);
 }

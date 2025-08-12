@@ -105,7 +105,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         _validateMessageSender(msg.sender, ENDPOINT);
 
         // Use endpoint ID directly as chain ID
-        uint256 originChainId = uint256(origin.srcEid);
+        uint64 originChainId = uint64(origin.srcEid);
 
         // Validate sender is not zero
         if (origin.sender == bytes32(0)) {
@@ -288,8 +288,8 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;
 
-        // Validate and prepend current chain ID to the message body with encoded proofs
-        params.messageBody = abi.encodePacked(_validateCurrentChainID(), encodedProofs);
+        // Prepend current chain ID to the message body with encoded proofs
+        params.messageBody = abi.encodePacked(CHAIN_ID, encodedProofs);
 
         // Use provided options or create default options with gas limit
         params.options = unpacked.options.length > 0

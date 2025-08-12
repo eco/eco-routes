@@ -32,11 +32,24 @@ abstract contract Inbox is DestinationSettler, IInbox {
     IExecutor public executor;
 
     /**
+     * @notice Chain ID stored as uint64 immutable for efficient access
+     * @dev Set once at construction time with validation
+     */
+    uint64 private immutable CHAIN_ID;
+
+
+    /**
      * @notice Initializes the Inbox contract
      * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
     constructor() {
         executor = new Executor();
+        
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert InboxChainIdTooLarge(block.chainid);
+        }
+        CHAIN_ID = uint64(block.chainid);
     }
 
     /**
@@ -168,7 +181,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         IProver(prover).prove{value: address(this).balance}(
             msg.sender,
-            uint64(sourceChainDomainID),
+            sourceChainDomainID,
             encodedClaimants,
             data
         );
@@ -196,7 +209,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(uint64(block.chainid), routeHash, rewardHash)
+            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
         );
 
         if (route.portal != address(this)) {

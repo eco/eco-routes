@@ -33,7 +33,7 @@ interface IInbox {
      * @notice Thrown when an attempt is made to fulfill an intent on the wrong destination chain
      * @param chainID Chain ID of the destination chain on which this intent should be fulfilled
      */
-    error WrongChain(uint256 chainID);
+    error WrongChain(uint64 chainID);
 
     /**
      * @notice Intent has already been fulfilled
@@ -62,6 +62,12 @@ interface IInbox {
      * @notice Zero claimant identifier provided
      */
     error ZeroClaimant();
+
+    /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error InboxChainIdTooLarge(uint256 chainId);
 
     /**
      * @notice Attempted to batch an unfulfilled intent

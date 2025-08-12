@@ -48,11 +48,11 @@ contract TestProver is BaseProver {
     function addProvenIntentWithChain(
         bytes32 _hash,
         address _claimant,
-        uint96 _destination
+        uint64 _destination
     ) public {
         _provenIntents[_hash] = ProofData({
             claimant: _claimant,
-            destination: uint64(_destination)
+            destination: _destination
         });
     }
 

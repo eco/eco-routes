@@ -36,7 +36,20 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     /// @dev Tron Testnet (Nile) chain ID
     uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
 
+    /**
+     * @notice Chain ID stored as uint64 immutable for efficient access
+     * @dev Set once at construction time with validation
+     */
+    uint64 private immutable CHAIN_ID;
+
+
     constructor() {
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert IntentSourceChainIdTooLarge(block.chainid);
+        }
+        CHAIN_ID = uint64(block.chainid);
+        
         // TRON support
         CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
             block.chainid == TRON_TESTNET_CHAIN_ID
@@ -294,7 +307,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validateInitialFundingState(state, intentHash);
-        _validateSourceChain(block.chainid, intentHash);
+        _validateSourceChain(CHAIN_ID, intentHash);
         _validatePublishState(intentHash, state);
         _emitIntentPublished(intentHash, destination, route, reward);
 
@@ -420,7 +433,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
 
         _validatePublishState(intentHash, state);
         _emitIntentPublished(intentHash, destination, route, reward);
-        _validateSourceChain(block.chainid, intentHash);
+        _validateSourceChain(CHAIN_ID, intentHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
@@ -967,10 +980,10 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
      * @param intentHash Hash of the intent
      */
     function _validateSourceChain(
-        uint256 sourceChain,
+        uint64 sourceChain,
         bytes32 intentHash
     ) internal view virtual {
-        if (sourceChain != block.chainid) {
+        if (sourceChain != CHAIN_ID) {
             revert WrongSourceChain(intentHash);
         }
     }
