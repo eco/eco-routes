@@ -128,6 +128,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
      *      - LayerZero: Uses endpoint IDs that map to chains differently
      *      - Metalayer: Uses domain IDs specific to their routing system
+     *      - Polymer: Uses chainIDs
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */

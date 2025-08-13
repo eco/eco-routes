@@ -53,7 +53,7 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
      */
     function validate(bytes calldata proof) external {
-        (bytes32 intentHash, address claimant, uint32 destinationChainId) = _validateProof(proof);
+        (bytes32 intentHash, address claimant, uint64 destinationChainId) = _validateProof(proof);
         processIntent(intentHash, claimant, destinationChainId);
     }
 
@@ -64,7 +64,7 @@ contract PolyNativeProver is BaseProver, Semver {
      */
     function validateBatch(bytes[] calldata proofs) external {
         for (uint256 i = 0; i < proofs.length; i++) {
-            (bytes32 intentHash, address claimant, uint32 destinationChainId) = _validateProof(proofs[i]);
+            (bytes32 intentHash, address claimant, uint64 destinationChainId) = _validateProof(proofs[i]);
             processIntent(intentHash, claimant, destinationChainId);
         }
     }
@@ -80,7 +80,7 @@ contract PolyNativeProver is BaseProver, Semver {
      */
     function _validateProof(
         bytes calldata proof
-    ) internal view returns (bytes32 intentHash, address claimant, uint32 chainId) {
+    ) internal view returns (bytes32 intentHash, address claimant, uint64 chainId) {
         (
             uint32 destinationChainId,
             address emittingContract,
@@ -110,7 +110,7 @@ contract PolyNativeProver is BaseProver, Semver {
         uint64 eventSourceChainId = uint64(uint256(topicsArray[3]));
         if (eventSourceChainId != block.chainid) revert InvalidEmittingContract();
 
-        return (topicsArray[1], claimant, destinationChainId);
+        return (topicsArray[1], claimant, uint64(destinationChainId));
     }
 
     // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
@@ -120,14 +120,14 @@ contract PolyNativeProver is BaseProver, Semver {
      * @param intentHash Hash of the intent being proven
      * @param claimant Address that fulfilled the intent and should receive rewards
      */
-    function processIntent(bytes32 intentHash, address claimant, uint256 destination) internal {
+    function processIntent(bytes32 intentHash, address claimant, uint64 destination) internal {
         ProofData storage proof = _provenIntents[intentHash];
         if (proof.claimant != address(0)) {
             emit IntentAlreadyProven(intentHash);
         } else {
             proof.claimant = claimant;
-            proof.destination = uint64(destination);
-            emit IntentProven(intentHash, claimant, uint64(destination));
+            proof.destination = destination;
+            emit IntentProven(intentHash, claimant, destination);
         }
     }
 
@@ -241,13 +241,13 @@ contract PolyNativeProver is BaseProver, Semver {
      * @notice Emits IntentFulfilledFromSource events that can be proven by Polymer
      * @dev Only callable by the Portal contract
      * @param sender Address of the original transaction sender (unused)
-     * @param sourceChainId Chain ID of the source chain
+     * @param sourceChainDomainID Domain ID of the source chain (treated as chain ID for Polymer)
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data specific to the proving implementation (unused)
     */
     function prove(
         address sender,
-        uint256 sourceChainId,
+        uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external payable {
@@ -271,7 +271,7 @@ contract PolyNativeProver is BaseProver, Semver {
             bytes32 claimantBytes = bytes32(encodedProofs[offset + 32:offset + 64]);
 
             // Emit event that can be proven by Polymer
-            emit IntentFulfilledFromSource(intentHash, claimantBytes, uint64(sourceChainId));
+            emit IntentFulfilledFromSource(intentHash, claimantBytes, sourceChainDomainID);
         }
     }
 }

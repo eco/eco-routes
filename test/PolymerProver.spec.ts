@@ -92,7 +92,7 @@ describe('PolyNativeProver Test', (): void => {
       creator: owner.address,
       prover: await polymerProver.getAddress(),
       deadline: currentTimestamp + 3600, // Set deadline to 1 hour from now
-      nativeValue: ethers.parseEther('1'),
+      nativeAmount: ethers.parseEther('1'),
       tokens: [],
     }
 

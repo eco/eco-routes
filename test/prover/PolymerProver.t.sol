@@ -98,7 +98,7 @@ contract PolymerProverTest is BaseTest {
 
         // Should revert when called by non-portal
         vm.expectRevert(PolyNativeProver.OnlyPortal.selector);
-        polymerProver.prove(creator, block.chainid, encodedProofs, hex"");
+        polymerProver.prove(creator, uint64(block.chainid), encodedProofs, hex"");
     }
     
     function testProveEmitsEvents() public {
@@ -114,12 +114,12 @@ contract PolymerProverTest is BaseTest {
         emit PolyNativeProver.IntentFulfilledFromSource(intentHash, claimants[0], uint64(block.chainid));
 
         vm.prank(address(portal));
-        polymerProver.prove(creator, block.chainid, encodedProofs, hex"");
+        polymerProver.prove(creator, uint64(block.chainid), encodedProofs, hex"");
     }
     
     function testProveHandlesEmptyProofs() public {
         vm.prank(address(portal));
-        polymerProver.prove(creator, block.chainid, hex"", hex"");
+        polymerProver.prove(creator, uint64(block.chainid), hex"", hex"");
     }
 
     function testValidateSingleProof() public {
