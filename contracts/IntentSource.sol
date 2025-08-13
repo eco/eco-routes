@@ -433,6 +433,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         }
 
         IVault.Status status = rewardStatuses[intentHash];
+        _validateWithdrawable(status, claimant);
         rewardStatuses[intentHash] = IVault.Status.Withdrawn;
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
@@ -510,6 +511,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             routeHash,
             reward
         );
+
+        _validateRecoverable(reward, token);
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
         vault.recover(reward, token);
@@ -686,8 +689,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address permitContract
     ) internal returns (address vault) {
         vault = _getOrDeployVault(intentHash);
+        IVault.Status status = rewardStatuses[intentHash];
+        _validateFundable(status);
         bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
-            rewardStatuses[intentHash],
+            status,
             reward,
             funder,
             IPermit(permitContract)
@@ -784,6 +789,83 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         if (status == IVault.Status.Initial || status == IVault.Status.Funded) {
             revert IntentNotClaimed(intentHash);
+        }
+    }
+
+    /**
+     * @notice Validates that vault can be funded (must be in Initial status)
+     * @dev Prevents funding of already funded, withdrawn, or refunded vaults
+     * @param status Current vault status
+     */
+    function _validateFundable(IVault.Status status) internal pure {
+        if (
+            status == IVault.Status.Withdrawn ||
+            status == IVault.Status.Refunded
+        ) {
+            revert IVault.InvalidStatusForFunding(status);
+        }
+    }
+
+    /**
+     * @notice Validates that vault can be withdrawn from and claimant is valid
+     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant
+     * @param status Current vault status
+     * @param claimant Address that will receive the withdrawn rewards
+     */
+    function _validateWithdrawable(
+        IVault.Status status,
+        address claimant
+    ) internal pure {
+        if (status != IVault.Status.Initial && status != IVault.Status.Funded) {
+            revert IVault.InvalidStatusForWithdrawal(status);
+        }
+
+        if (claimant == address(0)) {
+            revert IVault.ZeroClaimant();
+        }
+    }
+
+    /**
+     * @notice Validates that vault can be refunded (deadline must have passed)
+     * @dev Only allows refund after deadline expires for Initial or Funded status
+     * @param status Current vault status
+     * @param deadline Intent expiration deadline
+     */
+    function _validateRefundable(
+        IVault.Status status,
+        uint256 deadline
+    ) internal view {
+        if (
+            (status == IVault.Status.Initial ||
+                status == IVault.Status.Funded) && block.timestamp < deadline
+        ) {
+            revert IVault.InvalidStatusForRefund(
+                status,
+                block.timestamp,
+                deadline
+            );
+        }
+    }
+
+    /**
+     * @notice Validates that token can be recovered (not zero address and not a reward token)
+     * @dev Prevents recovery of reward tokens and zero address, allows recovery of mistaken transfers
+     * @param reward Reward structure containing token list
+     * @param token Address of the token to recover
+     */
+    function _validateRecoverable(
+        Reward calldata reward,
+        address token
+    ) internal pure {
+        if (token == address(0)) {
+            revert IVault.InvalidRecoverToken(token);
+        }
+
+        uint256 rewardsLength = reward.tokens.length;
+        for (uint256 i; i < rewardsLength; ++i) {
+            if (reward.tokens[i].token == token) {
+                revert IVault.InvalidRecoverToken(token);
+            }
         }
     }
 

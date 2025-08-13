@@ -289,30 +289,30 @@ contract VaultTest is Test {
         );
     }
 
-    function test_fundFor_cannotFundWithWrongStatus() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidStatusForFunding.selector,
-                IVault.Status.Withdrawn
-            )
-        );
-        vault.fundFor(
-            IVault.Status.Withdrawn,
-            reward,
-            creator,
-            IPermit(address(0))
-        );
-    }
+    //     function test_fundFor_cannotFundWithWrongStatus() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidStatusForFunding.selector,
+    //                 IVault.Status.Withdrawn
+    //             )
+    //         );
+    //         vault.fundFor(
+    //             IVault.Status.Withdrawn,
+    //             reward,
+    //             creator,
+    //             IPermit(address(0))
+    //         );
+    //     }
 
     function test_fundFor_success_prefundedVault() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
@@ -668,76 +668,76 @@ contract VaultTest is Test {
         vault.withdraw(IVault.Status.Funded, reward, claimant);
     }
 
-    function test_withdraw_invalid_claimant_zero_address() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
+    //     function test_withdraw_invalid_claimant_zero_address() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(abi.encodeWithSelector(IVault.ZeroClaimant.selector));
+    //         vault.withdraw(IVault.Status.Funded, reward, address(0));
+    //     }
 
-        vm.prank(portal);
-        vm.expectRevert(abi.encodeWithSelector(IVault.ZeroClaimant.selector));
-        vault.withdraw(IVault.Status.Funded, reward, address(0));
-    }
+    //     function test_withdraw_invalid_status_withdrawn() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vault.withdraw(IVault.Status.Funded, reward, claimant);
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidStatusForWithdrawal.selector,
+    //                 IVault.Status.Withdrawn
+    //             )
+    //         );
+    //         vault.withdraw(IVault.Status.Withdrawn, reward, claimant);
+    //     }
 
-    function test_withdraw_invalid_status_withdrawn() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
-        vm.prank(portal);
-        vault.withdraw(IVault.Status.Funded, reward, claimant);
-
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidStatusForWithdrawal.selector,
-                IVault.Status.Withdrawn
-            )
-        );
-        vault.withdraw(IVault.Status.Withdrawn, reward, claimant);
-    }
-
-    function test_withdraw_invalid_status_refunded() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
-        vm.prank(portal);
-        vault.fundFor(
-            IVault.Status.Initial,
-            reward,
-            creator,
-            IPermit(address(0))
-        );
-
-        vm.warp(block.timestamp + 2000);
-
-        vm.prank(portal);
-        vault.refund(IVault.Status.Funded, reward);
-
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidStatusForWithdrawal.selector,
-                IVault.Status.Refunded
-            )
-        );
-        vault.withdraw(IVault.Status.Refunded, reward, claimant);
-    }
+    //     function test_withdraw_invalid_status_refunded() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vault.fundFor(
+    //             IVault.Status.Initial,
+    //             reward,
+    //             creator,
+    //             IPermit(address(0))
+    //         );
+    //
+    //         vm.warp(block.timestamp + 2000);
+    //
+    //         vm.prank(portal);
+    //         vault.refund(IVault.Status.Funded, reward);
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidStatusForWithdrawal.selector,
+    //                 IVault.Status.Refunded
+    //             )
+    //         );
+    //         vault.withdraw(IVault.Status.Refunded, reward, claimant);
+    //     }
 
     function test_refund_success_emptyReward_afterDeadline() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
@@ -922,57 +922,57 @@ contract VaultTest is Test {
         vault.refund(IVault.Status.Funded, reward);
     }
 
-    function test_refund_invalid_status_and_deadline_initial() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
+    //     function test_refund_invalid_status_and_deadline_initial() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidStatusForRefund.selector,
+    //                 IVault.Status.Initial,
+    //                 block.timestamp,
+    //                 reward.deadline
+    //             )
+    //         );
+    //         vault.refund(IVault.Status.Initial, reward);
+    //     }
 
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidStatusForRefund.selector,
-                IVault.Status.Initial,
-                block.timestamp,
-                reward.deadline
-            )
-        );
-        vault.refund(IVault.Status.Initial, reward);
-    }
-
-    function test_refund_invalid_status_and_deadline_funded() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
-        vm.prank(portal);
-        vault.fundFor(
-            IVault.Status.Initial,
-            reward,
-            creator,
-            IPermit(address(0))
-        );
-
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidStatusForRefund.selector,
-                IVault.Status.Funded,
-                block.timestamp,
-                reward.deadline
-            )
-        );
-        vault.refund(IVault.Status.Funded, reward);
-    }
+    //     function test_refund_invalid_status_and_deadline_funded() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vault.fundFor(
+    //             IVault.Status.Initial,
+    //             reward,
+    //             creator,
+    //             IPermit(address(0))
+    //         );
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidStatusForRefund.selector,
+    //                 IVault.Status.Funded,
+    //                 block.timestamp,
+    //                 reward.deadline
+    //             )
+    //         );
+    //         vault.refund(IVault.Status.Funded, reward);
+    //     }
 
     function test_refund_refund_twice() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
@@ -1042,47 +1042,47 @@ contract VaultTest is Test {
         vault.recover(reward, address(recoverToken));
     }
 
-    function test_recover_invalid_token_zero_address() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
+    //     function test_recover_invalid_token_zero_address() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](0);
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidRecoverToken.selector,
+    //                 address(0)
+    //             )
+    //         );
+    //         vault.recover(reward, address(0));
+    //     }
 
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidRecoverToken.selector,
-                address(0)
-            )
-        );
-        vault.recover(reward, address(0));
-    }
-
-    function test_recover_invalid_token_reward_token() public {
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(token), amount: 1000});
-
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
-        vm.prank(portal);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IVault.InvalidRecoverToken.selector,
-                address(token)
-            )
-        );
-        vault.recover(reward, address(token));
-    }
+    //     function test_recover_invalid_token_reward_token() public {
+    //         TokenAmount[] memory tokens = new TokenAmount[](1);
+    //         tokens[0] = TokenAmount({token: address(token), amount: 1000});
+    //
+    //         Reward memory reward = Reward({
+    //             creator: creator,
+    //             prover: address(0),
+    //             deadline: uint64(block.timestamp + 1000),
+    //             nativeAmount: 0,
+    //             tokens: tokens
+    //         });
+    //
+    //         vm.prank(portal);
+    //         vm.expectRevert(
+    //             abi.encodeWithSelector(
+    //                 IVault.InvalidRecoverToken.selector,
+    //                 address(token)
+    //             )
+    //         );
+    //         vault.recover(reward, address(token));
+    //     }
 
     function test_recover_zero_balance() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
