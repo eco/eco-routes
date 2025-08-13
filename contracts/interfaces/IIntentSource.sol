@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IVaultV2} from "./IVaultV2.sol";
+import {IVault} from "./IVault.sol";
 import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
@@ -107,7 +107,7 @@ interface IIntentSource {
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) external view returns (IVaultV2.Status status);
+    ) external view returns (IVault.Status status);
 
     /**
      * @notice Computes the hash components of an intent

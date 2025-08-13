@@ -6,11 +6,11 @@ import {Reward} from "../types/Intent.sol";
 import {IPermit} from "./IPermit.sol";
 
 /**
- * @title IVaultV2
- * @notice Interface for Vault V2 contract that manages reward escrow functionality
+ * @title IVault
+ * @notice Interface for Vault contract that manages reward escrow functionality
  * @dev Handles funding, withdrawal, and refund operations for cross-chain rewards
  */
-interface IVaultV2 {
+interface IVault {
     /// @notice Thrown when caller is not the portal contract
     error NotPortalCaller(address caller);
 

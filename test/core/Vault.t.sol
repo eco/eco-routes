@@ -4,8 +4,8 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {VaultV2} from "../../contracts/VaultV2.sol";
-import {IVaultV2} from "../../contracts/interfaces/IVaultV2.sol";
+import {Vault} from "../../contracts/vault/Vault.sol";
+import {IVault} from "../../contracts/interfaces/IVault.sol";
 import {IPermit} from "../../contracts/interfaces/IPermit.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
@@ -66,10 +66,10 @@ contract MockPermit is IPermit {
     }
 }
 
-contract VaultV2Test is Test {
+contract VaultTest is Test {
     using Clones for address;
 
-    IVaultV2 internal vault;
+    IVault internal vault;
     TestERC20 internal token;
     MockPermit internal mockPermit;
 
@@ -85,7 +85,7 @@ contract VaultV2Test is Test {
         unauthorized = makeAddr("unauthorized");
 
         vm.prank(portal);
-        vault = IVaultV2(address(new VaultV2()).clone(bytes32(0)));
+        vault = IVault(address(new Vault()).clone(bytes32(0)));
 
         token = new TestERC20("Test Token", "TEST");
         mockPermit = new MockPermit();
@@ -104,7 +104,7 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         assertTrue(
             vault.fundFor(
-                IVaultV2.Status.Initial,
+                IVault.Status.Initial,
                 reward,
                 creator,
                 IPermit(address(0))
@@ -114,12 +114,12 @@ contract VaultV2Test is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.NotPortalCaller.selector,
+                IVault.NotPortalCaller.selector,
                 unauthorized
             )
         );
         vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -138,7 +138,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -166,7 +166,7 @@ contract VaultV2Test is Test {
         vm.deal(portal, 2 ether);
         vm.prank(portal);
         bool result = vault.fundFor{value: 1 ether}(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -190,7 +190,7 @@ contract VaultV2Test is Test {
         vm.deal(portal, 1 ether);
         vm.prank(portal);
         bool result = vault.fundFor{value: 1 ether}(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -218,7 +218,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -253,7 +253,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -277,12 +277,12 @@ contract VaultV2Test is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.NotPortalCaller.selector,
+                IVault.NotPortalCaller.selector,
                 unauthorized
             )
         );
         vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -302,12 +302,12 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidStatusForFunding.selector,
-                IVaultV2.Status.Withdrawn
+                IVault.InvalidStatusForFunding.selector,
+                IVault.Status.Withdrawn
             )
         );
         vault.fundFor(
-            IVaultV2.Status.Withdrawn,
+            IVault.Status.Withdrawn,
             reward,
             creator,
             IPermit(address(0))
@@ -331,7 +331,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -364,7 +364,7 @@ contract VaultV2Test is Test {
         vm.deal(portal, 1 ether);
         vm.prank(portal);
         bool result = vault.fundFor{value: 0.5 ether}(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -395,7 +395,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(mockPermit))
@@ -428,7 +428,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(mockPermit))
@@ -459,7 +459,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(mockPermit))
@@ -492,7 +492,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         bool result = vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(mockPermit))
@@ -514,7 +514,7 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
     }
 
     function test_withdraw_success_nativeAndTokens() public {
@@ -535,7 +535,7 @@ contract VaultV2Test is Test {
         uint256 claimantInitialBalance = claimant.balance;
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -562,7 +562,7 @@ contract VaultV2Test is Test {
         TestERC20(address(token2)).mint(address(vault), 500);
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         assertEq(token.balanceOf(address(vault)), 0);
         assertEq(token2.balanceOf(address(vault)), 0);
@@ -585,7 +585,7 @@ contract VaultV2Test is Test {
         token.mint(address(vault), 500);
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         assertEq(token.balanceOf(address(vault)), 0);
         assertEq(token.balanceOf(claimant), 500);
@@ -606,7 +606,7 @@ contract VaultV2Test is Test {
         uint256 claimantInitialBalance = claimant.balance;
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         assertEq(address(vault).balance, 0);
         assertEq(claimant.balance, claimantInitialBalance + 1 ether);
@@ -631,7 +631,7 @@ contract VaultV2Test is Test {
         vm.deal(portal, 1 ether);
         vm.prank(portal);
         vault.fundFor{value: 1 ether}(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -640,7 +640,7 @@ contract VaultV2Test is Test {
         uint256 claimantInitialBalance = claimant.balance;
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -661,11 +661,11 @@ contract VaultV2Test is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.NotPortalCaller.selector,
+                IVault.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
     }
 
     function test_withdraw_invalid_claimant_zero_address() public {
@@ -679,8 +679,8 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        vm.expectRevert(abi.encodeWithSelector(IVaultV2.ZeroClaimant.selector));
-        vault.withdraw(IVaultV2.Status.Funded, reward, address(0));
+        vm.expectRevert(abi.encodeWithSelector(IVault.ZeroClaimant.selector));
+        vault.withdraw(IVault.Status.Funded, reward, address(0));
     }
 
     function test_withdraw_invalid_status_withdrawn() public {
@@ -694,16 +694,16 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidStatusForWithdrawal.selector,
-                IVaultV2.Status.Withdrawn
+                IVault.InvalidStatusForWithdrawal.selector,
+                IVault.Status.Withdrawn
             )
         );
-        vault.withdraw(IVaultV2.Status.Withdrawn, reward, claimant);
+        vault.withdraw(IVault.Status.Withdrawn, reward, claimant);
     }
 
     function test_withdraw_invalid_status_refunded() public {
@@ -718,7 +718,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -727,16 +727,16 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
 
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidStatusForWithdrawal.selector,
-                IVaultV2.Status.Refunded
+                IVault.InvalidStatusForWithdrawal.selector,
+                IVault.Status.Refunded
             )
         );
-        vault.withdraw(IVaultV2.Status.Refunded, reward, claimant);
+        vault.withdraw(IVault.Status.Refunded, reward, claimant);
     }
 
     function test_refund_success_emptyReward_afterDeadline() public {
@@ -752,7 +752,7 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
     }
 
     function test_refund_success_nativeAndTokens_afterDeadline() public {
@@ -775,7 +775,7 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -804,7 +804,7 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
 
         assertEq(token.balanceOf(address(vault)), 0);
         assertEq(token2.balanceOf(address(vault)), 0);
@@ -827,7 +827,7 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
 
         assertEq(token.balanceOf(address(vault)), 0);
         assertEq(token.balanceOf(creator), 0);
@@ -852,7 +852,7 @@ contract VaultV2Test is Test {
         vm.deal(portal, 1 ether);
         vm.prank(portal);
         vault.fundFor{value: 1 ether}(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -863,7 +863,7 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -887,12 +887,12 @@ contract VaultV2Test is Test {
         vm.deal(address(vault), 1 ether);
 
         vm.prank(portal);
-        vault.withdraw(IVaultV2.Status.Funded, reward, claimant);
+        vault.withdraw(IVault.Status.Funded, reward, claimant);
 
         uint256 creatorInitialBalance = creator.balance;
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Withdrawn, reward);
+        vault.refund(IVault.Status.Withdrawn, reward);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -915,11 +915,11 @@ contract VaultV2Test is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.NotPortalCaller.selector,
+                IVault.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
     }
 
     function test_refund_invalid_status_and_deadline_initial() public {
@@ -935,13 +935,13 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidStatusForRefund.selector,
-                IVaultV2.Status.Initial,
+                IVault.InvalidStatusForRefund.selector,
+                IVault.Status.Initial,
                 block.timestamp,
                 reward.deadline
             )
         );
-        vault.refund(IVaultV2.Status.Initial, reward);
+        vault.refund(IVault.Status.Initial, reward);
     }
 
     function test_refund_invalid_status_and_deadline_funded() public {
@@ -956,7 +956,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         vault.fundFor(
-            IVaultV2.Status.Initial,
+            IVault.Status.Initial,
             reward,
             creator,
             IPermit(address(0))
@@ -965,13 +965,13 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidStatusForRefund.selector,
-                IVaultV2.Status.Funded,
+                IVault.InvalidStatusForRefund.selector,
+                IVault.Status.Funded,
                 block.timestamp,
                 reward.deadline
             )
         );
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
     }
 
     function test_refund_refund_twice() public {
@@ -987,10 +987,10 @@ contract VaultV2Test is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Funded, reward);
+        vault.refund(IVault.Status.Funded, reward);
 
         vm.prank(portal);
-        vault.refund(IVaultV2.Status.Refunded, reward);
+        vault.refund(IVault.Status.Refunded, reward);
     }
 
     function test_recover_success_differentToken() public {
@@ -1035,7 +1035,7 @@ contract VaultV2Test is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.NotPortalCaller.selector,
+                IVault.NotPortalCaller.selector,
                 unauthorized
             )
         );
@@ -1055,7 +1055,7 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidRecoverToken.selector,
+                IVault.InvalidRecoverToken.selector,
                 address(0)
             )
         );
@@ -1077,7 +1077,7 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.InvalidRecoverToken.selector,
+                IVault.InvalidRecoverToken.selector,
                 address(token)
             )
         );
@@ -1099,7 +1099,7 @@ contract VaultV2Test is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVaultV2.ZeroRecoverTokenBalance.selector,
+                IVault.ZeroRecoverTokenBalance.selector,
                 address(recoverToken)
             )
         );
