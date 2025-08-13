@@ -27,12 +27,6 @@ interface IInbox {
     event IntentProven(bytes32 indexed intentHash, bytes32 indexed claimant);
 
     /**
-     * @notice Thrown when an attempt is made to fulfill an intent on the wrong destination chain
-     * @param chainID Chain ID of the destination chain on which this intent should be fulfilled
-     */
-    error WrongChain(uint64 chainID);
-
-    /**
      * @notice Intent has already been fulfilled
      * @param hash Hash of the fulfilled intent
      */

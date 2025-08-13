@@ -66,7 +66,7 @@ interface IIntentSource {
 
     /**
      * @notice Signals funding of an intent
-     * @param intentHash The hash of the funded intent 
+     * @param intentHash The hash of the funded intent
      * @param funder The address providing the funding
      * @param complete Whether the intent was completely funded (true) or partially funded (false)
      */
