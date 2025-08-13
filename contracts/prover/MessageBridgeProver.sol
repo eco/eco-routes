@@ -82,15 +82,11 @@ abstract contract MessageBridgeProver is
      * @param amount Amount to refund
      */
     function _sendRefund(address recipient, uint256 amount) internal {
-        if (amount > 0 && recipient != address(0)) {
-            (bool success, ) = payable(recipient).call{
-                value: amount,
-                gas: 3000
-            }("");
-            if (!success) {
-                revert NativeTransferFailed();
-            }
+        if (recipient == address(0) || amount == 0) {
+            return;
         }
+
+        payable(recipient).transfer(amount);
     }
 
     /**
@@ -181,7 +177,19 @@ abstract contract MessageBridgeProver is
         }
     }
 
+    /**
+     * @notice Validates and converts chain ID to uint32
+     * @dev Common validation for chain ID conversion
+     * @param chainId Chain ID to validate
+     * @return uint32 representation of the chain ID
+     */
+    function _validateChainId(uint256 chainId) internal pure returns (uint32) {
+        if (chainId > type(uint32).max) {
+            revert ChainIdTooLarge(chainId);
+        }
 
+        return uint32(chainId);
+    }
 
     /**
      * @notice Abstract function to dispatch message via specific bridge

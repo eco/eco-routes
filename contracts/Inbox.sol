@@ -29,7 +29,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
      */
     mapping(bytes32 => bytes32) public fulfilled;
 
-    IExecutor public executor;
+    IExecutor public immutable executor;
 
     /**
      * @notice Chain ID stored as uint64 immutable for efficient access

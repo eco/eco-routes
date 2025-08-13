@@ -16,11 +16,6 @@ interface IMessageBridgeProver is IProver {
     error InsufficientFee(uint256 requiredFee);
 
     /**
-     * @notice Native token transfer failed
-     */
-    error NativeTransferFailed();
-
-    /**
      * @notice Unauthorized call to handle() detected
      * @param sender Address that attempted the call
      */
