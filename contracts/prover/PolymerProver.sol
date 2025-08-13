@@ -4,8 +4,6 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
-import {IIntentSource} from "../interfaces/IIntentSource.sol";
-import {Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
  * @title PolyNativeProver
@@ -23,8 +21,9 @@ contract PolyNativeProver is BaseProver, Semver {
     error UnsupportedChainId();
     error InvalidEmittingContract();
     error InvalidTopicsLength();
+    error ZeroAddress();
+    error NoSupportedChains();
     error SizeMismatch();
-    error IntentHashMismatch();
 
     // Immutable state variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
@@ -43,6 +42,9 @@ contract PolyNativeProver is BaseProver, Semver {
         address _portal,
         uint32[] memory _supportedChainIds
     ) BaseProver(_portal) {
+        if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
+        if (_supportedChainIds.length == 0) revert NoSupportedChains();
+
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
         for (uint32 i = 0; i < _supportedChainIds.length; i++) {
             supportedChainIds[_supportedChainIds[i]] = true;
@@ -88,7 +90,7 @@ contract PolyNativeProver is BaseProver, Semver {
             uint32 destinationChainId,
             address emittingContract,
             bytes memory topics,
-            bytes memory data
+            /* bytes memory data */
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
         checkPortalContract(emittingContract);
@@ -97,19 +99,13 @@ contract PolyNativeProver is BaseProver, Semver {
 
         bytes32[] memory topicsArray = new bytes32[](3);
 
-        // Use assembly for efficient memory operations when splitting topics
         assembly {
             let topicsPtr := add(topics, 32)
-            for {
-                let i := 0
-            } lt(i, 3) {
-                i := add(i, 1)
-            } {
-                mstore(
-                    add(add(topicsArray, 32), mul(i, 32)),
-                    mload(add(topicsPtr, mul(i, 32)))
-                )
-            }
+            let arrayPtr := add(topicsArray, 32)
+
+            mstore(arrayPtr, mload(topicsPtr))
+            mstore(add(arrayPtr, 32), mload(add(topicsPtr, 32)))
+            mstore(add(arrayPtr, 64), mload(add(topicsPtr, 64)))
         }
 
         checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
@@ -136,66 +132,7 @@ contract PolyNativeProver is BaseProver, Semver {
         }
     }
 
-    /**
-     * @notice Validates that a calculated intent hash matches the expected intent hash
-     * @param routeHash The route hash component of the intent
-     * @param reward The reward structure to encode
-     * @param expectedIntentHash The expected intent hash to compare against
-     */
-    function validateIntentHash(
-        bytes32 routeHash,
-        Reward memory reward,
-        bytes32 expectedIntentHash
-    ) internal pure {
-        bytes32 calculatedRewardHash = keccak256(abi.encode(reward));
-        bytes32 calculatedIntentHash = keccak256(
-            abi.encodePacked(routeHash, calculatedRewardHash)
-        );
-        if (calculatedIntentHash != expectedIntentHash) {
-            revert IntentHashMismatch();
-        }
-    }
-
-    // ------------- INTERNAL FUNCTIONS - MESSAGE DECODING -------------
-
-    /**
-     * @notice Decodes a message body into intent hashes and claimants and stores them
-     * @param messageBody The message body to decode
-     * @param destinationChainId Chain ID where the intents were fulfilled
-     */
-    function decodeMessageandStore(bytes memory messageBody, uint32 destinationChainId) internal {
-        uint256 size = messageBody.length;
-        uint256 offset = 0;
-
-        while (offset < size) {
-            // Get chunkSize and check for truncation
-            uint16 chunkSize;
-            require(offset + 2 <= size, "truncated chunkSize");
-            assembly {
-                chunkSize := mload(add(messageBody, add(offset, 2)))
-                offset := add(offset, 2)
-            }
-
-            // Get claimant address and check for truncation
-            require(offset + 20 <= size, "truncated claimant address");
-            address claimant;
-            assembly {
-                claimant := mload(add(messageBody, add(offset, 20)))
-                offset := add(offset, 20)
-            }
-
-            // Get intentHash and check for truncation
-            require(offset + 32 * chunkSize <= size, "truncated intent set");
-            bytes32 intentHash;
-            for (uint16 i = 0; i < chunkSize; i++) {
-                assembly {
-                    intentHash := mload(add(messageBody, add(offset, 32)))
-                    offset := add(offset, 32)
-                }
-                processIntent(intentHash, claimant, destinationChainId);
-            }
-        }
-    }
+    // ------------- UTILITY FUNCTIONS -------------
 
     /**
      * @notice Decodes a message body into intent hashes and claimants for claiming
@@ -309,7 +246,7 @@ contract PolyNativeProver is BaseProver, Semver {
 
     /**
      * @notice Satisfies the IProver interface
-     * @dev This function should not need to be called. Call only Inbox.fulFill on the destination chain.
+     * @dev This function should not need to be called. Call only Inbox.fulfill on the destination chain.
      * @dev This function does nothing since Polymer does not require sending a message from the destination chain.
      * @param sender Address of the original transaction sender
      * @param sourceChainId Chain ID of the source chain
