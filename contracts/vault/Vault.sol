@@ -6,16 +6,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {IVaultV2} from "./interfaces/IVaultV2.sol";
-import {IPermit} from "./interfaces/IPermit.sol";
-import {Reward} from "./types/Intent.sol";
+import {IVault} from "../interfaces/IVault.sol";
+import {IPermit} from "../interfaces/IPermit.sol";
+import {Reward} from "../types/Intent.sol";
 
 /**
- * @title VaultV2
+ * @title Vault
  * @notice Escrow contract for managing cross-chain reward payments
  * @dev Implements a lifecycle-based vault that can be funded, withdrawn from, or refunded
  */
-contract VaultV2 is IVaultV2 {
+contract Vault is IVault {
     /// @notice Address of the portal contract that can call this vault
     address private immutable portal;
 

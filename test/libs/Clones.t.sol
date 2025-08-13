@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {Clones} from "../../contracts/vault/Clones.sol";
 import {Proxy} from "../../contracts/vault/Proxy.sol";
-import {VaultV2} from "../../contracts/VaultV2.sol";
+import {Vault} from "../../contracts/vault/Vault.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
 /**
@@ -152,8 +152,8 @@ contract ClonesTest is BaseTest {
         assertNotEq(predicted1, predicted2);
     }
 
-    function testCloneWithVaultV2Implementation() public {
-        VaultV2 vaultImpl = new VaultV2();
+    function testCloneWithVaultImplementation() public {
+        Vault vaultImpl = new Vault();
 
         address clone = Clones.clone(address(vaultImpl), TEST_SALT);
         address predicted = Clones.predict(

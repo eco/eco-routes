@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-import {IVaultV2} from "../../contracts/interfaces/IVaultV2.sol";
+import {IVault} from "../../contracts/interfaces/IVault.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
