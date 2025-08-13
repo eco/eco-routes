@@ -75,7 +75,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
      * @param sourceChainDomainID Domain ID of the source chain where the intent was created
      * @param data Additional data for message formatting
      * @return Array of execution results
-     * 
+     *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
      *      Each bridge provider uses their own domain ID mapping system:
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
@@ -122,7 +122,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
      * @param prover Address of prover on the destination chain
      * @param intentHashes Array of intent hashes to prove
      * @param data Additional data for message formatting
-     * 
+     *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
      *      Each bridge provider uses their own domain ID mapping system:
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
@@ -196,7 +196,11 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(_validateChainID(block.chainid), routeHash, rewardHash)
+            abi.encodePacked(
+                _validateChainID(block.chainid),
+                routeHash,
+                rewardHash
+            )
         );
 
         if (route.portal != address(this)) {
@@ -238,7 +242,13 @@ abstract contract Inbox is DestinationSettler, IInbox {
         return executor.execute{value: callsValue}(route.calls);
     }
 
-    function _validateChainID(uint256 chainId) virtual internal view returns (uint64);
+    function _validateChainID(uint256 chainId) internal pure returns (uint64) {
+        if (chainId > type(uint64).max) {
+            revert ChainIdTooLarge(chainId);
+        }
+
+        return uint64(chainId);
+    }
 
     /**
      * @notice Allows the contract to receive ETH

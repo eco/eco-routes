@@ -10,6 +10,14 @@ export type Route = {
   calls: Call[]
 }
 
+// ERC-7683 Output type for maxSpent/minReceived
+export type Output = {
+  token: string // bytes32
+  amount: bigint
+  recipient: string // bytes32
+  chainId: number
+}
+
 export type OnchainCrosschainOrderData = {
   destination: number
   route: Route
@@ -17,6 +25,9 @@ export type OnchainCrosschainOrderData = {
   prover: string
   nativeValue: bigint
   rewardTokens: TokenAmount[]
+  routePortal: string // bytes32
+  routeDeadline: number
+  maxSpent: Output[]
 }
 
 export type GaslessCrosschainOrderData = {
@@ -27,6 +38,9 @@ export type GaslessCrosschainOrderData = {
   prover: string
   nativeValue: bigint
   rewardTokens: TokenAmount[]
+  routePortal: string // bytes32
+  routeDeadline: number
+  maxSpent: Output[]
 }
 
 export type OnchainCrosschainOrder = {
@@ -73,6 +87,18 @@ const OnchainCrosschainOrderDataStruct = [
       { name: 'amount', type: 'uint256' },
     ],
   },
+  { name: 'routePortal', type: 'bytes32' },
+  { name: 'routeDeadline', type: 'uint64' },
+  {
+    name: 'maxSpent',
+    type: 'tuple[]',
+    components: [
+      { name: 'token', type: 'bytes32' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'recipient', type: 'bytes32' },
+      { name: 'chainId', type: 'uint256' },
+    ],
+  },
 ]
 
 const GaslessCrosschainOrderDataStruct = [
@@ -105,6 +131,18 @@ const GaslessCrosschainOrderDataStruct = [
       { name: 'amount', type: 'uint256' },
     ],
   },
+  { name: 'routePortal', type: 'bytes32' },
+  { name: 'routeDeadline', type: 'uint64' },
+  {
+    name: 'maxSpent',
+    type: 'tuple[]',
+    components: [
+      { name: 'token', type: 'bytes32' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'recipient', type: 'bytes32' },
+      { name: 'chainId', type: 'uint256' },
+    ],
+  },
 ]
 
 const OnchainCrosschainOrderStruct = [
@@ -116,8 +154,7 @@ const OnchainCrosschainOrderStruct = [
 export async function encodeOnchainCrosschainOrderData(
   onchainCrosschainOrderData: OnchainCrosschainOrderData,
 ) {
-  const abiCoder = AbiCoder.defaultAbiCoder()
-  return abiCoder.encode(
+  return AbiCoder.defaultAbiCoder().encode(
     [
       {
         type: 'tuple',
@@ -131,8 +168,7 @@ export async function encodeOnchainCrosschainOrderData(
 export async function encodeGaslessCrosschainOrderData(
   gaslessCrosschainOrderData: GaslessCrosschainOrderData,
 ) {
-  const abiCoder = AbiCoder.defaultAbiCoder()
-  return abiCoder.encode(
+  return AbiCoder.defaultAbiCoder().encode(
     [
       {
         type: 'tuple',
@@ -146,8 +182,7 @@ export async function encodeGaslessCrosschainOrderData(
 export async function encodeOnchainCrosschainOrder(
   onchainCrosschainOrder: OnchainCrosschainOrder,
 ) {
-  const abiCoder = AbiCoder.defaultAbiCoder()
-  return abiCoder.encode(
+  return AbiCoder.defaultAbiCoder().encode(
     [
       {
         type: 'tuple',

@@ -24,10 +24,7 @@ interface IInbox {
      * @param intentHash Hash of the proven intent
      * @param claimant Cross-VM compatible claimant identifier
      */
-    event IntentProven(
-        bytes32 indexed intentHash,
-        bytes32 indexed claimant
-    );
+    event IntentProven(bytes32 indexed intentHash, bytes32 indexed claimant);
 
     /**
      * @notice Thrown when an attempt is made to fulfill an intent on the wrong destination chain
@@ -70,6 +67,12 @@ interface IInbox {
     error IntentNotFulfilled(bytes32 hash);
 
     /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error ChainIdTooLarge(uint256 chainId);
+
+    /**
      * @notice Fulfills an intent using storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
      * @param intentHash The hash of the intent to fulfill
@@ -96,7 +99,7 @@ interface IInbox {
      * @param sourceChainDomainID Domain ID of the source chain where the intent was created
      * @param data Additional data for message formatting
      * @return Array of execution results
-     * 
+     *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
      *      Each bridge provider uses their own domain ID mapping system:
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
@@ -122,7 +125,7 @@ interface IInbox {
      * @param prover Address of prover on the destination chain
      * @param intentHashes Array of intent hashes to prove
      * @param data Additional data for message formatting
-     * 
+     *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
      *      Each bridge provider uses their own domain ID mapping system:
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs

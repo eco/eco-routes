@@ -95,12 +95,12 @@ struct Output {
  * @title FillInstruction type
  * @notice Instructions to parameterize each leg of the fill
  * @dev Provides all the origin-generated information required to produce a valid fill leg
- * @param destination The chain ID that the order is meant to be settled by
+ * @param destinationChainId The chain ID that the order is meant to be settled by
  * @param destinationSettler The contract address that the order is meant to be filled on
  * @param originData The data generated on the origin chain needed by the destinationSettler to process the fill
  */
 struct FillInstruction {
-    uint64 destination;
+    uint256 destinationChainId;
     bytes32 destinationSettler;
     bytes originData;
 }
@@ -117,13 +117,14 @@ struct FillInstruction {
  */
 struct OrderData {
     uint64 destination;
-    bytes32 portal;
-    uint64 deadline;
     bytes route;
     Reward reward;
+    bytes32 routePortal;
+    uint64 routeDeadline;
+    Output[] maxSpent;
 }
 
 // EIP712 type hash
 bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
-    "OrderData(uint64 destination,bytes32 portal,uint64 deadline,bytes route,Reward reward)Reward(uint64 deadline,bytes32 creator,bytes32 prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(bytes32 token,uint256 amount)"
+    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)"
 );
