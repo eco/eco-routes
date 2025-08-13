@@ -45,22 +45,16 @@ contract Vault is IVault {
 
     /**
      * @notice Funds the vault with tokens and native currency from the reward
-     * @param status Current vault status
      * @param reward The reward structure containing token addresses, amounts, and native value
      * @param funder Address that will provide the funding
      * @param permit Optional permit contract for gasless token approvals
      * @return fullyFunded True if the vault was fully funded, false otherwise
      */
     function fundFor(
-        Status status,
         Reward calldata reward,
         address funder,
         IPermit permit
     ) external payable onlyPortal returns (bool fullyFunded) {
-        if (status == Status.Funded) {
-            return true;
-        }
-
         fullyFunded = address(this).balance >= reward.nativeAmount;
 
         uint256 rewardsLength = reward.tokens.length;
@@ -85,7 +79,6 @@ contract Vault is IVault {
      * @param claimant Address that will receive the withdrawn rewards
      */
     function withdraw(
-        Status /* status */,
         Reward calldata reward,
         address claimant
     ) external onlyPortal {
@@ -116,10 +109,7 @@ contract Vault is IVault {
      * @notice Refunds all vault contents back to the reward creator
      * @param reward The reward structure containing creator address and deadline
      */
-    function refund(
-        Status /* status */,
-        Reward calldata reward
-    ) external onlyPortal {
+    function refund(Reward calldata reward) external onlyPortal {
         address refundee = reward.creator;
 
         uint256 rewardsLength = reward.tokens.length;
@@ -145,13 +135,10 @@ contract Vault is IVault {
 
     /**
      * @notice Recovers tokens that are not part of the reward to the creator
-     * @param reward The reward structure containing creator address
+     * @param refundee Address to receive the recovered tokens
      * @param token Address of the token to recover (must not be a reward token)
      */
-    function recover(
-        Reward calldata reward,
-        address token
-    ) external onlyPortal {
+    function recover(address refundee, address token) external onlyPortal {
         IERC20 tokenContract = IERC20(token);
         uint256 balance = tokenContract.balanceOf(address(this));
 
@@ -159,7 +146,7 @@ contract Vault is IVault {
             revert ZeroRecoverTokenBalance(token);
         }
 
-        tokenContract.safeTransfer(reward.creator, balance);
+        tokenContract.safeTransfer(refundee, balance);
     }
 
     /**

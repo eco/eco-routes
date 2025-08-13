@@ -13,6 +13,14 @@ import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
  *      and reward distribution.
  */
 interface IIntentSource {
+    /// @notice Intent lifecycle status
+    enum Status {
+        Initial, /// @dev Intent created, may be partially funded but not fully funded
+        Funded, /// @dev Intent has been fully funded with all required rewards
+        Withdrawn, /// @dev Rewards have been withdrawn by claimant
+        Refunded /// @dev Rewards have been refunded to creator
+    }
+
     /**
      * @notice Indicates a failed native token transfer during reward distribution
      * @param intentHash The hash of the intent whose reward transfer failed
@@ -41,6 +49,25 @@ interface IIntentSource {
      * @param intentHash The hash of the intent that couldn't be funded
      */
     error InsufficientFunds(bytes32 intentHash);
+
+    /// @notice Thrown when intent status is invalid for funding operation
+    error InvalidStatusForFunding(Status status);
+
+    /// @notice Thrown when intent status is invalid for withdrawal operation
+    error InvalidStatusForWithdrawal(Status status);
+
+    /// @notice Thrown when attempting to recover an invalid token (zero address or reward token)
+    error InvalidRecoverToken(address token);
+
+    /// @notice Thrown when intent status is invalid for refund operation or deadline not reached
+    error InvalidStatusForRefund(
+        Status status,
+        uint256 currentTime,
+        uint256 deadline
+    );
+
+    /// @notice Thrown when claimant address is address zero
+    error InvalidClaimant();
 
     /**
      * @notice Signals the creation of a new cross-chain intent
@@ -107,7 +134,7 @@ interface IIntentSource {
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) external view returns (IVault.Status status);
+    ) external view returns (Status status);
 
     /**
      * @notice Computes the hash components of an intent

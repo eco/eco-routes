@@ -40,7 +40,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     /// @dev Implementation contract address for vault cloning
     address private immutable VAULT_IMPLEMENTATION;
     /// @dev Tracks the lifecycle status of each intent's rewards
-    mapping(bytes32 => IVault.Status) private rewardStatuses;
+    mapping(bytes32 => Status) private rewardStatuses;
 
     /**
      * @notice Initializes the IntentSource contract
@@ -58,13 +58,33 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
+     * @notice Ensures intent can be funded based on its current status
+     * @dev Prevents funding of intents that are already withdrawn or refunded
+     *      Allows funding of Initial or Funded status intents (for partial funding)
+     * @param intentHash Hash of the intent to validate for funding eligibility
+     */
+    modifier onlyFundable(bytes32 intentHash) {
+        Status status = rewardStatuses[intentHash];
+
+        if (status == Status.Withdrawn || status == Status.Refunded) {
+            revert InvalidStatusForFunding(status);
+        }
+
+        if (status == Status.Funded) {
+            return;
+        }
+
+        _;
+    }
+
+    /**
      * @notice Retrieves reward status for a given intent hash
      * @param intentHash Hash of the intent to query
      * @return status Current status of the intent
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) public view returns (IVault.Status status) {
+    ) public view returns (Status status) {
         return rewardStatuses[intentHash];
     }
 
@@ -202,7 +222,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
 
         return
-            rewardStatuses[intentHash] == IVault.Status.Funded ||
+            rewardStatuses[intentHash] == Status.Funded ||
             _isRewardFunded(reward, _getVault(intentHash));
     }
 
@@ -432,12 +452,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             return;
         }
 
-        IVault.Status status = rewardStatuses[intentHash];
-        _validateWithdrawable(status, claimant);
-        rewardStatuses[intentHash] = IVault.Status.Withdrawn;
+        _validateWithdraw(intentHash, claimant);
+        rewardStatuses[intentHash] = Status.Withdrawn;
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.withdraw(status, reward, claimant);
+        vault.withdraw(reward, claimant);
 
         emit IntentWithdrawn(intentHash, claimant);
     }
@@ -482,12 +501,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         );
 
         _validateRefund(intentHash, destination, reward);
-
-        IVault.Status status = rewardStatuses[intentHash];
-        rewardStatuses[intentHash] = IVault.Status.Refunded;
+        rewardStatuses[intentHash] = Status.Refunded;
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.refund(status, reward);
+        vault.refund(reward);
 
         emit IntentRefunded(intentHash, reward.creator);
     }
@@ -512,10 +529,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             reward
         );
 
-        _validateRecoverable(reward, token);
+        _validateRecover(reward, token);
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.recover(reward, token);
+        vault.recover(reward.creator, token);
 
         emit IntentTokenRecovered(intentHash, reward.creator, token);
     }
@@ -588,11 +605,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward memory reward,
         address funder,
         bool allowPartial
-    ) internal {
-        if (rewardStatuses[intentHash] == IVault.Status.Funded) {
-            return;
-        }
-
+    ) internal onlyFundable(intentHash) {
         bool fullyFunded = _fundNative(vault, reward.nativeAmount);
 
         uint256 rewardsLength = reward.tokens.length;
@@ -609,7 +622,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         }
 
         if (fullyFunded) {
-            rewardStatuses[intentHash] = IVault.Status.Funded;
+            rewardStatuses[intentHash] = Status.Funded;
         }
 
         emit IntentFunded(intentHash, funder, fullyFunded);
@@ -687,12 +700,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bool allowPartial,
         address funder,
         address permitContract
-    ) internal returns (address vault) {
+    ) internal onlyFundable(intentHash) returns (address vault) {
         vault = _getOrDeployVault(intentHash);
-        IVault.Status status = rewardStatuses[intentHash];
-        _validateFundable(status);
         bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
-            status,
             reward,
             funder,
             IPermit(permitContract)
@@ -703,7 +713,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         }
 
         if (fullyFunded) {
-            rewardStatuses[intentHash] = IVault.Status.Funded;
+            rewardStatuses[intentHash] = Status.Funded;
         }
 
         emit IntentFunded(intentHash, funder, fullyFunded);
@@ -755,12 +765,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param intentHash Hash of the intent
      */
     function _validatePublish(bytes32 intentHash) internal view {
-        IVault.Status status = rewardStatuses[intentHash];
+        Status status = rewardStatuses[intentHash];
 
-        if (
-            status == IVault.Status.Withdrawn ||
-            status == IVault.Status.Refunded
-        ) {
+        if (status == Status.Withdrawn || status == Status.Refunded) {
             revert IntentAlreadyExists(intentHash);
         }
     }
@@ -777,73 +784,47 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         Reward calldata reward
     ) internal view {
+        Status status = rewardStatuses[intentHash];
         IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
             intentHash
         );
 
+        // If proof is incorrect or no proof
         if (proof.destination != destination || proof.claimant == address(0)) {
+            if (block.timestamp < reward.deadline) {
+                revert InvalidStatusForRefund(
+                    status,
+                    block.timestamp,
+                    reward.deadline
+                );
+            }
+
             return;
         }
 
-        IVault.Status status = rewardStatuses[intentHash];
-
-        if (status == IVault.Status.Initial || status == IVault.Status.Funded) {
+        if (status == Status.Initial || status == Status.Funded) {
             revert IntentNotClaimed(intentHash);
-        }
-    }
-
-    /**
-     * @notice Validates that vault can be funded (must be in Initial status)
-     * @dev Prevents funding of already funded, withdrawn, or refunded vaults
-     * @param status Current vault status
-     */
-    function _validateFundable(IVault.Status status) internal pure {
-        if (
-            status == IVault.Status.Withdrawn ||
-            status == IVault.Status.Refunded
-        ) {
-            revert IVault.InvalidStatusForFunding(status);
         }
     }
 
     /**
      * @notice Validates that vault can be withdrawn from and claimant is valid
      * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant
-     * @param status Current vault status
+     * @param intentHash Hash of the intent
      * @param claimant Address that will receive the withdrawn rewards
      */
-    function _validateWithdrawable(
-        IVault.Status status,
+    function _validateWithdraw(
+        bytes32 intentHash,
         address claimant
-    ) internal pure {
-        if (status != IVault.Status.Initial && status != IVault.Status.Funded) {
-            revert IVault.InvalidStatusForWithdrawal(status);
+    ) internal view {
+        Status status = rewardStatuses[intentHash];
+
+        if (status != Status.Initial && status != Status.Funded) {
+            revert InvalidStatusForWithdrawal(status);
         }
 
         if (claimant == address(0)) {
-            revert IVault.ZeroClaimant();
-        }
-    }
-
-    /**
-     * @notice Validates that vault can be refunded (deadline must have passed)
-     * @dev Only allows refund after deadline expires for Initial or Funded status
-     * @param status Current vault status
-     * @param deadline Intent expiration deadline
-     */
-    function _validateRefundable(
-        IVault.Status status,
-        uint256 deadline
-    ) internal view {
-        if (
-            (status == IVault.Status.Initial ||
-                status == IVault.Status.Funded) && block.timestamp < deadline
-        ) {
-            revert IVault.InvalidStatusForRefund(
-                status,
-                block.timestamp,
-                deadline
-            );
+            revert InvalidClaimant();
         }
     }
 
@@ -853,18 +834,18 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param reward Reward structure containing token list
      * @param token Address of the token to recover
      */
-    function _validateRecoverable(
+    function _validateRecover(
         Reward calldata reward,
         address token
     ) internal pure {
         if (token == address(0)) {
-            revert IVault.InvalidRecoverToken(token);
+            revert InvalidRecoverToken(token);
         }
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             if (reward.tokens[i].token == token) {
-                revert IVault.InvalidRecoverToken(token);
+                revert InvalidRecoverToken(token);
             }
         }
     }
