@@ -18,7 +18,7 @@ import {Executor} from "./Executor.sol";
  * @title Inbox
  * @notice Main entry point for fulfilling intents on the destination chain
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
- * to claim rewards on the source chain by checking the fulfilled mapping
+ * to claim rewards on the source chain by checking the claimants mapping
  */
 abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
@@ -27,7 +27,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
      * @notice Mapping of intent hashes to their claimant identifiers
      * @dev Stores the cross-VM compatible claimant identifier for each fulfilled intent
      */
-    mapping(bytes32 => bytes32) public fulfilled;
+    mapping(bytes32 => bytes32) public claimants;
 
     IExecutor public immutable executor;
 
@@ -110,7 +110,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         intentHashes[0] = intentHash;
 
         // Call prove with the intent hash array
-        prove(sourceChainDomainID, prover, intentHashes, data);
+        prove(prover, sourceChainDomainID, intentHashes, data);
 
         return result;
     }
@@ -118,8 +118,8 @@ abstract contract Inbox is DestinationSettler, IInbox {
     /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
-     * @param sourceChainDomainID Domain ID of the source chain
      * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
      * @param intentHashes Array of intent hashes to prove
      * @param data Additional data for message formatting
      *
@@ -132,18 +132,18 @@ abstract contract Inbox is DestinationSettler, IInbox {
      *      the correct domain ID for the source chain.
      */
     function prove(
-        uint64 sourceChainDomainID,
         address prover,
+        uint64 sourceChainDomainID,
         bytes32[] memory intentHashes,
         bytes memory data
-    ) public payable virtual {
+    ) public payable {
         uint256 size = intentHashes.length;
 
         // Encode intent hash/claimant pairs as bytes
         bytes memory encodedClaimants = new bytes(size * 64); // 32 bytes for intent hash + 32 bytes for claimant
 
         for (uint256 i = 0; i < size; ++i) {
-            bytes32 claimantBytes = fulfilled[intentHashes[i]];
+            bytes32 claimantBytes = claimants[intentHashes[i]];
 
             if (claimantBytes == bytes32(0)) {
                 revert IntentNotFulfilled(intentHashes[i]);
@@ -209,14 +209,14 @@ abstract contract Inbox is DestinationSettler, IInbox {
         if (computedIntentHash != intentHash) {
             revert InvalidHash(intentHash);
         }
-        if (fulfilled[intentHash] != bytes32(0)) {
+        if (claimants[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
         if (claimant == bytes32(0)) {
             revert ZeroClaimant();
         }
 
-        fulfilled[intentHash] = claimant;
+        claimants[intentHash] = claimant;
 
         emit IntentFulfilled(intentHash, claimant);
 
@@ -249,10 +249,4 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         return uint64(chainId);
     }
-
-    /**
-     * @notice Allows the contract to receive ETH
-     * @dev Required for handling ETH transfer for intent execution
-     */
-    receive() external payable {}
 }

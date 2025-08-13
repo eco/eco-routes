@@ -12,10 +12,10 @@ import {Route} from "../types/Intent.sol";
 interface IInbox {
     /**
      * @notice Emitted when an intent is successfully fulfilled
-     * @param hash Hash of the fulfilled intent
+     * @param intentHash Hash of the fulfilled intent
      * @param claimant Cross-VM compatible claimant identifier
      */
-    event IntentFulfilled(bytes32 indexed hash, bytes32 indexed claimant);
+    event IntentFulfilled(bytes32 indexed intentHash, bytes32 indexed claimant);
 
     /**
      * @notice Emitted when an intent is proven
@@ -28,9 +28,9 @@ interface IInbox {
 
     /**
      * @notice Intent has already been fulfilled
-     * @param hash Hash of the fulfilled intent
+     * @param intentHash Hash of the fulfilled intent
      */
-    error IntentAlreadyFulfilled(bytes32 hash);
+    error IntentAlreadyFulfilled(bytes32 intentHash);
 
     /**
      * @notice Invalid portal address provided
@@ -56,9 +56,9 @@ interface IInbox {
 
     /**
      * @notice Attempted to batch an unfulfilled intent
-     * @param hash Hash of the unfulfilled intent
+     * @param intentHash Hash of the unfulfilled intent
      */
-    error IntentNotFulfilled(bytes32 hash);
+    error IntentNotFulfilled(bytes32 intentHash);
 
     /**
      * @notice Chain ID is too large to fit in uint64
@@ -115,8 +115,8 @@ interface IInbox {
     /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
-     * @param sourceChainDomainID Domain ID of the source chain
      * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
      * @param intentHashes Array of intent hashes to prove
      * @param data Additional data for message formatting
      *
@@ -129,8 +129,8 @@ interface IInbox {
      *      the correct domain ID for the source chain.
      */
     function prove(
-        uint64 sourceChainDomainID,
         address prover,
+        uint64 sourceChainDomainID,
         bytes32[] memory intentHashes,
         bytes memory data
     ) external payable;

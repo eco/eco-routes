@@ -6,16 +6,16 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {IVaultV2} from "./interfaces/IVaultV2.sol";
-import {IPermit} from "./interfaces/IPermit.sol";
-import {Reward} from "./types/Intent.sol";
+import {IVault} from "../interfaces/IVault.sol";
+import {IPermit} from "../interfaces/IPermit.sol";
+import {Reward} from "../types/Intent.sol";
 
 /**
- * @title VaultV2
+ * @title Vault
  * @notice Escrow contract for managing cross-chain reward payments
  * @dev Implements a lifecycle-based vault that can be funded, withdrawn from, or refunded
  */
-contract VaultV2 is IVaultV2 {
+contract Vault is IVault {
     /// @notice Address of the portal contract that can call this vault
     address private immutable portal;
 
@@ -44,92 +44,18 @@ contract VaultV2 is IVaultV2 {
     }
 
     /**
-     * @notice Ensures vault can be funded (must be in Initial status)
-     * @dev Prevents funding of already funded, withdrawn, or refunded vaults
-     */
-    modifier onlyFundable(Status status) {
-        if (status == Status.Withdrawn || status == Status.Refunded) {
-            revert InvalidStatusForFunding(status);
-        }
-
-        _;
-    }
-
-    /**
-     * @notice Ensures vault can be withdrawn from and claimant is valid
-     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant
-     */
-    modifier onlyWithdrawable(Status status, address claimant) {
-        if (status != Status.Initial && status != Status.Funded) {
-            revert InvalidStatusForWithdrawal(status);
-        }
-
-        if (claimant == address(0)) {
-            revert ZeroClaimant();
-        }
-
-        _;
-    }
-
-    /**
-     * @notice Ensures vault can be refunded (deadline must have passed)
-     * @dev Only allows refund after deadline expires for Initial or Funded status
-     */
-    modifier onlyRefundable(Status status, uint256 deadline) {
-        if (
-            (status == Status.Initial || status == Status.Funded) &&
-            block.timestamp < deadline
-        ) {
-            revert InvalidStatusForRefund(status, block.timestamp, deadline);
-        }
-
-        _;
-    }
-
-    /**
-     * @notice Ensures token can be recovered (not zero address and not a reward token)
-     * @dev Prevents recovery of reward tokens and zero address, allows recovery of mistaken transfers
-     */
-    modifier onlyRecoverable(Reward calldata reward, address token) {
-        if (token == address(0)) {
-            revert InvalidRecoverToken(token);
-        }
-
-        uint256 rewardsLength = reward.tokens.length;
-        for (uint256 i; i < rewardsLength; ++i) {
-            if (reward.tokens[i].token == token) {
-                revert InvalidRecoverToken(token);
-            }
-        }
-
-        _;
-    }
-
-    /**
      * @notice Funds the vault with tokens and native currency from the reward
-     * @param status Current vault status
      * @param reward The reward structure containing token addresses, amounts, and native value
      * @param funder Address that will provide the funding
      * @param permit Optional permit contract for gasless token approvals
      * @return fullyFunded True if the vault was fully funded, false otherwise
      */
     function fundFor(
-        Status status,
         Reward calldata reward,
         address funder,
         IPermit permit
-    )
-        external
-        payable
-        onlyPortal
-        onlyFundable(status)
-        returns (bool fullyFunded)
-    {
-        if (status == Status.Funded) {
-            return true;
-        }
-
-        fullyFunded = address(this).balance >= reward.nativeValue;
+    ) external payable onlyPortal returns (bool fullyFunded) {
+        fullyFunded = address(this).balance >= reward.nativeAmount;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
@@ -149,15 +75,13 @@ contract VaultV2 is IVaultV2 {
 
     /**
      * @notice Withdraws rewards from the vault to the specified claimant
-     * @param status Current vault status
      * @param reward The reward structure defining what to withdraw
      * @param claimant Address that will receive the withdrawn rewards
      */
     function withdraw(
-        Status status,
         Reward calldata reward,
         address claimant
-    ) external onlyPortal onlyWithdrawable(status, claimant) {
+    ) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
@@ -170,7 +94,7 @@ contract VaultV2 is IVaultV2 {
             }
         }
 
-        uint256 nativeAmount = address(this).balance.min(reward.nativeValue);
+        uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
         if (nativeAmount == 0) {
             return;
         }
@@ -183,13 +107,9 @@ contract VaultV2 is IVaultV2 {
 
     /**
      * @notice Refunds all vault contents back to the reward creator
-     * @param status Current vault status
      * @param reward The reward structure containing creator address and deadline
      */
-    function refund(
-        Status status,
-        Reward calldata reward
-    ) external onlyPortal onlyRefundable(status, reward.deadline) {
+    function refund(Reward calldata reward) external onlyPortal {
         address refundee = reward.creator;
 
         uint256 rewardsLength = reward.tokens.length;
@@ -215,13 +135,10 @@ contract VaultV2 is IVaultV2 {
 
     /**
      * @notice Recovers tokens that are not part of the reward to the creator
-     * @param reward The reward structure containing creator address
+     * @param refundee Address to receive the recovered tokens
      * @param token Address of the token to recover (must not be a reward token)
      */
-    function recover(
-        Reward calldata reward,
-        address token
-    ) external onlyPortal onlyRecoverable(reward, token) {
+    function recover(address refundee, address token) external onlyPortal {
         IERC20 tokenContract = IERC20(token);
         uint256 balance = tokenContract.balanceOf(address(this));
 
@@ -229,7 +146,7 @@ contract VaultV2 is IVaultV2 {
             revert ZeroRecoverTokenBalance(token);
         }
 
-        tokenContract.safeTransfer(reward.creator, balance);
+        tokenContract.safeTransfer(refundee, balance);
     }
 
     /**

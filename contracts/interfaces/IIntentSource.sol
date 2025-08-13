@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IVaultV2} from "./IVaultV2.sol";
+import {IVault} from "./IVault.sol";
 import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
@@ -13,6 +13,14 @@ import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
  *      and reward distribution.
  */
 interface IIntentSource {
+    /// @notice Intent lifecycle status
+    enum Status {
+        Initial, /// @dev Intent created, may be partially funded but not fully funded
+        Funded, /// @dev Intent has been fully funded with all required rewards
+        Withdrawn, /// @dev Rewards have been withdrawn by claimant
+        Refunded /// @dev Rewards have been refunded to creator
+    }
+
     /**
      * @notice Indicates a failed native token transfer during reward distribution
      * @param intentHash The hash of the intent whose reward transfer failed
@@ -42,26 +50,45 @@ interface IIntentSource {
      */
     error InsufficientFunds(bytes32 intentHash);
 
+    /// @notice Thrown when intent status is invalid for funding operation
+    error InvalidStatusForFunding(Status status);
+
+    /// @notice Thrown when intent status is invalid for withdrawal operation
+    error InvalidStatusForWithdrawal(Status status);
+
+    /// @notice Thrown when attempting to recover an invalid token (zero address or reward token)
+    error InvalidRecoverToken(address token);
+
+    /// @notice Thrown when intent status is invalid for refund operation or deadline not reached
+    error InvalidStatusForRefund(
+        Status status,
+        uint256 currentTime,
+        uint256 deadline
+    );
+
+    /// @notice Thrown when claimant address is address zero
+    error InvalidClaimant();
+
     /**
      * @notice Signals the creation of a new cross-chain intent
-     * @param hash Unique identifier of the intent
+     * @param intentHash Unique identifier of the intent
      * @param destination Destination chain ID
+     * @param route Encoded route data for the destination chain
      * @param creator Intent originator address
      * @param prover Prover contract address
      * @param rewardDeadline Timestamp for reward claim eligibility
-     * @param nativeValue Native token reward amount
+     * @param rewardNativeAmount Native token reward amount
      * @param rewardTokens ERC20 token rewards with amounts
-     * @param route Encoded route data for the destination chain
      */
     event IntentPublished(
-        bytes32 indexed hash,
+        bytes32 indexed intentHash,
         uint64 destination,
+        bytes route,
         address indexed creator,
         address indexed prover,
         uint64 rewardDeadline,
-        uint256 nativeValue,
-        TokenAmount[] rewardTokens,
-        bytes route
+        uint256 rewardNativeAmount,
+        TokenAmount[] rewardTokens
     );
 
     /**
@@ -74,17 +101,17 @@ interface IIntentSource {
 
     /**
      * @notice Signals successful reward withdrawal
-     * @param hash The hash of the claimed intent
-     * @param recipient The address receiving the rewards
+     * @param intentHash The hash of the claimed intent
+     * @param claimant The address receiving the rewards
      */
-    event IntentWithdrawn(bytes32 hash, address indexed recipient);
+    event IntentWithdrawn(bytes32 intentHash, address indexed claimant);
 
     /**
      * @notice Signals successful reward refund
-     * @param hash The hash of the refunded intent
-     * @param recipient The address receiving the refund
+     * @param intentHash The hash of the refunded intent
+     * @param refundee The address receiving the refund
      */
-    event IntentRefunded(bytes32 hash, address indexed recipient);
+    event IntentRefunded(bytes32 intentHash, address indexed refundee);
 
     /**
      * @notice Signals successful token recovery from an intent vault
@@ -101,19 +128,13 @@ interface IIntentSource {
     );
 
     /**
-     * @notice Signals that an intent proof was challenged due to wrong destination chain
-     * @param intentHash The hash of the challenged intent
-     */
-    event IntentProofChallenged(bytes32 intentHash);
-
-    /**
      * @notice Retrieves the current reward claim status for an intent
      * @param intentHash The hash of the intent
      * @return status Current reward status
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) external view returns (IVaultV2.Status status);
+    ) external view returns (Status status);
 
     /**
      * @notice Computes the hash components of an intent
@@ -265,34 +286,34 @@ interface IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
+     * @param allowPartial Whether to accept partial funding
      * @param fundingAddress The address providing the funding
      * @param permitContract The permit contract address for external token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the funded intent
      */
     function fundFor(
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
+        bool allowPartial,
         address fundingAddress,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Creates and funds an intent on behalf of another address
      * @param intent The complete intent specification
+     * @param allowPartial Whether to accept partial funding
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      * @return vault Address of the created vault
      */
     function publishAndFundFor(
         Intent calldata intent,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash, address vault);
 
     /**
@@ -300,9 +321,9 @@ interface IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
+     * @param allowPartial Whether to accept partial funding
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      * @return vault Address of the created vault
      */
@@ -310,9 +331,9 @@ interface IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash, address vault);
 
     /**

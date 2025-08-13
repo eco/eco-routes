@@ -74,10 +74,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         uint32 origin,
         bytes32 sender,
         bytes calldata messageBody
-    ) public payable {
-        // Verify message is from authorized mailbox
-        _validateMessageSender(msg.sender, MAILBOX);
-
+    ) public payable only(MAILBOX) {
         // Verify origin and sender are valid
         if (origin == 0) revert ZeroDomainID();
 

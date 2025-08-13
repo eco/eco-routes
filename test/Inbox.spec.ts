@@ -110,7 +110,7 @@ describe('Inbox Test', (): void => {
         creator: solver.address,
         prover: solver.address,
         deadline,
-        nativeValue: 0n,
+        nativeAmount: 0n,
         tokens: [
           {
             token: erc20Address,
@@ -304,7 +304,7 @@ describe('Inbox Test', (): void => {
     })
 
     it('should succeed with storage proving', async () => {
-      let claimant = await inbox.fulfilled(intentHash)
+      let claimant = await inbox.claimants(intentHash)
       expect(claimant).to.equal(ethers.ZeroHash)
 
       expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
@@ -327,7 +327,7 @@ describe('Inbox Test', (): void => {
         .to.emit(inbox, 'IntentFulfilled')
         .withArgs(intentHash, ethers.zeroPadValue(dstAddr.address, 32))
       // should update the fulfilled hash
-      claimant = await inbox.fulfilled(intentHash)
+      claimant = await inbox.claimants(intentHash)
       expect(claimant).to.equal(ethers.zeroPadValue(dstAddr.address, 32))
 
       // check balances
@@ -498,8 +498,8 @@ describe('Inbox Test', (): void => {
       await inbox
         .connect(solver)
         .prove(
-          sourceChainID,
           await mockProver.getAddress(),
+          sourceChainID,
           [intentHash],
           '0x',
           { value: 123456789 },
@@ -585,7 +585,7 @@ describe('Inbox Test', (): void => {
         .withArgs(intentHash, ethers.zeroPadValue(validClaimant, 32))
 
       // Verify the claimant was stored correctly
-      const storedClaimant = await inbox.fulfilled(intentHash)
+      const storedClaimant = await inbox.claimants(intentHash)
       expect(storedClaimant).to.equal(ethers.zeroPadValue(validClaimant, 32))
     })
   })

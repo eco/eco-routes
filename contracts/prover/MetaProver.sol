@@ -80,10 +80,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes calldata message,
         ReadOperation[] calldata /* operations */,
         bytes[] calldata /* operationsData */
-    ) external payable {
-        // Verify message is from authorized router
-        _validateMessageSender(msg.sender, address(ROUTER));
-
+    ) external payable only(address(ROUTER)) {
         // Verify origin and sender are valid
         if (origin == 0) revert ZeroDomainID();
 

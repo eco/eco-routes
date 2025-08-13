@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-import {IVaultV2} from "../../contracts/interfaces/IVaultV2.sol";
+import {IVault} from "../../contracts/interfaces/IVault.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
@@ -43,7 +43,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testCreatesProperlyWithNativeTokenRewards() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         uint256 initialBalance = creator.balance;
@@ -59,7 +59,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testIncrementsCounterAndLocksUpTokens() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -71,7 +71,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testEmitsEvents() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         bytes32 intentHash = _hashIntent(intent);
@@ -80,12 +80,12 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentPublished(
             intentHash,
             intent.destination,
+            abi.encode(intent.route),
             intent.reward.creator,
             intent.reward.prover,
             intent.reward.deadline,
             REWARD_NATIVE_ETH,
-            intent.reward.tokens,
-            abi.encode(intent.route)
+            intent.reward.tokens
         );
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -105,7 +105,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testWithdrawsToClaimantWithProof() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -310,7 +310,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testBatchWithdrawalSingleIntentBeforeExpiryToClaimant() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -342,7 +342,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testBatchWithdrawalAfterExpiryToCreator() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -388,9 +388,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -416,9 +416,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
     }
 
@@ -436,9 +436,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            true,
             creator,
-            address(0),
-            true
+            address(0)
         );
 
         assertFalse(intentSource.isIntentFunded(intent));
@@ -465,9 +465,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             newReward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -491,9 +491,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -503,7 +503,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testInsufficientNativeReward() public {
-        reward.nativeValue = 1 ether;
+        reward.nativeAmount = 1 ether;
         intent.reward = reward;
 
         vm.expectRevert();
@@ -515,7 +515,7 @@ contract IntentSourceTest is BaseTest {
         uint256 nativeAmount = 1 ether;
         uint256 sentAmount = 0.5 ether;
 
-        reward.nativeValue = nativeAmount;
+        reward.nativeAmount = nativeAmount;
         intent.reward = reward;
 
         bytes32 intentHash = _hashIntent(intent);
@@ -674,7 +674,7 @@ contract IntentSourceTest is BaseTest {
         uint256 nativeAmount = 1 ether;
         uint256 sentAmount = 0.5 ether;
 
-        reward.nativeValue = nativeAmount;
+        reward.nativeAmount = nativeAmount;
         intent.reward = reward;
 
         // Test insufficient native reward without partial funding
@@ -713,9 +713,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(fakePermit),
-            false
+            address(fakePermit)
         );
 
         // Verify intent is not funded
@@ -730,7 +730,7 @@ contract IntentSourceTest is BaseTest {
         // Critical security test: prevent marking intent as funded with zero native value
         uint256 nativeAmount = 1 ether;
 
-        reward.nativeValue = nativeAmount;
+        reward.nativeAmount = nativeAmount;
         intent.reward = reward;
 
         // Try to exploit by sending zero value but claiming intent is funded
@@ -925,12 +925,12 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentPublished(
             intentHash,
             intent.destination,
+            abi.encode(intent.route),
             intent.reward.creator,
             intent.reward.prover,
             intent.reward.deadline,
             0,
-            intent.reward.tokens,
-            abi.encode(intent.route)
+            intent.reward.tokens
         );
 
         vm.prank(creator);
@@ -953,9 +953,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         // Test withdrawal event
@@ -1019,10 +1019,281 @@ contract IntentSourceTest is BaseTest {
                     deadline: _evmIntent.reward.deadline,
                     creator: _evmIntent.reward.creator,
                     prover: _evmIntent.reward.prover,
-                    nativeValue: _evmIntent.reward.nativeValue,
+                    nativeAmount: _evmIntent.reward.nativeAmount,
                     tokens: evmRewardTokens
                 })
             });
+    }
+
+    // Validation Tests - Testing logic moved from Vault to IntentSource
+    function testFundingRejectsWithdrawnStatus() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First withdraw the intent
+        _mockProofAndWithdraw(intentHash, claimant);
+
+        // Try to fund it again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForFunding.selector,
+                IIntentSource.Status.Withdrawn
+            )
+        );
+        vm.prank(creator);
+        intentSource.fund{value: 1 ether}(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            false
+        );
+    }
+
+    function testFundingRejectsRefundedStatus() public {
+        _publishAndFund(intent, false);
+
+        // Fast forward past deadline and refund
+        vm.warp(reward.deadline + 1);
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        // Try to fund it again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForFunding.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        vm.prank(creator);
+        intentSource.fund{value: 1 ether}(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            false
+        );
+    }
+
+    function testWithdrawRejectsWithdrawnStatus() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First withdraw normally
+        _mockProofAndWithdraw(intentHash, claimant);
+
+        // Try to withdraw again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Withdrawn
+            )
+        );
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testWithdrawRejectsRefundedStatus() public {
+        _publishAndFund(intent, false);
+
+        // Fast forward past deadline and refund
+        vm.warp(reward.deadline + 1);
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        // Try to withdraw after refund - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testWithdrawRejectsZeroClaimant() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // Mock a proof with zero claimant
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
+            abi.encode(IProver.ProofData(address(0), CHAIN_ID))
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IIntentSource.InvalidClaimant.selector)
+        );
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testRefundRejectsBeforeDeadlineWithoutProof() public {
+        _publishAndFund(intent, false);
+
+        // Try to refund before deadline without proof - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                reward.deadline
+            )
+        );
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testRefundRejectsWhenIntentNotClaimed() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // Mock a valid proof but don't withdraw (keep status as Funded)
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
+            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+        );
+
+        // Try to refund an intent that has proof but hasn't been withdrawn - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentNotClaimed.selector,
+                intentHash
+            )
+        );
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testPublishRejectsWithdrawnIntent() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First withdraw the intent
+        _mockProofAndWithdraw(intentHash, claimant);
+
+        // Try to publish the same intent again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentAlreadyExists.selector,
+                intentHash
+            )
+        );
+        vm.prank(creator);
+        intentSource.publish(intent);
+    }
+
+    function testPublishRejectsRefundedIntent() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First refund the intent
+        vm.warp(reward.deadline + 1);
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        // Try to publish the same intent again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentAlreadyExists.selector,
+                intentHash
+            )
+        );
+        vm.prank(creator);
+        intentSource.publish(intent);
+    }
+
+    function testRecoverTokenRejectsZeroAddress() public {
+        _publishAndFund(intent, false);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidRecoverToken.selector,
+                address(0)
+            )
+        );
+        vm.prank(creator);
+        intentSource.recoverToken(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            address(0)
+        );
+    }
+
+    function testRecoverTokenRejectsRewardToken() public {
+        _publishAndFund(intent, false);
+
+        // Try to recover a token that's part of the reward
+        address rewardTokenAddress = intent.reward.tokens[0].token;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidRecoverToken.selector,
+                rewardTokenAddress
+            )
+        );
+        vm.prank(creator);
+        intentSource.recoverToken(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            rewardTokenAddress
+        );
+    }
+
+    // Helper function to mock proof and withdraw
+    function _mockProofAndWithdraw(
+        bytes32 _intentHash,
+        address claimant
+    ) internal {
+        // Mock the prover to return a valid proof
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, _intentHash),
+            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+        );
+
+        // Withdraw the intent
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
     }
 }
 

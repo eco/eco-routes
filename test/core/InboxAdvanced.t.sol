@@ -96,7 +96,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeValue: 0,
+                nativeAmount: 0,
                 tokens: new TokenAmount[](0)
             })
         });
@@ -147,7 +147,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeValue: 0,
+                nativeAmount: 0,
                 tokens: new TokenAmount[](0)
             })
         });
@@ -201,7 +201,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeValue: 0,
+                nativeAmount: 0,
                 tokens: new TokenAmount[](0)
             })
         });
@@ -393,7 +393,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeValue: 0,
+                nativeAmount: 0,
                 tokens: new TokenAmount[](0)
             })
         });
@@ -452,7 +452,7 @@ contract InboxAdvancedTest is BaseTest {
         // Verify all intents were fulfilled
         for (uint256 i = 0; i < 3; i++) {
             assertEq(
-                portal.fulfilled(intentHashes[i]),
+                portal.claimants(intentHashes[i]),
                 bytes32(uint256(uint160(recipient)))
             );
         }
@@ -489,7 +489,7 @@ contract InboxAdvancedTest is BaseTest {
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeValue: 0,
+                    nativeAmount: 0,
                     tokens: new TokenAmount[](0)
                 })
             });
