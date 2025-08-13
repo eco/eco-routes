@@ -1,4 +1,6 @@
 import { TronToolkit, DeploymentConfig, LogLevel } from '../src'
+import { EnergyRentalManager } from '../src/rental/EnergyRentalManager'
+import { TronZapClient } from '../src/rental/TronZapClient'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as dotenv from 'dotenv'
@@ -65,6 +67,19 @@ async function deployLayerZeroProver(targetNetwork?: string) {
     logLevel: LogLevel.INFO,
     privateKey,
   })
+
+  // Initialize energy rental manager for mainnet
+  let energyRentalManager: EnergyRentalManager | undefined
+  if (normalizedNetwork === 'mainnet') {
+    try {
+      const tronZapClient = new TronZapClient(process.env.TRONZAP_API_TOKEN, process.env.TRONZAP_API_SECRET)
+      energyRentalManager = new EnergyRentalManager(tronZapClient)
+      console.log('Energy rental manager initialized for mainnet deployment')
+    } catch (error) {
+      console.warn('TronZap API credentials missing - mainnet deployment will fail if energy is insufficient')
+      console.warn('Set TRONZAP_API_TOKEN and TRONZAP_API_SECRET environment variables for energy rental functionality')
+    }
+  }
 
   // Derive deployer address from private key
   const deployerAddress = toolkit.getCurrentAddress()
@@ -160,8 +175,17 @@ async function deployLayerZeroProver(targetNetwork?: string) {
       lzDeploymentConfig.abi,
     )
 
+    // Use actual observed usage from previous deployments for accurate rental calculations
+    const LAYERZERO_ACTUAL_ENERGY_USAGE = 1256807 // From testnet deployment TLXZJzz9MW43GhfnWhknE8ZG7pVPFJ4Qxd
+    const ENERGY_SAFETY_MARGIN = 1.02 // 2% safety margin for peace of mind
+    const lzEnergyWithSafety = Math.floor(LAYERZERO_ACTUAL_ENERGY_USAGE * ENERGY_SAFETY_MARGIN)
+    const lzAdjustedEnergyNeeded = Math.max(lzResourcePrediction.energy, lzEnergyWithSafety)
+
     console.log('LayerZeroProver Resource Requirements:')
-    console.log(`   Energy: ${lzResourcePrediction.energy.toLocaleString()}`)
+    console.log(`   Energy (predicted): ${lzResourcePrediction.energy.toLocaleString()}`)
+    console.log(`   Energy (actual from testnet): ${LAYERZERO_ACTUAL_ENERGY_USAGE.toLocaleString()}`)
+    console.log(`   Energy (with 2% safety margin): ${lzEnergyWithSafety.toLocaleString()}`)
+    console.log(`   Energy (using for rental): ${lzAdjustedEnergyNeeded.toLocaleString()}`)
     console.log(
       `   Bandwidth: ${lzResourcePrediction.bandwidth.toLocaleString()}`,
     )
@@ -177,13 +201,14 @@ async function deployLayerZeroProver(targetNetwork?: string) {
     const currentResourcesLZ = await toolkit.getAccountResources()
     const lzEnergyDeficit = Math.max(
       0,
-      lzResourcePrediction.energy - currentResourcesLZ.energy.available,
+      lzAdjustedEnergyNeeded - currentResourcesLZ.energy.available,
     )
     const lzBandwidthDeficit = Math.max(
       0,
       lzResourcePrediction.bandwidth - currentResourcesLZ.bandwidth.available,
     )
-    const lzNeedsRental = lzEnergyDeficit > 0 || lzBandwidthDeficit > 0
+    const lzNeedsEnergyRental = lzEnergyDeficit > 0
+    const lzNeedsBandwidthRental = lzBandwidthDeficit > 0
 
     console.log('Checking account resources...')
     const currentBalance = await toolkit.getBalance()
@@ -197,38 +222,68 @@ async function deployLayerZeroProver(targetNetwork?: string) {
     console.log(`   TRX Balance: ${Number(currentBalance).toFixed(6)} TRX`)
     console.log('')
 
-    if (lzNeedsRental) {
-      console.log('Resource rental required for LayerZeroProver...')
-      console.log(`   Need to rent ${lzEnergyDeficit.toLocaleString()} energy`)
-      console.log(
-        `   Need to rent ${lzBandwidthDeficit.toLocaleString()} bandwidth`,
-      )
+    // Handle resource rental using sophisticated energy rental manager
+    if (normalizedNetwork === 'mainnet' && energyRentalManager && (lzNeedsEnergyRental || lzNeedsBandwidthRental)) {
+      console.log('Mainnet deployment: Using energy rental manager for resource verification')
+      
+      const rentalOptions = {
+        requiredEnergy: lzAdjustedEnergyNeeded,
+        requiredBandwidth: lzResourcePrediction.bandwidth,
+        currentEnergy: currentResourcesLZ.energy.available,
+        currentBandwidth: currentResourcesLZ.bandwidth.available,
+        currentTrxBalance: Number(currentBalance),
+        recipientAddress: deployerAddress,
+        network: 'mainnet' as const
+      }
+
+      const rentalResult = await energyRentalManager.ensureSufficientEnergy(rentalOptions)
+
+      if (!rentalResult.success) {
+        console.error('')
+        console.error('KAPOW! MAINNET ENERGY RENTAL FAILED')
+        console.error('=================================')
+        console.error(rentalResult.message)
+        console.error('')
+        console.error('LayerZeroProver deployment CANCELLED.')
+        process.exit(1)
+      }
+
+      if (rentalResult.totalCostTrx > 0) {
+        console.log('AMAZING! Energy rental completed successfully')
+        console.log(`   Rented Energy: ${rentalResult.rentedEnergy.toLocaleString()}`)
+        console.log(`   Rented Bandwidth: ${rentalResult.rentedBandwidth.toLocaleString()}`)
+        console.log(`   Total Cost: ${rentalResult.totalCostTrx.toFixed(6)} TRX`)
+        if (rentalResult.energyRentalTxId) {
+          console.log(`   Energy Rental TX: ${rentalResult.energyRentalTxId}`)
+        }
+        if (rentalResult.bandwidthRentalTxId) {
+          console.log(`   Bandwidth Rental TX: ${rentalResult.bandwidthRentalTxId}`)
+        }
+      } else {
+        console.log(rentalResult.message)
+      }
+    } else if (lzNeedsEnergyRental || lzNeedsBandwidthRental) {
+      console.log('LayerZeroProver resource analysis:')
+      if (lzNeedsEnergyRental) {
+        console.log(`   Energy deficit: ${lzEnergyDeficit.toLocaleString()}`)
+      }
+      if (lzNeedsBandwidthRental) {
+        console.log(`   Bandwidth deficit: ${lzBandwidthDeficit.toLocaleString()}`)
+      }
 
       if (normalizedNetwork === 'mainnet') {
-        try {
-          const lzRental = await toolkit.autoRentResources(
-            lzEnergyDeficit,
-            lzBandwidthDeficit,
-            toolkit.getCurrentAddress(),
-            0.3, // 30% safety margin
-          )
-
-          if (lzRental.success) {
-            console.log('Successfully rented resources')
-            console.log(
-              `   Rental cost: ${Number(lzRental.totalCost).toFixed(6)} TRX`,
-            )
-          } else {
-            console.error(
-              'Failed to rent required resources for LayerZeroProver',
-            )
-            process.exit(1)
-          }
-        } catch (error) {
-          console.warn(
-            'LayerZeroProver resource rental failed, proceeding anyway',
-          )
-          console.warn(`   Error: ${error}`)
+        // Fallback protection if energy rental manager not available
+        if (lzNeedsEnergyRental) {
+          console.error('')
+          console.error('YIKES! MAINNET ENERGY PROTECTION ACTIVATED')
+          console.error('===========================================')
+          console.error(`LayerZeroProver energy required: ${lzAdjustedEnergyNeeded.toLocaleString()}`)
+          console.error(`Energy available: ${currentResourcesLZ.energy.available.toLocaleString()}`)
+          console.error(`Energy deficit: ${lzEnergyDeficit.toLocaleString()}`)
+          console.error('')
+          console.error('LayerZeroProver deployment CANCELLED to prevent expensive TRX burning.')
+          console.error('Set TRONZAP_API_KEY for energy rental or increase account energy first.')
+          process.exit(1)
         }
       } else {
         console.log('Testnet deployment: Skipping TronZap rental for LayerZeroProver')
@@ -238,6 +293,31 @@ async function deployLayerZeroProver(targetNetwork?: string) {
       console.log(
         'Sufficient resources available for LayerZeroProver deployment',
       )
+    }
+
+    // Verify energy levels before deployment if rental was attempted
+    if (normalizedNetwork === 'mainnet' && energyRentalManager && (lzNeedsEnergyRental || lzNeedsBandwidthRental)) {
+      console.log('Verifying energy levels before deployment...')
+      
+      const verification = await energyRentalManager.verifyEnergyAfterRental(
+        lzAdjustedEnergyNeeded,
+        lzResourcePrediction.bandwidth,
+        async () => await toolkit.getAccountResources()
+      )
+
+      if (!verification.success) {
+        console.error('')
+        console.error('OOPS! POST-RENTAL ENERGY VERIFICATION FAILED')
+        console.error('==========================================')  
+        console.error(verification.message)
+        console.error('')
+        console.error('LayerZeroProver deployment CANCELLED.')
+        process.exit(1)
+      }
+
+      console.log('HOORAY! Post-rental energy verification passed')
+      console.log(`   Available Energy: ${verification.availableEnergy.toLocaleString()}`)
+      console.log(`   Available Bandwidth: ${verification.availableBandwidth.toLocaleString()}`)
     }
 
     console.log('')
