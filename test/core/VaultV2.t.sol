@@ -103,7 +103,7 @@ contract VaultV2Test is Test {
 
         vm.prank(portal);
         assertTrue(
-            vault.fund(
+            vault.fundFor(
                 IVaultV2.Status.Initial,
                 reward,
                 creator,
@@ -118,7 +118,7 @@ contract VaultV2Test is Test {
                 unauthorized
             )
         );
-        vault.fund(
+        vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -126,7 +126,7 @@ contract VaultV2Test is Test {
         );
     }
 
-    function test_fund_success_emptyReward() public {
+    function test_fundFor_success_emptyReward() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
         Reward memory reward = Reward({
             creator: creator,
@@ -137,7 +137,7 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -147,7 +147,7 @@ contract VaultV2Test is Test {
         assertTrue(result);
     }
 
-    function test_fund_success_nativeAndTokens() public {
+    function test_fundFor_success_nativeAndTokens() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -165,7 +165,7 @@ contract VaultV2Test is Test {
 
         vm.deal(portal, 2 ether);
         vm.prank(portal);
-        bool result = vault.fund{value: 1 ether}(
+        bool result = vault.fundFor{value: 1 ether}(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -177,7 +177,7 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
-    function test_fund_partialFunding_insufficientNative() public {
+    function test_fundFor_partialFunding_insufficientNative() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
         Reward memory reward = Reward({
             creator: creator,
@@ -189,7 +189,7 @@ contract VaultV2Test is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fund{value: 1 ether}(
+        bool result = vault.fundFor{value: 1 ether}(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -200,7 +200,7 @@ contract VaultV2Test is Test {
         assertEq(address(vault).balance, 1 ether);
     }
 
-    function test_fund_partialFunding_insufficientTokens() public {
+    function test_fundFor_partialFunding_insufficientTokens() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 2000});
 
@@ -217,7 +217,7 @@ contract VaultV2Test is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -228,7 +228,7 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
-    function test_fund_success_multipleTokens() public {
+    function test_fundFor_success_multipleTokens() public {
         IERC20 token2 = new TestERC20("Test Token 2", "TEST2");
 
         TokenAmount[] memory tokens = new TokenAmount[](2);
@@ -252,7 +252,7 @@ contract VaultV2Test is Test {
         token2.approve(address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -264,7 +264,7 @@ contract VaultV2Test is Test {
         assertEq(token2.balanceOf(address(vault)), 500);
     }
 
-    function test_fund_not_portal_caller() public {
+    function test_fundFor_not_portal_caller() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
         Reward memory reward = Reward({
             creator: creator,
@@ -281,7 +281,7 @@ contract VaultV2Test is Test {
                 unauthorized
             )
         );
-        vault.fund(
+        vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -289,7 +289,7 @@ contract VaultV2Test is Test {
         );
     }
 
-    function test_fund_cannotFundWithWrongStatus() public {
+    function test_fundFor_cannotFundWithWrongStatus() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
         Reward memory reward = Reward({
             creator: creator,
@@ -306,7 +306,7 @@ contract VaultV2Test is Test {
                 IVaultV2.Status.Withdrawn
             )
         );
-        vault.fund(
+        vault.fundFor(
             IVaultV2.Status.Withdrawn,
             reward,
             creator,
@@ -314,7 +314,7 @@ contract VaultV2Test is Test {
         );
     }
 
-    function test_fund_success_prefundedVault() public {
+    function test_fundFor_success_prefundedVault() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -330,7 +330,7 @@ contract VaultV2Test is Test {
         vm.deal(address(vault), 1 ether);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -342,7 +342,7 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
-    function test_fund_success_partiallyPrefunded() public {
+    function test_fundFor_success_partiallyPrefunded() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -363,7 +363,7 @@ contract VaultV2Test is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fund{value: 0.5 ether}(
+        bool result = vault.fundFor{value: 0.5 ether}(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -375,7 +375,7 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
-    function test_fund_success_withPermit() public {
+    function test_fundFor_success_withPermit() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -394,7 +394,7 @@ contract VaultV2Test is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -406,7 +406,7 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(creator), 0);
     }
 
-    function test_fund_success_withPermit_partialFromPermit() public {
+    function test_fundFor_success_withPermit_partialFromPermit() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -427,7 +427,7 @@ contract VaultV2Test is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -439,7 +439,9 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(creator), 0);
     }
 
-    function test_fund_success_withPermit_fallbackToRegularApproval() public {
+    function test_fundFor_success_withPermit_fallbackToRegularApproval()
+        public
+    {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -456,7 +458,7 @@ contract VaultV2Test is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -468,7 +470,9 @@ contract VaultV2Test is Test {
         assertEq(token.balanceOf(creator), 0);
     }
 
-    function test_fund_partial_withPermit_insufficientPermitAllowance() public {
+    function test_fundFor_partial_withPermit_insufficientPermitAllowance()
+        public
+    {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
@@ -487,7 +491,7 @@ contract VaultV2Test is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fund(
+        bool result = vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -626,7 +630,7 @@ contract VaultV2Test is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        vault.fund{value: 1 ether}(
+        vault.fundFor{value: 1 ether}(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -713,7 +717,7 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        vault.fund(
+        vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -847,7 +851,7 @@ contract VaultV2Test is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        vault.fund{value: 1 ether}(
+        vault.fundFor{value: 1 ether}(
             IVaultV2.Status.Initial,
             reward,
             creator,
@@ -951,7 +955,7 @@ contract VaultV2Test is Test {
         });
 
         vm.prank(portal);
-        vault.fund(
+        vault.fundFor(
             IVaultV2.Status.Initial,
             reward,
             creator,

@@ -282,9 +282,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward calldata reward,
         bool allowPartial
     ) public payable returns (bytes32 intentHash, address vault) {
-        (intentHash, ) = publish(destination, route, reward);
+        (intentHash, vault) = publish(destination, route, reward);
 
-        vault = _fundIntent(intentHash, reward, msg.sender, allowPartial);
+        _fundIntent(intentHash, vault, reward, msg.sender, allowPartial);
         _returnExcessEth(intentHash, address(this).balance);
     }
 
@@ -304,7 +304,13 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     ) external payable returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(destination, routeHash, reward);
 
-        _fundIntent(intentHash, reward, msg.sender, allowPartial);
+        _fundIntent(
+            intentHash,
+            _getVault(intentHash),
+            reward,
+            msg.sender,
+            allowPartial
+        );
         _returnExcessEth(intentHash, address(this).balance);
     }
 
@@ -547,32 +553,31 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      */
     function _fundIntent(
         bytes32 intentHash,
+        address vault,
         Reward calldata reward,
         address funder,
         bool allowPartial
-    ) internal returns (address vault) {
-        vault = _getVault(intentHash);
-
-        bool funded = _fundNative(vault, reward.nativeValue);
+    ) internal {
+        bool fullyFunded = _fundNative(vault, reward.nativeValue);
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
 
-            funded =
-                funded &&
+            fullyFunded =
+                fullyFunded &&
                 _fundToken(vault, token, reward.tokens[i].amount);
         }
 
-        if (!allowPartial && !funded) {
+        if (!allowPartial && !fullyFunded) {
             revert InsufficientFunds(intentHash);
         }
 
-        if (funded) {
+        if (fullyFunded) {
             rewardStatuses[intentHash] = IVaultV2.Status.Funded;
         }
 
-        emit IntentFunded(intentHash, funder, funded);
+        emit IntentFunded(intentHash, funder, fullyFunded);
     }
 
     /**
@@ -648,22 +653,22 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bool allowPartial
     ) internal returns (address vault) {
         vault = _getOrDeployVault(intentHash);
-        bool funded = IVaultV2(vault).fund{value: msg.value}(
+        bool fullyFunded = IVaultV2(vault).fundFor{value: msg.value}(
             rewardStatuses[intentHash],
             reward,
             funder,
             IPermit(permitContract)
         );
 
-        if (!allowPartial && !funded) {
+        if (!allowPartial && !fullyFunded) {
             revert InsufficientFunds(intentHash);
         }
 
-        if (funded) {
+        if (fullyFunded) {
             rewardStatuses[intentHash] = IVaultV2.Status.Funded;
         }
 
-        emit IntentFunded(intentHash, funder, funded);
+        emit IntentFunded(intentHash, funder, fullyFunded);
     }
 
     /**

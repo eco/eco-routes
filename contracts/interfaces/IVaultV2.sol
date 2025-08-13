@@ -53,14 +53,14 @@ interface IVaultV2 {
      * @param reward The reward structure containing tokens and amounts
      * @param funder Address providing the funding
      * @param permit Optional permit contract for token transfers
-     * @return funded True if vault was successfully fully funded
+     * @return fullyFunded True if vault was successfully fully funded
      */
-    function fund(
+    function fundFor(
         Status status,
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable returns (bool funded);
+    ) external payable returns (bool fullyFunded);
 
     /**
      * @notice Withdraws rewards from the vault to the claimant

@@ -111,31 +111,39 @@ contract VaultV2 is IVaultV2 {
      * @param reward The reward structure containing token addresses, amounts, and native value
      * @param funder Address that will provide the funding
      * @param permit Optional permit contract for gasless token approvals
-     * @return funded True if the vault was fully funded, false otherwise
+     * @return fullyFunded True if the vault was fully funded, false otherwise
      */
-    function fund(
+    function fundFor(
         Status status,
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable onlyPortal onlyFundable(status) returns (bool funded) {
+    )
+        external
+        payable
+        onlyPortal
+        onlyFundable(status)
+        returns (bool fullyFunded)
+    {
         if (status == Status.Funded) {
             return true;
         }
 
-        funded = address(this).balance >= reward.nativeValue;
+        fullyFunded = address(this).balance >= reward.nativeValue;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
 
-            bool tokenFunded = _fundFrom(
+            uint256 remaining = _fundFromPermit(
                 funder,
                 token,
-                reward.tokens[i].amount
-            ) ||
-                _fundFromPermit(funder, token, reward.tokens[i].amount, permit);
-            funded = funded && tokenFunded;
+                reward.tokens[i].amount,
+                permit
+            );
+            remaining = _fundFrom(funder, token, remaining);
+
+            fullyFunded = fullyFunded && remaining == 0;
         }
     }
 
@@ -228,32 +236,30 @@ contract VaultV2 is IVaultV2 {
      * @notice Internal function to fund vault with tokens using standard ERC20 transfers
      * @param funder Address providing the tokens
      * @param token ERC20 token contract
-     * @param rewardAmount Required token amount for the reward
-     * @return bool True if vault has sufficient balance after transfer attempt
+     * @param remainingAmount Remaining amount needed to fully fund the reward
+     * @return uint256 Remaining amount needed to fully fund the reward
      */
     function _fundFrom(
         address funder,
         IERC20 token,
-        uint256 rewardAmount
-    ) internal returns (bool) {
-        uint256 balance = token.balanceOf(address(this));
-
-        if (balance >= rewardAmount) {
-            return true;
+        uint256 remainingAmount
+    ) internal returns (uint256) {
+        if (remainingAmount == 0) {
+            return 0;
         }
 
         uint256 allowance = token.allowance(funder, address(this));
         uint256 funderBalance = token.balanceOf(funder);
 
-        uint256 transferAmount = (rewardAmount - balance)
-            .min(funderBalance)
-            .min(allowance);
+        uint256 transferAmount = remainingAmount.min(funderBalance).min(
+            allowance
+        );
 
         if (transferAmount > 0) {
             token.safeTransferFrom(funder, address(this), transferAmount);
         }
 
-        return balance + transferAmount >= rewardAmount;
+        return remainingAmount - transferAmount;
     }
 
     /**
@@ -262,22 +268,22 @@ contract VaultV2 is IVaultV2 {
      * @param token ERC20 token contract
      * @param rewardAmount Required token amount for the reward
      * @param permit Permit contract for gasless approvals
-     * @return bool True if vault has sufficient balance after transfer attempt
+     * @return uint256 Remaining amount needed to fully fund the reward
      */
     function _fundFromPermit(
         address funder,
         IERC20 token,
         uint256 rewardAmount,
         IPermit permit
-    ) internal returns (bool) {
+    ) internal returns (uint256) {
         uint256 balance = token.balanceOf(address(this));
 
         if (balance >= rewardAmount) {
-            return true;
+            return 0;
         }
 
         if (address(permit) == address(0)) {
-            return balance >= rewardAmount;
+            return rewardAmount - balance;
         }
 
         (uint160 allowance, , ) = permit.allowance(
@@ -300,6 +306,6 @@ contract VaultV2 is IVaultV2 {
             );
         }
 
-        return token.balanceOf(address(this)) >= rewardAmount;
+        return rewardAmount - token.balanceOf(address(this));
     }
 }
