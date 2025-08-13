@@ -29,11 +29,12 @@
   "author": "Eco Protocol",
   "license": "MIT",
   "dependencies": {
-    "tronweb": "^5.3.2",
     "axios": "^1.6.0",
+    "bn.js": "^5.2.1",
     "dotenv": "^16.3.1",
     "ethers": "^6.8.1",
-    "bn.js": "^5.2.1"
+    "tronweb": "^5.3.2",
+    "tronzap-sdk": "^1.0.4"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",

@@ -71,6 +71,8 @@ export class EnergyRentalManager {
       };
     }
 
+    // Use official TronZap SDK for mainnet energy rental
+
     // On mainnet, check if energy rental is needed (expensive)
     if (energyDeficit > 0) {
       logger.info('Energy deficit detected on mainnet - checking TronZap rental affordability');

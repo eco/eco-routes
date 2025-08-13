@@ -1,0 +1,20 @@
+{
+  "network": "Tron Mainnet",
+  "chainId": "728126428",
+  "contractName": "LayerZeroProver",
+  "contractAddress": "TLZnJetQTgaLNwf8Aos7SeUZ9WL4FxTZZS",
+  "transactionId": "a4e5b2631444cfe1c8e4e3e50c7b37cde91140a65f0a2bead77b3c0a14f9fe10",
+  "blockNumber": 74822043,
+  "deployedAt": "2025-08-13T22:46:15.000Z",
+  "energyUsed": 1256807,
+  "bandwidthUsed": 0,
+  "actualCost": 0.021,
+  "deploymentTimeMs": 62000,
+  "constructorParams": {
+    "endpointAddress": "0x0Af59750D5dB5460E5d89E268C474d5F7407c061",
+    "delegateAddress": "TJJYsUz2F4fURzX2Rf4jDWDNdKf5Y86fnk",
+    "portalAddress": "TCqfi3FFEcmWdNzw7bmjrjFrpVgKmsp552",
+    "provers": ["0x0000000000000000000000006bf8bc357498def607d0d8331b18c334812bda83"],
+    "minGasLimit": 200000
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "network": "Tron Mainnet",
+  "chainId": "728126428",
+  "contractName": "Portal",
+  "contractAddress": "TCqfi3FFEcmWdNzw7bmjrjFrpVgKmsp552",
+  "transactionId": "4b984f2c1329823b206d8d59c570bae88fd67d8f6f697e1099e3305abac9daf8",
+  "blockNumber": 74822023,
+  "deployedAt": "2025-08-13T22:46:12.081Z",
+  "energyUsed": 4471799,
+  "bandwidthUsed": 0,
+  "actualCost": 29.009,
+  "deploymentTimeMs": 60472
+}
