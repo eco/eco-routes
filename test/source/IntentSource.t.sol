@@ -43,7 +43,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testCreatesProperlyWithNativeTokenRewards() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         uint256 initialBalance = creator.balance;
@@ -59,7 +59,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testIncrementsCounterAndLocksUpTokens() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -71,7 +71,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testEmitsEvents() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         bytes32 intentHash = _hashIntent(intent);
@@ -80,12 +80,12 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentPublished(
             intentHash,
             intent.destination,
+            abi.encode(intent.route),
             intent.reward.creator,
             intent.reward.prover,
             intent.reward.deadline,
             REWARD_NATIVE_ETH,
-            intent.reward.tokens,
-            abi.encode(intent.route)
+            intent.reward.tokens
         );
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -105,7 +105,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testWithdrawsToClaimantWithProof() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -310,7 +310,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testBatchWithdrawalSingleIntentBeforeExpiryToClaimant() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -342,7 +342,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testBatchWithdrawalAfterExpiryToCreator() public {
-        reward.nativeValue = REWARD_NATIVE_ETH;
+        reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -388,9 +388,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -416,9 +416,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
     }
 
@@ -436,9 +436,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            true,
             creator,
-            address(0),
-            true
+            address(0)
         );
 
         assertFalse(intentSource.isIntentFunded(intent));
@@ -465,9 +465,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             newReward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -491,9 +491,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -503,7 +503,7 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testInsufficientNativeReward() public {
-        reward.nativeValue = 1 ether;
+        reward.nativeAmount = 1 ether;
         intent.reward = reward;
 
         vm.expectRevert();
@@ -515,7 +515,7 @@ contract IntentSourceTest is BaseTest {
         uint256 nativeAmount = 1 ether;
         uint256 sentAmount = 0.5 ether;
 
-        reward.nativeValue = nativeAmount;
+        reward.nativeAmount = nativeAmount;
         intent.reward = reward;
 
         bytes32 intentHash = _hashIntent(intent);
@@ -674,7 +674,7 @@ contract IntentSourceTest is BaseTest {
         uint256 nativeAmount = 1 ether;
         uint256 sentAmount = 0.5 ether;
 
-        reward.nativeValue = nativeAmount;
+        reward.nativeAmount = nativeAmount;
         intent.reward = reward;
 
         // Test insufficient native reward without partial funding
@@ -713,9 +713,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(fakePermit),
-            false
+            address(fakePermit)
         );
 
         // Verify intent is not funded
@@ -730,7 +730,7 @@ contract IntentSourceTest is BaseTest {
         // Critical security test: prevent marking intent as funded with zero native value
         uint256 nativeAmount = 1 ether;
 
-        reward.nativeValue = nativeAmount;
+        reward.nativeAmount = nativeAmount;
         intent.reward = reward;
 
         // Try to exploit by sending zero value but claiming intent is funded
@@ -925,12 +925,12 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentPublished(
             intentHash,
             intent.destination,
+            abi.encode(intent.route),
             intent.reward.creator,
             intent.reward.prover,
             intent.reward.deadline,
             0,
-            intent.reward.tokens,
-            abi.encode(intent.route)
+            intent.reward.tokens
         );
 
         vm.prank(creator);
@@ -953,9 +953,9 @@ contract IntentSourceTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(0),
-            false
+            address(0)
         );
 
         // Test withdrawal event
@@ -1019,7 +1019,7 @@ contract IntentSourceTest is BaseTest {
                     deadline: _evmIntent.reward.deadline,
                     creator: _evmIntent.reward.creator,
                     prover: _evmIntent.reward.prover,
-                    nativeValue: _evmIntent.reward.nativeValue,
+                    nativeAmount: _evmIntent.reward.nativeAmount,
                     tokens: evmRewardTokens
                 })
             });

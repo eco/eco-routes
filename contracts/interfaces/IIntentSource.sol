@@ -44,24 +44,24 @@ interface IIntentSource {
 
     /**
      * @notice Signals the creation of a new cross-chain intent
-     * @param hash Unique identifier of the intent
+     * @param intentHash Unique identifier of the intent
      * @param destination Destination chain ID
+     * @param route Encoded route data for the destination chain
      * @param creator Intent originator address
      * @param prover Prover contract address
      * @param rewardDeadline Timestamp for reward claim eligibility
-     * @param nativeValue Native token reward amount
+     * @param rewardNativeAmount Native token reward amount
      * @param rewardTokens ERC20 token rewards with amounts
-     * @param route Encoded route data for the destination chain
      */
     event IntentPublished(
-        bytes32 indexed hash,
+        bytes32 indexed intentHash,
         uint64 destination,
+        bytes route,
         address indexed creator,
         address indexed prover,
         uint64 rewardDeadline,
-        uint256 nativeValue,
-        TokenAmount[] rewardTokens,
-        bytes route
+        uint256 rewardNativeAmount,
+        TokenAmount[] rewardTokens
     );
 
     /**
@@ -74,17 +74,17 @@ interface IIntentSource {
 
     /**
      * @notice Signals successful reward withdrawal
-     * @param hash The hash of the claimed intent
-     * @param recipient The address receiving the rewards
+     * @param intentHash The hash of the claimed intent
+     * @param claimant The address receiving the rewards
      */
-    event IntentWithdrawn(bytes32 hash, address indexed recipient);
+    event IntentWithdrawn(bytes32 intentHash, address indexed claimant);
 
     /**
      * @notice Signals successful reward refund
-     * @param hash The hash of the refunded intent
-     * @param recipient The address receiving the refund
+     * @param intentHash The hash of the refunded intent
+     * @param refundee The address receiving the refund
      */
-    event IntentRefunded(bytes32 hash, address indexed recipient);
+    event IntentRefunded(bytes32 intentHash, address indexed refundee);
 
     /**
      * @notice Signals successful token recovery from an intent vault
@@ -265,34 +265,34 @@ interface IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
+     * @param allowPartial Whether to accept partial funding
      * @param fundingAddress The address providing the funding
      * @param permitContract The permit contract address for external token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the funded intent
      */
     function fundFor(
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
+        bool allowPartial,
         address fundingAddress,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Creates and funds an intent on behalf of another address
      * @param intent The complete intent specification
+     * @param allowPartial Whether to accept partial funding
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      * @return vault Address of the created vault
      */
     function publishAndFundFor(
         Intent calldata intent,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash, address vault);
 
     /**
@@ -300,9 +300,9 @@ interface IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
+     * @param allowPartial Whether to accept partial funding
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash The hash of the created and funded intent
      * @return vault Address of the created vault
      */
@@ -310,9 +310,9 @@ interface IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash, address vault);
 
     /**

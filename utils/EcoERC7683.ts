@@ -23,7 +23,7 @@ export type OnchainCrosschainOrderData = {
   route: Route
   creator: string
   prover: string
-  nativeValue: bigint
+  nativeAmount: bigint
   rewardTokens: TokenAmount[]
   routePortal: string // bytes32
   routeDeadline: number
@@ -36,7 +36,7 @@ export type GaslessCrosschainOrderData = {
   routeTokens: TokenAmount[]
   calls: Call[]
   prover: string
-  nativeValue: bigint
+  nativeAmount: bigint
   rewardTokens: TokenAmount[]
   routePortal: string // bytes32
   routeDeadline: number
@@ -78,7 +78,7 @@ const OnchainCrosschainOrderDataStruct = [
   },
   { name: 'creator', type: 'address' },
   { name: 'prover', type: 'address' },
-  { name: 'nativeValue', type: 'uint256' },
+  { name: 'nativeAmount', type: 'uint256' },
   {
     name: 'rewardTokens',
     type: 'tuple[]',
@@ -122,7 +122,7 @@ const GaslessCrosschainOrderDataStruct = [
     ],
   },
   { name: 'prover', type: 'address' },
-  { name: 'nativeValue', type: 'uint256' },
+  { name: 'nativeAmount', type: 'uint256' },
   {
     name: 'rewardTokens',
     type: 'tuple[]',

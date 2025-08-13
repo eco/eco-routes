@@ -859,11 +859,7 @@ contract MetaProverTest is BaseTest {
 
         // Expect event emission for proof clearing
         _expectEmit();
-        emit IProver.IntentProven(
-            intentHash,
-            address(0),
-            uint64(wrongDestinationChainId)
-        );
+        emit IProver.IntentProofChallenged(intentHash);
 
         // Challenge the proof
         vm.prank(otherPerson);

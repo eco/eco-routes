@@ -97,7 +97,7 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: 0n,
+      nativeAmount: 0n,
       tokens: rewardTokens,
     }
 
@@ -152,7 +152,7 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: 0n,
+      nativeAmount: 0n,
       tokens: rewardTokens,
     }
 
@@ -201,7 +201,7 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: ethers.parseEther('0.1'), // Add native ETH to reward
+      nativeAmount: ethers.parseEther('0.1'), // Add native ETH to reward
       tokens: rewardTokens,
     }
 
@@ -264,7 +264,7 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: 0n,
+      nativeAmount: 0n,
       tokens: rewardTokens,
     }
 

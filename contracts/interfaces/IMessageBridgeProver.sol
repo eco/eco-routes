@@ -16,16 +16,11 @@ interface IMessageBridgeProver is IProver {
     error InsufficientFee(uint256 requiredFee);
 
     /**
-     * @notice Unauthorized call to handle() detected
-     * @param sender Address that attempted the call
+     * @notice Unauthorized call detected
+     *  @param expected Address that should have been the sender
+     *  @param actual Address that actually sent the message
      */
-    error UnauthorizedHandle(address sender);
-
-    /**
-     * @notice Unauthorized call to initiate proving
-     * @param sender Address that initiated
-     */
-    error UnauthorizedProve(address sender);
+    error UnauthorizedSender(address expected, address actual);
 
     /**
      * @notice Unauthorized incoming proof from source chain
@@ -42,11 +37,6 @@ interface IMessageBridgeProver is IProver {
      * @notice Router address cannot be zero
      */
     error RouterCannotBeZeroAddress();
-
-    /**
-     * @notice Portal address cannot be zero
-     */
-    error PortalCannotBeZeroAddress();
 
     /**
      * @notice Domain ID cannot be zero

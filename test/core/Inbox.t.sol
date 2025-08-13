@@ -156,7 +156,7 @@ contract InboxTest is BaseTest {
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeValue: 0,
+                nativeAmount: 0,
                 tokens: new TokenAmount[](0)
             })
         });
@@ -232,7 +232,7 @@ contract InboxTest is BaseTest {
         assertEq(tokenA.balanceOf(recipient), MINT_AMOUNT);
 
         // Verify intent was marked as fulfilled
-        assertEq(portal.fulfilled(intentHash), claimantBytes);
+        assertEq(portal.claimants(intentHash), claimantBytes);
     }
 
     function testInitiateProvingWithMultipleIntents() public {
@@ -271,8 +271,8 @@ contract InboxTest is BaseTest {
         // Now initiate proving for all fulfilled intents
         vm.prank(solver);
         portal.prove{value: 1 ether}(
-            uint64(block.chainid),
             address(prover),
+            uint64(block.chainid),
             intentHashes,
             "test_data"
         );
@@ -375,7 +375,7 @@ contract InboxTest is BaseTest {
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeValue: 0,
+                    nativeAmount: 0,
                     tokens: new TokenAmount[](0)
                 })
             });
@@ -427,7 +427,7 @@ contract InboxTest is BaseTest {
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeValue: 0,
+                    nativeAmount: 0,
                     tokens: new TokenAmount[](0)
                 })
             });
@@ -462,7 +462,7 @@ contract InboxTest is BaseTest {
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeValue: 0,
+                    nativeAmount: 0,
                     tokens: new TokenAmount[](0)
                 })
             });

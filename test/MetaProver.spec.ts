@@ -217,7 +217,7 @@ describe('MetaProver Test', (): void => {
           [], // empty operations array
           [], // empty operationsData array
         ),
-      ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedHandle')
+      ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedSender')
     })
 
     it('should revert when sender field is not authorized', async () => {
@@ -363,7 +363,7 @@ describe('MetaProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -409,8 +409,8 @@ describe('MetaProver Test', (): void => {
 
       await expect(
         inbox.connect(solver).prove(
-          sourceChainId,
           await metaProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           { value: fee - BigInt(1) }, // underpayment
@@ -433,7 +433,7 @@ describe('MetaProver Test', (): void => {
         metaProver
           .connect(solver)
           .prove(owner.address, 123, encodedProofs, data),
-      ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedProve')
+      ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedSender')
     })
 
     it('should handle exact fee payment with no refund needed', async () => {
@@ -471,7 +471,7 @@ describe('MetaProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -519,8 +519,8 @@ describe('MetaProver Test', (): void => {
       const proveTx = await inbox
         .connect(solver)
         .prove(
-          sourceChainId,
           await metaProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           { value: fee },
@@ -566,7 +566,7 @@ describe('MetaProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -611,8 +611,8 @@ describe('MetaProver Test', (): void => {
       const proveTx = await inbox
         .connect(owner)
         .prove(
-          sourceChainId,
           await metaProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           {
@@ -642,8 +642,8 @@ describe('MetaProver Test', (): void => {
       const tx = await inbox
         .connect(owner)
         .prove(
-          sourceChainId,
           await metaProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           {
@@ -824,7 +824,7 @@ describe('MetaProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -877,7 +877,7 @@ describe('MetaProver Test', (): void => {
           { value: fee },
         )
 
-      expect(await inbox.fulfilled(intentHash)).to.eq(nonAddressClaimant)
+      expect(await inbox.claimants(intentHash)).to.eq(nonAddressClaimant)
 
       const provenIntent = await metaProver.provenIntents(intentHash)
       expect(provenIntent.claimant).to.eq(ethers.ZeroAddress)
@@ -937,7 +937,7 @@ describe('MetaProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -1088,7 +1088,7 @@ describe('MetaProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeValue: ethers.parseEther('0.01'),
+        nativeAmount: ethers.parseEther('0.01'),
         tokens: [],
       }
 
@@ -1143,7 +1143,7 @@ describe('MetaProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeValue: ethers.parseEther('0.01'),
+        nativeAmount: ethers.parseEther('0.01'),
         tokens: [],
       }
       const intent1: Intent = {
@@ -1191,8 +1191,8 @@ describe('MetaProver Test', (): void => {
         inbox
           .connect(solver)
           .prove(
-            sourceChainID,
             await metaProver.getAddress(),
+            sourceChainID,
             [intentHash0, intentHash1],
             data,
             { value: batchFee },

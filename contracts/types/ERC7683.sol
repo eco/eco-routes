@@ -108,12 +108,13 @@ struct FillInstruction {
 /**
  * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
  * is sufficient to publish an intent via Eco Protocol
- * @dev the orderData field of GaslessCrossChainOrder should be decoded as GaslessCrosschainOrderData\
- * @param route the route data
- * @param creator the address of the intent creator
- * @param prover the address of the prover contract this intent will be proven against
- * @param nativeValue the amount of native token offered as a reward
- * @param tokens the addresses and amounts of reward tokens
+ * @dev the orderData field of GaslessCrossChainOrder should be decoded as OrderData
+ * @param destination the destination chain ID for the intent
+ * @param route the route data for execution on the destination chain
+ * @param reward the reward structure containing creator, prover, amounts, and deadline information
+ * @param routePortal the portal contract address on the destination chain
+ * @param routeDeadline the deadline for route execution on the destination chain
+ * @param maxSpent the maximum outputs that the filler will send
  */
 struct OrderData {
     uint64 destination;
@@ -126,5 +127,5 @@ struct OrderData {
 
 // EIP712 type hash
 bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
-    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)"
+    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address creator,address prover,uint256 nativeAmount,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)"
 );

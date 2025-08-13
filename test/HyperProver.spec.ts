@@ -33,7 +33,7 @@ function encodeMessageBody(
     parts.push(intentHashes[i])
     parts.push(claimantBytes)
   }
-  
+
   // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
   const packedParts = ethers.concat(parts)
   return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
@@ -173,7 +173,7 @@ describe('HyperProver Test', (): void => {
         hyperProver
           .connect(claimant)
           .handle(12345, ethers.sha256('0x'), ethers.sha256('0x')),
-      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedHandle')
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedSender')
     })
 
     it('should revert when sender field is not authorized', async () => {
@@ -319,7 +319,7 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -380,8 +380,8 @@ describe('HyperProver Test', (): void => {
 
       await expect(
         inbox.connect(solver).prove(
-          sourceChainId,
           await hyperProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           { value: fee - BigInt(1) }, // underpayment
@@ -409,7 +409,7 @@ describe('HyperProver Test', (): void => {
         hyperProver
           .connect(solver)
           .prove(owner.address, 123, encodedProofs, data),
-      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedProve')
+      ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedSender')
     })
 
     it('should handle exact fee payment with no refund needed', async () => {
@@ -449,7 +449,7 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -511,8 +511,8 @@ describe('HyperProver Test', (): void => {
       const proveTx = await inbox
         .connect(solver)
         .prove(
-          sourceChainId,
           await hyperProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           { value: fee },
@@ -562,7 +562,7 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -621,8 +621,8 @@ describe('HyperProver Test', (): void => {
       const proveTx = await inbox
         .connect(owner)
         .prove(
-          sourceChainId,
           await hyperProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           {
@@ -662,8 +662,8 @@ describe('HyperProver Test', (): void => {
       const tx = await inbox
         .connect(owner)
         .prove(
-          sourceChainId,
           await hyperProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           {
@@ -798,7 +798,7 @@ describe('HyperProver Test', (): void => {
       const msgBody = encodeMessageBody(
         [intentHash1, intentHash2],
         [validClaimant, nonAddressClaimant],
-        12345
+        12345,
       )
 
       // Process the message
@@ -874,7 +874,7 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -944,7 +944,7 @@ describe('HyperProver Test', (): void => {
         )
 
       // Verify the intent was fulfilled with the non-address claimant
-      expect(await inbox.fulfilled(intentHash)).to.eq(nonAddressClaimant)
+      expect(await inbox.claimants(intentHash)).to.eq(nonAddressClaimant)
 
       // The prover should not have processed this intent due to invalid address format
       // The AddressConverter will revert when trying to convert the non-EVM address
@@ -1009,7 +1009,7 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -1181,7 +1181,7 @@ describe('HyperProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeValue: ethers.parseEther('0.01'),
+        nativeAmount: ethers.parseEther('0.01'),
         tokens: [],
       }
 
@@ -1240,7 +1240,7 @@ describe('HyperProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeValue: ethers.parseEther('0.01'),
+        nativeAmount: ethers.parseEther('0.01'),
         tokens: [],
       }
       const intent1: Intent = {
@@ -1294,8 +1294,8 @@ describe('HyperProver Test', (): void => {
         inbox
           .connect(solver)
           .prove(
-            sourceChainID,
             await hyperProver.getAddress(),
+            sourceChainID,
             [intentHash0, intentHash1],
             data,
             { value: batchFee },
@@ -1376,7 +1376,7 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
-          nativeValue: 0,
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
         },
       }
@@ -1410,8 +1410,8 @@ describe('HyperProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
-        .to.emit(prover, 'IntentProven')
-        .withArgs(intentHash, ethers.ZeroAddress, wrongChainId)
+        .to.emit(prover, 'IntentProofChallenged')
+        .withArgs(intentHash)
 
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)
@@ -1519,8 +1519,8 @@ describe('HyperProver Test', (): void => {
           .connect(solver)
           .challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
-        .to.emit(prover, 'IntentProven')
-        .withArgs(intentHash, ethers.ZeroAddress, wrongChainId)
+        .to.emit(prover, 'IntentProofChallenged')
+        .withArgs(intentHash)
 
       // Verify proof was cleared
       const proof = await prover.provenIntents(intentHash)
@@ -1547,8 +1547,8 @@ describe('HyperProver Test', (): void => {
           hashIntent(edgeIntent).rewardHash,
         ),
       )
-        .to.emit(prover, 'IntentProven')
-        .withArgs(edgeIntentHash, ethers.ZeroAddress, 1)
+        .to.emit(prover, 'IntentProofChallenged')
+        .withArgs(edgeIntentHash)
 
       // Verify proof was cleared
       const proof = await prover.provenIntents(edgeIntentHash)
@@ -1583,8 +1583,8 @@ describe('HyperProver Test', (): void => {
           hashIntent(intent1).rewardHash,
         ),
       )
-        .to.emit(prover, 'IntentProven')
-        .withArgs(intentHash1, ethers.ZeroAddress, 999)
+        .to.emit(prover, 'IntentProofChallenged')
+        .withArgs(intentHash1)
 
       await expect(
         prover.challengeIntentProof(
@@ -1593,8 +1593,8 @@ describe('HyperProver Test', (): void => {
           hashIntent(intent2).rewardHash,
         ),
       )
-        .to.emit(prover, 'IntentProven')
-        .withArgs(intentHash2, ethers.ZeroAddress, 888)
+        .to.emit(prover, 'IntentProofChallenged')
+        .withArgs(intentHash2)
 
       // Verify both proofs were cleared
       const proof1 = await prover.provenIntents(intentHash1)

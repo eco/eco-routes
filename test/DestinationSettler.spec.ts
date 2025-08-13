@@ -105,7 +105,7 @@ describe('Destination Settler Test', (): void => {
       creator: creator.address,
       prover: await prover.getAddress(),
       deadline: _timestamp,
-      nativeValue: BigInt(0),
+      nativeAmount: BigInt(0),
       tokens: [
         {
           token: erc20Address,
@@ -163,7 +163,7 @@ describe('Destination Settler Test', (): void => {
     ).to.be.revertedWithCustomError(inbox, 'IntentExpired')
   })
   it('successfully calls fulfill with testprover', async (): Promise<void> => {
-    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroHash)
+    expect(await inbox.claimants(intentHash)).to.equal(ethers.ZeroHash)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction

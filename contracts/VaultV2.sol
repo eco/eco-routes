@@ -129,7 +129,7 @@ contract VaultV2 is IVaultV2 {
             return true;
         }
 
-        fullyFunded = address(this).balance >= reward.nativeValue;
+        fullyFunded = address(this).balance >= reward.nativeAmount;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
@@ -170,7 +170,7 @@ contract VaultV2 is IVaultV2 {
             }
         }
 
-        uint256 nativeAmount = address(this).balance.min(reward.nativeValue);
+        uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
         if (nativeAmount == 0) {
             return;
         }

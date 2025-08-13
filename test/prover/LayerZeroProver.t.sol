@@ -345,11 +345,7 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge the proof with correct destination
         vm.expectEmit(true, true, true, true);
-        emit IProver.IntentProven(
-            intentHash,
-            address(0),
-            uint64(wrongDestination)
-        ); // Emits with zero address to indicate removal
+        emit IProver.IntentProofChallenged(intentHash);
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
@@ -447,11 +443,7 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge should succeed for LayerZero-specific validation
         vm.expectEmit(true, true, true, true);
-        emit IProver.IntentProven(
-            intentHash,
-            address(0),
-            uint64(wrongDestination)
-        );
+        emit IProver.IntentProofChallenged(intentHash);
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 

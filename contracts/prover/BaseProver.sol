@@ -42,6 +42,10 @@ abstract contract BaseProver is IProver, ERC165 {
      * @param portal Address of the Portal contract
      */
     constructor(address portal) {
+        if (portal == address(0)) {
+            revert ZeroPortal();
+        }
+
         PORTAL = portal;
     }
 
@@ -119,7 +123,8 @@ abstract contract BaseProver is IProver, ERC165 {
         // Only challenge if proof exists and destination chain ID doesn't match
         if (proof.claimant != address(0) && proof.destination != destination) {
             delete _provenIntents[intentHash];
-            emit IntentProven(intentHash, address(0), proof.destination); // Emit removal of proof
+
+            emit IntentProofChallenged(intentHash);
         }
     }
 
