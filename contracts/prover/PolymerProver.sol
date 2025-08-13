@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
+import {IProver} from "../interfaces/IProver.sol";
 
 /**
  * @title PolyNativeProver
@@ -14,41 +15,35 @@ contract PolyNativeProver is BaseProver, Semver {
     // Constants
     string public constant PROOF_TYPE = "Polymer";
     bytes32 public constant PROOF_SELECTOR =
-        keccak256("IntentFulfilled(bytes32,bytes32)");
+        keccak256("IntentFulfilledFromSource(bytes32,bytes32,uint64)");
+
+    // Events
+    event IntentFulfilledFromSource(bytes32 indexed intentHash, bytes32 indexed claimant, uint64 destination);
 
     // Errors
     error InvalidEventSignature();
-    error UnsupportedChainId();
     error InvalidEmittingContract();
     error InvalidTopicsLength();
     error ZeroAddress();
-    error NoSupportedChains();
     error SizeMismatch();
+    error OnlyPortal();
 
     // Immutable state variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
 
-    // State variables
-    mapping(uint32 => bool) public supportedChainIds;
 
     /**
      * @notice Initializes the PolyNativeProver contract
      * @param _crossL2ProverV2 Address of the Polymer CrossL2ProverV2 contract
      * @param _portal Address of the Portal contract
-     * @param _supportedChainIds Array of chain IDs that this prover will accept proofs from
      */
     constructor(
         address _crossL2ProverV2,
-        address _portal,
-        uint32[] memory _supportedChainIds
+        address _portal
     ) BaseProver(_portal) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
-        if (_supportedChainIds.length == 0) revert NoSupportedChains();
 
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
-        for (uint32 i = 0; i < _supportedChainIds.length; i++) {
-            supportedChainIds[_supportedChainIds[i]] = true;
-        }
     }
 
     // ------------- STANDARD PROOF VALIDATION -------------
@@ -93,11 +88,10 @@ contract PolyNativeProver is BaseProver, Semver {
             /* bytes memory data */
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        checkPortalContract(emittingContract);
-        checkSupportedChainId(destinationChainId);
-        checkTopicLength(topics, 96); // 3 topics: signature + hash + claimant
+        checkProverContract(emittingContract);
+        checkTopicLength(topics, 128); // 4 topics: signature + hash + claimant + sourceChainId
 
-        bytes32[] memory topicsArray = new bytes32[](3);
+        bytes32[] memory topicsArray = new bytes32[](4);
 
         assembly {
             let topicsPtr := add(topics, 32)
@@ -106,11 +100,16 @@ contract PolyNativeProver is BaseProver, Semver {
             mstore(arrayPtr, mload(topicsPtr))
             mstore(add(arrayPtr, 32), mload(add(topicsPtr, 32)))
             mstore(add(arrayPtr, 64), mload(add(topicsPtr, 64)))
+            mstore(add(arrayPtr, 96), mload(add(topicsPtr, 96)))
         }
 
         checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
         // Convert bytes32 claimant to address
         claimant = address(uint160(uint256(topicsArray[2])));
+        // Get sourceChainId from event topic and verify it matches current chain
+        uint64 eventSourceChainId = uint64(uint256(topicsArray[3]));
+        if (eventSourceChainId != block.chainid) revert InvalidEmittingContract();
+
         return (topicsArray[1], claimant, destinationChainId);
     }
 
@@ -203,20 +202,14 @@ contract PolyNativeProver is BaseProver, Semver {
     }
 
     /**
-     * @notice Validates that the emitting contract is the expected portal contract
+     * @notice Validates that the emitting contract is this prover contract
+     * @notice This expects that the PolymerProver contract on the destination the same address as on source
      * @param emittingContract The contract that emitted the event
      */
-    function checkPortalContract(address emittingContract) internal view {
-        if (emittingContract != PORTAL) revert InvalidEmittingContract();
+    function checkProverContract(address emittingContract) internal view {
+        if (emittingContract != address(this)) revert InvalidEmittingContract();
     }
 
-    /**
-     * @notice Validates that the chain ID is supported by this prover
-     * @param chainId The chain ID to check
-     */
-    function checkSupportedChainId(uint32 chainId) internal view {
-        if (!supportedChainIds[chainId]) revert UnsupportedChainId();
-    }
 
 
     /**
@@ -245,18 +238,40 @@ contract PolyNativeProver is BaseProver, Semver {
     // ------------ EXTERNAL PROVE FUNCTION -------------
 
     /**
-     * @notice Satisfies the IProver interface
-     * @dev This function should not need to be called. Call only Inbox.fulfill on the destination chain.
-     * @dev This function does nothing since Polymer does not require sending a message from the destination chain.
-     * @param sender Address of the original transaction sender
+     * @notice Emits IntentFulfilledFromSource events that can be proven by Polymer
+     * @dev Only callable by the Portal contract
+     * @param sender Address of the original transaction sender (unused)
      * @param sourceChainId Chain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
-     * @param data Additional data specific to the proving implementation
+     * @param data Additional data specific to the proving implementation (unused)
     */
     function prove(
         address sender,
         uint256 sourceChainId,
         bytes calldata encodedProofs,
         bytes calldata data
-    ) external payable {}
+    ) external payable {
+        if (msg.sender != PORTAL) revert OnlyPortal();
+
+        // If data is empty, just return early
+        if (encodedProofs.length == 0) return;
+
+        // Ensure encodedProofs length is multiple of 64 bytes (32 for hash + 32 for claimant)
+        if (encodedProofs.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
+
+        uint256 numPairs = encodedProofs.length / 64;
+
+        for (uint256 i = 0; i < numPairs; i++) {
+            uint256 offset = i * 64;
+
+            // Extract intentHash and claimant using slice
+            bytes32 intentHash = bytes32(encodedProofs[offset:offset + 32]);
+            bytes32 claimantBytes = bytes32(encodedProofs[offset + 32:offset + 64]);
+
+            // Emit event that can be proven by Polymer
+            emit IntentFulfilledFromSource(intentHash, claimantBytes, uint64(sourceChainId));
+        }
+    }
 }

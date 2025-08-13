@@ -68,7 +68,6 @@ describe('PolyNativeProver Test', (): void => {
     ).deploy(
       await testCrossL2ProverV2.getAddress(),
       await portal.getAddress(),
-      chainIds,
     )
 
     // Use the IIntentSource interface with the Portal implementation
@@ -140,9 +139,9 @@ describe('PolyNativeProver Test', (): void => {
     let badEventSignature: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('IntentFulfilled(bytes32,bytes32)')
+      eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
       badEventSignature = ethers.id(
-        'BadEventSignature(bytes32,bytes32)',
+        'BadEventSignature(bytes32,bytes32,uint64)',
       )
       expectedHash = '0x' + '11'.repeat(32)
       data = '0x'
@@ -150,6 +149,7 @@ describe('PolyNativeProver Test', (): void => {
         eventSignature,
         expectedHash,
         ethers.zeroPadValue(claimant.address, 32),
+        ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
       ]
 
       await expect(
@@ -161,15 +161,15 @@ describe('PolyNativeProver Test', (): void => {
 
     it('should validate a single emit', async (): Promise<void> => {
       const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const portalAddress = await portal.getAddress()
+      const polymerProverAddress = await polymerProver.getAddress()
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        portalAddress,
+        polymerProverAddress,
         topicsPacked,
         data,
       )
@@ -188,7 +188,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(portalAddress)
+      expect(emittingContract_returned).to.equal(polymerProverAddress)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -199,15 +199,15 @@ describe('PolyNativeProver Test', (): void => {
 
     it('should emit IntentAlreadyProven if the proof is already proven', async (): Promise<void> => {
       const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const portalAddress = await portal.getAddress()
+      const polymerProverAddress = await polymerProver.getAddress()
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        portalAddress,
+        polymerProverAddress,
         topicsPacked,
         data,
       )
@@ -226,7 +226,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(portalAddress)
+      expect(emittingContract_returned).to.equal(polymerProverAddress)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -241,7 +241,7 @@ describe('PolyNativeProver Test', (): void => {
 
     it('should revert if inbox contract is not the emitting contract', async (): Promise<void> => {
       const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
 
@@ -277,63 +277,25 @@ describe('PolyNativeProver Test', (): void => {
       )
     })
 
-    it('should revert if chainId is not supported', async (): Promise<void> => {
+
+    it('should revert if topics length is not 4', async (): Promise<void> => {
+      topics = [
+        eventSignature,
+        expectedHash,
+        ethers.zeroPadValue(claimant.address, 32),
+        // missing fourth topic (sourceChainId)
+      ]
+
       const topicsPacked = ethers.solidityPacked(
         ['bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const portalAddress = await portal.getAddress()
-
-      const badChainId = 1234
-
-      // set values for mock prover
-      await testCrossL2ProverV2.setAll(
-        badChainId,
-        portalAddress,
-        topicsPacked,
-        data,
-      )
-
-      // set values for mock proof index
-      // start at 1 because we have already set the first index in constructor
-      const proofIndex = 1
-      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32)
-
-      // get values from mock prover and ensure they are correct
-      const [
-        chainId_returned,
-        emittingContract_returned,
-        topics_returned,
-        data_returned,
-      ] = await testCrossL2ProverV2.validateEvent(proof)
-
-      expect(chainId_returned).to.equal(badChainId)
-      expect(emittingContract_returned).to.equal(portalAddress)
-      expect(topics_returned).to.equal(topicsPacked)
-      expect(data_returned).to.equal(data)
-
-      await expect(polymerProver.validate(proof)).to.be.revertedWithCustomError(
-        polymerProver,
-        'UnsupportedChainId',
-      )
-    })
-
-    it('should revert if topics length is not 3', async (): Promise<void> => {
-      topics = [
-        eventSignature,
-        expectedHash,
-      ]
-
-      const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32'],
-        topics,
-      )
-      const portalAddress = await portal.getAddress()
+      const polymerProverAddress = await polymerProver.getAddress()
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        portalAddress,
+        polymerProverAddress,
         topicsPacked,
         data,
       )
@@ -352,7 +314,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(portalAddress)
+      expect(emittingContract_returned).to.equal(polymerProverAddress)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -367,18 +329,19 @@ describe('PolyNativeProver Test', (): void => {
         badEventSignature,
         expectedHash,
         ethers.zeroPadValue(claimant.address, 32),
+        ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
       ]
 
       const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const portalAddress = await portal.getAddress()
+      const polymerProverAddress = await polymerProver.getAddress()
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        portalAddress,
+        polymerProverAddress,
         topicsPacked,
         data,
       )
@@ -397,7 +360,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(portalAddress)
+      expect(emittingContract_returned).to.equal(polymerProverAddress)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -422,42 +385,46 @@ describe('PolyNativeProver Test', (): void => {
     let expectedHash2: string
     let expectedHash3: string
     let eventSignature: string
-    let portalAddress: string
+    let polymerProverAddress: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('IntentFulfilled(bytes32,bytes32)')
+      eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
       expectedHash = '0x' + '11'.repeat(32)
       expectedHash2 = '0x' + '22'.repeat(32)
       expectedHash3 = '0x' + '33'.repeat(32)
       data = '0x'
+      const chainId = await ethers.provider.getNetwork().then(n => n.chainId)
       topics_0 = [
         eventSignature,
         expectedHash,
         ethers.zeroPadValue(claimant.address, 32),
+        ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
       ]
       topics_1 = [
         eventSignature,
         expectedHash2,
         ethers.zeroPadValue(claimant2.address, 32),
+        ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
       ]
       topics_2 = [
         eventSignature,
         expectedHash3,
         ethers.zeroPadValue(claimant3.address, 32),
+        ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
       ]
       topics_0_packed = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics_0,
       )
       topics_1_packed = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics_1,
       )
       topics_2_packed = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics_2,
       )
-      portalAddress = await portal.getAddress()
+      polymerProverAddress = await polymerProver.getAddress()
     })
 
     it('should validate a batch of emits', async (): Promise<void> => {
@@ -467,7 +434,7 @@ describe('PolyNativeProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [portalAddress, portalAddress, portalAddress]
+      const emittingContractsArray = [polymerProverAddress, polymerProverAddress, polymerProverAddress]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
@@ -507,7 +474,7 @@ describe('PolyNativeProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [portalAddress, portalAddress, portalAddress]
+      const emittingContractsArray = [polymerProverAddress, polymerProverAddress, polymerProverAddress]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
