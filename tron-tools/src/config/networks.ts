@@ -13,13 +13,13 @@ export const TRON_NETWORKS: Record<string, TronNetwork> = {
     ]
   },
   testnet: {
-    name: 'Tron Testnet (Nile)',
+    name: 'Tron Testnet (Shasta)',
     chainId: '2494104990', // 0x94A9059E  
-    rpcUrl: process.env.TRON_TESTNET_RPC_URL || 'https://api.nileex.io',
+    rpcUrl: process.env.TRON_TESTNET_RPC_URL || 'https://api.shasta.trongrid.io',
     apiKey: process.env.TRON_TESTNET_API_KEY,
     isMainnet: false,
     fallbackUrls: [
-      process.env.TRON_FALLBACK_RPC_2 || 'https://api.shasta.trongrid.io',
+      process.env.TRON_FALLBACK_RPC_2 || 'https://api.nileex.io',
       'https://nile.trongrid.io'
     ]
   }

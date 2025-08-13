@@ -50,6 +50,7 @@
     "deployCI": "npx tsx scripts/deploy/deployCI.ts",
     "deployForgeCI": "npx tsx scripts/deploy/deployForgeCI.ts",
     "forge-to-tronbox": "npx ts-node scripts/forge-to-tronbox.ts",
+    "deploy:portal": "cd tron-tools && npm run deploy:portal",
     "semantic:pub": "npx tsx scripts/semantic-release/eco-routes-local.ts",
     "pub:clean": "rimraf build && rimraf out",
     "pub:build": "cd build && tsc",

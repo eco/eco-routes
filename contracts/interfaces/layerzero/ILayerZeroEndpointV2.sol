@@ -91,13 +91,13 @@ interface ILayerZeroEndpointV2 {
     function setSendLibrary(
         address _oapp,
         uint32 _eid,
-        address _newLib,
+        address _newLib
     ) external;
 
     function setReceiveLibrary(
         address _oapp,
         uint32 _eid,
         address _newLib,
-        uint256_ gracePeriod
+        uint256 _gracePeriod
     ) external;
 }
