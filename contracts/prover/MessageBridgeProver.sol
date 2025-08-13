@@ -28,7 +28,6 @@ abstract contract MessageBridgeProver is
      */
     uint64 internal immutable CHAIN_ID;
 
-
     /**
      * @notice Initializes the MessageBridgeProver contract
      * @param portal Address of the Portal contract
@@ -43,7 +42,7 @@ abstract contract MessageBridgeProver is
         if (portal == address(0)) revert PortalCannotBeZeroAddress();
 
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
-        
+
         // Validate that chain ID fits in uint64 and store it
         if (block.chainid > type(uint64).max) {
             revert ChainIdTooLarge(block.chainid);
@@ -96,7 +95,6 @@ abstract contract MessageBridgeProver is
      * @param message Encoded message with chain ID prepended, followed by (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
-        uint64 /* destinationChainDomainID */,
         bytes32 messageSender,
         bytes calldata message
     ) internal {
@@ -110,7 +108,7 @@ abstract contract MessageBridgeProver is
         if (message.length < 8) {
             revert InvalidProofMessage();
         }
-        
+
         // Convert raw 8 bytes to uint64 - the chain ID is stored as big-endian bytes
         bytes8 chainIdBytes = bytes8(message[0:8]);
         uint64 actualChainId = uint64(chainIdBytes);
@@ -160,21 +158,6 @@ abstract contract MessageBridgeProver is
 
         // Send refund if needed
         _sendRefund(sender, refundAmount);
-    }
-
-    /**
-     * @notice Validates that arrays have matching lengths
-     * @dev Common validation used by both HyperProver and MetaProver
-     * @param hashes Array of intent hashes
-     * @param claimants Array of claimant addresses
-     */
-    function _validateArrayLengths(
-        bytes32[] calldata hashes,
-        bytes32[] calldata claimants
-    ) internal pure {
-        if (hashes.length != claimants.length) {
-            revert ArrayLengthMismatch();
-        }
     }
 
     /**

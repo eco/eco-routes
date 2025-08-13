@@ -732,8 +732,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Returns excess ETH to the sender
-     * @param intentHash Hash of the intent
      * @notice Returns excess ETH to the sender - OriginSettler implementation
      * @dev Called by _publishAndFund to return any ETH overpayment to the sender
      * @dev Essential for user experience when overfunding native token rewards

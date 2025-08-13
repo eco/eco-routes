@@ -67,7 +67,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function prove(
         address _sender,
-        uint64 _sourceChainId,
+        uint64,
         bytes calldata _encodedProofs,
         bytes calldata /* _data */
     ) external payable override {
@@ -77,7 +77,6 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
         // Process the intent proofs using the base implementation
         _handleCrossChainMessage(
-            _sourceChainId,
             bytes32(uint256(uint160(_sender))),
             _encodedProofs
         );

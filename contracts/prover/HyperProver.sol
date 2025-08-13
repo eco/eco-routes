@@ -84,7 +84,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Validate sender is not zero
         if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(origin, sender, messageBody);
+        _handleCrossChainMessage(sender, messageBody);
     }
 
     /**

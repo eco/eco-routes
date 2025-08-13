@@ -90,7 +90,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Validate sender is not zero
         if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(origin, sender, message);
+        _handleCrossChainMessage(sender, message);
     }
 
     /**

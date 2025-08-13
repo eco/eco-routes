@@ -92,15 +92,12 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Verify message is from authorized endpoint
         _validateMessageSender(msg.sender, ENDPOINT);
 
-        // Use endpoint ID directly as chain ID
-        uint64 originChainId = uint64(origin.srcEid);
-
         // Validate sender is not zero
         if (origin.sender == bytes32(0)) {
             revert SenderCannotBeZeroAddress();
         }
 
-        _handleCrossChainMessage(originChainId, origin.sender, message);
+        _handleCrossChainMessage(origin.sender, message);
     }
 
     /**
