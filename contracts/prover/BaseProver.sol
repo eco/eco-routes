@@ -124,7 +124,7 @@ abstract contract BaseProver is IProver, ERC165 {
         if (proof.claimant != address(0) && proof.destination != destination) {
             delete _provenIntents[intentHash];
 
-            emit IntentProofChallenged(intentHash);
+            emit IntentProofInvalidated(intentHash);
         }
     }
 

@@ -1410,7 +1410,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
-        .to.emit(prover, 'IntentProofChallenged')
+        .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash)
 
       // Verify proof was cleared
@@ -1519,7 +1519,7 @@ describe('HyperProver Test', (): void => {
           .connect(solver)
           .challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
-        .to.emit(prover, 'IntentProofChallenged')
+        .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash)
 
       // Verify proof was cleared
@@ -1547,7 +1547,7 @@ describe('HyperProver Test', (): void => {
           hashIntent(edgeIntent).rewardHash,
         ),
       )
-        .to.emit(prover, 'IntentProofChallenged')
+        .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(edgeIntentHash)
 
       // Verify proof was cleared
@@ -1583,7 +1583,7 @@ describe('HyperProver Test', (): void => {
           hashIntent(intent1).rewardHash,
         ),
       )
-        .to.emit(prover, 'IntentProofChallenged')
+        .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash1)
 
       await expect(
@@ -1593,7 +1593,7 @@ describe('HyperProver Test', (): void => {
           hashIntent(intent2).rewardHash,
         ),
       )
-        .to.emit(prover, 'IntentProofChallenged')
+        .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash2)
 
       // Verify both proofs were cleared

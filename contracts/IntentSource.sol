@@ -428,7 +428,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
                 routeHash,
                 rewardHash
             );
-            emit IntentProofChallenged(intentHash);
 
             return;
         }

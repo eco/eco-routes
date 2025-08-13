@@ -26,6 +26,11 @@ contract LocalProver is IProver, Semver {
 
     constructor(address inbox) {
         _PORTAL = Inbox(inbox);
+
+        if (block.chainid > type(uint64).max) {
+            revert ChainIdTooLarge(block.chainid);
+        }
+
         _CHAIN_ID = uint64(block.chainid);
     }
 

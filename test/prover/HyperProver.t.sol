@@ -221,7 +221,10 @@ contract HyperProverTest is BaseTest {
 
         // This should revert in encodeProofs due to array length mismatch
         // We test this by checking that arrays have different lengths
-        assertTrue(intentHashes.length != claimants.length, "Arrays should have different lengths");
+        assertTrue(
+            intentHashes.length != claimants.length,
+            "Arrays should have different lengths"
+        );
     }
 
     function testProveWithEmptyArrays() public {
@@ -264,7 +267,11 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // Pack hash/claimant pairs as bytes with chain ID prefix
-        bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
 
         vm.prank(address(mailbox));
         hyperProver.handle(
@@ -286,7 +293,11 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
 
         vm.expectRevert();
         vm.prank(address(mailbox));
@@ -323,7 +334,11 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
 
         // First call should succeed
         vm.prank(address(mailbox));
@@ -451,7 +466,11 @@ contract HyperProverTest is BaseTest {
         );
 
         // Now simulate the message being received back by calling handle
-        bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
         vm.prank(address(mailbox));
         hyperProver.handle(
             uint32(block.chainid),
@@ -526,7 +545,11 @@ contract HyperProverTest is BaseTest {
         bytes32[] memory intentHashes = new bytes32[](0);
         bytes32[] memory claimants = new bytes32[](0);
 
-        bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
 
         // Should handle empty arrays gracefully
         vm.prank(address(mailbox));

@@ -101,12 +101,6 @@ interface IIntentSource {
     );
 
     /**
-     * @notice Signals that an intent proof was challenged due to wrong destination chain
-     * @param intentHash The hash of the challenged intent
-     */
-    event IntentProofChallenged(bytes32 intentHash);
-
-    /**
      * @notice Retrieves the current reward claim status for an intent
      * @param intentHash The hash of the intent
      * @return status Current reward status

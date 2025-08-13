@@ -31,6 +31,12 @@ interface IProver is ISemver {
     error ZeroPortal();
 
     /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error ChainIdTooLarge(uint256 chainId);
+
+    /**
      * @notice Emitted when an intent is successfully proven
      * @dev Emitted by the Prover on the source chain.
      * @param intentHash Hash of the proven intent
@@ -44,10 +50,10 @@ interface IProver is ISemver {
     );
 
     /**
-     * @notice Emitted when an intent proof is challenged
-     * @param intentHash Hash of the challenged intent
+     * @notice Emitted when an intent proof is invalidated
+     * @param intentHash Hash of the invalidated intent
      */
-    event IntentProofChallenged(bytes32 indexed intentHash);
+    event IntentProofInvalidated(bytes32 indexed intentHash);
 
     /**
      * @notice Emitted when attempting to prove an already-proven intent

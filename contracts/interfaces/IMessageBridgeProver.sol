@@ -75,12 +75,6 @@ interface IMessageBridgeProver is IProver {
     ) external view returns (uint256);
 
     /**
-     * @notice Chain ID is too large to fit in uint64
-     * @param chainId The chain ID that is too large
-     */
-    error ChainIdTooLarge(uint256 chainId);
-
-    /**
      * @notice Domain ID is too large to fit in uint32
      * @param domainId The domain ID that is too large
      */

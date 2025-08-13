@@ -41,7 +41,7 @@ describe('LayerZeroProver Test', (): void => {
       parts.push(intentHashes[i])
       parts.push(claimantBytes)
     }
-    
+
     // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
     const packedParts = ethers.concat(parts)
     return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
@@ -613,7 +613,10 @@ describe('LayerZeroProver Test', (): void => {
         intentHash2, // 32 bytes
         nonAddressClaimant, // 32 bytes - Non-EVM address
       ])
-      const msgBody = ethers.solidityPacked(['uint64', 'bytes'], [12345, rawPacked])
+      const msgBody = ethers.solidityPacked(
+        ['uint64', 'bytes'],
+        [12345, rawPacked],
+      )
 
       const origin = {
         srcEid: 12345,
@@ -1026,7 +1029,7 @@ describe('LayerZeroProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
-        .to.emit(prover, 'IntentProofChallenged')
+        .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash)
 
       // Verify proof was cleared

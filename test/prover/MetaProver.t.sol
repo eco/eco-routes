@@ -513,9 +513,11 @@ contract MetaProverTest is BaseTest {
         // This should revert in _packClaimantHashPairs due to array length mismatch
         // We test this by checking that calling the function would fail
         // Since this is a helper function test, we just verify the logic
-        assertTrue(intentHashes.length != claimants.length, "Arrays should have different lengths");
+        assertTrue(
+            intentHashes.length != claimants.length,
+            "Arrays should have different lengths"
+        );
     }
-
 
     function testProveWithEmptyArrays() public {
         bytes32[] memory intentHashes = new bytes32[](0);
@@ -649,7 +651,11 @@ contract MetaProverTest is BaseTest {
         );
 
         // fetchFee should now use the actual custom gas limit instead of hardcoded 100k
-        uint256 fee = metaProver.fetchFee(uint64(block.chainid), encodedProofs, data);
+        uint256 fee = metaProver.fetchFee(
+            uint64(block.chainid),
+            encodedProofs,
+            data
+        );
 
         // Fee should be calculated with the custom gas limit
         // The exact fee depends on the TestMetaRouter implementation
@@ -755,7 +761,11 @@ contract MetaProverTest is BaseTest {
         metaProver.handle(
             wrongDestinationChainId,
             bytes32(uint256(uint160(address(prover)))),
-            _formatMessageWithChainId(wrongDestinationChainId, intentHashes, claimants),
+            _formatMessageWithChainId(
+                wrongDestinationChainId,
+                intentHashes,
+                claimants
+            ),
             new ReadOperation[](0),
             new bytes[](0)
         );
@@ -802,7 +812,11 @@ contract MetaProverTest is BaseTest {
         metaProver.handle(
             uint32(testIntent.destination),
             bytes32(uint256(uint160(address(prover)))),
-            _formatMessageWithChainId(testIntent.destination, intentHashes, claimants),
+            _formatMessageWithChainId(
+                testIntent.destination,
+                intentHashes,
+                claimants
+            ),
             new ReadOperation[](0),
             new bytes[](0)
         );
@@ -849,7 +863,11 @@ contract MetaProverTest is BaseTest {
         metaProver.handle(
             wrongDestinationChainId,
             bytes32(uint256(uint160(address(prover)))),
-            _formatMessageWithChainId(wrongDestinationChainId, intentHashes, claimants),
+            _formatMessageWithChainId(
+                wrongDestinationChainId,
+                intentHashes,
+                claimants
+            ),
             new ReadOperation[](0),
             new bytes[](0)
         );
@@ -859,7 +877,7 @@ contract MetaProverTest is BaseTest {
 
         // Expect event emission for proof clearing
         _expectEmit();
-        emit IProver.IntentProofChallenged(intentHash);
+        emit IProver.IntentProofInvalidated(intentHash);
 
         // Challenge the proof
         vm.prank(otherPerson);
@@ -869,7 +887,6 @@ contract MetaProverTest is BaseTest {
             rewardHash
         );
     }
-
 
     function _packClaimantHashPairs(
         bytes32[] memory intentHashes,
@@ -901,7 +918,10 @@ contract MetaProverTest is BaseTest {
         bytes32[] memory intentHashes,
         bytes32[] memory claimants
     ) internal pure returns (bytes memory) {
-        bytes memory rawProofs = _packClaimantHashPairs(intentHashes, claimants);
+        bytes memory rawProofs = _packClaimantHashPairs(
+            intentHashes,
+            claimants
+        );
         return abi.encodePacked(uint64(chainId), rawProofs);
     }
 }

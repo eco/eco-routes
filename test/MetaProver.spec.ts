@@ -83,7 +83,7 @@ describe('MetaProver Test', (): void => {
       parts.push(intentHashes[i])
       parts.push(claimantBytes)
     }
-    
+
     // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
     const packedParts = ethers.concat(parts)
     return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
@@ -759,7 +759,10 @@ describe('MetaProver Test', (): void => {
         intentHash2, // 32 bytes
         nonAddressClaimant, // 32 bytes - Non-EVM address
       ])
-      const msgBody = ethers.solidityPacked(['uint64', 'bytes'], [12345, rawPacked])
+      const msgBody = ethers.solidityPacked(
+        ['uint64', 'bytes'],
+        [12345, rawPacked],
+      )
 
       await router.simulateHandleMessage(
         12345, // origin chain ID

@@ -139,7 +139,11 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
         assertEq(fee, 0.001 ether);
     }
 
@@ -153,7 +157,11 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
@@ -179,7 +187,11 @@ contract LayerZeroProverTest is BaseTest {
         });
 
         // Pack hash/claimant pairs as bytes with chain ID prefix
-        bytes memory message = _formatMessageWithChainId(SOURCE_CHAIN_ID, intentHashes, claimants);
+        bytes memory message = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes,
+            claimants
+        );
 
         vm.prank(address(endpoint));
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
@@ -244,7 +256,11 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
@@ -272,7 +288,11 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
@@ -330,7 +350,11 @@ contract LayerZeroProverTest is BaseTest {
         });
 
         // Pack hash/claimant pairs as bytes with chain ID prefix
-        bytes memory message = _formatMessageWithChainId(wrongDestination, intentHashes, claimants);
+        bytes memory message = _formatMessageWithChainId(
+            wrongDestination,
+            intentHashes,
+            claimants
+        );
 
         // Add the proof with wrong destination
         vm.prank(address(endpoint));
@@ -345,7 +369,7 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge the proof with correct destination
         vm.expectEmit(true, true, true, true);
-        emit IProver.IntentProofChallenged(intentHash);
+        emit IProver.IntentProofInvalidated(intentHash);
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
@@ -384,7 +408,11 @@ contract LayerZeroProverTest is BaseTest {
         });
 
         // Pack hash/claimant pairs as bytes with chain ID prefix
-        bytes memory message = _formatMessageWithChainId(correctDestination, intentHashes, claimants);
+        bytes memory message = _formatMessageWithChainId(
+            correctDestination,
+            intentHashes,
+            claimants
+        );
 
         // Add the proof with correct destination
         vm.prank(address(endpoint));
@@ -435,7 +463,11 @@ contract LayerZeroProverTest is BaseTest {
         });
 
         // Pack hash/claimant pairs as bytes with chain ID prefix
-        bytes memory message = _formatMessageWithChainId(wrongDestination, intentHashes, claimants);
+        bytes memory message = _formatMessageWithChainId(
+            wrongDestination,
+            intentHashes,
+            claimants
+        );
 
         // Add proof with wrong srcEid
         vm.prank(address(endpoint));
@@ -443,7 +475,7 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge should succeed for LayerZero-specific validation
         vm.expectEmit(true, true, true, true);
-        emit IProver.IntentProofChallenged(intentHash);
+        emit IProver.IntentProofInvalidated(intentHash);
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
