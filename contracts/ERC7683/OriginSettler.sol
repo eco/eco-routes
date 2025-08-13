@@ -16,8 +16,10 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title Eco7683OriginSettler
- * @notice Entry point to Eco Protocol via EIP-7683
- * @dev functionality is somewhat limited compared to interacting with Eco Protocol directly
+ * @notice Entry point to Eco Protocol via EIP-7683 with enhanced security and compliance
+ * @dev Provides ERC-7683 compliant interface with replay protection and proper validation
+ * @dev Features comprehensive validation, unified funding logic, and ERC-7683 compliance
+ * @dev Includes protection against replay attacks through vault state checking
  */
 abstract contract OriginSettler is IOriginSettler, EIP712 {
     using ECDSA for bytes32;
@@ -31,20 +33,20 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         );
 
     /**
-     * @notice Initializes the Eco7683OriginSettler
+     * @notice Initializes the Eco7683OriginSettler with EIP-712 domain
+     * @dev Sets up EIP-712 domain for signature verification with "EcoPortal" name and version "1"
      */
     constructor() EIP712("EcoPortal", "1") {}
 
     /**
-     * @notice Opens an Eco intent directly on chain
-     * @dev to be called by the user
-     * @dev assumes user has erc20 funds approved for the intent, and includes any reward native token in msg.value
-     * @dev transfers the reward tokens at time of open
-     * @param order the OnchainCrossChainOrder that will be opened as an eco intent
+     * @notice Opens an Eco intent directly on chain via ERC-7683 interface
+     * @dev Called by the user to create and fund an intent atomically
+     * @dev Validates ORDER_DATA_TYPEHASH and decodes OrderData for intent creation
+     * @dev Uses unified _publishAndFund method for consistent behavior
+     * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
+     * @param order the OnchainCrossChainOrder containing embedded OrderData
      */
-    function open(
-        OnchainCrossChainOrder calldata order
-    ) external payable override {
+    function open(OnchainCrossChainOrder calldata order) external payable {
         if (order.orderDataType != ORDER_DATA_TYPEHASH) {
             revert TypeSignatureMismatch();
         }
@@ -52,55 +54,65 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         // Decode components individually to avoid Solidity's nested struct decoding issues
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        bytes32 orderId = _openIntent(
+        (bytes32 orderId, ) = _publishAndFund(
             orderData.destination,
             orderData.route,
             orderData.reward,
-            msg.sender
+            msg.sender,
+            false
         );
 
-        emit Open(orderId, _resolve(order.fillDeadline, orderData));
+        // block.timestamp is not going to overflow uint32 until 2106
+        emit Open(orderId, _resolve(uint32(block.timestamp), orderData));
     }
 
     /**
-     * @notice Opens an Eco intent on behalf of a user
-     * @notice This method is made payable in the event that the caller of this method (a solver) wants to open
-     * an intent that has native token as a reward. In this case, the solver would need to send the native
-     * token as part of the transaction. How the intent's creator pays the solver is not covered by this method.
-     * @dev to be called by the intent's solver
-     * @dev assumes user has erc20 funds approved for the intent, and includes any reward native token in msg.value
-     * @dev transfers the reward tokens at time of open
-     * @param order the GaslessCrossChainOrder that will be opened as an eco intent
-     * @param signature the signature of the user authorizing the intent to be opened
-     * param originFillerData filler data for the origin chain (vestigial, not used)
+     * @notice Opens an Eco intent on behalf of a user via ERC-7683 gasless interface
+     * @dev Called by a solver to create an intent for a user using their signature
+     * @dev Performs comprehensive validation: deadlines, signature, chain IDs, origin settler
+     * @dev Includes replay protection through vault state checking in _publishAndFund
+     * @dev Uses unified _publishAndFund method for consistent behavior and security
+     * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
+     * @param order the GaslessCrossChainOrder containing user signature and OrderData
+     * @param signature the user's EIP-712 signature authorizing the intent creation
      */
     function openFor(
         GaslessCrossChainOrder calldata order,
         bytes calldata signature,
         bytes calldata /* originFillerData */
-    ) external payable override {
+    ) external payable {
         if (block.timestamp > order.openDeadline) {
             revert OpenDeadlinePassed();
         }
-        if (!_verifyOpenFor(order, signature)) {
-            revert BadSignature();
+
+        if (order.originSettler != address(this)) {
+            revert InvalidOriginSettler(order.originSettler, address(this));
+        }
+
+        if (order.originChainId != block.chainid) {
+            revert InvalidOriginChainId(order.originChainId, block.chainid);
         }
 
         if (order.orderDataType != ORDER_DATA_TYPEHASH) {
             revert TypeSignatureMismatch();
         }
 
-        OrderData memory orderData = abi.decode(order.orderData, (OrderData));
-
-        if (order.originChainId != block.chainid) {
-            revert OriginChainIDMismatch();
+        if (!_validateOrderSig(order, signature)) {
+            revert InvalidSignature();
         }
 
-        bytes32 orderId = _openIntent(
+        OrderData memory orderData = abi.decode(order.orderData, (OrderData));
+
+        // No need for replay protection here
+        // 1) If intent is Withdrawn or Refunded, it fails
+        // 2) If intent is Initial, it publishes and funds
+        // 3) If intent is Funded, it publishes and does nothing
+        (bytes32 orderId, ) = _publishAndFund(
             orderData.destination,
             orderData.route,
             orderData.reward,
-            order.user
+            order.user,
+            false
         );
 
         emit Open(orderId, _resolve(order.openDeadline, orderData));
@@ -115,7 +127,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     ) public view returns (ResolvedCrossChainOrder memory) {
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
-        return _resolve(order.fillDeadline, orderData);
+        // block.timestamp is not going to overflow uint32 until 2106
+        return _resolve(uint32(block.timestamp), orderData);
     }
 
     /**
@@ -139,14 +152,10 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @param signature The user's signature
      * @return True if the signature is valid, false otherwise
      */
-    function _verifyOpenFor(
+    function _validateOrderSig(
         GaslessCrossChainOrder calldata order,
         bytes calldata signature
     ) internal view returns (bool) {
-        if (order.originSettler != address(this)) {
-            return false;
-        }
-
         bytes32 structHash = keccak256(
             abi.encode(
                 GASLESS_CROSSCHAIN_ORDER_TYPEHASH,
@@ -167,95 +176,40 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     }
 
     /**
-     * @notice Helper method that actually opens the intent
-     * @dev Handles funding transfer and intent publication
-     * @param destination Destination chain ID
-     * @param route Encoded route data
-     * @param reward Reward structure
-     * @param user Address of the user opening the intent
-     * @return intentHash The hash of the opened intent
-     */
-    function _openIntent(
-        uint64 destination,
-        bytes memory route,
-        Reward memory reward,
-        address user
-    ) internal returns (bytes32 intentHash) {
-        if (!this.isIntentFunded(destination, route, reward)) {
-            address vault = this.intentVaultAddress(destination, route, reward);
-            uint256 rewardsLength = reward.tokens.length;
-
-            if (reward.nativeValue > 0) {
-                if (msg.value < reward.nativeValue) {
-                    revert InsufficientNativeRewardAmount();
-                }
-
-                payable(vault).transfer(reward.nativeValue);
-            }
-
-            for (uint256 i = 0; i < rewardsLength; ++i) {
-                address token = reward.tokens[i].token;
-                uint256 amount = reward.tokens[i].amount;
-
-                IERC20(token).safeTransferFrom(user, vault, amount);
-            }
-        }
-
-        payable(msg.sender).transfer(address(this).balance);
-
-        // Publish the intent using universal format
-        (intentHash, ) = this.publish(destination, route, reward);
-        return intentHash;
-    }
-
-    /**
-     * @notice Resolves order data into a standardized cross-chain order format
-     * @dev Converts Eco-specific order data into ERC-7683 format
+     * @notice Resolves order data into ERC-7683 compliant ResolvedCrossChainOrder format
+     * @dev Converts Eco-specific OrderData into standardized format for off-chain solvers
+     * @dev Uses orderData.maxSpent directly instead of reconstructing from route
+     * @dev Correctly assigns chainIds: minReceived uses origin chain, native rewards use destination
+     * @dev FillInstruction.originData contains (route, rewardHash) instead of full intent
+     * @dev Addresses all ERC-7683 compliance issues identified in security review
      * @param openDeadline The deadline for opening the order
-     * @param orderData The Eco-specific order data
-     * @return ResolvedCrossChainOrder in ERC-7683 format
+     * @param orderData The updated OrderData with maxSpent, routePortal, and routeDeadline
+     * @return ResolvedCrossChainOrder ERC-7683 compliant format with proper field mappings
      */
     function _resolve(
         uint32 openDeadline,
         OrderData memory orderData
     ) public view returns (ResolvedCrossChainOrder memory) {
-        // Decode the route bytes to extract token information
-        Route memory route = abi.decode(orderData.route, (Route));
-        uint256 routeTokenCount = route.tokens.length;
-
-        // Create maxSpent array with tokens from the route
-        Output[] memory maxSpent = new Output[](routeTokenCount);
-
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            maxSpent[i] = Output(
-                bytes32(uint256(uint160(route.tokens[i].token))), // Convert address to bytes32
-                route.tokens[i].amount,
-                bytes32(uint256(uint160(address(0)))), // recipient is zero address
-                uint256(orderData.destination) // chainId is the destination
-            );
-        }
-
         uint256 rewardTokenCount = orderData.reward.tokens.length;
-
         Output[] memory minReceived = new Output[](
             rewardTokenCount + (orderData.reward.nativeValue > 0 ? 1 : 0)
         );
 
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
             minReceived[i] = Output(
-                bytes32(uint256(uint160(orderData.reward.tokens[i].token))), // Convert address to bytes32
-                orderData.reward.tokens[i].amount,
-                bytes32(uint256(uint160(address(0)))), //filler is not known
-                uint256(orderData.destination)
+                bytes32(uint256(uint160(orderData.reward.tokens[i].token))), // token
+                orderData.reward.tokens[i].amount, // amount
+                bytes32(uint256(uint160(address(0)))), // recipient is zero address
+                block.chainid // chainId
             );
         }
 
         if (orderData.reward.nativeValue > 0) {
             minReceived[rewardTokenCount] = Output(
-                bytes32(uint256(uint160(address(0)))),
-                orderData.reward.nativeValue,
-                bytes32(uint256(uint160(address(0)))),
-                uint256(orderData.destination)
+                bytes32(0), // token
+                orderData.reward.nativeValue, // amount
+                bytes32(uint256(uint160(address(0)))), // recipient is zero address
+                uint256(orderData.destination) // chainId
             );
         }
 
@@ -265,19 +219,12 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             abi.encodePacked(orderData.destination, routeHash, rewardHash)
         );
 
-        // Construct the Intent struct for proper encoding in originData
-        Route memory routeStruct = abi.decode(orderData.route, (Route));
-        Intent memory intent = Intent(
-            orderData.destination,
-            routeStruct,
-            orderData.reward
-        );
-
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
+        bytes memory originData = abi.encode(orderData.route, rewardHash);
         fillInstructions[0] = FillInstruction(
             orderData.destination,
-            orderData.portal,
-            abi.encode(intent)
+            orderData.routePortal,
+            originData
         );
 
         return
@@ -285,9 +232,9 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
                 orderData.reward.creator,
                 block.chainid,
                 openDeadline,
-                uint32(orderData.deadline),
+                uint32(orderData.routeDeadline),
                 intentHash,
-                maxSpent,
+                orderData.maxSpent,
                 minReceived,
                 fillInstructions
             );
@@ -299,43 +246,25 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     }
 
     /**
-     * @notice Computes the deterministic vault address for an intent
-     * @param destination Destination chain ID for the intent
-     * @param route Encoded route data for the intent as bytes
-     * @param reward The reward structure containing distribution details
-     * @return Predicted vault address
+     * @notice Core method for atomic intent creation and funding
+     * @dev Abstract method to be implemented by derived contracts for unified intent handling
+     * @dev Must handle both publishing new intents and funding existing ones atomically
+     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Should handle excess ETH return for optimal user experience
+     * @dev Called by both open() and openFor() methods to ensure consistent behavior
+     * @param destination Destination chain ID where the intent should be executed
+     * @param route Encoded route data containing execution instructions for destination chain
+     * @param reward The reward structure containing token amounts, creator, prover, and deadline
+     * @param funder The address providing the funding (msg.sender for open(), order.user for openFor())
+     * @param allowPartial Whether to accept partial funding if full funding is not possible
+     * @return intentHash Unique identifier of the created or existing intent
+     * @return vault Address of the intent's vault contract for reward escrow
      */
-    function intentVaultAddress(
+    function _publishAndFund(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
-    ) public view virtual returns (address);
-
-    /**
-     * @notice Creates a new cross-chain intent with associated rewards
-     * @dev Intent must be proven on source chain before expiration for valid reward claims
-     * @param destination Destination chain ID for the intent
-     * @param route Encoded route data for the intent as bytes
-     * @param reward The reward structure containing distribution details
-     * @return intentHash Unique identifier of the created intent
-     * @return vault Address of the created vault
-     */
-    function publish(
-        uint64 destination,
-        bytes memory route,
-        Reward calldata reward
-    ) public virtual returns (bytes32 intentHash, address vault);
-
-    /**
-     * @notice Checks if an intent's rewards are valid and fully funded
-     * @param destination Destination chain ID for the intent
-     * @param route Encoded route data for the intent as bytes
-     * @param reward The reward structure containing distribution details
-     * @return True if the intent is properly funded
-     */
-    function isIntentFunded(
-        uint64 destination,
-        bytes memory route,
-        Reward calldata reward
-    ) public view virtual returns (bool);
+        Reward memory reward,
+        address funder,
+        bool allowPartial
+    ) internal virtual returns (bytes32 intentHash, address vault);
 }
