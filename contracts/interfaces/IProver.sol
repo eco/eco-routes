@@ -55,13 +55,21 @@ interface IProver is ISemver {
      * @notice Initiates the proving process for intents from the destination chain
      * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
      * @param sender Address of the original transaction sender
-     * @param sourceChainId Chain ID of the source chain
+     * @param sourceChainDomainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data specific to the proving implementation
+     * 
+     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
+     *      Each bridge provider uses their own domain ID mapping system:
+     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
+     *      - LayerZero: Uses endpoint IDs that map to chains differently
+     *      - Metalayer: Uses domain IDs specific to their routing system
+     *      You MUST consult the specific bridge provider's documentation to determine
+     *      the correct domain ID for the source chain.
      */
     function prove(
         address sender,
-        uint256 sourceChainId,
+        uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external payable;

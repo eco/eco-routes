@@ -57,7 +57,7 @@ contract SameChainProver is IProver, Semver {
      */
     function prove(
         address /* sender */,
-        uint256 /* sourceChainId */,
+        uint64 /* sourceChainId */,
         bytes calldata /* encodedProofs */,
         bytes calldata /* data */
     ) external payable {

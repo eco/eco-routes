@@ -107,6 +107,25 @@ contract TestMetaRouter {
     }
 
     /**
+     * @notice Computes quote for dispatching a message with custom hook metadata
+     * @dev 4-parameter version for testing the fixed gas limit issue
+     * @return Fixed fee amount for testing
+     */
+    function quoteDispatch(
+        uint32,
+        /* destinationDomain */
+        bytes32,
+        /* recipient */
+        bytes calldata,
+        /* message */
+        bytes memory /* hookMetadata */
+    ) external pure returns (uint256) {
+        // Return a fixed fee for testing purposes
+        // In a real implementation, this would use the gas limit from hookMetadata
+        return FEE;
+    }
+
+    /**
      * @notice Returns the total number of messages sent
      * @return Total number of messages dispatched
      */

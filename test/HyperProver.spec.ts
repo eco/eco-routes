@@ -16,8 +16,32 @@ import { encodeTransfer } from '../utils/encode'
 import { hashIntent, TokenAmount, Intent, Route } from '../utils/intent'
 import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
 
-// Helper function to encode message body as (intentHash, claimant) pairs
+// Helper function to encode message body with chain ID prefix
 function encodeMessageBody(
+  intentHashes: string[],
+  claimants: string[],
+  chainId: number = 12345,
+): string {
+  const parts: string[] = []
+  for (let i = 0; i < intentHashes.length; i++) {
+    // If claimant is already 32 bytes (66 chars with 0x), use as is
+    // Otherwise, pad it
+    const claimantBytes =
+      claimants[i].length === 66
+        ? claimants[i]
+        : ethers.zeroPadValue(claimants[i], 32)
+    parts.push(intentHashes[i])
+    parts.push(claimantBytes)
+  }
+  
+  // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
+  const packedParts = ethers.concat(parts)
+  return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
+}
+
+// Helper function to prepare encoded proofs from fulfilled intents
+// This is used for fetchFee() calls and should NOT include chain ID prefix
+function prepareEncodedProofs(
   intentHashes: string[],
   claimants: string[],
 ): string {
@@ -33,15 +57,6 @@ function encodeMessageBody(
     parts.push(claimantBytes)
   }
   return ethers.concat(parts)
-}
-
-// Helper function to prepare encoded proofs from fulfilled intents
-function prepareEncodedProofs(
-  intentHashes: string[],
-  claimants: string[],
-): string {
-  // Claimants should already be addresses, just use them as is
-  return encodeMessageBody(intentHashes, claimants)
 }
 
 describe('HyperProver Test', (): void => {
@@ -779,14 +794,12 @@ describe('HyperProver Test', (): void => {
         ethers.toUtf8Bytes('non-evm-claimant-identifier'),
       )
 
-      // Create message with both valid and invalid claimants
-      // We need to use the raw bytes for the non-address claimant
-      const msgBody = ethers.concat([
-        intentHash1, // 32 bytes
-        validClaimant, // 32 bytes
-        intentHash2, // 32 bytes
-        nonAddressClaimant, // 32 bytes
-      ])
+      // Create message with both valid and invalid claimants using the helper function
+      const msgBody = encodeMessageBody(
+        [intentHash1, intentHash2],
+        [validClaimant, nonAddressClaimant],
+        12345
+      )
 
       // Process the message
       await hyperProver

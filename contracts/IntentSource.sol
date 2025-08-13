@@ -4,42 +4,57 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IProver} from "./interfaces/IProver.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
-import {IVault} from "./interfaces/IVault.sol";
-import {IVaultStorage} from "./interfaces/IVaultStorage.sol";
+import {IVaultV2} from "./interfaces/IVaultV2.sol";
+import {IPermit} from "./interfaces/IPermit.sol";
 
 import {Intent, Route, Reward} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 
 import {OriginSettler} from "./ERC7683/OriginSettler.sol";
-import {Vault} from "./Vault.sol";
+import {VaultV2} from "./VaultV2.sol";
+import {Clones} from "./vault/Clones.sol";
 
 /**
  * @title IntentSource
  * @notice Abstract contract for managing cross-chain intents and their associated rewards on the source chain
  * @dev Base contract containing all core intent functionality for EVM chains
  */
-abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
+abstract contract IntentSource is OriginSettler, IIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for address;
+    using Clones for address;
+    using Math for uint256;
 
-    // Shared state storage across all implementations
-    mapping(bytes32 intentHash => VaultStorage) public vaults;
-
-    /// @dev CREATE2 prefix for address calculation
+    /// @dev CREATE2 prefix for deterministic address calculation (0xff standard, 0x41 TRON)
     bytes1 private immutable CREATE2_PREFIX;
 
+    /// @dev Tron Mainnet chain ID
+    uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
+    /// @dev Tron Testnet (Nile) chain ID
+    uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
+
+    /// @dev Implementation contract address for vault cloning
+    address private immutable VAULT_IMPL;
+    /// @dev Tracks the lifecycle status of each intent's rewards
+    mapping(bytes32 => IVaultV2.Status) private rewardStatuses;
+
+    /**
+     * @notice Initializes the IntentSource contract
+     * @dev Sets CREATE2 prefix based on chain ID and deploys vault implementation
+     *      Uses TRON-specific prefix (0x41) for TRON networks, standard prefix (0xff) otherwise
+     */
     constructor() {
         // TRON support
-        if (block.chainid == 728126428 || block.chainid == 2494104990) {
-            // TRON chain custom CREATE2 prefix
-            CREATE2_PREFIX = hex"41";
-        } else {
-            // first byte of the classic CREATE2 prefix
-            CREATE2_PREFIX = hex"ff";
-        }
+        CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
+            block.chainid == TRON_TESTNET_CHAIN_ID
+            ? bytes1(0x41) // TRON chain custom CREATE2 prefix
+            : bytes1(0xff);
+
+        VAULT_IMPL = address(new VaultV2());
     }
 
     /**
@@ -49,28 +64,8 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) external view virtual returns (RewardStatus status) {
-        return RewardStatus(vaults[intentHash].state.status);
-    }
-
-    /**
-     * @notice Retrieves vault state for a given intent hash
-     * @param intentHash Hash of the intent to query
-     * @return VaultState struct containing vault information
-     */
-    function getVaultState(
-        bytes32 intentHash
-    ) external view virtual returns (VaultState memory) {
-        return vaults[intentHash].state;
-    }
-
-    /**
-     * @notice Retrieves the permitContract address funding an intent
-     */
-    function getPermitContract(
-        bytes32 intentHash
-    ) external view virtual returns (address) {
-        return vaults[intentHash].permitContract;
+    ) public view returns (IVaultV2.Status status) {
+        return rewardStatuses[intentHash];
     }
 
     /**
@@ -81,11 +76,10 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
      * @return rewardHash Hash of the reward component
      */
     function getIntentHash(
-        Intent calldata intent
+        Intent memory intent
     )
         public
         pure
-        virtual
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
     {
         return
@@ -108,14 +102,38 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     function getIntentHash(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
+        Reward memory reward
     )
         public
         pure
-        virtual
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
     {
-        routeHash = keccak256(route);
+        (intentHash, routeHash, rewardHash) = getIntentHash(
+            destination,
+            keccak256(route),
+            reward
+        );
+    }
+
+    /**
+     * @notice Calculates intent hash from route hash and reward components
+     * @param destination Destination chain ID for the intent
+     * @param _routeHash Pre-computed hash of the route component
+     * @param reward Reward structure containing distribution details
+     * @return intentHash Combined hash of route and reward
+     * @return routeHash Hash of the route component (passed through)
+     * @return rewardHash Hash of the reward component
+     */
+    function getIntentHash(
+        uint64 destination,
+        bytes32 _routeHash,
+        Reward memory reward
+    )
+        public
+        pure
+        returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
+    {
+        routeHash = _routeHash;
         rewardHash = keccak256(abi.encode(reward));
         intentHash = keccak256(
             abi.encodePacked(destination, routeHash, rewardHash)
@@ -129,7 +147,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
      */
     function intentVaultAddress(
         Intent calldata intent
-    ) public view virtual returns (address) {
+    ) public view returns (address) {
         return
             intentVaultAddress(
                 intent.destination,
@@ -149,19 +167,10 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward
-    )
-        public
-        view
-        virtual
-        override(IIntentSource, OriginSettler)
-        returns (address)
-    {
-        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(
-            destination,
-            route,
-            reward
-        );
-        return _getIntentVaultAddress(intentHash, routeHash, reward);
+    ) public view returns (address) {
+        (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
+
+        return _getVault(intentHash);
     }
 
     /**
@@ -169,9 +178,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
      * @param intent Intent to validate
      * @return True if intent is completely funded, false otherwise
      */
-    function isIntentFunded(
-        Intent calldata intent
-    ) public view virtual returns (bool) {
+    function isIntentFunded(Intent calldata intent) public view returns (bool) {
         return
             isIntentFunded(
                 intent.destination,
@@ -191,20 +198,12 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward
-    )
-        public
-        view
-        virtual
-        override(IIntentSource, OriginSettler)
-        returns (bool)
-    {
-        (bytes32 intentHash, bytes32 routeHash, ) = getIntentHash(
-            destination,
-            route,
-            reward
-        );
-        address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
-        return _isRewardFunded(reward, vault);
+    ) public view returns (bool) {
+        (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
+
+        return
+            rewardStatuses[intentHash] == IVaultV2.Status.Funded ||
+            _isRewardFunded(reward, _getVault(intentHash));
     }
 
     /**
@@ -215,7 +214,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
      */
     function publish(
         Intent calldata intent
-    ) public virtual returns (bytes32 intentHash, address vault) {
+    ) public returns (bytes32 intentHash, address vault) {
         return
             publish(
                 intent.destination,
@@ -235,21 +234,13 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     function publish(
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
-    )
-        public
-        virtual
-        override(IIntentSource, OriginSettler)
-        returns (bytes32 intentHash, address vault)
-    {
-        bytes32 routeHash;
-        (intentHash, routeHash, ) = getIntentHash(destination, route, reward);
-        VaultState memory state = vaults[intentHash].state;
+        Reward memory reward
+    ) public returns (bytes32 intentHash, address vault) {
+        (intentHash, , ) = getIntentHash(destination, route, reward);
+        vault = _getVault(intentHash);
 
-        _validatePublishState(intentHash, state);
+        _validatePublish(intentHash);
         _emitIntentPublished(intentHash, destination, route, reward);
-
-        vault = _getIntentVaultAddress(intentHash, routeHash, reward);
     }
 
     /**
@@ -262,7 +253,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) public payable virtual returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address vault) {
         return
             publishAndFund(
                 intent.destination,
@@ -286,20 +277,15 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         bytes memory route,
         Reward calldata reward,
         bool allowPartial
-    ) public payable virtual returns (bytes32 intentHash, address vault) {
-        bytes32 routeHash;
-        (intentHash, routeHash, ) = getIntentHash(destination, route, reward);
-        VaultState memory state = vaults[intentHash].state;
-
-        _validateInitialFundingState(state, intentHash);
-        _validateSourceChain(block.chainid, intentHash);
-        _validatePublishState(intentHash, state);
-        _emitIntentPublished(intentHash, destination, route, reward);
-
-        vault = _getIntentVaultAddress(intentHash, routeHash, reward);
-        _fundIntent(intentHash, reward, vault, msg.sender, allowPartial);
-
-        _returnExcessEth(intentHash, address(this).balance);
+    ) public payable returns (bytes32 intentHash, address vault) {
+        return
+            _publishAndFund(
+                destination,
+                route,
+                reward,
+                msg.sender,
+                allowPartial
+            );
     }
 
     /**
@@ -315,18 +301,16 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         bytes32 routeHash,
         Reward calldata reward,
         bool allowPartial
-    ) external payable virtual returns (bytes32 intentHash) {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        intentHash = keccak256(
-            abi.encodePacked(destination, routeHash, rewardHash)
+    ) external payable returns (bytes32 intentHash) {
+        (intentHash, , ) = getIntentHash(destination, routeHash, reward);
+
+        _fundIntent(
+            intentHash,
+            _getVault(intentHash),
+            reward,
+            msg.sender,
+            allowPartial
         );
-        VaultState memory state = vaults[intentHash].state;
-
-        _validateInitialFundingState(state, intentHash);
-
-        address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
-        _fundIntent(intentHash, reward, vault, msg.sender, allowPartial);
-
         _returnExcessEth(intentHash, address(this).balance);
     }
 
@@ -347,21 +331,12 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) external virtual returns (bytes32 intentHash) {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        intentHash = keccak256(
-            abi.encodePacked(destination, routeHash, rewardHash)
-        );
-        VaultState memory state = vaults[intentHash].state;
-
-        address vault = _getIntentVaultAddress(intentHash, routeHash, reward);
+    ) external payable returns (bytes32 intentHash) {
+        (intentHash, , ) = getIntentHash(destination, routeHash, reward);
 
         _fundIntentFor(
-            state,
             reward,
             intentHash,
-            routeHash,
-            vault,
             funder,
             permitContract,
             allowPartial
@@ -381,7 +356,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) public virtual returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address vault) {
         return
             publishAndFundFor(
                 intent.destination,
@@ -411,29 +386,16 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         address funder,
         address permitContract,
         bool allowPartial
-    ) public virtual returns (bytes32 intentHash, address vault) {
-        bytes32 routeHash;
-        (intentHash, routeHash, ) = getIntentHash(destination, route, reward);
-        VaultState memory state = vaults[intentHash].state;
+    ) public payable returns (bytes32 intentHash, address vault) {
+        (intentHash, ) = publish(destination, route, reward);
 
-        _validatePublishState(intentHash, state);
-        _emitIntentPublished(intentHash, destination, route, reward);
-        _validateSourceChain(block.chainid, intentHash);
-
-        vault = _getIntentVaultAddress(intentHash, routeHash, reward);
-
-        _fundIntentFor(
-            state,
+        vault = _fundIntentFor(
             reward,
             intentHash,
-            routeHash,
-            vault,
             funder,
             permitContract,
             allowPartial
         );
-
-        return (intentHash, vault);
     }
 
     /**
@@ -446,17 +408,17 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
-    ) public virtual {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(destination, routeHash, rewardHash)
+    ) public {
+        (bytes32 intentHash, , bytes32 rewardHash) = getIntentHash(
+            destination,
+            routeHash,
+            reward
         );
 
         IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
             intentHash
         );
         address claimant = proof.claimant;
-        VaultState memory state = vaults[intentHash].state;
 
         // If the intent has been proven on a different chain, challenge the proof
         if (proof.destination != destination && claimant != address(0)) {
@@ -467,67 +429,17 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
                 rewardHash
             );
             emit IntentProofChallenged(intentHash);
-            return;
-        }
-
-        // Claim the rewards if the intent has not been claimed
-        if (
-            claimant != address(0) &&
-            state.status != uint8(RewardStatus.Claimed) &&
-            state.status != uint8(RewardStatus.Refunded)
-        ) {
-            state.status = uint8(RewardStatus.Claimed);
-            state.mode = uint8(VaultMode.Claim);
-            state.allowPartialFunding = 0;
-            state.usePermit = 0;
-            state.target = claimant;
-            vaults[intentHash].state = state;
-
-            emit IntentWithdrawn(intentHash, claimant);
-
-            // Try to create vault, ignore if it already exists
-            try new Vault{salt: routeHash}(intentHash, reward) {
-                // Vault created successfully
-            } catch {
-                // Vault already exists or creation failed, ignore
-            }
 
             return;
         }
 
-        // If no proof exists and intent has expired, try to refund
-        if (claimant == address(0) && block.timestamp >= reward.deadline) {
-            if (
-                state.status != uint8(RewardStatus.Claimed) &&
-                state.status != uint8(RewardStatus.Refunded) &&
-                (state.status == uint8(RewardStatus.Funded) ||
-                    state.status == uint8(RewardStatus.PartiallyFunded))
-            ) {
-                state.status = uint8(RewardStatus.Refunded);
-                state.mode = uint8(VaultMode.Refund);
-                state.allowPartialFunding = 0;
-                state.usePermit = 0;
-                state.target = address(0);
-                vaults[intentHash].state = state;
+        IVaultV2.Status status = rewardStatuses[intentHash];
+        rewardStatuses[intentHash] = IVaultV2.Status.Withdrawn;
 
-                emit IntentRefunded(intentHash, reward.creator);
+        IVaultV2 vault = IVaultV2(_getOrDeployVault(intentHash));
+        vault.withdraw(status, reward, claimant);
 
-                // Try to create vault, ignore if it already exists
-                try new Vault{salt: routeHash}(intentHash, reward) {
-                    // Vault created successfully
-                } catch {
-                    // Vault already exists or creation failed, ignore
-                }
-
-                return;
-            }
-        }
-
-        if (claimant == address(0)) {
-            revert UnauthorizedWithdrawal(intentHash);
-        } else {
-            revert RewardsAlreadyWithdrawn(intentHash);
-        }
+        emit IntentWithdrawn(intentHash, claimant);
     }
 
     /**
@@ -540,7 +452,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         uint64[] calldata destinations,
         bytes32[] calldata routeHashes,
         Reward[] calldata rewards
-    ) external virtual {
+    ) external {
         uint256 length = routeHashes.length;
 
         if (length != rewards.length || length != destinations.length) {
@@ -562,51 +474,22 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
-    ) external virtual {
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(destination, routeHash, rewardHash)
+    ) external {
+        (bytes32 intentHash, , ) = getIntentHash(
+            destination,
+            routeHash,
+            reward
         );
 
-        VaultState memory state = vaults[intentHash].state;
+        _validateRefund(intentHash, destination, reward);
 
-        if (
-            state.status != uint8(RewardStatus.Claimed) &&
-            state.status != uint8(RewardStatus.Refunded)
-        ) {
-            IProver.ProofData memory proof = IProver(reward.prover)
-                .provenIntents(intentHash);
-            address claimant = proof.claimant;
-            // Check if the intent has been proven to prevent unauthorized refunds
-            if (claimant != address(0)) {
-                revert IntentNotClaimed(intentHash);
-            }
-            // Revert if intent has not expired
-            if (block.timestamp <= reward.deadline) {
-                revert IntentNotExpired(intentHash);
-            }
-        }
+        IVaultV2.Status status = rewardStatuses[intentHash];
+        rewardStatuses[intentHash] = IVaultV2.Status.Refunded;
 
-        if (state.status != uint8(RewardStatus.Claimed)) {
-            state.status = uint8(RewardStatus.Refunded);
-            state.mode = uint8(VaultMode.Refund);
-            state.allowPartialFunding = 0;
-            state.usePermit = 0;
-            state.target = address(0);
-            vaults[intentHash].state = state;
+        IVaultV2 vault = IVaultV2(_getOrDeployVault(intentHash));
+        vault.refund(status, reward);
 
-            emit IntentRefunded(intentHash, reward.creator);
-
-            // Try to create vault, ignore if it already exists
-            try new Vault{salt: routeHash}(intentHash, reward) {
-                // Vault created successfully
-            } catch {
-                // Vault already exists or creation failed, ignore
-            }
-        } else {
-            // Intent was already claimed, just emit the refund event without creating a vault
-            emit IntentRefunded(intentHash, reward.creator);
-        }
+        emit IntentRefunded(intentHash, reward.creator);
     }
 
     /**
@@ -622,87 +505,17 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         bytes32 routeHash,
         Reward calldata reward,
         address token
-    ) external virtual {
-        if (token == address(0)) {
-            revert InvalidRefundToken();
-        }
-
-        bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(destination, routeHash, rewardHash)
+    ) external {
+        (bytes32 intentHash, , ) = getIntentHash(
+            destination,
+            routeHash,
+            reward
         );
 
-        VaultState memory state = vaults[intentHash].state;
+        IVaultV2 vault = IVaultV2(_getOrDeployVault(intentHash));
+        vault.recover(reward, token);
 
-        // selfdestruct() will refund all native tokens to the creator
-        // we can't refund native intents before the claim/refund happens
-        // because deploying and destructing the vault will refund the native reward prematurely
-        if (
-            state.status != uint8(RewardStatus.Claimed) &&
-            state.status != uint8(RewardStatus.Refunded) &&
-            reward.nativeValue > 0
-        ) {
-            revert IntentNotClaimed(intentHash);
-        }
-
-        // Check if the token is part of the reward
-        for (uint256 i = 0; i < reward.tokens.length; ++i) {
-            if (reward.tokens[i].token == token) {
-                revert InvalidRefundToken();
-            }
-        }
-
-        state.mode = uint8(VaultMode.RecoverToken);
-        state.allowPartialFunding = 0;
-        state.usePermit = 0;
-        state.target = token;
-        vaults[intentHash].state = state;
-
-        emit IntentRefunded(intentHash, reward.creator);
-
-        // Try to create vault, ignore if it already exists
-        try new Vault{salt: routeHash}(intentHash, reward) {
-            // Vault created successfully
-        } catch {
-            // Vault already exists or creation failed, ignore
-        }
-    }
-
-    /**
-     * @notice Calculates the deterministic address of an intent vault using CREATE2
-     * @dev Follows EIP-1014 for address calculation
-     * @param intentHash Hash of the full intent
-     * @param routeHash Hash of the route component
-     * @param reward Reward structure
-     * @return The calculated vault address
-     */
-    function _getIntentVaultAddress(
-        bytes32 intentHash,
-        bytes32 routeHash,
-        Reward calldata reward
-    ) internal view virtual returns (address) {
-        /* Convert a hash which is bytes32 to an address which is 20-byte long
-        according to https://docs.soliditylang.org/en/v0.8.9/control-structures.html?highlight=create2#salted-contract-creations-create2 */
-        return
-            address(
-                uint160(
-                    uint256(
-                        keccak256(
-                            abi.encodePacked(
-                                CREATE2_PREFIX,
-                                address(this),
-                                routeHash,
-                                keccak256(
-                                    abi.encodePacked(
-                                        type(Vault).creationCode,
-                                        abi.encode(intentHash, reward)
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            );
+        emit IntentTokenRecovered(intentHash, reward.creator, token);
     }
 
     /**
@@ -717,8 +530,8 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         bytes32 intentHash,
         uint64 destination,
         bytes memory route,
-        Reward calldata reward
-    ) internal virtual {
+        Reward memory reward
+    ) internal {
         emit IntentPublished(
             intentHash,
             destination,
@@ -732,153 +545,164 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     }
 
     /**
-     * @notice Handles the funding of an intent
-     * @param intentHash Hash of the intent
-     * @param reward Reward structure to fund
-     * @param vault Address of the intent vault
-     * @param funder Address providing the funds
+     * @notice Core OriginSettler implementation for atomic intent creation and funding
+     * @dev Implements the unified _publishAndFund method for both open() and openFor()
+     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Handles excess ETH return for optimal user experience
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
+     * @param reward The reward structure containing distribution details
+     * @param funder The address providing the funding
+     * @param allowPartial Whether to accept partial funding
+     * @return intentHash Hash of the created and funded intent
+     * @return vault Address of the created vault
      */
-    function _fundIntent(
-        bytes32 intentHash,
-        Reward calldata reward,
-        address vault,
+    function _publishAndFund(
+        uint64 destination,
+        bytes memory route,
+        Reward memory reward,
         address funder,
         bool allowPartial
-    ) internal virtual {
-        bool partiallyFunded;
+    ) internal override returns (bytes32 intentHash, address vault) {
+        (intentHash, vault) = publish(destination, route, reward);
 
-        if (reward.nativeValue > 0) {
-            uint256 vaultBalance = vault.balance;
-
-            if (vaultBalance < reward.nativeValue) {
-                uint256 remainingAmount = reward.nativeValue - vaultBalance;
-                uint256 transferAmount;
-
-                if (msg.value >= remainingAmount) {
-                    transferAmount = remainingAmount;
-                } else if (allowPartial) {
-                    transferAmount = msg.value;
-                    partiallyFunded = true;
-                } else {
-                    revert InsufficientNativeReward(intentHash);
-                }
-
-                if (transferAmount > 0) {
-                    payable(vault).transfer(transferAmount);
-                }
-            }
-        }
-
-        uint256 rewardsLength = reward.tokens.length;
-
-        // Iterate through each token in the reward structure
-        for (uint256 i; i < rewardsLength; ++i) {
-            // Get token address and required amount for current reward
-            address token = reward.tokens[i].token;
-            uint256 amount = reward.tokens[i].amount;
-            uint256 vaultBalance = IERC20(token).balanceOf(vault);
-
-            // Only proceed if vault needs more tokens and we have permission to transfer them
-            if (vaultBalance < amount) {
-                // Calculate how many more tokens the vault needs to be fully funded
-                uint256 remainingAmount = amount - vaultBalance;
-
-                // Check how many tokens this contract is allowed to transfer from funding source
-                uint256 allowance = IERC20(token).allowance(
-                    funder,
-                    address(this)
-                );
-                uint256 funderBalance = IERC20(token).balanceOf(funder);
-                allowance = allowance < funderBalance
-                    ? allowance
-                    : funderBalance;
-
-                uint256 transferAmount;
-                // Calculate transfer amount as minimum of what's needed and what's allowed
-                if (allowance >= remainingAmount) {
-                    transferAmount = remainingAmount;
-                } else if (allowPartial) {
-                    transferAmount = allowance;
-                    partiallyFunded = true;
-                } else {
-                    revert InsufficientTokenAllowance(
-                        token,
-                        funder,
-                        remainingAmount
-                    );
-                }
-
-                if (transferAmount > 0) {
-                    // Transfer tokens from funding source to vault using safe transfer
-                    IERC20(token).safeTransferFrom(
-                        funder,
-                        vault,
-                        transferAmount
-                    );
-                }
-            }
-        }
-
-        // Update vault state based on funding result
-        vaults[intentHash].state.status = partiallyFunded
-            ? uint8(RewardStatus.PartiallyFunded)
-            : uint8(RewardStatus.Funded);
-        emit IntentFunded(intentHash, funder, !partiallyFunded);
+        _fundIntent(intentHash, vault, reward, funder, allowPartial);
+        _returnExcessEth(intentHash, address(this).balance);
     }
 
     /**
-     * @notice Funds an intent using a permit contract
+     * @notice Handles the funding of an intent - OriginSettler implementation
+     * @dev Called by _publishAndFund to atomically fund intents after creation
+     * @dev Updates reward status and validates funding completeness
+     * @param intentHash Hash of the intent
+     * @param vault Address of the intent's vault
+     * @param reward Reward structure to fund
+     * @param funder Address providing the funds
+     * @param allowPartial Whether to allow partial funding
+     */
+    function _fundIntent(
+        bytes32 intentHash,
+        address vault,
+        Reward memory reward,
+        address funder,
+        bool allowPartial
+    ) internal {
+        if (rewardStatuses[intentHash] == IVaultV2.Status.Funded) {
+            return;
+        }
+
+        bool fullyFunded = _fundNative(vault, reward.nativeValue);
+
+        uint256 rewardsLength = reward.tokens.length;
+        for (uint256 i; i < rewardsLength; ++i) {
+            IERC20 token = IERC20(reward.tokens[i].token);
+
+            fullyFunded =
+                fullyFunded &&
+                _fundToken(vault, funder, token, reward.tokens[i].amount);
+        }
+
+        if (!allowPartial && !fullyFunded) {
+            revert InsufficientFunds(intentHash);
+        }
+
+        if (fullyFunded) {
+            rewardStatuses[intentHash] = IVaultV2.Status.Funded;
+        }
+
+        emit IntentFunded(intentHash, funder, fullyFunded);
+    }
+
+    /**
+     * @notice Funds vault with native tokens (ETH)
+     * @param vault Address of the vault to fund
+     * @param rewardAmount Required native token amount
+     * @return funded True if vault has sufficient native balance after funding attempt
+     */
+    function _fundNative(
+        address vault,
+        uint256 rewardAmount
+    ) internal returns (bool funded) {
+        uint256 balance = vault.balance;
+
+        if (balance >= rewardAmount) {
+            return true;
+        }
+
+        uint256 remaining = rewardAmount - balance;
+        uint256 transferAmount = remaining.min(msg.value);
+
+        if (transferAmount > 0) {
+            payable(vault).transfer(transferAmount);
+        }
+
+        return transferAmount >= remaining;
+    }
+
+    /**
+     * @notice Funds vault with ERC20 tokens
+     * @param vault Address of the vault to fund
+     * @param token ERC20 token contract to transfer
+     * @param rewardAmount Required token amount
+     * @return funded True if vault has sufficient token balance after funding attempt
+     */
+    function _fundToken(
+        address vault,
+        address funder,
+        IERC20 token,
+        uint256 rewardAmount
+    ) internal returns (bool funded) {
+        uint256 balance = token.balanceOf(vault);
+
+        if (balance >= rewardAmount) {
+            return true;
+        }
+
+        uint256 remaining = rewardAmount - balance;
+        uint256 transferAmount = remaining
+            .min(token.allowance(funder, address(this)))
+            .min(token.balanceOf(funder));
+
+        if (transferAmount > 0) {
+            token.safeTransferFrom(funder, vault, transferAmount);
+        }
+
+        return balance + transferAmount >= rewardAmount;
+    }
+
+    /**
+     * @notice Funds an intent using a permit contract for gasless approvals
+     * @param reward Reward structure containing funding requirements
+     * @param intentHash Hash of the intent to fund
+     * @param funder Address providing the funding
+     * @param permitContract Address of permit contract for token approvals
+     * @param allowPartial Whether to allow partial funding
+     * @return vault Address of the funded vault
      */
     function _fundIntentFor(
-        VaultState memory state,
         Reward calldata reward,
         bytes32 intentHash,
-        bytes32 routeHash,
-        address vault,
         address funder,
         address permitContract,
         bool allowPartial
-    ) internal virtual {
-        _disableNativeReward(reward, vault, intentHash);
-        _validateFundingState(state, intentHash);
+    ) internal returns (address vault) {
+        vault = _getOrDeployVault(intentHash);
+        bool fullyFunded = IVaultV2(vault).fundFor{value: msg.value}(
+            rewardStatuses[intentHash],
+            reward,
+            funder,
+            IPermit(permitContract)
+        );
 
-        if (state.status == uint8(RewardStatus.Initial)) {
-            state.status = allowPartial
-                ? uint8(RewardStatus.PartiallyFunded)
-                : uint8(RewardStatus.Funded);
+        if (!allowPartial && !fullyFunded) {
+            revert InsufficientFunds(intentHash);
         }
 
-        state.mode = uint8(VaultMode.Fund);
-        state.allowPartialFunding = allowPartial ? 1 : 0;
-        state.usePermit = permitContract != address(0) ? 1 : 0;
-        state.target = funder;
-
-        if (permitContract != address(0)) {
-            vaults[intentHash].permitContract = permitContract;
+        if (fullyFunded) {
+            rewardStatuses[intentHash] = IVaultV2.Status.Funded;
         }
 
-        vaults[intentHash].state = state;
-
-        // Create vault
-        new Vault{salt: routeHash}(intentHash, reward);
-
-        // Check if funding was successful and emit appropriate events
-        if (state.status == uint8(RewardStatus.Funded)) {
-            if (vault.balance < reward.nativeValue) {
-                revert InsufficientNativeReward(intentHash);
-            }
-            emit IntentFunded(intentHash, funder, true);
-        } else if (
-            state.status == uint8(RewardStatus.PartiallyFunded) &&
-            _isRewardFunded(reward, vault)
-        ) {
-            state.status = uint8(RewardStatus.Funded);
-            vaults[intentHash].state = state;
-
-            emit IntentFunded(intentHash, funder, true);
-        } else {
-            emit IntentFunded(intentHash, funder, false);
-        }
+        emit IntentFunded(intentHash, funder, fullyFunded);
     }
 
     /**
@@ -908,100 +732,82 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     }
 
     /**
-     * @notice Validates the initial funding state
-     * @param state Current vault state
-     * @param intentHash Hash of the intent
-     */
-    function _validateInitialFundingState(
-        VaultState memory state,
-        bytes32 intentHash
-    ) internal pure virtual {
-        if (state.status != uint8(RewardStatus.Initial)) {
-            revert IntentAlreadyFunded(intentHash);
-        }
-    }
-
-    /**
-     * @notice Validates the funding state for partial funding
-     * @param state Current vault state
-     * @param intentHash Hash of the intent
-     */
-    function _validateFundingState(
-        VaultState memory state,
-        bytes32 intentHash
-    ) internal pure virtual {
-        if (
-            state.status != uint8(RewardStatus.Initial) &&
-            state.status != uint8(RewardStatus.PartiallyFunded) &&
-            state.status != uint8(RewardStatus.Funded)
-        ) {
-            revert IntentAlreadyFunded(intentHash);
-        }
-    }
-
-    /**
-     * @notice Disabling fundFor for native intents
-     * @dev Deploying vault in Fund mode might cause a loss of native reward
-     * @param reward Reward structure to validate
-     * @param vault Address of the intent vault
-     * @param intentHash Hash of the intent
-     */
-    function _disableNativeReward(
-        Reward calldata reward,
-        address vault,
-        bytes32 intentHash
-    ) internal view virtual {
-        // selfdestruct() will refund all native tokens to the creator
-        // we can't use Fund mode for intents with native value
-        // because deploying and destructing the vault will refund the native reward prematurely
-        if (reward.nativeValue > 0 && vault.balance > 0) {
-            revert CannotFundForWithNativeReward(intentHash);
-        }
-    }
-
-    /**
-     * @notice Validates that the intent is being published on correct chain
-     * @param sourceChain Chain ID specified in the intent
-     * @param intentHash Hash of the intent
-     */
-    function _validateSourceChain(
-        uint256 sourceChain,
-        bytes32 intentHash
-    ) internal view virtual {
-        if (sourceChain != block.chainid) {
-            revert WrongSourceChain(intentHash);
-        }
-    }
-
-    /**
-     * @notice Returns excess ETH to the sender
-     * @param intentHash Hash of the intent
+     * @notice Returns excess ETH to the sender - OriginSettler implementation
+     * @dev Called by _publishAndFund to return any ETH overpayment to the sender
+     * @dev Essential for user experience when overfunding native token rewards
+     * @param intentHash Hash of the intent (used for error context)
      * @param amount Amount of ETH to return
      */
-    function _returnExcessEth(
-        bytes32 intentHash,
-        uint256 amount
-    ) internal virtual {
-        if (amount > 0) {
-            (bool success, ) = payable(msg.sender).call{value: amount}("");
-            if (!success) revert NativeRewardTransferFailed(intentHash);
-        }
+    function _returnExcessEth(bytes32 intentHash, uint256 amount) internal {
+        if (amount == 0) return;
+
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+
+        if (!success) revert NativeRewardTransferFailed(intentHash);
     }
 
     /**
      * @notice Validates and publishes a new intent
      * @param intentHash Hash of the intent
-     * @param state Current vault state
      */
-    function _validatePublishState(
-        bytes32 intentHash,
-        VaultState memory state
-    ) internal pure virtual {
+    function _validatePublish(bytes32 intentHash) internal view {
+        IVaultV2.Status status = rewardStatuses[intentHash];
+
         if (
-            state.status == uint8(RewardStatus.Claimed) ||
-            state.status == uint8(RewardStatus.Refunded)
+            status == IVaultV2.Status.Withdrawn ||
+            status == IVaultV2.Status.Refunded
         ) {
             revert IntentAlreadyExists(intentHash);
         }
+    }
+
+    /**
+     * @notice Validates that an intent can be refunded
+     * @dev Checks if intent has been proven/claimed to prevent invalid refunds
+     * @param intentHash Hash of the intent to validate
+     * @param destination Expected destination chain ID
+     * @param reward Reward structure containing prover information
+     */
+    function _validateRefund(
+        bytes32 intentHash,
+        uint64 destination,
+        Reward calldata reward
+    ) internal view {
+        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
+            intentHash
+        );
+
+        if (proof.destination != destination || proof.claimant == address(0)) {
+            return;
+        }
+
+        IVaultV2.Status status = rewardStatuses[intentHash];
+
+        if (
+            status == IVaultV2.Status.Initial ||
+            status == IVaultV2.Status.Funded
+        ) {
+            revert IntentNotClaimed(intentHash);
+        }
+    }
+
+    /**
+     * @notice Gets existing vault address or deploys new one if needed
+     * @param intentHash Hash used as CREATE2 salt for deterministic addressing
+     * @return Address of the vault (existing or newly deployed)
+     */
+    function _getOrDeployVault(bytes32 intentHash) internal returns (address) {
+        address vault = _getVault(intentHash);
+
+        return vault.code.length > 0 ? vault : VAULT_IMPL.clone(intentHash);
+    }
+
+    /**
+     * @notice Calculates the deterministic vault address without deployment
+     * @param intentHash Hash used as CREATE2 salt for address calculation
+     * @return Predicted address of the vault
+     */
+    function _getVault(bytes32 intentHash) internal view returns (address) {
+        return VAULT_IMPL.predict(intentHash, CREATE2_PREFIX);
     }
 }

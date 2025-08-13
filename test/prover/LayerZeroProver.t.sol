@@ -122,7 +122,7 @@ contract LayerZeroProverTest is BaseTest {
         assertEq(lzProver.ENDPOINT(), address(endpoint));
         assertEq(lzProver.PORTAL(), address(portal));
         assertTrue(lzProver.isWhitelisted(SOURCE_PROVER));
-        assertEq(lzProver.DEFAULT_GAS_LIMIT(), 200000);
+        assertEq(lzProver.MIN_GAS_LIMIT(), 200000);
     }
 
     function test_getProofType() public view {
@@ -139,7 +139,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
         assertEq(fee, 0.001 ether);
     }
 
@@ -153,13 +153,13 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
             data
         );
@@ -178,12 +178,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(SOURCE_CHAIN_ID, intentHashes, claimants);
 
         vm.prank(address(endpoint));
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
@@ -248,34 +244,61 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-        uint256 fee = lzProver.fetchFee(SOURCE_CHAIN_ID, encodedProofs, data);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
 
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
-            SOURCE_CHAIN_ID,
+            uint64(SOURCE_CHAIN_ID),
             encodedProofs,
             data
         );
     }
 
-    function test_prove_chainIdValidation() public {
+    function test_prove_enforcesMinimumGasLimit() public {
         bytes32[] memory intentHashes = new bytes32[](1);
         intentHashes[0] = keccak256("intent");
 
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
+        // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
+        uint256 belowMinGasLimit = 50000; // Below 200k minimum
+        bytes memory data = _encodeProverData(
+            SOURCE_PROVER,
+            "",
+            belowMinGasLimit
+        );
 
-        uint256 invalidChainId = uint256(type(uint32).max) + 1;
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
 
-        vm.expectRevert();
-        lzProver.fetchFee(
-            invalidChainId,
-            encodeProofs(intentHashes, claimants),
+        vm.deal(address(portal), fee);
+        vm.prank(address(portal));
+        lzProver.prove{value: fee}(
+            address(portal),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
             data
+        );
+
+        // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
+        bytes memory zeroGasData = _encodeProverData(SOURCE_PROVER, "", 0);
+
+        uint256 zeroGasFee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            zeroGasData
+        );
+
+        vm.deal(address(portal), zeroGasFee);
+        vm.prank(address(portal));
+        lzProver.prove{value: zeroGasFee}(
+            address(portal),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            zeroGasData
         );
     }
 
@@ -306,12 +329,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(wrongDestination, intentHashes, claimants);
 
         // Add the proof with wrong destination
         vm.prank(address(endpoint));
@@ -368,12 +387,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(correctDestination, intentHashes, claimants);
 
         // Add the proof with correct destination
         vm.prank(address(endpoint));
@@ -423,12 +438,8 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 1
         });
 
-        // Pack hash/claimant pairs as bytes
-        bytes memory message = new bytes(64);
-        assembly {
-            mstore(add(message, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(message, 0x40), mload(add(claimants, 0x20)))
-        }
+        // Pack hash/claimant pairs as bytes with chain ID prefix
+        bytes memory message = _formatMessageWithChainId(wrongDestination, intentHashes, claimants);
 
         // Add proof with wrong srcEid
         vm.prank(address(endpoint));
@@ -458,4 +469,30 @@ contract LayerZeroProverTest is BaseTest {
         address indexed claimant,
         uint64 destination
     );
+
+    function _formatMessageWithChainId(
+        uint256 chainId,
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal pure returns (bytes memory) {
+        require(
+            intentHashes.length == claimants.length,
+            "Array length mismatch"
+        );
+        bytes memory packed = new bytes(intentHashes.length * 64);
+        for (uint256 i = 0; i < intentHashes.length; i++) {
+            assembly {
+                let offset := mul(i, 64)
+                mstore(
+                    add(add(packed, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                mstore(
+                    add(add(packed, 0x20), add(offset, 32)),
+                    mload(add(claimants, add(0x20, mul(i, 32))))
+                )
+            }
+        }
+        return abi.encodePacked(uint64(chainId), packed);
+    }
 }
