@@ -100,13 +100,6 @@ interface IIntentSource is IVaultStorage {
     error ArrayLengthMismatch();
 
     /**
-     * @notice Chain ID is too large to fit in uint64
-     * @param chainId The chain ID that is too large
-     */
-    error IntentSourceChainIdTooLarge(uint256 chainId);
-
-
-    /**
      * @notice Signals the creation of a new cross-chain intent
      * @param hash Unique identifier of the intent
      * @param destination Destination chain ID
@@ -130,7 +123,7 @@ interface IIntentSource is IVaultStorage {
 
     /**
      * @notice Signals funding of an intent
-     * @param intentHash The hash of the funded intent
+     * @param intentHash The hash of the funded intent 
      * @param funder The address providing the funding
      * @param complete Whether the intent was completely funded (true) or partially funded (false)
      */

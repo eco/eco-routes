@@ -64,12 +64,6 @@ interface IInbox {
     error ZeroClaimant();
 
     /**
-     * @notice Chain ID is too large to fit in uint64
-     * @param chainId The chain ID that is too large
-     */
-    error InboxChainIdTooLarge(uint256 chainId);
-
-    /**
      * @notice Attempted to batch an unfulfilled intent
      * @param hash Hash of the unfulfilled intent
      */

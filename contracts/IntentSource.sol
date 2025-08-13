@@ -36,19 +36,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
     /// @dev Tron Testnet (Nile) chain ID
     uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
 
-    /**
-     * @notice Chain ID stored as uint64 immutable for efficient access
-     * @dev Set once at construction time with validation
-     */
-    uint64 private immutable CHAIN_ID;
-
-
     constructor() {
-        // Validate that chain ID fits in uint64 and store it
-        if (block.chainid > type(uint64).max) {
-            revert IntentSourceChainIdTooLarge(block.chainid);
-        }
-        CHAIN_ID = uint64(block.chainid);
         
         // TRON support
         CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
@@ -307,7 +295,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         VaultState memory state = vaults[intentHash].state;
 
         _validateInitialFundingState(state, intentHash);
-        _validateSourceChain(CHAIN_ID, intentHash);
+        _validateSourceChain(_validateChainID(block.chainid), intentHash);
         _validatePublishState(intentHash, state);
         _emitIntentPublished(intentHash, destination, route, reward);
 
@@ -433,7 +421,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
 
         _validatePublishState(intentHash, state);
         _emitIntentPublished(intentHash, destination, route, reward);
-        _validateSourceChain(CHAIN_ID, intentHash);
+        _validateSourceChain(_validateChainID(block.chainid), intentHash);
 
         vault = _getIntentVaultAddress(intentHash, routeHash, reward);
 
@@ -983,7 +971,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
         uint64 sourceChain,
         bytes32 intentHash
     ) internal view virtual {
-        if (sourceChain != CHAIN_ID) {
+        if (sourceChain != _validateChainID(block.chainid)) {
             revert WrongSourceChain(intentHash);
         }
     }
@@ -1019,4 +1007,7 @@ abstract contract IntentSource is OriginSettler, IVaultStorage, IIntentSource {
             revert IntentAlreadyExists(intentHash);
         }
     }
+
+    function _validateChainID(uint256 chainId) virtual internal view returns (uint64);
+
 }
