@@ -52,7 +52,7 @@ abstract contract BaseProver is IProver, ERC165 {
      */
     function _processIntentProofs(
         bytes calldata data,
-        uint256 destination
+        uint64 destination
     ) internal {
         // If data is empty, just return early
         if (data.length == 0) return;
@@ -90,9 +90,9 @@ abstract contract BaseProver is IProver, ERC165 {
             } else {
                 _provenIntents[intentHash] = ProofData({
                     claimant: claimant,
-                    destination: uint64(destination)
+                    destination: destination
                 });
-                emit IntentProven(intentHash, claimant, uint64(destination));
+                emit IntentProven(intentHash, claimant, destination);
             }
         }
     }

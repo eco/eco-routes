@@ -13,7 +13,7 @@ contract TestProver is BaseProver {
     // Track the last prove() call for testing
     struct ArgsCheck {
         address sender;
-        uint256 sourceChainId;
+        uint64 sourceChainId;
         bytes data;
         uint256 value;
     }
@@ -48,11 +48,11 @@ contract TestProver is BaseProver {
     function addProvenIntentWithChain(
         bytes32 _hash,
         address _claimant,
-        uint96 _destination
+        uint64 _destination
     ) public {
         _provenIntents[_hash] = ProofData({
             claimant: _claimant,
-            destination: uint64(_destination)
+            destination: _destination
         });
     }
 
@@ -66,7 +66,7 @@ contract TestProver is BaseProver {
      */
     function prove(
         address _sender,
-        uint256 _sourceChainId,
+        uint64 _sourceChainId,
         bytes calldata _encodedProofs,
         bytes calldata _data
     ) external payable override {

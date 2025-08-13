@@ -67,7 +67,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function prove(
         address _sender,
-        uint256 _sourceChainId,
+        uint64,
         bytes calldata _encodedProofs,
         bytes calldata /* _data */
     ) external payable override {
@@ -77,7 +77,6 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
         // Process the intent proofs using the base implementation
         _handleCrossChainMessage(
-            _sourceChainId,
             bytes32(uint256(uint160(_sender))),
             _encodedProofs
         );
@@ -92,7 +91,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint256 /* _sourceChainId */,
+        uint64 /* domainID */,
         bytes calldata /* _encodedProofs */,
         bytes calldata /* _data */
     ) public view override returns (uint256) {
@@ -104,7 +103,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Just tracks that dispatch was called
      */
     function _dispatchMessage(
-        uint256 /* sourceChainId */,
+        uint64 /* domainID */,
         bytes calldata /* encodedProofs */,
         bytes calldata /* data */,
         uint256 /* fee */

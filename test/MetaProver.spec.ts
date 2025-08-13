@@ -66,10 +66,11 @@ describe('MetaProver Test', (): void => {
   const amount: number = 1234567890
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
-  // Helper function to encode message body as (intentHash, claimant) pairs
+  // Helper function to encode message body with chain ID prefix for handle
   function encodeMessageBody(
     intentHashes: string[],
     claimants: string[],
+    chainId: number = 12345,
   ): string {
     const parts: string[] = []
     for (let i = 0; i < intentHashes.length; i++) {
@@ -82,16 +83,28 @@ describe('MetaProver Test', (): void => {
       parts.push(intentHashes[i])
       parts.push(claimantBytes)
     }
-    return ethers.concat(parts)
+    
+    // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
+    const packedParts = ethers.concat(parts)
+    return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
   }
 
   // Helper function to prepare encoded proofs from fulfilled intents
+  // This is used for fetchFee() calls and should NOT include chain ID prefix
   function prepareEncodedProofs(
     intentHashes: string[],
     claimants: string[],
   ): string {
-    // Claimants should already be addresses, just use them as is
-    return encodeMessageBody(intentHashes, claimants)
+    const parts: string[] = []
+    for (let i = 0; i < intentHashes.length; i++) {
+      const claimantBytes =
+        claimants[i].length === 66
+          ? claimants[i]
+          : ethers.zeroPadValue(claimants[i], 32)
+      parts.push(intentHashes[i])
+      parts.push(claimantBytes)
+    }
+    return ethers.concat(parts)
   }
 
   async function deployMetaProverFixture(): Promise<{
@@ -740,12 +753,13 @@ describe('MetaProver Test', (): void => {
 
       // Create message with both valid and invalid claimants
       // We need to use the raw bytes for the non-address claimant
-      const msgBody = ethers.concat([
+      const rawPacked = ethers.concat([
         intentHash1, // 32 bytes
         validClaimant, // 32 bytes
         intentHash2, // 32 bytes
         nonAddressClaimant, // 32 bytes - Non-EVM address
       ])
+      const msgBody = ethers.solidityPacked(['uint64', 'bytes'], [12345, rawPacked])
 
       await router.simulateHandleMessage(
         12345, // origin chain ID

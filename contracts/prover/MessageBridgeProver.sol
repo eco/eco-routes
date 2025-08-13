@@ -23,10 +23,10 @@ abstract contract MessageBridgeProver is
     uint256 public immutable MIN_GAS_LIMIT;
 
     /**
-     * @notice Chain ID is too large to fit in uint32
-     * @param chainId The chain ID that is too large
+     * @notice Chain ID stored as uint64 immutable for efficient access
+     * @dev Set once at construction time with validation
      */
-    error ChainIdTooLarge(uint256 chainId);
+    uint64 internal immutable CHAIN_ID;
 
     /**
      * @notice Initializes the MessageBridgeProver contract
@@ -42,6 +42,12 @@ abstract contract MessageBridgeProver is
         if (portal == address(0)) revert PortalCannotBeZeroAddress();
 
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
+
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert ChainIdTooLarge(block.chainid);
+        }
+        CHAIN_ID = uint64(block.chainid);
     }
 
     /**
@@ -85,12 +91,10 @@ abstract contract MessageBridgeProver is
     /**
      * @notice Handles cross-chain messages containing proof data
      * @dev Common implementation to validate and process cross-chain messages
-     * @param sourceChainId Chain ID of the source chain
      * @param messageSender Address that dispatched the message on source chain (as bytes32 for cross-VM compatibility)
-     * @param message Encoded array of (intentHash, claimant) pairs
+     * @param message Encoded message with chain ID prepended, followed by (intentHash, claimant) pairs
      */
     function _handleCrossChainMessage(
-        uint256 sourceChainId,
         bytes32 messageSender,
         bytes calldata message
     ) internal {
@@ -99,22 +103,36 @@ abstract contract MessageBridgeProver is
             revert UnauthorizedIncomingProof(messageSender);
         }
 
-        // Process the intent proofs directly from bytes data
-        // The source chain ID becomes the destination chain ID in the proof
-        _processIntentProofs(message, sourceChainId);
+        // Extract the chain ID from the beginning of the message
+        // Message format: [chainId (8 bytes as uint64)] + [encodedProofs]
+        if (message.length < 8) {
+            revert InvalidProofMessage();
+        }
+
+        // Convert raw 8 bytes to uint64 - the chain ID is stored as big-endian bytes
+        bytes8 chainIdBytes = bytes8(message[0:8]);
+        uint64 actualChainId = uint64(chainIdBytes);
+        bytes calldata encodedProofs = message[8:];
+
+        // Process the intent proofs using the chain ID extracted from the message
+        _processIntentProofs(encodedProofs, actualChainId);
     }
 
     /**
      * @notice Common prove function implementation for message bridge provers
      * @dev Handles fee calculation, validation, and message dispatch
      * @param sender Address that initiated the proving request
-     * @param sourceChainId Chain ID of the source chain
+     * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
+     *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own
+     *        domain ID mapping system. You MUST check with the specific bridge provider
+     *        (Hyperlane, LayerZero, Metalayer) documentation to determine the correct
+     *        domain ID for the source chain.
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      */
     function prove(
         address sender,
-        uint256 sourceChainId,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external payable virtual override {
@@ -122,7 +140,7 @@ abstract contract MessageBridgeProver is
         _validateProvingRequest(msg.sender);
 
         // Calculate fee using implementation-specific logic
-        uint256 fee = fetchFee(sourceChainId, encodedProofs, data);
+        uint256 fee = fetchFee(domainID, encodedProofs, data);
 
         // Check if enough fee was provided
         if (msg.value < fee) {
@@ -136,7 +154,7 @@ abstract contract MessageBridgeProver is
         }
 
         // Dispatch message using implementation-specific logic
-        _dispatchMessage(sourceChainId, encodedProofs, data, fee);
+        _dispatchMessage(domainID, encodedProofs, data, fee);
 
         // Send refund if needed
         _sendRefund(sender, refundAmount);
@@ -165,7 +183,7 @@ abstract contract MessageBridgeProver is
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
-        uint256 sourceChainId,
+        uint64 sourceChainId,
         bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
@@ -180,7 +198,7 @@ abstract contract MessageBridgeProver is
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 sourceChainId,
+        uint64 sourceChainId,
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view virtual returns (uint256);

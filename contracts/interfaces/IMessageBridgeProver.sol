@@ -49,9 +49,9 @@ interface IMessageBridgeProver is IProver {
     error PortalCannotBeZeroAddress();
 
     /**
-     * @notice Invalid chain ID for the origin
+     * @notice Domain ID cannot be zero
      */
-    error InvalidOriginChainId();
+    error ZeroDomainID();
 
     /**
      * @notice Sender address cannot be zero
@@ -59,8 +59,17 @@ interface IMessageBridgeProver is IProver {
     error SenderCannotBeZeroAddress();
 
     /**
+     * @notice message is invalid
+     */
+    error InvalidProofMessage();
+
+    /**
      * @notice Calculates the fee required for message dispatch
-     * @param sourceChainID Chain ID of source chain
+     * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
+     *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own
+     *        domain ID mapping system. You MUST check with the specific bridge provider
+     *        (Hyperlane, LayerZero, Metalayer) documentation to determine the correct
+     *        domain ID for the source chain.
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting.
      *        Specific format varies by implementation:
@@ -70,8 +79,20 @@ interface IMessageBridgeProver is IProver {
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 sourceChainID,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) external view returns (uint256);
+
+    /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error ChainIdTooLarge(uint256 chainId);
+
+    /**
+     * @notice Domain ID is too large to fit in uint32
+     * @param domainId The domain ID that is too large
+     */
+    error DomainIdTooLarge(uint64 domainId);
 }

@@ -92,15 +92,12 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Verify message is from authorized endpoint
         _validateMessageSender(msg.sender, ENDPOINT);
 
-        // Use endpoint ID directly as chain ID
-        uint256 originChainId = uint256(origin.srcEid);
-
         // Validate sender is not zero
         if (origin.sender == bytes32(0)) {
             revert SenderCannotBeZeroAddress();
         }
 
-        _handleCrossChainMessage(originChainId, origin.sender, message);
+        _handleCrossChainMessage(origin.sender, message);
     }
 
     /**
@@ -131,13 +128,13 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     /**
      * @notice Implementation of message dispatch for LayerZero
      * @dev Called by base prove() function after common validations
-     * @param sourceChainId Chain ID of the source chain
+     * @param domainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @param fee Fee amount for message dispatch
      */
     function _dispatchMessage(
-        uint256 sourceChainId,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data,
         uint256 fee
@@ -148,7 +145,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Create messaging parameters for LayerZero
         ILayerZeroEndpointV2.MessagingParams
             memory params = _formatLayerZeroMessage(
-                sourceChainId,
+                domainID,
                 encodedProofs,
                 unpacked
             );
@@ -164,13 +161,13 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     /**
      * @notice Calculates the fee required for LayerZero message dispatch
      * @dev Queries the Endpoint contract for accurate fee estimation
-     * @param sourceChainId Chain ID of the source chain
+     * @param domainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 sourceChainId,
+        uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
@@ -178,7 +175,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         UnpackedData memory unpacked = _unpackData(data);
 
         // Process fee calculation using the decoded struct
-        return _fetchFee(sourceChainId, encodedProofs, unpacked);
+        return _fetchFee(domainID, encodedProofs, unpacked);
     }
 
     /**
@@ -200,20 +197,20 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
     /**
      * @notice Internal function to calculate the fee with pre-decoded data
-     * @param sourceChainId Chain ID of the source chain
+     * @param domainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param unpacked Struct containing decoded data from data parameter
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 sourceChainId,
+        uint64 domainID,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Create messaging parameters for LayerZero
         ILayerZeroEndpointV2.MessagingParams
             memory params = _formatLayerZeroMessage(
-                sourceChainId,
+                domainID,
                 encodedProofs,
                 unpacked
             );
@@ -237,18 +234,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     /**
      * @notice Formats data for LayerZero message dispatch with encoded proofs
      * @dev Prepares all parameters needed for the Endpoint send call
-     * @param sourceChainId Chain ID of the source chain
+     * @param domainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param unpacked Struct containing decoded data from data parameter
      * @return params Structured dispatch parameters for LayerZero message
      */
     function _formatLayerZeroMessage(
-        uint256 sourceChainId,
+        uint64 domainID,
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     )
         internal
-        pure
+        view
         returns (ILayerZeroEndpointV2.MessagingParams memory params)
     {
         // Validate that encodedProofs length is multiple of 64 bytes
@@ -256,13 +253,19 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             revert ArrayLengthMismatch();
         }
 
-        // Use source chain ID directly as endpoint ID
-        // Validate it fits in uint32
-        _validateChainId(sourceChainId);
+        // Use domain ID directly as endpoint ID with overflow check
+        if (domainID > type(uint32).max) {
+            revert DomainIdTooLarge(domainID);
+        }
+        params.dstEid = uint32(domainID);
 
-        params.dstEid = uint32(sourceChainId);
+        // Use the source chain prover address as the message recipient
         params.receiver = unpacked.sourceChainProver;
-        params.message = encodedProofs;
+
+        // Prepend current chain ID to the message body with encoded proofs
+        params.message = abi.encodePacked(CHAIN_ID, encodedProofs);
+
+        // Use provided options or create default options with gas limit
         params.options = unpacked.options.length > 0
             ? unpacked.options
             : abi.encodePacked(
