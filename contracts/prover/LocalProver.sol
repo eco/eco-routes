@@ -24,7 +24,7 @@ contract LocalProver is IProver, Semver {
 
     uint64 private immutable _CHAIN_ID;
 
-    constructor(address payable inbox) {
+    constructor(address inbox) {
         _PORTAL = Inbox(inbox);
         _CHAIN_ID = uint64(block.chainid);
     }

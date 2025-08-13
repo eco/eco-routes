@@ -86,4 +86,10 @@ contract Executor is IExecutor {
     function _isCallToEoa(Call calldata call) internal view returns (bool) {
         return call.target.code.length == 0 && call.data.length > 0;
     }
+
+    /**
+     * @notice Allows the contract to receive ETH
+     * @dev Required for handling ETH transfer for intent execution
+     */
+    receive() external payable {}
 }

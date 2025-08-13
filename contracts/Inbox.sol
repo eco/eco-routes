@@ -249,10 +249,4 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         return uint64(chainId);
     }
-
-    /**
-     * @notice Allows the contract to receive ETH
-     * @dev Required for handling ETH transfer for intent execution
-     */
-    receive() external payable {}
 }
