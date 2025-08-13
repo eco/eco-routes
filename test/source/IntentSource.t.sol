@@ -1024,6 +1024,277 @@ contract IntentSourceTest is BaseTest {
                 })
             });
     }
+
+    // Validation Tests - Testing logic moved from Vault to IntentSource
+    function testFundingRejectsWithdrawnStatus() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First withdraw the intent
+        _mockProofAndWithdraw(intentHash, claimant);
+
+        // Try to fund it again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForFunding.selector,
+                IIntentSource.Status.Withdrawn
+            )
+        );
+        vm.prank(creator);
+        intentSource.fund{value: 1 ether}(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            false
+        );
+    }
+
+    function testFundingRejectsRefundedStatus() public {
+        _publishAndFund(intent, false);
+
+        // Fast forward past deadline and refund
+        vm.warp(reward.deadline + 1);
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        // Try to fund it again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForFunding.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        vm.prank(creator);
+        intentSource.fund{value: 1 ether}(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            false
+        );
+    }
+
+    function testWithdrawRejectsWithdrawnStatus() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First withdraw normally
+        _mockProofAndWithdraw(intentHash, claimant);
+
+        // Try to withdraw again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Withdrawn
+            )
+        );
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testWithdrawRejectsRefundedStatus() public {
+        _publishAndFund(intent, false);
+
+        // Fast forward past deadline and refund
+        vm.warp(reward.deadline + 1);
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        // Try to withdraw after refund - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testWithdrawRejectsZeroClaimant() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // Mock a proof with zero claimant
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
+            abi.encode(IProver.ProofData(address(0), CHAIN_ID))
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IIntentSource.InvalidClaimant.selector)
+        );
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testRefundRejectsBeforeDeadlineWithoutProof() public {
+        _publishAndFund(intent, false);
+
+        // Try to refund before deadline without proof - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                reward.deadline
+            )
+        );
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testRefundRejectsWhenIntentNotClaimed() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // Mock a valid proof but don't withdraw (keep status as Funded)
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
+            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+        );
+
+        // Try to refund an intent that has proof but hasn't been withdrawn - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentNotClaimed.selector,
+                intentHash
+            )
+        );
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
+
+    function testPublishRejectsWithdrawnIntent() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First withdraw the intent
+        _mockProofAndWithdraw(intentHash, claimant);
+
+        // Try to publish the same intent again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentAlreadyExists.selector,
+                intentHash
+            )
+        );
+        vm.prank(creator);
+        intentSource.publish(intent);
+    }
+
+    function testPublishRejectsRefundedIntent() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // First refund the intent
+        vm.warp(reward.deadline + 1);
+        vm.prank(creator);
+        intentSource.refund(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        // Try to publish the same intent again - should fail
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentAlreadyExists.selector,
+                intentHash
+            )
+        );
+        vm.prank(creator);
+        intentSource.publish(intent);
+    }
+
+    function testRecoverTokenRejectsZeroAddress() public {
+        _publishAndFund(intent, false);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidRecoverToken.selector,
+                address(0)
+            )
+        );
+        vm.prank(creator);
+        intentSource.recoverToken(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            address(0)
+        );
+    }
+
+    function testRecoverTokenRejectsRewardToken() public {
+        _publishAndFund(intent, false);
+
+        // Try to recover a token that's part of the reward
+        address rewardTokenAddress = intent.reward.tokens[0].token;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidRecoverToken.selector,
+                rewardTokenAddress
+            )
+        );
+        vm.prank(creator);
+        intentSource.recoverToken(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            rewardTokenAddress
+        );
+    }
+
+    // Helper function to mock proof and withdraw
+    function _mockProofAndWithdraw(
+        bytes32 _intentHash,
+        address claimant
+    ) internal {
+        // Mock the prover to return a valid proof
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, _intentHash),
+            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+        );
+
+        // Withdraw the intent
+        vm.prank(claimant);
+        intentSource.withdraw(
+            CHAIN_ID,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+    }
 }
 
 // Mock contract for testing fake permit behavior
