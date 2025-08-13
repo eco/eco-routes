@@ -6,21 +6,37 @@ import * as dotenv from 'dotenv'
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env') })
 
-async function deployContracts() {
-  const chainId = process.env.TRON_CHAINID
-
-  if (!chainId) {
-    console.error('Error: CHAINID environment variable is required')
-    console.error(
-      '   Set CHAINID=728126428 for mainnet or CHAINID=2494104990 for testnet',
-    )
+async function deployContracts(targetNetwork?: string) {
+  // Get network from command line argument or environment variable
+  const network = targetNetwork || process.env.CHAINID || process.env.TRON_CHAINID 
+  
+  if (!network) {
+    console.error('Error: Network must be specified')
+    console.error('Usage:')
+    console.error('  npm run deploy:portal-and-layerzeroprover mainnet')
+    console.error('  npm run deploy:portal-and-layerzeroprover testnet')
+    console.error('Or set CHAINID environment variable (728126428=mainnet, 2494104990=testnet)')
     process.exit(1)
   }
 
-  // Determine network based on chain ID
-  const network = chainId === '728126428' ? 'mainnet' : 'testnet'
-  const networkName =
-    chainId === '728126428' ? 'Tron Mainnet' : 'Tron Testnet (Shasta)'
+  // Normalize network input and determine chain ID
+  let normalizedNetwork: string
+  let chainId: string
+  let networkName: string
+
+  if (network === 'mainnet' || network === '728126428') {
+    normalizedNetwork = 'mainnet'
+    chainId = '728126428'
+    networkName = 'Tron Mainnet'
+  } else if (network === 'testnet' || network === 'shasta' || network === '2494104990') {
+    normalizedNetwork = 'testnet'
+    chainId = '2494104990'
+    networkName = 'Tron Testnet (Shasta)'
+  } else {
+    console.error(`Error: Invalid network '${network}'`)
+    console.error('Valid options: mainnet, testnet, shasta')
+    process.exit(1)
+  }
 
   console.log('Portal & LayerZeroProver Contract Deployment')
   console.log('============================================')
@@ -37,10 +53,13 @@ async function deployContracts() {
 
   // Initialize Tron Toolkit
   const toolkit = new TronToolkit({
-    network: network as 'mainnet' | 'testnet',
+    network: normalizedNetwork as 'mainnet' | 'testnet',
     logLevel: LogLevel.INFO,
     privateKey,
   })
+
+  // Derive deployer address from private key
+  const deployerAddress = toolkit.getCurrentAddress()
 
   try {
     // Check system health
@@ -56,7 +75,7 @@ async function deployContracts() {
     console.log('Network is healthy')
     console.log(`   Block Height: ${health.blockHeight}`)
     console.log(`   Account: ${health.account.address}`)
-    console.log(`   Balance: ${health.account.balance.toFixed(6)} TRX`)
+    console.log(`   Balance: ${Number(health.account.balance).toFixed(6)} TRX`)
     console.log('')
 
     // Read Portal artifact
@@ -105,7 +124,7 @@ async function deployContracts() {
       `   Bandwidth: ${resourcePrediction.bandwidth.toLocaleString()}`,
     )
     console.log(
-      `   Estimated Cost: ${resourcePrediction.totalCostTRX.toFixed(6)} TRX`,
+      `   Estimated Cost: ${Number(resourcePrediction.totalCostTRX).toFixed(6)} TRX`,
     )
     console.log(
       `   Confidence: ${(resourcePrediction.confidence * 100).toFixed(1)}%`,
@@ -124,7 +143,7 @@ async function deployContracts() {
     console.log(
       `   Available Bandwidth: ${currentResources.bandwidth.available.toLocaleString()}`,
     )
-    console.log(`   TRX Balance: ${currentBalance.toFixed(6)} TRX`)
+    console.log(`   TRX Balance: ${Number(currentBalance).toFixed(6)} TRX`)
     console.log('')
 
     // Determine if we need to rent resources
@@ -145,44 +164,49 @@ async function deployContracts() {
         `   Need to rent ${bandwidthDeficit.toLocaleString()} bandwidth`,
       )
 
-      try {
-        // Auto-rent resources with safety margin
-        const rental = await toolkit.autoRentResources(
-          energyDeficit,
-          bandwidthDeficit,
-          toolkit.getCurrentAddress(),
-          0.3, // 30% safety margin for deployment
-        )
-
-        if (rental.success) {
-          console.log('Successfully rented resources')
-          console.log(
-            `   Total rental cost: ${rental.totalCost.toFixed(6)} TRX`,
+      if (normalizedNetwork === 'mainnet') {
+        try {
+          // Auto-rent resources with safety margin on mainnet
+          const rental = await toolkit.autoRentResources(
+            energyDeficit,
+            bandwidthDeficit,
+            toolkit.getCurrentAddress(),
+            0.3, // 30% safety margin for deployment
           )
 
-          if (rental.energyRental) {
+          if (rental.success) {
+            console.log('Successfully rented resources')
             console.log(
-              `   Energy rental: ${rental.energyRental.transactionId}`,
+              `   Total rental cost: ${Number(rental.totalCost).toFixed(6)} TRX`,
             )
-          }
-          if (rental.bandwidthRental) {
-            console.log(
-              `   Bandwidth rental: ${rental.bandwidthRental.transactionId}`,
+
+            if (rental.energyRental) {
+              console.log(
+                `   Energy rental: ${rental.energyRental.transactionId}`,
+              )
+            }
+            if (rental.bandwidthRental) {
+              console.log(
+                `   Bandwidth rental: ${rental.bandwidthRental.transactionId}`,
+              )
+            }
+          } else {
+            console.error('Failed to rent required resources')
+            console.error(
+              '   Please ensure you have sufficient TRX and TronZap API access',
             )
+            process.exit(1)
           }
-        } else {
-          console.error('Failed to rent required resources')
-          console.error(
-            '   Please ensure you have sufficient TRX and TronZap API access',
+        } catch (error) {
+          console.warn(
+            'Resource rental failed, proceeding with deployment anyway',
           )
-          process.exit(1)
+          console.warn('   Deployment may fail if resources are insufficient')
+          console.warn(`   Error: ${error}`)
         }
-      } catch (error) {
-        console.warn(
-          'Resource rental failed, proceeding with deployment anyway',
-        )
-        console.warn('   Deployment may fail if resources are insufficient')
-        console.warn(`   Error: ${error}`)
+      } else {
+        console.log('Testnet deployment: Skipping TronZap rental, using direct TRX payment')
+        console.log('   Note: This may cost more TRX than with energy rental')
       }
     } else {
       console.log('Sufficient resources available, no rental needed')
@@ -212,7 +236,7 @@ async function deployContracts() {
     console.log(
       `Bandwidth Used: ${deploymentResult.bandwidthUsed.toLocaleString()}`,
     )
-    console.log(`Actual Cost: ${deploymentResult.actualCost.toFixed(6)} TRX`)
+    console.log(`Actual Cost: ${Number(deploymentResult.actualCost).toFixed(6)} TRX`)
     console.log(
       `Deployment Time: ${(deploymentTime / 1000).toFixed(1)} seconds`,
     )
@@ -265,7 +289,7 @@ async function deployContracts() {
     console.log('==========')
     console.log(`1. Save contract address: ${deploymentResult.contractAddress}`)
     console.log(
-      `2. Verify on TronScan: https://${network === 'testnet' ? 'nile.' : ''}tronscan.org/#/contract/${deploymentResult.contractAddress}`,
+      `2. Verify on TronScan: https://${normalizedNetwork === 'testnet' ? 'shasta.' : ''}tronscan.org/#/contract/${deploymentResult.contractAddress}`,
     )
     console.log(`3. Test contract functionality`)
     console.log(`4. Update deployment records`)
@@ -281,13 +305,13 @@ async function deployContracts() {
       deployedAt: new Date().toISOString(),
       energyUsed: deploymentResult.energyUsed,
       bandwidthUsed: deploymentResult.bandwidthUsed,
-      actualCost: deploymentResult.actualCost,
+      actualCost: Number(deploymentResult.actualCost),
       deploymentTimeMs: deploymentTime,
     }
 
     const deploymentFile = path.join(
       __dirname,
-      `../deployments/portal-${network}-${chainId}.json`,
+      `../deployments/portal-${normalizedNetwork}-${chainId}.json`,
     )
     const deploymentDir = path.dirname(deploymentFile)
 
@@ -312,23 +336,24 @@ async function deployContracts() {
     }
 
     const endpointAddress =
-      layerZeroEndpoints[network as keyof typeof layerZeroEndpoints]
+      layerZeroEndpoints[normalizedNetwork as keyof typeof layerZeroEndpoints]
 
-    // Parse solvers from environment variable
-    const solversEnv = process.env.TRON_SOLVERS
-    if (!solversEnv) {
-      console.error('Error: TRON_SOLVERS environment variable is required')
+    // Parse provers from environment variable
+    const proversEnv = process.env.TRON_PROVERS
+    if (!proversEnv) {
+      console.error('Error: TRON_PROVERS environment variable is required')
       console.error(
-        '   Set TRON_SOLVERS to comma-separated list of solver addresses',
+        '   Set TRON_PROVERS to comma-separated list of prover addresses',
       )
       process.exit(1)
     }
 
-    const solvers = solversEnv.split(',').map((addr) => addr.trim())
+    const provers = proversEnv.split(',').map((addr) => addr.trim())
     console.log('LayerZero Configuration:')
     console.log(`   Portal Address: ${deploymentResult.contractAddress}`)
     console.log(`   Endpoint Address: ${endpointAddress}`)
-    console.log(`   Solvers: ${solvers.join(', ')}`)
+    console.log(`   Delegate Address: ${deployerAddress}`)
+    console.log(`   Provers: ${provers.join(', ')}`)
     console.log('')
 
     // Read LayerZeroProver artifact
@@ -360,9 +385,10 @@ async function deployContracts() {
       bytecode: lzArtifact.bytecode,
       abi: lzArtifact.abi,
       constructorParams: [
-        deploymentResult.contractAddress, // portal address
-        solvers, // solvers array
         endpointAddress, // LayerZero endpoint
+        deployerAddress, // delegate address
+        deploymentResult.contractAddress, // portal address
+        provers, // provers array
         200000, // minGasLimit
       ],
       feeLimit: 1000000000, // 1000 TRX fee limit
@@ -382,7 +408,7 @@ async function deployContracts() {
       `   Bandwidth: ${lzResourcePrediction.bandwidth.toLocaleString()}`,
     )
     console.log(
-      `   Estimated Cost: ${lzResourcePrediction.totalCostTRX.toFixed(6)} TRX`,
+      `   Estimated Cost: ${Number(lzResourcePrediction.totalCostTRX).toFixed(6)} TRX`,
     )
     console.log(
       `   Confidence: ${(lzResourcePrediction.confidence * 100).toFixed(1)}%`,
@@ -408,30 +434,35 @@ async function deployContracts() {
         `   Need to rent ${lzBandwidthDeficit.toLocaleString()} bandwidth`,
       )
 
-      try {
-        const lzRental = await toolkit.autoRentResources(
-          lzEnergyDeficit,
-          lzBandwidthDeficit,
-          toolkit.getCurrentAddress(),
-          0.3, // 30% safety margin
-        )
+      if (normalizedNetwork === 'mainnet') {
+        try {
+          const lzRental = await toolkit.autoRentResources(
+            lzEnergyDeficit,
+            lzBandwidthDeficit,
+            toolkit.getCurrentAddress(),
+            0.3, // 30% safety margin
+          )
 
-        if (lzRental.success) {
-          console.log('Successfully rented additional resources')
-          console.log(
-            `   Additional rental cost: ${lzRental.totalCost.toFixed(6)} TRX`,
+          if (lzRental.success) {
+            console.log('Successfully rented additional resources')
+            console.log(
+              `   Additional rental cost: ${Number(lzRental.totalCost).toFixed(6)} TRX`,
+            )
+          } else {
+            console.error(
+              'Failed to rent additional resources for LayerZeroProver',
+            )
+            process.exit(1)
+          }
+        } catch (error) {
+          console.warn(
+            'LayerZeroProver resource rental failed, proceeding anyway',
           )
-        } else {
-          console.error(
-            'Failed to rent additional resources for LayerZeroProver',
-          )
-          process.exit(1)
+          console.warn(`   Error: ${error}`)
         }
-      } catch (error) {
-        console.warn(
-          'LayerZeroProver resource rental failed, proceeding anyway',
-        )
-        console.warn(`   Error: ${error}`)
+      } else {
+        console.log('Testnet deployment: Skipping additional TronZap rental for LayerZeroProver')
+        console.log('   Note: This may cost more TRX than with energy rental')
       }
     } else {
       console.log(
@@ -465,7 +496,7 @@ async function deployContracts() {
     console.log(
       `Bandwidth Used: ${lzDeploymentResult.bandwidthUsed.toLocaleString()}`,
     )
-    console.log(`Actual Cost: ${lzDeploymentResult.actualCost.toFixed(6)} TRX`)
+    console.log(`Actual Cost: ${Number(lzDeploymentResult.actualCost).toFixed(6)} TRX`)
     console.log(
       `Deployment Time: ${(lzDeploymentTime / 1000).toFixed(1)} seconds`,
     )
@@ -498,19 +529,20 @@ async function deployContracts() {
       deployedAt: new Date().toISOString(),
       energyUsed: lzDeploymentResult.energyUsed,
       bandwidthUsed: lzDeploymentResult.bandwidthUsed,
-      actualCost: lzDeploymentResult.actualCost,
+      actualCost: Number(lzDeploymentResult.actualCost),
       deploymentTimeMs: lzDeploymentTime,
       constructorParams: {
-        portalAddress: deploymentResult.contractAddress,
-        solvers,
         endpointAddress,
+        delegateAddress: deployerAddress,
+        portalAddress: deploymentResult.contractAddress,
+        provers,
         minGasLimit: 200000,
       },
     }
 
     const lzDeploymentFile = path.join(
       __dirname,
-      `../deployments/layerzero-prover-${network}-${chainId}.json`,
+      `../deployments/layerzero-prover-${normalizedNetwork}-${chainId}.json`,
     )
     fs.writeFileSync(
       lzDeploymentFile,
@@ -524,24 +556,24 @@ async function deployContracts() {
     console.log('')
     console.log('Portal Contract:')
     console.log(`   Address: ${deploymentResult.contractAddress}`)
-    console.log(`   Cost: ${deploymentResult.actualCost.toFixed(6)} TRX`)
+    console.log(`   Cost: ${Number(deploymentResult.actualCost).toFixed(6)} TRX`)
     console.log('')
     console.log('LayerZeroProver Contract:')
     console.log(`   Address: ${lzDeploymentResult.contractAddress}`)
-    console.log(`   Cost: ${lzDeploymentResult.actualCost.toFixed(6)} TRX`)
+    console.log(`   Cost: ${Number(lzDeploymentResult.actualCost).toFixed(6)} TRX`)
     console.log('')
     const totalCost =
-      deploymentResult.actualCost + lzDeploymentResult.actualCost
+      Number(deploymentResult.actualCost) + Number(lzDeploymentResult.actualCost)
     console.log(`Total Deployment Cost: ${totalCost.toFixed(6)} TRX`)
     console.log('')
     console.log('Next Steps:')
     console.log('1. Update your configuration files with these addresses')
     console.log(`2. Verify contracts on TronScan:`)
     console.log(
-      `   - Portal: https://${network === 'testnet' ? 'nile.' : ''}tronscan.org/#/contract/${deploymentResult.contractAddress}`,
+      `   - Portal: https://${normalizedNetwork === 'testnet' ? 'shasta.' : ''}tronscan.org/#/contract/${deploymentResult.contractAddress}`,
     )
     console.log(
-      `   - LayerZeroProver: https://${network === 'testnet' ? 'nile.' : ''}tronscan.org/#/contract/${lzDeploymentResult.contractAddress}`,
+      `   - LayerZeroProver: https://${normalizedNetwork === 'testnet' ? 'shasta.' : ''}tronscan.org/#/contract/${lzDeploymentResult.contractAddress}`,
     )
     console.log('3. Test contract interactions')
     console.log('')
@@ -566,7 +598,8 @@ async function deployContracts() {
 
 // Run deployment if this file is executed directly
 if (require.main === module) {
-  deployContracts().catch(console.error)
+  const targetNetwork = process.argv[2] // Get first command line argument
+  deployContracts(targetNetwork).catch(console.error)
 }
 
 export { deployContracts }

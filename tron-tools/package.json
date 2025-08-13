@@ -10,7 +10,12 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
-    "deploy:portal-and-layerzeroprover": "npx ts-node scripts/deploy-portal-and-layerzeroprover.ts"
+    "deploy:portal-and-layerzeroprover": "npx ts-node scripts/deploy-portal-and-layerzeroprover.ts",
+    "deploy:mainnet": "npx ts-node scripts/deploy-portal-and-layerzeroprover.ts mainnet",
+    "deploy:testnet": "npx ts-node scripts/deploy-portal-and-layerzeroprover.ts testnet",
+    "deploy:layerzeroprover": "npx ts-node scripts/deploy-layerzeroprover.ts",
+    "deploy:layerzeroprover:mainnet": "npx ts-node scripts/deploy-layerzeroprover.ts mainnet",
+    "deploy:layerzeroprover:testnet": "npx ts-node scripts/deploy-layerzeroprover.ts testnet"
   },
   "keywords": [
     "tron",

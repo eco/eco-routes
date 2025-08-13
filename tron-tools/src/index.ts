@@ -18,5 +18,8 @@ export { TRON_NETWORKS, DEFAULT_CONFIG, TRONZAP_CONFIG } from './config/networks
 // Utilities
 export { logger, LogLevel } from './utils/logger';
 
+// Import TronToolkit for default export
+import { TronToolkit } from './TronToolkit';
+
 // Default export
 export default TronToolkit;

@@ -285,11 +285,32 @@ export class ContractDeployer {
     try {
       const transactionInfo = await this.transactionManager.getTransactionInfo(txId);
       
+      // Try multiple potential locations for the contract address
+      let hexAddress: string | undefined;
+      
+      // Method 1: Check nested under info (original logic)
       if (transactionInfo.info && transactionInfo.info.contract_address) {
-        const hexAddress = transactionInfo.info.contract_address;
+        hexAddress = transactionInfo.info.contract_address;
+      }
+      // Method 2: Check top-level contract_address (observed in LayerZeroProver deployment)
+      else if (transactionInfo.contract_address) {
+        hexAddress = transactionInfo.contract_address;
+      }
+      // Method 3: Check raw transaction data if available
+      else if (transactionInfo.raw_data && transactionInfo.raw_data.contract_address) {
+        hexAddress = transactionInfo.raw_data.contract_address;
+      }
+      
+      if (hexAddress) {
+        // Ensure hex address starts with 41 (Tron address prefix)
+        if (!hexAddress.startsWith('41')) {
+          hexAddress = '41' + hexAddress;
+        }
         return this.tronWeb.address.fromHex(hexAddress);
       }
       
+      // If still no address found, log the transaction structure for debugging
+      logger.error('Contract address not found. Transaction info structure:', JSON.stringify(transactionInfo, null, 2));
       throw new Error('Contract address not found in transaction info');
     } catch (error) {
       logger.error('Failed to get deployed contract address:', error);

@@ -1,4 +1,4 @@
-import TronWeb from 'tronweb';
+const { TronWeb } = require('tronweb');
 import { TronNetwork, NetworkHealth } from '../types';
 import { TRON_NETWORKS } from '../config/networks';
 import { logger } from '../utils/logger';
