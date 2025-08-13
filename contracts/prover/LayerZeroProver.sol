@@ -88,10 +88,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         bytes calldata message,
         address /* executor */,
         bytes calldata /* extraData */
-    ) external payable override {
-        // Verify message is from authorized endpoint
-        _validateMessageSender(msg.sender, ENDPOINT);
-
+    ) external payable override only(ENDPOINT) {
         // Validate sender is not zero
         if (origin.sender == bytes32(0)) {
             revert SenderCannotBeZeroAddress();

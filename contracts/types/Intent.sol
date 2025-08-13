@@ -49,14 +49,14 @@ struct Route {
  * @param deadline Timestamp after which the intent can no longer be executed
  * @param creator Address that created the intent and has authority to modify/cancel
  * @param prover Address of the prover contract that must approve execution
- * @param nativeValue Amount of native tokens offered as reward
+ * @param nativeAmount Amount of native tokens offered as reward
  * @param tokens Array of ERC20 tokens and amounts offered as additional rewards
  */
 struct Reward {
     uint64 deadline;
     address creator;
     address prover;
-    uint256 nativeValue;
+    uint256 nativeAmount;
     TokenAmount[] tokens;
 }
 

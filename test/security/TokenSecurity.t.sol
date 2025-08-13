@@ -202,9 +202,9 @@ contract TokenSecurityTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            false,
             creator,
-            address(fakePermit),
-            false
+            address(fakePermit)
         );
 
         // Intent should not be funded
@@ -453,9 +453,9 @@ contract TokenSecurityTest is BaseTest {
             intent.destination,
             routeHash,
             reward,
+            true,
             creator,
-            address(0),
-            true
+            address(0)
         );
 
         // Since funding failed, checking if intent is funded will also revert

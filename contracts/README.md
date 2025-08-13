@@ -193,7 +193,7 @@ Parameters:
 - `creator` (address) Intent originator address
 - `prover` (address) Prover contract address
 - `deadline` (address) Timestamp for reward claim eligibility
-- `nativeValue` (uint256) Native token reward amount
+- `nativeAmount` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) ERC20 token rewards with amounts
 
 <h4><ins>IntentPublished</ins></h4>
@@ -211,7 +211,7 @@ Parameters:
 - `creator` (address) Intent originator address
 - `prover` (address) Prover contract address
 - `deadline` (uint256) Timestamp for reward claim eligibility
-- `nativeValue` (uint256) Native token reward amount
+- `nativeAmount` (uint256) Native token reward amount
 - `rewardTokens` (TokenAmount[]) Token rewards with amounts
 
 <h4><ins>IntentWithdrawn</ins></h4>

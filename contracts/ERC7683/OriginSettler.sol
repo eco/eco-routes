@@ -58,8 +58,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             orderData.destination,
             orderData.route,
             orderData.reward,
-            msg.sender,
-            false
+            false,
+            msg.sender
         );
 
         // block.timestamp is not going to overflow uint32 until 2106
@@ -111,8 +111,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             orderData.destination,
             orderData.route,
             orderData.reward,
-            order.user,
-            false
+            false,
+            order.user
         );
 
         emit Open(orderId, _resolve(order.openDeadline, orderData));
@@ -192,7 +192,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     ) public view returns (ResolvedCrossChainOrder memory) {
         uint256 rewardTokenCount = orderData.reward.tokens.length;
         Output[] memory minReceived = new Output[](
-            rewardTokenCount + (orderData.reward.nativeValue > 0 ? 1 : 0)
+            rewardTokenCount + (orderData.reward.nativeAmount > 0 ? 1 : 0)
         );
 
         for (uint256 i = 0; i < rewardTokenCount; ++i) {
@@ -204,10 +204,10 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             );
         }
 
-        if (orderData.reward.nativeValue > 0) {
+        if (orderData.reward.nativeAmount > 0) {
             minReceived[rewardTokenCount] = Output(
                 bytes32(0), // token
-                orderData.reward.nativeValue, // amount
+                orderData.reward.nativeAmount, // amount
                 bytes32(uint256(uint160(address(0)))), // recipient is zero address
                 uint256(orderData.destination) // chainId
             );
@@ -255,8 +255,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @param destination Destination chain ID where the intent should be executed
      * @param route Encoded route data containing execution instructions for destination chain
      * @param reward The reward structure containing token amounts, creator, prover, and deadline
-     * @param funder The address providing the funding (msg.sender for open(), order.user for openFor())
      * @param allowPartial Whether to accept partial funding if full funding is not possible
+     * @param funder The address providing the funding (msg.sender for open(), order.user for openFor())
      * @return intentHash Unique identifier of the created or existing intent
      * @return vault Address of the intent's vault contract for reward escrow
      */
@@ -264,7 +264,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         uint64 destination,
         bytes memory route,
         Reward memory reward,
-        address funder,
-        bool allowPartial
+        bool allowPartial,
+        address funder
     ) internal virtual returns (bytes32 intentHash, address vault);
 }

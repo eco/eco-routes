@@ -26,6 +26,17 @@ interface IProver is ISemver {
     error ArrayLengthMismatch();
 
     /**
+     * @notice Portal address cannot be zero
+     */
+    error ZeroPortal();
+
+    /**
+     * @notice Chain ID is too large to fit in uint64
+     * @param chainId The chain ID that is too large
+     */
+    error ChainIdTooLarge(uint256 chainId);
+
+    /**
      * @notice Emitted when an intent is successfully proven
      * @dev Emitted by the Prover on the source chain.
      * @param intentHash Hash of the proven intent
@@ -37,6 +48,12 @@ interface IProver is ISemver {
         address indexed claimant,
         uint64 destination
     );
+
+    /**
+     * @notice Emitted when an intent proof is invalidated
+     * @param intentHash Hash of the invalidated intent
+     */
+    event IntentProofInvalidated(bytes32 indexed intentHash);
 
     /**
      * @notice Emitted when attempting to prove an already-proven intent
@@ -58,7 +75,7 @@ interface IProver is ISemver {
      * @param sourceChainDomainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data specific to the proving implementation
-     * 
+     *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
      *      Each bridge provider uses their own domain ID mapping system:
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs

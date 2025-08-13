@@ -41,7 +41,7 @@ describe('LayerZeroProver Test', (): void => {
       parts.push(intentHashes[i])
       parts.push(claimantBytes)
     }
-    
+
     // Use solidityPacked to match Solidity's abi.encodePacked(uint64(chainId), packed)
     const packedParts = ethers.concat(parts)
     return ethers.solidityPacked(['uint64', 'bytes'], [chainId, packedParts])
@@ -353,7 +353,7 @@ describe('LayerZeroProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -402,8 +402,8 @@ describe('LayerZeroProver Test', (): void => {
 
       await expect(
         inbox.connect(solver).prove(
-          sourceChainId,
           await layerZeroProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           { value: fee - BigInt(1) }, // underpayment
@@ -427,7 +427,7 @@ describe('LayerZeroProver Test', (): void => {
         layerZeroProver
           .connect(solver)
           .prove(owner.address, 123, encodedProofs, data),
-      ).to.be.revertedWithCustomError(layerZeroProver, 'UnauthorizedProve')
+      ).to.be.revertedWithCustomError(layerZeroProver, 'UnauthorizedSender')
     })
 
     it('should handle exact fee payment with no refund needed', async () => {
@@ -465,7 +465,7 @@ describe('LayerZeroProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: deadline,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -515,8 +515,8 @@ describe('LayerZeroProver Test', (): void => {
       const proveTx = await inbox
         .connect(solver)
         .prove(
-          sourceChainId,
           await layerZeroProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           { value: fee },
@@ -550,8 +550,8 @@ describe('LayerZeroProver Test', (): void => {
       const tx = await inbox
         .connect(owner)
         .prove(
-          sourceChainId,
           await layerZeroProver.getAddress(),
+          sourceChainId,
           intentHashes,
           data,
           {
@@ -613,7 +613,10 @@ describe('LayerZeroProver Test', (): void => {
         intentHash2, // 32 bytes
         nonAddressClaimant, // 32 bytes - Non-EVM address
       ])
-      const msgBody = ethers.solidityPacked(['uint64', 'bytes'], [12345, rawPacked])
+      const msgBody = ethers.solidityPacked(
+        ['uint64', 'bytes'],
+        [12345, rawPacked],
+      )
 
       const origin = {
         srcEid: 12345,
@@ -686,7 +689,7 @@ describe('LayerZeroProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeValue: ethers.parseEther('0.01'),
+          nativeAmount: ethers.parseEther('0.01'),
           tokens: [] as TokenAmount[],
         },
       }
@@ -827,7 +830,7 @@ describe('LayerZeroProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await layerZeroProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeValue: ethers.parseEther('0.01'),
+        nativeAmount: ethers.parseEther('0.01'),
         tokens: [],
       }
 
@@ -883,7 +886,7 @@ describe('LayerZeroProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await layerZeroProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeValue: ethers.parseEther('0.01'),
+        nativeAmount: ethers.parseEther('0.01'),
         tokens: [],
       }
       const intent1: Intent = {
@@ -934,8 +937,8 @@ describe('LayerZeroProver Test', (): void => {
         inbox
           .connect(solver)
           .prove(
-            sourceChainID,
             await layerZeroProver.getAddress(),
+            sourceChainID,
             [intentHash0, intentHash1],
             data,
             { value: batchFee },
@@ -992,7 +995,7 @@ describe('LayerZeroProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
-          nativeValue: 0,
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
         },
       }
@@ -1026,8 +1029,8 @@ describe('LayerZeroProver Test', (): void => {
       await expect(
         prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
       )
-        .to.emit(prover, 'IntentProven')
-        .withArgs(intentHash, ethers.ZeroAddress, wrongChainId)
+        .to.emit(prover, 'IntentProofInvalidated')
+        .withArgs(intentHash)
 
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)

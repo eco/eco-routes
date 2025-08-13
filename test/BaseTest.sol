@@ -138,7 +138,7 @@ contract BaseTest is Test {
             deadline: uint64(expiry),
             creator: creator,
             prover: address(prover),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: rewardTokensMemory
         });
 

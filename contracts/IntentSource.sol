@@ -283,8 +283,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
                 destination,
                 route,
                 reward,
-                msg.sender,
-                allowPartial
+                allowPartial,
+                msg.sender
             );
     }
 
@@ -328,18 +328,18 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) external payable returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(destination, routeHash, reward);
 
         _fundIntentFor(
             reward,
             intentHash,
+            allowPartial,
             funder,
-            permitContract,
-            allowPartial
+            permitContract
         );
     }
 
@@ -353,18 +353,18 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      */
     function publishAndFundFor(
         Intent calldata intent,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) public payable returns (bytes32 intentHash, address vault) {
         return
             publishAndFundFor(
                 intent.destination,
                 abi.encode(intent.route),
                 intent.reward,
+                allowPartial,
                 funder,
-                permitContract,
-                allowPartial
+                permitContract
             );
     }
 
@@ -383,18 +383,18 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward calldata reward,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) public payable returns (bytes32 intentHash, address vault) {
         (intentHash, ) = publish(destination, route, reward);
 
         vault = _fundIntentFor(
             reward,
             intentHash,
+            allowPartial,
             funder,
-            permitContract,
-            allowPartial
+            permitContract
         );
     }
 
@@ -428,7 +428,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
                 routeHash,
                 rewardHash
             );
-            emit IntentProofChallenged(intentHash);
 
             return;
         }
@@ -535,12 +534,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         emit IntentPublished(
             intentHash,
             destination,
+            route,
             reward.creator,
             reward.prover,
             reward.deadline,
-            reward.nativeValue,
-            reward.tokens,
-            route
+            reward.nativeAmount,
+            reward.tokens
         );
     }
 
@@ -552,8 +551,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
-     * @param funder The address providing the funding
      * @param allowPartial Whether to accept partial funding
+     * @param funder The address providing the funding
      * @return intentHash Hash of the created and funded intent
      * @return vault Address of the created vault
      */
@@ -561,8 +560,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint64 destination,
         bytes memory route,
         Reward memory reward,
-        address funder,
-        bool allowPartial
+        bool allowPartial,
+        address funder
     ) internal override returns (bytes32 intentHash, address vault) {
         (intentHash, vault) = publish(destination, route, reward);
 
@@ -591,7 +590,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             return;
         }
 
-        bool fullyFunded = _fundNative(vault, reward.nativeValue);
+        bool fullyFunded = _fundNative(vault, reward.nativeAmount);
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
@@ -682,9 +681,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     function _fundIntentFor(
         Reward calldata reward,
         bytes32 intentHash,
+        bool allowPartial,
         address funder,
-        address permitContract,
-        bool allowPartial
+        address permitContract
     ) internal returns (address vault) {
         vault = _getOrDeployVault(intentHash);
         bool fullyFunded = IVaultV2(vault).fundFor{value: msg.value}(
@@ -718,7 +717,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     ) internal view returns (bool) {
         uint256 rewardsLength = reward.tokens.length;
 
-        if (vault.balance < reward.nativeValue) return false;
+        if (vault.balance < reward.nativeAmount) return false;
 
         for (uint256 i = 0; i < rewardsLength; ++i) {
             address token = reward.tokens[i].token;

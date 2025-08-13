@@ -39,8 +39,6 @@ abstract contract MessageBridgeProver is
         bytes32[] memory provers,
         uint256 minGasLimit
     ) BaseProver(portal) Whitelist(provers) {
-        if (portal == address(0)) revert PortalCannotBeZeroAddress();
-
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
 
         // Validate that chain ID fits in uint64 and store it
@@ -51,28 +49,15 @@ abstract contract MessageBridgeProver is
     }
 
     /**
-     * @notice Validates that the message sender is authorized
-     * @dev Template method for authorization check
-     * @param messageSender Address attempting to call handle()
-     * @param expectedSender Address that should be authorized
+     * @notice Modifier to restrict function access to a specific sender
+     * @param expectedSender Address that is expected to be the sender
      */
-    function _validateMessageSender(
-        address messageSender,
-        address expectedSender
-    ) internal pure {
-        if (expectedSender != messageSender) {
-            revert UnauthorizedHandle(messageSender);
+    modifier only(address expectedSender) {
+        if (msg.sender != expectedSender) {
+            revert UnauthorizedSender(expectedSender, msg.sender);
         }
-    }
 
-    /**
-     * @notice Validates that the proving request is authorized
-     * @param sender Address that sent the proving request
-     */
-    function _validateProvingRequest(address sender) internal view {
-        if (sender != PORTAL) {
-            revert UnauthorizedProve(sender);
-        }
+        _;
     }
 
     /**
@@ -135,10 +120,7 @@ abstract contract MessageBridgeProver is
         uint64 domainID,
         bytes calldata encodedProofs,
         bytes calldata data
-    ) external payable virtual override {
-        // Validate the request is from Portal
-        _validateProvingRequest(msg.sender);
-
+    ) external payable virtual override only(PORTAL) {
         // Calculate fee using implementation-specific logic
         uint256 fee = fetchFee(domainID, encodedProofs, data);
 
@@ -148,10 +130,7 @@ abstract contract MessageBridgeProver is
         }
 
         // Calculate refund amount if overpaid
-        uint256 refundAmount = 0;
-        if (msg.value > fee) {
-            refundAmount = msg.value - fee;
-        }
+        uint256 refundAmount = msg.value > fee ? msg.value - fee : 0;
 
         // Dispatch message using implementation-specific logic
         _dispatchMessage(domainID, encodedProofs, data, fee);

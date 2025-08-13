@@ -97,7 +97,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -132,7 +132,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -155,7 +155,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -183,7 +183,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 2 ether,
+            nativeAmount: 2 ether,
             tokens: tokens
         });
 
@@ -208,7 +208,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -239,7 +239,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -270,7 +270,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -295,7 +295,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -322,7 +322,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -350,7 +350,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -383,7 +383,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -414,7 +414,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -449,7 +449,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -480,7 +480,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -509,7 +509,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -525,7 +525,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -554,7 +554,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -578,7 +578,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -597,7 +597,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 2 ether,
+            nativeAmount: 2 ether,
             tokens: tokens
         });
 
@@ -620,7 +620,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -654,7 +654,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -674,7 +674,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -689,7 +689,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -712,7 +712,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -745,7 +745,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -763,7 +763,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -794,7 +794,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -820,7 +820,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -841,7 +841,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -879,7 +879,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 1 ether,
+            nativeAmount: 1 ether,
             tokens: tokens
         });
 
@@ -906,7 +906,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -928,7 +928,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -950,7 +950,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -980,7 +980,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -1001,7 +1001,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -1026,7 +1026,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -1048,7 +1048,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -1070,7 +1070,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 
@@ -1090,7 +1090,7 @@ contract VaultV2Test is Test {
             creator: creator,
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: tokens
         });
 

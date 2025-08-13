@@ -24,7 +24,7 @@ export type Reward = {
   creator: string
   prover: string
   deadline: number | bigint
-  nativeValue: bigint
+  nativeAmount: bigint
   tokens: TokenAmount[]
 }
 
@@ -61,7 +61,7 @@ const RewardStruct = [
   { name: 'deadline', type: 'uint64' },
   { name: 'creator', type: 'address' },
   { name: 'prover', type: 'address' },
-  { name: 'nativeValue', type: 'uint256' },
+  { name: 'nativeAmount', type: 'uint256' },
   {
     name: 'tokens',
     type: 'tuple[]',
@@ -110,7 +110,7 @@ const IntentStruct = [
       { name: 'deadline', type: 'uint64' },
       { name: 'creator', type: 'address' },
       { name: 'prover', type: 'address' },
-      { name: 'nativeValue', type: 'uint256' },
+      { name: 'nativeAmount', type: 'uint256' },
       {
         name: 'tokens',
         type: 'tuple[]',

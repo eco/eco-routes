@@ -57,7 +57,7 @@ describe('Origin Settler Test', (): void => {
   // Use the correct ORDER_DATA_TYPEHASH from the contract
   const ORDER_DATA_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address creator,address prover,uint256 nativeValue,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)',
+      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address creator,address prover,uint256 nativeAmount,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)',
     ),
   )
 
@@ -152,7 +152,7 @@ describe('Origin Settler Test', (): void => {
         creator: creator.address,
         prover: await prover.getAddress(),
         deadline: expiry_fill,
-        nativeValue: rewardNativeEth,
+        nativeAmount: rewardNativeEth,
         tokens: rewardTokens,
       }
       intent = { destination: chainId, route: route, reward: reward }
@@ -187,7 +187,7 @@ describe('Origin Settler Test', (): void => {
                 reward.deadline, // reward.deadline
                 reward.creator, // reward.creator (address, not bytes32)
                 reward.prover, // reward.prover (address, not bytes32)
-                reward.nativeValue, // reward.nativeValue
+                reward.nativeAmount, // reward.nativeAmount
                 reward.tokens.map((token) => [token.token, token.amount]), // TokenAmount[] with proper structure
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
@@ -237,7 +237,7 @@ describe('Origin Settler Test', (): void => {
                 reward.deadline, // reward.deadline
                 reward.creator, // reward.creator (address, not bytes32)
                 reward.prover, // reward.prover (address, not bytes32)
-                reward.nativeValue, // reward.nativeValue
+                reward.nativeAmount, // reward.nativeAmount
                 reward.tokens.map((token) => [token.token, token.amount]), // TokenAmount[] with proper structure
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
@@ -297,7 +297,7 @@ describe('Origin Settler Test', (): void => {
                   reward.deadline, // reward.deadline
                   reward.creator, // reward.creator
                   reward.prover, // reward.prover
-                  reward.nativeValue, // reward.nativeValue
+                  reward.nativeAmount, // reward.nativeAmount
                   reward.tokens.map((token) => [token.token, token.amount]), // TokenAmount[] with proper structure
                 ],
                 ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
@@ -323,7 +323,7 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeValue: reward.nativeValue },
+            reward: { ...reward, nativeAmount: reward.nativeAmount },
           }),
         ).to.be.false
 
@@ -347,19 +347,19 @@ describe('Origin Settler Test', (): void => {
           .withArgs(
             intentHash,
             chainId,
+            encodeRoute(route),
             await creator.getAddress(),
             await prover.getAddress(),
             expiry_fill,
-            reward.nativeValue,
+            reward.nativeAmount,
             rewardTokens.map(Object.values),
-            encodeRoute(route),
           )
           .to.emit(originSettler, 'Open')
         expect(
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeValue: reward.nativeValue },
+            reward: { ...reward, nativeAmount: reward.nativeAmount },
           }),
         ).to.be.true
         expect(
@@ -387,7 +387,7 @@ describe('Origin Settler Test', (): void => {
         await tokenB.connect(creator).transfer(vaultAddress, 2n * mintAmount)
         await creator.sendTransaction({
           to: vaultAddress,
-          value: reward.nativeValue,
+          value: reward.nativeAmount,
         })
 
         const creatorInitialNativeBalance: bigint = await provider.getBalance(
@@ -398,7 +398,7 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeValue: reward.nativeValue },
+            reward: { ...reward, nativeAmount: reward.nativeAmount },
           }),
         ).to.be.true
 
@@ -432,14 +432,14 @@ describe('Origin Settler Test', (): void => {
         await tokenB.connect(creator).transfer(vaultAddress, 2n * mintAmount)
         await creator.sendTransaction({
           to: vaultAddress,
-          value: reward.nativeValue,
+          value: reward.nativeAmount,
         })
 
         expect(
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeValue: reward.nativeValue },
+            reward: { ...reward, nativeAmount: reward.nativeAmount },
           }),
         ).to.be.true
 
@@ -495,7 +495,7 @@ describe('Origin Settler Test', (): void => {
         }
 
         expect(resolvedOrder.minReceived.length).to.eq(
-          reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
+          reward.tokens.length + (reward.nativeAmount > 0 ? 1 : 0),
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
@@ -517,7 +517,7 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].token).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
-        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeValue)
+        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeAmount)
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
@@ -535,7 +535,7 @@ describe('Origin Settler Test', (): void => {
           reward.deadline,
           reward.creator,
           reward.prover,
-          reward.nativeValue,
+          reward.nativeAmount,
           reward.tokens.map((token) => [token.token, token.amount]),
         ]
         const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
@@ -562,7 +562,7 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeValue: reward.nativeValue },
+            reward: { ...reward, nativeAmount: reward.nativeAmount },
           }),
         ).to.be.false
 
@@ -590,7 +590,7 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeValue: reward.nativeValue },
+            reward: { ...reward, nativeAmount: reward.nativeAmount },
           }),
         ).to.be.true
       })
@@ -649,7 +649,7 @@ describe('Origin Settler Test', (): void => {
           )
         }
         expect(resolvedOrder.minReceived.length).to.eq(
-          reward.tokens.length + (reward.nativeValue > 0 ? 1 : 0),
+          reward.tokens.length + (reward.nativeAmount > 0 ? 1 : 0),
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
@@ -671,7 +671,7 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].token).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
-        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeValue)
+        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeAmount)
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
@@ -689,7 +689,7 @@ describe('Origin Settler Test', (): void => {
           reward.deadline,
           reward.creator,
           reward.prover,
-          reward.nativeValue,
+          reward.nativeAmount,
           reward.tokens.map((token) => [token.token, token.amount]),
         ]
         const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
