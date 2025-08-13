@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
+import {IVaultV2} from "../../contracts/interfaces/IVaultV2.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
@@ -271,11 +272,11 @@ contract IntentSourceTest is BaseTest {
         assertTrue(intentSource.isIntentFunded(intent));
     }
 
-    function testCantRefundIfProofExists() public {
+    function testCantRefundIfCorrectProofExists() public {
         _publishAndFund(intent, false);
 
         bytes32 intentHash = _hashIntent(intent);
-        _addProof(intentHash, 2, claimant); // Add any proof
+        _addProof(intentHash, CHAIN_ID, claimant); // Add proof with correct destination
 
         vm.prank(otherPerson);
         vm.expectRevert(
@@ -628,16 +629,10 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         _addProof(intentHash, CHAIN_ID, claimant);
 
-        uint256 initialClaimantBalance = tokenA.balanceOf(claimant);
-
-        // Should not revert despite malicious token
+        // Should revert due to malicious token preventing transfer
         vm.prank(claimant);
+        vm.expectRevert(BadERC20.TransferNotAllowed.selector);
         intentSource.withdraw(intent.destination, routeHash, intent.reward);
-
-        assertEq(
-            tokenA.balanceOf(claimant),
-            initialClaimantBalance + MINT_AMOUNT
-        );
     }
 
     function testBalanceOverAllowanceForPartialFunding() public {

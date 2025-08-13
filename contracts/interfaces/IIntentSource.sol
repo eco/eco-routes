@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IVaultStorage} from "./IVaultStorage.sol";
-
+import {IVaultV2} from "./IVaultV2.sol";
 import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
@@ -13,13 +12,7 @@ import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
  *      and a prover contract for verification. It handles intent creation, funding,
  *      and reward distribution.
  */
-interface IIntentSource is IVaultStorage {
-    /**
-     * @notice Indicates an attempt to fund an intent on an incorrect chain
-     * @param intentHash The hash of the intent that was incorrectly targeted
-     */
-    error WrongSourceChain(bytes32 intentHash);
-
+interface IIntentSource {
     /**
      * @notice Indicates a failed native token transfer during reward distribution
      * @param intentHash The hash of the intent whose reward transfer failed
@@ -33,71 +26,21 @@ interface IIntentSource is IVaultStorage {
     error IntentAlreadyExists(bytes32 intentHash);
 
     /**
-     * @notice Indicates an attempt to fund an already funded intent
-     * @param intentHash The hash of the previously funded intent
-     */
-    error IntentAlreadyFunded(bytes32 intentHash);
-
-    /**
-     * @notice Indicates insufficient native token payment for the required reward
-     * @param intentHash The hash of the intent with insufficient funding
-     */
-    error InsufficientNativeReward(bytes32 intentHash);
-
-    /**
-     * @notice Thrown when the vault has insufficient token allowance for reward funding
-     */
-    error InsufficientTokenAllowance(
-        address token,
-        address spender,
-        uint256 amount
-    );
-
-    /**
-     * @notice Indicates an invalid attempt to fund with native tokens
-     * @param intentHash The hash of the intent that cannot accept native tokens
-     */
-    error CannotFundForWithNativeReward(bytes32 intentHash);
-
-    /**
-     * @notice Thrown when vault creation fails
-     * @param intentHash The hash of the intent
-     */
-    error VaultCreationFailed(bytes32 intentHash);
-
-    /**
-     * @notice Indicates an unauthorized reward withdrawal attempt
-     * @param hash The hash of the intent with protected rewards
-     */
-    error UnauthorizedWithdrawal(bytes32 hash);
-
-    /**
-     * @notice Indicates an attempt to withdraw already claimed rewards
-     * @param hash The hash of the intent with depleted rewards
-     */
-    error RewardsAlreadyWithdrawn(bytes32 hash);
-
-    /**
-     * @notice Indicates a premature withdrawal attempt before intent expiration
-     * @param intentHash The hash of the unexpired intent
-     */
-    error IntentNotExpired(bytes32 intentHash);
-
-    /**
      * @notice Indicates a premature refund attempt before intent completion
      * @param intentHash The hash of the unclaimed intent
      */
     error IntentNotClaimed(bytes32 intentHash);
 
     /**
-     * @notice Indicates an invalid token specified for refund
-     */
-    error InvalidRefundToken();
-
-    /**
      * @notice Indicates mismatched array lengths in batch operations
      */
     error ArrayLengthMismatch();
+
+    /**
+     * @notice Indicates insufficient funds to complete the intent funding
+     * @param intentHash The hash of the intent that couldn't be funded
+     */
+    error InsufficientFunds(bytes32 intentHash);
 
     /**
      * @notice Signals the creation of a new cross-chain intent
@@ -144,6 +87,20 @@ interface IIntentSource is IVaultStorage {
     event IntentRefunded(bytes32 hash, address indexed recipient);
 
     /**
+     * @notice Signals successful token recovery from an intent vault
+     * @dev Emitted when tokens that were accidentally sent to a vault are recovered
+     *      Only tokens not part of the intent's reward structure can be recovered
+     * @param intentHash The hash of the intent whose vault had tokens recovered
+     * @param refundee The address receiving the recovered tokens (typically the intent creator)
+     * @param token The address of the token contract that was recovered
+     */
+    event IntentTokenRecovered(
+        bytes32 intentHash,
+        address indexed refundee,
+        address indexed token
+    );
+
+    /**
      * @notice Signals that an intent proof was challenged due to wrong destination chain
      * @param intentHash The hash of the challenged intent
      */
@@ -156,25 +113,7 @@ interface IIntentSource is IVaultStorage {
      */
     function getRewardStatus(
         bytes32 intentHash
-    ) external view returns (RewardStatus status);
-
-    /**
-     * @notice Retrieves the current state of an intent's vault
-     * @param intentHash The hash of the intent
-     * @return Current vault state
-     */
-    function getVaultState(
-        bytes32 intentHash
-    ) external view returns (VaultState memory);
-
-    /**
-     * @notice Retrieves the permit contract for token transfers
-     * @param intentHash The hash of the intent
-     * @return Address of the permit contract
-     */
-    function getPermitContract(
-        bytes32 intentHash
-    ) external view returns (address);
+    ) external view returns (IVaultV2.Status status);
 
     /**
      * @notice Computes the hash components of an intent
@@ -338,7 +277,7 @@ interface IIntentSource is IVaultStorage {
         address fundingAddress,
         address permitContract,
         bool allowPartial
-    ) external returns (bytes32 intentHash);
+    ) external payable returns (bytes32 intentHash);
 
     /**
      * @notice Creates and funds an intent on behalf of another address
@@ -354,7 +293,7 @@ interface IIntentSource is IVaultStorage {
         address funder,
         address permitContract,
         bool allowPartial
-    ) external returns (bytes32 intentHash, address vault);
+    ) external payable returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Creates and funds an intent on behalf of another address
@@ -374,7 +313,7 @@ interface IIntentSource is IVaultStorage {
         address funder,
         address permitContract,
         bool allowPartial
-    ) external returns (bytes32 intentHash, address vault);
+    ) external payable returns (bytes32 intentHash, address vault);
 
     /**
      * @notice Claims rewards for a successfully fulfilled and proven intent

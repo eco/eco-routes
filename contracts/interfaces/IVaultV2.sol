@@ -20,6 +20,12 @@ interface IVaultV2 {
     /// @notice Thrown when vault status is invalid for withdrawal operation
     error InvalidStatusForWithdrawal(Status status);
 
+    /// @notice Thrown when attempting to recover an invalid token (zero address or reward token)
+    error InvalidRecoverToken(address token);
+
+    /// @notice Thrown when attempting to recover a token with zero balance
+    error ZeroRecoverTokenBalance(address token);
+
     /// @notice Thrown when vault status is invalid for refund operation or deadline not reached
     error InvalidStatusForRefund(
         Status status,
@@ -30,8 +36,8 @@ interface IVaultV2 {
     /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
 
-    /// @notice Thrown when claimant address is invalid
-    error InvalidClaimant(address claimant);
+    /// @notice Thrown when claimant address is address zero
+    error ZeroClaimant();
 
     /// @notice Vault lifecycle status
     enum Status {
@@ -43,33 +49,42 @@ interface IVaultV2 {
 
     /**
      * @notice Funds the vault with reward tokens and native currency
+     * @param status Current vault status
      * @param reward The reward structure containing tokens and amounts
      * @param funder Address providing the funding
      * @param permit Optional permit contract for token transfers
-     * @return bool True if vault was successfully fully funded
+     * @return fullyFunded True if vault was successfully fully funded
      */
-    function fund(
+    function fundFor(
+        Status status,
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable returns (bool);
+    ) external payable returns (bool fullyFunded);
 
     /**
      * @notice Withdraws rewards from the vault to the claimant
+     * @param status Current vault status
      * @param reward The reward structure to withdraw
      * @param claimant Address that will receive the rewards
      */
-    function withdraw(Reward calldata reward, address claimant) external;
+    function withdraw(
+        Status status,
+        Reward calldata reward,
+        address claimant
+    ) external;
 
     /**
      * @notice Refunds rewards back to the original creator
+     * @param status Current vault status
      * @param reward The reward structure to refund
      */
-    function refund(Reward calldata reward) external;
+    function refund(Status status, Reward calldata reward) external;
 
     /**
-     * @notice Gets the current status of the vault
-     * @return Status Current vault status
+     * @notice Recovers tokens that are not part of the reward to the creator
+     * @param reward The reward structure containing creator address
+     * @param token Address of the token to recover (must not be a reward token)
      */
-    function getStatus() external view returns (Status);
+    function recover(Reward calldata reward, address token) external;
 }
