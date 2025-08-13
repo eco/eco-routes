@@ -91,10 +91,35 @@ contract PortalDeployer is Script {
     }
 
     /**
-     * @notice Deploys a contract using CREATE3
+     * @notice Predicts the address where a contract will be deployed using CREATE2
+     * @param bytecode The bytecode of the contract to be deployed
+     * @param salt The salt used for the CREATE2 deployment
+     * @return The predicted address where the contract will be deployed
+     */
+    function predictCreate2Address(
+        bytes memory bytecode,
+        bytes32 salt
+    ) public view returns (address) {
+        return address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(
+                            bytes1(0xff),
+                            address(create2Factory),
+                            salt,
+                            keccak256(bytecode)
+                        )
+                    )
+                )
+            )
+        );
+    }
+
+    /**
+     * @notice Deploys a contract using CREATE2
      * @param bytecode The bytecode of the contract to deploy
-     * @param sender The sender address
-     * @param salt The salt used for the CREATE3 deployment
+     * @param salt The salt used for the CREATE2 deployment
      * @return deployedContract The address of the deployed contract
      */
     function deployWithCreate2(
@@ -102,7 +127,7 @@ contract PortalDeployer is Script {
         bytes32 salt
     ) external returns (address deployedContract) {
         // Calculate the contract address that will be deployed
-        deployedContract = this.predictCreate2Address(bytecode, salt);
+        deployedContract = predictCreate2Address(bytecode, salt);
         console.log("Predicted address:", deployedContract);
         console.log("Salt (hex):", vm.toString(salt));
         console.log("Bytecode length:", bytecode.length);
@@ -121,7 +146,7 @@ contract PortalDeployer is Script {
         console.log("Actually deployed at:", justDeployedAddr);
         
         // Double-check the prediction with the same inputs
-        address doubleCheckPrediction = this.predictCreate2Address(bytecode, salt);
+        address doubleCheckPrediction = predictCreate2Address(bytecode, salt);
         console.log("Double-check prediction:", doubleCheckPrediction);
         
         require(
@@ -142,20 +167,29 @@ contract PortalDeployer is Script {
     function deployPortal(address sender, bytes32 salt) external returns (address portal) {
         bytes memory portalBytecode = vm.getDeployedCode("Portal.sol:Portal");
         console.log("Portal bytecode length:", portalBytecode.length);
-        (portal) = this.deployWithCreate3(
+        portal = this.deployWithCreate2(
             portalBytecode,
-            sender,
-            salt
+            this.getContractSalt(salt, "PORTAL")
         );
         console.log("Portal deployed at:", portal);
     }
 
     /**
-     * @notice Deploys the Portal contract using CREATE3 with environment variable salt
+     * @notice Deploys the Portal contract using CREATE2 with environment variable salt
      * @return portal The address of the deployed Portal contract
      */
     function deployPortalWithEnvSalt() external returns (address portal) {
         bytes32 salt = vm.envBytes32("SALT");
         return this.deployPortal(msg.sender, salt);
+    }
+
+    /**
+     * @notice Main run function for deploying Portal
+     */
+    function run() external {
+        vm.startBroadcast();
+        address portal = this.deployPortalWithEnvSalt();
+        console.log("Portal deployed at:", portal);
+        vm.stopBroadcast();
     }
 } 

@@ -149,6 +149,19 @@ contract LayerZeroProverDeploy is Script {
         console.log("Salt:", vm.toString(contractSalt));
         console.log("Deployer:", deployer);
         console.log("==========================================");
+        
+        // Check if code is already deployed at the predicted address
+        if (isDeployed(predictedAddress)) {
+            console.log("");
+            console.log("ERROR: Contract already deployed at predicted address!");
+            console.log("Address:", predictedAddress);
+            console.log("Current Salt:", vm.toString(contractSalt));
+            console.log("");
+            console.log("To deploy a new contract, please update the SALT in your .env file");
+            console.log("Current root salt:", vm.toString(salt));
+            console.log("");
+            revert("Contract already deployed at predicted address. Update SALT to deploy a new instance.");
+        }
     }
 
     function predictCreate3Address(

@@ -5,7 +5,7 @@ export const TRON_NETWORKS: Record<string, TronNetwork> = {
     name: 'Tron Mainnet',
     chainId: '728126428', // 0x2B6653DC
     rpcUrl: process.env.TRON_MAINNET_RPC_URL || 'https://api.trongrid.io',
-    apiKey: process.env.TRON_MAINNET_API_KEY,
+    apiKey: process.env.TRONGRID_API_KEY,
     isMainnet: true,
     fallbackUrls: [
       process.env.TRON_FALLBACK_RPC_1 || 'https://api.tron.network',
@@ -16,7 +16,7 @@ export const TRON_NETWORKS: Record<string, TronNetwork> = {
     name: 'Tron Testnet (Shasta)',
     chainId: '2494104990', // 0x94A9059E  
     rpcUrl: process.env.TRON_TESTNET_RPC_URL || 'https://api.shasta.trongrid.io',
-    apiKey: process.env.TRON_TESTNET_API_KEY,
+    apiKey: process.env.TRONGRID_API_KEY,
     isMainnet: false,
     fallbackUrls: [
       process.env.TRON_FALLBACK_RPC_2 || 'https://api.nileex.io',
@@ -35,6 +35,6 @@ export const DEFAULT_CONFIG = {
 };
 
 export const TRONZAP_CONFIG = {
-  apiUrl: process.env.TRONZAP_API_URL || 'https://api.tronzap.io',
+  apiUrl: process.env.TRONZAP_API_URL || 'https://api.tronzap.com',
   apiKey: process.env.TRONZAP_API_KEY
 };

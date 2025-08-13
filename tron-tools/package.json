@@ -10,7 +10,7 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
-    "deploy:portal": "npx ts-node scripts/deploy-portal.ts"
+    "deploy:portal-and-layerzeroprover": "npx ts-node scripts/deploy-portal-and-layerzeroprover.ts"
   },
   "keywords": [
     "tron",
