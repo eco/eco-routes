@@ -2,24 +2,24 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {PolyNativeProver} from "../../contracts/prover/PolymerProver.sol";
+import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 
 contract PolymerProverTest is BaseTest {
-    PolyNativeProver internal polymerProver;
+    PolymerProver internal polymerProver;
     TestCrossL2ProverV2 internal crossL2ProverV2;
+    address internal destinationProver;
 
     uint32 constant OPTIMISM_CHAIN_ID = 10;
     uint32 constant ARBITRUM_CHAIN_ID = 42161;
 
     bytes32 constant PROOF_SELECTOR = keccak256("IntentFulfilledFromSource(bytes32,bytes32,uint64)");
-    bytes32 constant BATCH_PROOF_SELECTOR = keccak256("BatchToBeProven(uint256,bytes)");
 
     bytes internal emptyTopics = hex"0000000000000000000000000000000000000000000000000000000000000000";
     bytes internal emptyData = hex"";
-    
+
     /**
      * @notice Helper function to encode proofs from separate arrays
      * @param intentHashes Array of intent hashes
@@ -63,9 +63,27 @@ contract PolymerProverTest is BaseTest {
             emptyData
         );
 
-        polymerProver = new PolyNativeProver(
-            address(crossL2ProverV2),
+        // Create mock destination prover address
+        destinationProver = makeAddr("destinationProver");
+
+        // Deploy PolymerProver with owner and portal
+        polymerProver = new PolymerProver(
+            address(this), // owner
             address(portal)
+        );
+
+        // Initialize with CrossL2ProverV2 and whitelist
+        uint64[] memory chainIds = new uint64[](2);
+        bytes32[] memory provers = new bytes32[](2);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        chainIds[1] = ARBITRUM_CHAIN_ID;
+        provers[0] = bytes32(uint256(uint160(destinationProver)));
+        provers[1] = bytes32(uint256(uint160(destinationProver)));
+
+        polymerProver.initialize(
+            address(crossL2ProverV2),
+            chainIds,
+            provers
         );
 
         _mintAndApprove(creator, MINT_AMOUNT);
@@ -97,10 +115,10 @@ contract PolymerProverTest is BaseTest {
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
 
         // Should revert when called by non-portal
-        vm.expectRevert(PolyNativeProver.OnlyPortal.selector);
+        vm.expectRevert(PolymerProver.OnlyPortal.selector);
         polymerProver.prove(creator, uint64(block.chainid), encodedProofs, hex"");
     }
-    
+
     function testProveEmitsEvents() public {
         bytes32[] memory intentHashes = new bytes32[](1);
         bytes32[] memory claimants = new bytes32[](1);
@@ -111,12 +129,12 @@ contract PolymerProverTest is BaseTest {
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
 
         _expectEmit();
-        emit PolyNativeProver.IntentFulfilledFromSource(intentHash, claimants[0], uint64(block.chainid));
+        emit PolymerProver.IntentFulfilledFromSource(intentHash, claimants[0], uint64(block.chainid));
 
         vm.prank(address(portal));
         polymerProver.prove(creator, uint64(block.chainid), encodedProofs, hex"");
     }
-    
+
     function testProveHandlesEmptyProofs() public {
         vm.prank(address(portal));
         polymerProver.prove(creator, uint64(block.chainid), hex"", hex"");
@@ -134,7 +152,7 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            address(polymerProver),
+            destinationProver,
             topics,
             emptyData
         );
@@ -163,7 +181,7 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            address(polymerProver),
+            destinationProver,
             topics,
             emptyData
         );
@@ -205,7 +223,7 @@ contract PolymerProverTest is BaseTest {
 
             crossL2ProverV2.setAll(
                 chainIds[i],
-                address(polymerProver),
+                destinationProver,
                 topics,
                 emptyData
             );
@@ -241,7 +259,7 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(PolyNativeProver.InvalidEmittingContract.selector);
+        vm.expectRevert(abi.encodeWithSelector(PolymerProver.InvalidEmittingContract.selector, creator));
         polymerProver.validate(proof);
     }
 
@@ -257,14 +275,14 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            address(polymerProver),
+            destinationProver,
             topics,
             emptyData
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(PolyNativeProver.InvalidTopicsLength.selector);
+        vm.expectRevert(PolymerProver.InvalidTopicsLength.selector);
         polymerProver.validate(proof);
     }
 
@@ -281,14 +299,14 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            address(polymerProver),
+            destinationProver,
             topics,
             emptyData
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(PolyNativeProver.InvalidEventSignature.selector);
+        vm.expectRevert(PolymerProver.InvalidEventSignature.selector);
         polymerProver.validate(proof);
     }
 
@@ -304,7 +322,7 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            address(polymerProver),
+            destinationProver,
             topics,
             emptyData
         );
@@ -342,7 +360,7 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            address(polymerProver),
+            destinationProver,
             topics,
             emptyData
         );
@@ -363,40 +381,40 @@ contract PolymerProverTest is BaseTest {
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
     }
 
-    function testDecodeMessageBeforeClaim() public view {
-        bytes memory messageBody = abi.encodePacked(
-            uint16(2),                     // First chunk: 2 intents
-            claimant,                      // Claimant for first chunk
-            _hashIntent(intent),           // First intent
-            keccak256("second intent"),    // Second intent
-            uint16(1),                     // Second chunk: 1 intent
-            otherPerson,                   // Claimant for second chunk
-            keccak256("third intent")      // Third intent
+
+    function testInitializeCanOnlyBeCalledOnce() public {
+        uint64[] memory chainIds = new uint64[](1);
+        bytes32[] memory provers = new bytes32[](1);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        provers[0] = bytes32(uint256(uint160(destinationProver)));
+
+        // Should revert since initialize was already called in setUp
+        vm.expectRevert();
+        polymerProver.initialize(
+            address(crossL2ProverV2),
+            chainIds,
+            provers
         );
-
-        (bytes32[] memory intentHashes, address[] memory claimants) =
-            polymerProver.decodeMessageBeforeClaim(messageBody, 3);
-
-        assertEq(intentHashes.length, 3);
-        assertEq(claimants.length, 3);
-
-        assertEq(intentHashes[0], _hashIntent(intent));
-        assertEq(intentHashes[1], keccak256("second intent"));
-        assertEq(intentHashes[2], keccak256("third intent"));
-
-        assertEq(claimants[0], claimant);
-        assertEq(claimants[1], claimant);
-        assertEq(claimants[2], otherPerson);
     }
 
-    function testDecodeMessageBeforeClaimRevertsOnSizeMismatch() public {
-        bytes memory messageBody = abi.encodePacked(
-            uint16(1),
-            claimant,
-            _hashIntent(intent)
+    function testInitializeOnlyCallableByOwner() public {
+        PolymerProver newProver = new PolymerProver(
+            address(this), // owner
+            address(portal)
         );
 
-        vm.expectRevert(PolyNativeProver.SizeMismatch.selector);
-        polymerProver.decodeMessageBeforeClaim(messageBody, 2); // Expect 2 but only have 1
+        uint64[] memory chainIds = new uint64[](1);
+        bytes32[] memory provers = new bytes32[](1);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        provers[0] = bytes32(uint256(uint160(destinationProver)));
+
+        // Should revert when called by non-owner
+        vm.prank(creator);
+        vm.expectRevert();
+        newProver.initialize(
+            address(crossL2ProverV2),
+            chainIds,
+            provers
+        );
     }
 }

@@ -5,45 +5,66 @@ import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {IProver} from "../interfaces/IProver.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
- * @title PolyNativeProver
+ * @title PolymerProver
  * @notice Prover implementation using Polymer's cross-chain messaging system
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
-contract PolyNativeProver is BaseProver, Semver {
+contract PolymerProver is BaseProver, Semver, Ownable {
     // Constants
     string public constant PROOF_TYPE = "Polymer";
     bytes32 public constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(bytes32,bytes32,uint64)");
 
     // Events
-    event IntentFulfilledFromSource(bytes32 indexed intentHash, bytes32 indexed claimant, uint64 destination);
+    event IntentFulfilledFromSource(bytes32 indexed intentHash, bytes32 indexed claimant, uint64 source);
 
     // Errors
     error InvalidEventSignature();
-    error InvalidEmittingContract();
+    error InvalidEmittingContract(address emittingContract);
+    error InvalidSourceChain();
     error InvalidTopicsLength();
     error ZeroAddress();
     error SizeMismatch();
     error OnlyPortal();
 
-    // Immutable state variables
-    ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
+    // State variables
+    ICrossL2ProverV2 public CROSS_L2_PROVER_V2;
+    mapping(uint64 => bytes32) public WHITELISTED_EMITTERS;
 
 
     /**
-     * @notice Initializes the PolyNativeProver contract
-     * @param _crossL2ProverV2 Address of the Polymer CrossL2ProverV2 contract
+     * @notice Initializes the PolymerProver contract
+     * @param _owner Temporary owner address for initialization
      * @param _portal Address of the Portal contract
      */
     constructor(
+        address _owner,
+        address _portal) BaseProver(_portal) Ownable(_owner) {
+    }
+
+    /**
+     * @notice Initializes the contract with CrossL2ProverV2 and whitelist settings
+     * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
+     * @param _chainIds Array of chain IDs for whitelisted emitters
+     * @param _whitelistedEmitters Array of whitelisted emitter addresses
+     */
+    function initialize(
         address _crossL2ProverV2,
-        address _portal
-    ) BaseProver(_portal) {
+        uint64[] calldata _chainIds,
+        bytes32[] calldata _whitelistedEmitters) external onlyOwner {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
+        if (_chainIds.length != _whitelistedEmitters.length) revert SizeMismatch();
 
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
+
+        for (uint256 i = 0; i < _chainIds.length; i++) {
+            WHITELISTED_EMITTERS[_chainIds[i]] = _whitelistedEmitters[i];
+        }
+
+        renounceOwnership();
     }
 
     // ------------- STANDARD PROOF VALIDATION -------------
@@ -88,7 +109,9 @@ contract PolyNativeProver is BaseProver, Semver {
             /* bytes memory data */
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        checkProverContract(emittingContract);
+        if (!isWhitelisted(uint64(destinationChainId), bytes32(uint256(uint160(emittingContract))))) {
+            revert InvalidEmittingContract(emittingContract);
+        }
         checkTopicLength(topics, 128); // 4 topics: signature + hash + claimant + sourceChainId
 
         bytes32[] memory topicsArray = new bytes32[](4);
@@ -108,7 +131,7 @@ contract PolyNativeProver is BaseProver, Semver {
         claimant = address(uint160(uint256(topicsArray[2])));
         // Get sourceChainId from event topic and verify it matches current chain
         uint64 eventSourceChainId = uint64(uint256(topicsArray[3]));
-        if (eventSourceChainId != block.chainid) revert InvalidEmittingContract();
+        if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
         return (topicsArray[1], claimant, uint64(destinationChainId));
     }
@@ -131,61 +154,6 @@ contract PolyNativeProver is BaseProver, Semver {
         }
     }
 
-    // ------------- UTILITY FUNCTIONS -------------
-
-    /**
-     * @notice Decodes a message body into intent hashes and claimants for claiming
-     * @param messageBody The message body to decode
-     * @param expectedSize Expected number of intents to decode
-     * @return intentHashes Array of decoded intent hashes
-     * @return claimants Array of corresponding claimant addresses
-     */
-    function decodeMessageBeforeClaim(
-        bytes memory messageBody,
-        uint256 expectedSize
-    )
-        public
-        pure
-        returns (bytes32[] memory intentHashes, address[] memory claimants)
-    {
-        uint256 size = messageBody.length;
-        uint256 offset = 0;
-        uint256 totalIntentCount = 0;
-
-        intentHashes = new bytes32[](expectedSize);
-        claimants = new address[](expectedSize);
-
-        while (offset < size) {
-            if (offset + 2 > size) revert("truncated chunkSize");
-            uint16 chunkSize;
-            assembly {
-                chunkSize := mload(add(messageBody, add(offset, 2)))
-                offset := add(offset, 2)
-            }
-
-            if (offset + 20 > size) revert("truncated claimant address");
-            address claimant;
-            assembly {
-                claimant := mload(add(messageBody, add(offset, 20)))
-                offset := add(offset, 20)
-            }
-
-            if (offset + 32 * chunkSize > size) revert("truncated intent set");
-            bytes32 intentHash;
-            for (uint16 i = 0; i < chunkSize; i++) {
-                assembly {
-                    intentHash := mload(add(messageBody, add(offset, 32)))
-                    offset := add(offset, 32)
-                }
-                intentHashes[totalIntentCount] = intentHash;
-                claimants[totalIntentCount] = claimant;
-                totalIntentCount++;
-            }
-        }
-
-        if (totalIntentCount != expectedSize) revert SizeMismatch();
-        return (intentHashes, claimants);
-    }
 
     // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
 
@@ -202,17 +170,6 @@ contract PolyNativeProver is BaseProver, Semver {
     }
 
     /**
-     * @notice Validates that the emitting contract is this prover contract
-     * @notice This expects that the PolymerProver contract on the destination the same address as on source
-     * @param emittingContract The contract that emitted the event
-     */
-    function checkProverContract(address emittingContract) internal view {
-        if (emittingContract != address(this)) revert InvalidEmittingContract();
-    }
-
-
-
-    /**
      * @notice Validates that the topics have the expected length
      * @param topics The topics to check
      * @param length The expected length
@@ -222,6 +179,14 @@ contract PolyNativeProver is BaseProver, Semver {
         uint256 length
     ) internal pure {
         if (topics.length != length) revert InvalidTopicsLength();
+    }
+
+    function isWhitelisted(uint64 chainID, bytes32 addr) internal view returns (bool) {
+        bytes32 whitelistedEmitter = WHITELISTED_EMITTERS[chainID];
+        if (whitelistedEmitter == bytes32(0)) {
+            return false;
+        }
+        return whitelistedEmitter == addr;
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------

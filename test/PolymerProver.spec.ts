@@ -6,7 +6,7 @@ import {
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
-  PolyNativeProver,
+  PolymerProver,
   Portal,
   TestCrossL2ProverV2,
   IIntentSource,
@@ -24,8 +24,8 @@ export function calculateStorageSlot(intentHash: string): string {
   )
 }
 
-describe('PolyNativeProver Test', (): void => {
-  let polymerProver: PolyNativeProver
+describe('PolymerProver Test', (): void => {
+  let polymerProver: PolymerProver
   let portal: Portal
   let testCrossL2ProverV2: TestCrossL2ProverV2
   let intentSource: IIntentSource
@@ -33,18 +33,20 @@ describe('PolyNativeProver Test', (): void => {
   let claimant: SignerWithAddress
   let claimant2: SignerWithAddress
   let claimant3: SignerWithAddress
+  let destinationProver: string
   let chainIds: number[] = [10, 42161]
   let emptyTopics: string =
     '0x0000000000000000000000000000000000000000000000000000000000000000'
   let emptyData: string = '0x'
 
   let intent: Intent
-  async function deployPolyNativeProverFixture(): Promise<{
-    polymerProver: PolyNativeProver
+  async function deployPolymerProverFixture(): Promise<{
+    polymerProver: PolymerProver
     portal: Portal
     intentSource: IIntentSource
     intent: Intent
     testCrossL2ProverV2: TestCrossL2ProverV2
+    destinationProver: string
     owner: SignerWithAddress
     solver: SignerWithAddress
     claimant: SignerWithAddress
@@ -63,11 +65,23 @@ describe('PolyNativeProver Test', (): void => {
       await ethers.getContractFactory('TestCrossL2ProverV2')
     ).deploy(chainIds[0], await portal.getAddress(), emptyTopics, emptyData)
 
+    const destinationProver = '0x1234567890123456789012345678901234567890'
+    
     const polymerProver = await (
-      await ethers.getContractFactory('PolyNativeProver')
+      await ethers.getContractFactory('PolymerProver')
     ).deploy(
-      await testCrossL2ProverV2.getAddress(),
+      owner.address, // owner
       await portal.getAddress(),
+    )
+
+    // Initialize with CrossL2ProverV2 and whitelist
+    const whitelistChainIds = [chainIds[0], chainIds[1]]
+    const provers = [ethers.zeroPadValue(destinationProver, 32), ethers.zeroPadValue(destinationProver, 32)]
+    
+    await polymerProver.initialize(
+      await testCrossL2ProverV2.getAddress(),
+      whitelistChainIds,
+      provers
     )
 
     // Use the IIntentSource interface with the Portal implementation
@@ -108,6 +122,7 @@ describe('PolyNativeProver Test', (): void => {
       portal,
       testCrossL2ProverV2,
       intent,
+      destinationProver,
       owner,
       solver,
       claimant,
@@ -124,11 +139,12 @@ describe('PolyNativeProver Test', (): void => {
       portal,
       testCrossL2ProverV2,
       intent,
+      destinationProver,
       owner,
       claimant,
       claimant2,
       claimant3,
-    } = await loadFixture(deployPolyNativeProverFixture))
+    } = await loadFixture(deployPolymerProverFixture))
   })
 
   describe('Single emit for non-native path', (): void => {
@@ -164,12 +180,10 @@ describe('PolyNativeProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const polymerProverAddress = await polymerProver.getAddress()
-
-      // set values for mock prover
+      // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        polymerProverAddress,
+        destinationProver,
         topicsPacked,
         data,
       )
@@ -188,7 +202,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(polymerProverAddress)
+      expect(emittingContract_returned).to.equal(destinationProver)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -202,12 +216,10 @@ describe('PolyNativeProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const polymerProverAddress = await polymerProver.getAddress()
-
-      // set values for mock prover
+      // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        polymerProverAddress,
+        destinationProver,
         topicsPacked,
         data,
       )
@@ -226,7 +238,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(polymerProverAddress)
+      expect(emittingContract_returned).to.equal(destinationProver)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -290,12 +302,10 @@ describe('PolyNativeProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const polymerProverAddress = await polymerProver.getAddress()
-
-      // set values for mock prover
+      // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        polymerProverAddress,
+        destinationProver,
         topicsPacked,
         data,
       )
@@ -314,7 +324,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(polymerProverAddress)
+      expect(emittingContract_returned).to.equal(destinationProver)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -336,12 +346,10 @@ describe('PolyNativeProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      const polymerProverAddress = await polymerProver.getAddress()
-
-      // set values for mock prover
+      // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        polymerProverAddress,
+        destinationProver,
         topicsPacked,
         data,
       )
@@ -360,7 +368,7 @@ describe('PolyNativeProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(polymerProverAddress)
+      expect(emittingContract_returned).to.equal(destinationProver)
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -385,7 +393,7 @@ describe('PolyNativeProver Test', (): void => {
     let expectedHash2: string
     let expectedHash3: string
     let eventSignature: string
-    let polymerProverAddress: string
+    let destinationProverAddress: string
 
     beforeEach(async (): Promise<void> => {
       eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
@@ -424,7 +432,7 @@ describe('PolyNativeProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics_2,
       )
-      polymerProverAddress = await polymerProver.getAddress()
+      destinationProverAddress = destinationProver
     })
 
     it('should validate a batch of emits', async (): Promise<void> => {
@@ -434,7 +442,7 @@ describe('PolyNativeProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [polymerProverAddress, polymerProverAddress, polymerProverAddress]
+      const emittingContractsArray = [destinationProverAddress, destinationProverAddress, destinationProverAddress]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
@@ -474,7 +482,7 @@ describe('PolyNativeProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [polymerProverAddress, polymerProverAddress, polymerProverAddress]
+      const emittingContractsArray = [destinationProverAddress, destinationProverAddress, destinationProverAddress]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
