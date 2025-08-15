@@ -25,7 +25,20 @@ contract IntentSource is IIntentSource, Semver {
 
     mapping(bytes32 intentHash => VaultStorage) public vaults;
 
-    constructor() {}
+    /// @dev Tron Mainnet chain ID
+    uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
+    /// @dev Tron Testnet (Nile) chain ID
+    uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
+    /// @dev CREATE2 prefix for deterministic address calculation (0xff standard, 0x41 TRON)
+    bytes1 private immutable CREATE2_PREFIX;
+
+    constructor() {
+        // TRON support
+        CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
+            block.chainid == TRON_TESTNET_CHAIN_ID
+            ? bytes1(0x41) // TRON chain custom CREATE2 prefix
+            : bytes1(0xff);
+    }
 
     /**
      * @notice Retrieves reward status for a given intent hash
@@ -445,7 +458,7 @@ contract IntentSource is IIntentSource, Semver {
                     uint256(
                         keccak256(
                             abi.encodePacked(
-                                hex"ff",
+                                CREATE2_PREFIX,
                                 address(this),
                                 routeHash,
                                 keccak256(
