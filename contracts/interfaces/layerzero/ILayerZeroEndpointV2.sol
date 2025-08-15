@@ -100,4 +100,11 @@ interface ILayerZeroEndpointV2 {
         address _newLib,
         uint256 _gracePeriod
     ) external;
+
+    function getConfig(
+        address _oapp,
+        address _lib,
+        uint32 _eid,
+        uint32 _configType
+    ) external view returns (bytes memory config);
 }

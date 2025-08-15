@@ -5,11 +5,6 @@ import { config } from 'dotenv'
 // Load environment variables from parent directory
 config({ path: '../.env' })
 
-// Debug environment loading
-console.log('Environment check:', {
-  hasTronPrivateKey: !!process.env.TRON_PRIVATE_KEY,
-  tronPrivateKeyLength: process.env.TRON_PRIVATE_KEY?.length || 0
-})
 
 /**
  * Configuration parameters for LayerZero ULN (Ultra Light Node)
@@ -32,7 +27,7 @@ interface SetConfigParam {
 
 /**
  * Script to configure LayerZeroProver with ULN settings on Tron
- * Equivalent to the SetUlnLZ.s.sol forge script
+ * Uses triggerSmartContract for all transactions to avoid calldata truncation issues
  */
 class LayerZeroProverConfig {
   private toolkit: TronToolkit
@@ -54,29 +49,29 @@ class LayerZeroProverConfig {
   private readonly TRON_EID = 30420 // Tron chain endpoint ID
   private readonly OPTIMISM_EID = 30111 // Optimism chain endpoint ID
   private readonly SEND_CONFIRMATIONS = 15
+  private readonly RECEIVE_CONFIRMATIONS = 10
 
   // Contract addresses - Update with your actual deployed addresses
   private readonly LAYERZERO_PROVER_ADDRESS =
-    process.env.LAYERZERO_PROVER_ADDRESS || 'TLZnJetQTgaLNwf8Aos7SeUZ9WL4FxTZZS' // From deployment
+    process.env.TRON_LAYERZERO_PROVER || 'TVaUrbN3cm6xxvi4e1fc1jUhs19mbtLEd7' // From deployment
 
   private readonly DVN_ADDRESS =
     process.env.DVN_ADDRESS || 'TNiB7ybFhyLDaW6JAM2BP9QQrAfncwbCyG' // layerzero labs
 
   private readonly ENDPOINT_ADDRESS =
-    process.env.TRON_ENDPOINT_ADDRESS ||
-    'TAy9xwjYjBBN6kutzrZJaAZJHCAejjK1V9' // Tron LayerZero Endpoint (base58)
+    process.env.TRON_ENDPOINT_ADDRESS || 'TAy9xwjYjBBN6kutzrZJaAZJHCAejjK1V9' // Tron LayerZero Endpoint (base58)
 
   private readonly SEND_LIB_ADDRESS =
     process.env.SEND_LIB_ADDRESS || 'TWhf9vzMEGmWjn538ymX76sgGN3LxG7mQJ'
 
   private readonly RECEIVE_LIB_ADDRESS =
-    process.env.RECEIVE_LIB_ADDRESS ||
-    'TJpoNxF3CreFRpTdLhyXuJzEo4vMAns7Wz' // Receive library (can be different)
+    process.env.RECEIVE_LIB_ADDRESS || 'TJpoNxF3CreFRpTdLhyXuJzEo4vMAns7Wz' // Receive library (can be different)
 
   private readonly EXECUTOR_ADDRESS =
     process.env.EXECUTOR_ADDRESS || 'TKSQrCn9r7jdNxWuQGRw8RJT8x4LFNfr7B' // LayerZero Executor
 
   private readonly PRIVATE_KEY = process.env.TRON_PRIVATE_KEY!
+  private readonly ENERGY_RENTAL_ENABLED = process.env.ENABLE_ENERGY_RENTAL === 'true'
 
   constructor(networkName: string = 'mainnet') {
     if (!this.PRIVATE_KEY) {
@@ -84,10 +79,56 @@ class LayerZeroProverConfig {
     }
 
     this.toolkit = new TronToolkit({
-      network: networkName,
+      network: networkName as 'mainnet' | 'testnet',
       privateKey: this.PRIVATE_KEY,
-      enableEnergyRental: process.env.ENABLE_ENERGY_RENTAL === 'true',
     })
+  }
+
+  /**
+   * Execute a transaction using triggerSmartContract strategy
+   */
+  private async executeTriggerSmartContract(
+    contractAddress: string,
+    functionSignature: string,
+    parameters: any[],
+    feeLimit: number = 150000000
+  ): Promise<string> {
+    const tronWeb = this.toolkit.getTronWeb()
+
+    try {
+      // Build the transaction using triggerSmartContract
+      const transaction = await tronWeb.transactionBuilder.triggerSmartContract(
+        contractAddress,
+        functionSignature,
+        {
+          feeLimit,
+          callValue: 0,
+        },
+        parameters,
+        tronWeb.defaultAddress.base58
+      )
+
+      logger.info('Transaction built successfully')
+      logger.info('Raw transaction hex:', transaction.transaction.raw_data_hex)
+
+      if (transaction.result && transaction.result.result) {
+        // Sign and broadcast the transaction
+        const signedTx = await tronWeb.trx.sign(transaction.transaction)
+        const result = await tronWeb.trx.sendRawTransaction(signedTx)
+
+        if (result.result) {
+          logger.info('Transaction broadcast successful')
+          return result.txid
+        } else {
+          throw new Error(`Transaction broadcast failed: ${JSON.stringify(result)}`)
+        }
+      } else {
+        throw new Error(`Transaction build failed: ${JSON.stringify(transaction)}`)
+      }
+    } catch (error) {
+      logger.error('triggerSmartContract execution failed:', error)
+      throw error
+    }
   }
 
   /**
@@ -100,52 +141,34 @@ class LayerZeroProverConfig {
       logger.info(`Destination EID: ${this.OPTIMISM_EID}`)
       logger.info(`Send Library Address: ${this.SEND_LIB_ADDRESS}`)
 
-      const tronWeb = this.toolkit.getTronWeb()
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
 
-      // Estimate energy for the transaction
-      const energyEstimate = await this.estimateLibraryEnergy('setSendLibrary')
-      logger.info(`Estimated energy needed: ${energyEstimate}`)
-
-      // Ensure sufficient energy if rental is enabled
-      if (process.env.ENABLE_ENERGY_RENTAL === 'true') {
-        await this.toolkit.autoRentResources(energyEstimate, 0, tronWeb.defaultAddress.base58)
+      // Check energy if rental is disabled
+      if (!this.ENERGY_RENTAL_ENABLED) {
+        const energyNeeded = await this.estimateLibraryEnergy('setSendLibrary')
+        const tronWeb = this.toolkit.getTronWeb()
+        const resources = await this.toolkit.getAccountResources()
+        
+        if (resources.energy.available < energyNeeded) {
+          throw new Error(`Insufficient energy: need ${energyNeeded}, have ${resources.energy.available}`)
+        }
       }
 
-      // Call setSendLibrary on the LayerZero endpoint
-      logger.info('Calling setSendLibrary on LayerZero endpoint...')
-      const result = await endpointContract.methods
-        .setSendLibrary(
-          this.LAYERZERO_PROVER_ADDRESS,
-          this.OPTIMISM_EID,
-          this.SEND_LIB_ADDRESS,
-        )
-        .send({
-          from: tronWeb.defaultAddress.base58,
-          shouldPollResponse: true,
-        })
+      // Execute using triggerSmartContract
+      const txid = await this.executeTriggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'setSendLibrary(address,uint32,address)',
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'uint32', value: this.OPTIMISM_EID },
+          { type: 'address', value: this.SEND_LIB_ADDRESS }
+        ]
+      )
 
       logger.info('Send library configuration completed successfully!')
-      logger.info(`Transaction ID: ${result}`)
+      logger.info(`Transaction ID: ${txid}`)
     } catch (error) {
       logger.error('=== SEND LIBRARY SETUP FAILED ===')
-      logger.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        ...(error.receipt && { receipt: error.receipt }),
-        ...(error.transaction && { transaction: error.transaction }),
-      })
-      logger.error('Call arguments that failed:', {
-        layerZeroProverAddress: this.LAYERZERO_PROVER_ADDRESS,
-        destinationEID: this.OPTIMISM_EID,
-        sendLibraryAddress: this.SEND_LIB_ADDRESS,
-        endpointAddress: this.ENDPOINT_ADDRESS,
-        callerAddress: this.toolkit.getTronWeb().defaultAddress.base58,
-      })
+      logger.error('Error details:', error)
       throw error
     }
   }
@@ -159,83 +182,38 @@ class LayerZeroProverConfig {
       logger.info(`LayerZero Prover Address: ${this.LAYERZERO_PROVER_ADDRESS}`)
       logger.info(`Receive Library Address: ${this.RECEIVE_LIB_ADDRESS}`)
 
-      const tronWeb = this.toolkit.getTronWeb()
-      
-      logger.info(`Using endpoint address: ${this.ENDPOINT_ADDRESS}`)
-      
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
-
       // Grace period for library transition (24 hours = 86400 seconds)
       const gracePeriod = 86400
 
-      // Estimate energy for the transaction
-      logger.info('Estimating energy for setReceiveLibrary...')
-      let energyEstimate: number
-      try {
-        energyEstimate = await this.estimateLibraryEnergy('setReceiveLibrary')
-        logger.info(`Estimated energy needed: ${energyEstimate}`)
-      } catch (estimationError) {
-        logger.warn('Energy estimation failed, using fallback:', estimationError)
-        energyEstimate = 150000 // Use fallback
-        logger.info(`Using fallback energy estimate: ${energyEstimate}`)
+
+      // Check energy if rental is disabled
+      if (!this.ENERGY_RENTAL_ENABLED) {
+        const energyNeeded = await this.estimateLibraryEnergy('setReceiveLibrary')
+        const tronWeb = this.toolkit.getTronWeb()
+        const resources = await this.toolkit.getAccountResources()
+        
+        if (resources.energy.available < energyNeeded) {
+          throw new Error(`Insufficient energy: need ${energyNeeded}, have ${resources.energy.available}`)
+        }
       }
 
-      // Ensure sufficient energy if rental is enabled
-      if (process.env.ENABLE_ENERGY_RENTAL === 'true') {
-        await this.toolkit.autoRentResources(energyEstimate, 0, tronWeb.defaultAddress.base58)
-      }
-
-      // Call setReceiveLibrary on the LayerZero endpoint
-      logger.info('Calling setReceiveLibrary on LayerZero endpoint...')
-      logger.info('Contract call parameters:', {
-        contractAddress: this.ENDPOINT_ADDRESS,
-        method: 'setReceiveLibrary',
-        parameters: [
-          this.LAYERZERO_PROVER_ADDRESS,
-          this.OPTIMISM_EID,
-          this.RECEIVE_LIB_ADDRESS,
-          gracePeriod
-        ],
-        from: tronWeb.defaultAddress.base58
-      })
-      
-      const result = await endpointContract.methods
-        .setReceiveLibrary(
-          this.LAYERZERO_PROVER_ADDRESS,
-          this.OPTIMISM_EID,
-          this.RECEIVE_LIB_ADDRESS,
-          gracePeriod,
-        )
-        .send({
-          from: tronWeb.defaultAddress.base58,
-          shouldPollResponse: true,
-        })
+      // Execute using triggerSmartContract
+      const txid = await this.executeTriggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'setReceiveLibrary(address,uint32,address,uint256)',
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'uint32', value: this.OPTIMISM_EID },
+          { type: 'address', value: this.RECEIVE_LIB_ADDRESS },
+          { type: 'uint256', value: gracePeriod }
+        ]
+      )
 
       logger.info('Receive library configuration completed successfully!')
-      logger.info(`Transaction ID: ${result}, Grace Period: ${gracePeriod}s`)
+      logger.info(`Transaction ID: ${txid}, Grace Period: ${gracePeriod}s`)
     } catch (error) {
       logger.error('=== RECEIVE LIBRARY SETUP FAILED ===')
-      logger.error('Raw error:', error)
-      logger.error('Error type:', typeof error)
-      logger.error('Error details:', {
-        name: error?.name,
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack,
-        stringified: String(error),
-        ...(error?.receipt && { receipt: error.receipt }),
-        ...(error?.transaction && { transaction: error.transaction }),
-      })
-      logger.error('Call arguments that failed:', {
-        layerZeroProverAddress: this.LAYERZERO_PROVER_ADDRESS,
-        sourceEID: this.OPTIMISM_EID,
-        receiveLibraryAddress: this.RECEIVE_LIB_ADDRESS,
-        gracePeriod: 86400,
-        endpointAddress: this.ENDPOINT_ADDRESS,
-        callerAddress: this.toolkit.getTronWeb().defaultAddress.base58,
-      })
+      logger.error('Error details:', error)
       throw error
     }
   }
@@ -249,17 +227,11 @@ class LayerZeroProverConfig {
       logger.info(`LayerZero Prover Address: ${this.LAYERZERO_PROVER_ADDRESS}`)
       logger.info(`Send Library Address: ${this.SEND_LIB_ADDRESS}`)
       logger.info(`Executor Address: ${this.EXECUTOR_ADDRESS}`)
-      logger.info(
-        `Gas Limit: ${this.EXECUTOR_GAS_LIMIT}, Value: ${this.EXECUTOR_VALUE}`,
-      )
+      logger.info(`Gas Limit: ${this.EXECUTOR_GAS_LIMIT}, Value: ${this.EXECUTOR_VALUE}`)
 
       const tronWeb = this.toolkit.getTronWeb()
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
 
       // Create executor configuration
-      // bytes memory executorConfig = abi.encode(uint128(gasLimit), uint128(value))
       const executorConfig = tronWeb.utils.abi.encodeParams(
         ['uint128', 'uint128'],
         [this.EXECUTOR_GAS_LIMIT, this.EXECUTOR_VALUE],
@@ -268,16 +240,12 @@ class LayerZeroProverConfig {
       // Convert executor address to Ethereum-style hex for ABI encoding
       const tronHex = tronWeb.address.toHex(this.EXECUTOR_ADDRESS)
       const executorAddressHex = '0x' + tronHex.substring(2)
-      logger.info(`Converting executor address: ${this.EXECUTOR_ADDRESS} -> ${tronHex} -> ${executorAddressHex}`)
 
       // abi.encode(executorAddress, executorConfig)
       const fullExecutorConfig = tronWeb.utils.abi.encodeParams(
         ['address', 'bytes'],
         [executorAddressHex, executorConfig],
       )
-
-      logger.info(`Executor Config: ${executorConfig}`)
-      logger.info(`Full Config: ${fullExecutorConfig}`)
 
       // Create SetConfigParam for executor
       const setConfigParams: SetConfigParam[] = [
@@ -288,52 +256,37 @@ class LayerZeroProverConfig {
         },
       ]
 
-      // Estimate energy for the transaction
-      const energyEstimate = await this.estimateConfigEnergy(setConfigParams)
-      logger.info(`Estimated energy needed: ${energyEstimate}`)
 
-      // Ensure sufficient energy if rental is enabled
-      if (process.env.ENABLE_ENERGY_RENTAL === 'true') {
-        await this.toolkit.autoRentResources(energyEstimate, 0, tronWeb.defaultAddress.base58)
+      // Check energy if rental is disabled
+      if (!this.ENERGY_RENTAL_ENABLED) {
+        const energyNeeded = await this.estimateConfigEnergy(setConfigParams)
+        const tronWeb = this.toolkit.getTronWeb()
+        const resources = await this.toolkit.getAccountResources()
+        
+        if (resources.energy.available < energyNeeded) {
+          throw new Error(`Insufficient energy: need ${energyNeeded}, have ${resources.energy.available}`)
+        }
       }
 
-      // Call setConfig on the LayerZero endpoint for executor configuration
-      logger.info('Calling setConfig for executor on LayerZero endpoint...')
-      const result = await endpointContract.methods
-        .setConfig(
-          this.LAYERZERO_PROVER_ADDRESS,
-          this.SEND_LIB_ADDRESS, // The Messaging Library for send path
-          setConfigParams,
-        )
-        .send({
-          from: tronWeb.defaultAddress.base58,
-          shouldPollResponse: true,
-        })
+      // Execute using triggerSmartContract
+      const txid = await this.executeTriggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'setConfig(address,address,(uint32,uint32,bytes)[])',
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'address', value: this.SEND_LIB_ADDRESS },
+          { 
+            type: '(uint32,uint32,bytes)[]', 
+            value: setConfigParams.map(p => [p.eid, p.configType, p.config])
+          }
+        ]
+      )
 
       logger.info('Executor configuration completed successfully!')
-      logger.info(`Transaction ID: ${result}`)
+      logger.info(`Transaction ID: ${txid}`)
     } catch (error) {
       logger.error('=== EXECUTOR CONFIGURATION FAILED ===')
-      logger.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        ...(error.receipt && { receipt: error.receipt }),
-        ...(error.transaction && { transaction: error.transaction }),
-      })
-      logger.error('Call arguments that failed:', {
-        layerZeroProverAddress: this.LAYERZERO_PROVER_ADDRESS,
-        sendLibraryAddress: this.SEND_LIB_ADDRESS,
-        sourceEID: this.OPTIMISM_EID,
-        configType: this.CONFIG_TYPE_EXECUTOR,
-        executorAddress: this.EXECUTOR_ADDRESS,
-        gasLimit: this.EXECUTOR_GAS_LIMIT,
-        value: this.EXECUTOR_VALUE,
-        encodedConfig: 'See setConfigParams variable above',
-        endpointAddress: this.ENDPOINT_ADDRESS,
-        callerAddress: this.toolkit.getTronWeb().defaultAddress.base58,
-      })
+      logger.error('Error details:', error)
       throw error
     }
   }
@@ -361,18 +314,18 @@ class LayerZeroProverConfig {
 
       // Encode ULN config using TronWeb's ABI encoding
       const tronWeb = this.toolkit.getTronWeb()
-      
+
       // Convert base58 addresses to Ethereum-style hex for ABI encoding
-      const requiredDVNsHex = ulnConfig.requiredDVNs.map(addr => {
+      const requiredDVNsHex = ulnConfig.requiredDVNs.map((addr) => {
         const tronHex = tronWeb.address.toHex(addr)
         return '0x' + tronHex.substring(2)
       })
-      const optionalDVNsHex = ulnConfig.optionalDVNs.map(addr => {
+      const optionalDVNsHex = ulnConfig.optionalDVNs.map((addr) => {
         const tronHex = tronWeb.address.toHex(addr)
         return '0x' + tronHex.substring(2)
       })
-      
-      const encodedUlnConfig = tronWeb.utils.abi.encodeParams(
+
+      const rawEncodedConfig = tronWeb.utils.abi.encodeParams(
         ['uint64', 'uint8', 'uint8', 'uint8', 'address[]', 'address[]'],
         [
           ulnConfig.confirmations,
@@ -383,6 +336,9 @@ class LayerZeroProverConfig {
           optionalDVNsHex,
         ],
       )
+
+      // Add struct offset to match Solidity's abi.encode() behavior
+      const encodedUlnConfig = '0x0000000000000000000000000000000000000000000000000000000000000020' + rawEncodedConfig.substring(2)
 
       logger.info(`Encoded ULN Config: ${encodedUlnConfig}`)
 
@@ -395,66 +351,36 @@ class LayerZeroProverConfig {
         },
       ]
 
-      // Get LayerZero endpoint contract
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
-
-      // Estimate energy for the transaction
-      const energyEstimate = await this.estimateConfigEnergy(setConfigParams)
-      logger.info(`Estimated energy needed: ${energyEstimate}`)
-
-      // Ensure sufficient energy if rental is enabled
-      if (process.env.ENABLE_ENERGY_RENTAL === 'true') {
-        await this.toolkit.autoRentResources(energyEstimate, 0, tronWeb.defaultAddress.base58)
+      // Check energy if rental is disabled
+      if (!this.ENERGY_RENTAL_ENABLED) {
+        const energyNeeded = await this.estimateConfigEnergy(setConfigParams)
+        const tronWeb = this.toolkit.getTronWeb()
+        const resources = await this.toolkit.getAccountResources()
+        
+        if (resources.energy.available < energyNeeded) {
+          throw new Error(`Insufficient energy: need ${energyNeeded}, have ${resources.energy.available}`)
+        }
       }
 
-      // Call setConfig on the LayerZero endpoint
-      logger.info('Calling setConfig on LayerZero endpoint...')
-      logger.info('Contract call parameters:', {
-        oapp: this.LAYERZERO_PROVER_ADDRESS,
-        lib: this.SEND_LIB_ADDRESS,
-        params: setConfigParams,
-        from: tronWeb.defaultAddress.base58
-      })
-      
-      const result = await endpointContract.methods
-        .setConfig(
-          this.LAYERZERO_PROVER_ADDRESS,
-          this.SEND_LIB_ADDRESS,
-          setConfigParams,
-        )
-        .send({
-          from: tronWeb.defaultAddress.base58,
-          shouldPollResponse: true,
-        })
+      // Execute using triggerSmartContract
+      const txid = await this.executeTriggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'setConfig(address,address,(uint32,uint32,bytes)[])',
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'address', value: this.SEND_LIB_ADDRESS },
+          { 
+            type: '(uint32,uint32,bytes)[]', 
+            value: setConfigParams.map(p => [p.eid, p.configType, p.config])
+          }
+        ]
+      )
 
       logger.info('Send DVN configuration completed successfully!')
-      logger.info(`Transaction ID: ${result}`)
+      logger.info(`Transaction ID: ${txid}`)
     } catch (error) {
       logger.error('=== SEND DVN CONFIGURATION FAILED ===')
-      logger.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        ...(error.receipt && { receipt: error.receipt }),
-        ...(error.transaction && { transaction: error.transaction }),
-      })
-      logger.error('Call arguments that failed:', {
-        layerZeroProverAddress: this.LAYERZERO_PROVER_ADDRESS,
-        sendLibraryAddress: this.SEND_LIB_ADDRESS,
-        destinationEID: this.OPTIMISM_EID,
-        configType: this.ULN_CONFIG_TYPE,
-        dvnAddress: this.DVN_ADDRESS,
-        confirmations: this.SEND_CONFIRMATIONS,
-        requiredDVNCount: this.REQUIRED_DVN_COUNT,
-        optionalDVNCount: this.OPTIONAL_DVN_COUNT,
-        optionalDVNThreshold: this.OPTIONAL_DVN_THRESHOLD,
-        encodedConfig: 'See setConfigParams variable above',
-        endpointAddress: this.ENDPOINT_ADDRESS,
-        callerAddress: this.toolkit.getTronWeb().defaultAddress.base58,
-      })
+      logger.error('Error details:', error)
       throw error
     }
   }
@@ -467,11 +393,11 @@ class LayerZeroProverConfig {
       logger.info('=== Configuring Receive DVN ===')
       logger.info(`LayerZero Prover Address: ${this.LAYERZERO_PROVER_ADDRESS}`)
       logger.info(`DVN Address: ${this.DVN_ADDRESS}`)
-      logger.info(`Receive Confirmations: ${this.SEND_CONFIRMATIONS}`)
+      logger.info(`Receive Confirmations: ${this.RECEIVE_CONFIRMATIONS}`)
 
       // Create ULN configuration for receive
       const ulnConfig: UlnConfig = {
-        confirmations: this.SEND_CONFIRMATIONS,
+        confirmations: this.RECEIVE_CONFIRMATIONS,
         requiredDVNCount: this.REQUIRED_DVN_COUNT,
         optionalDVNCount: this.OPTIONAL_DVN_COUNT,
         optionalDVNThreshold: this.OPTIONAL_DVN_THRESHOLD,
@@ -481,46 +407,33 @@ class LayerZeroProverConfig {
 
       // Encode ULN config using TronWeb's ABI encoding
       const tronWeb = this.toolkit.getTronWeb()
-      
-      logger.info('Attempting to encode ULN config...')
-      logger.info('ULN config to encode:', ulnConfig)
-      
-      let encodedUlnConfig: string
-      try {
-        // Convert base58 addresses to Ethereum-style hex for ABI encoding
-        const requiredDVNsHex = ulnConfig.requiredDVNs.map(addr => {
-          const tronHex = tronWeb.address.toHex(addr)
-          return '0x' + tronHex.substring(2)
-        })
-        const optionalDVNsHex = ulnConfig.optionalDVNs.map(addr => {
-          const tronHex = tronWeb.address.toHex(addr)
-          return '0x' + tronHex.substring(2)
-        })
-        
-        logger.info('Converting DVN addresses for encoding:', {
-          requiredDVNs: ulnConfig.requiredDVNs,
+
+      // Convert base58 addresses to Ethereum-style hex for ABI encoding
+      const requiredDVNsHex = ulnConfig.requiredDVNs.map((addr) => {
+        const tronHex = tronWeb.address.toHex(addr)
+        return '0x' + tronHex.substring(2)
+      })
+      const optionalDVNsHex = ulnConfig.optionalDVNs.map((addr) => {
+        const tronHex = tronWeb.address.toHex(addr)
+        return '0x' + tronHex.substring(2)
+      })
+
+      const rawEncodedConfig = tronWeb.utils.abi.encodeParams(
+        ['uint64', 'uint8', 'uint8', 'uint8', 'address[]', 'address[]'],
+        [
+          ulnConfig.confirmations,
+          ulnConfig.requiredDVNCount,
+          ulnConfig.optionalDVNCount,
+          ulnConfig.optionalDVNThreshold,
           requiredDVNsHex,
-          optionalDVNs: ulnConfig.optionalDVNs,
-          optionalDVNsHex
-        })
-        
-        // Try TronWeb's ABI encoding with hex addresses
-        encodedUlnConfig = tronWeb.utils.abi.encodeParams(
-          ['uint64', 'uint8', 'uint8', 'uint8', 'address[]', 'address[]'],
-          [
-            ulnConfig.confirmations,
-            ulnConfig.requiredDVNCount,
-            ulnConfig.optionalDVNCount,
-            ulnConfig.optionalDVNThreshold,
-            requiredDVNsHex,
-            optionalDVNsHex,
-          ],
-        )
-        logger.info('Successfully encoded ULN config')
-      } catch (encodeError) {
-        logger.error('TronWeb ABI encoding failed:', encodeError)
-        throw new Error(`Failed to encode ULN config: ${encodeError.message}`)
-      }
+          optionalDVNsHex,
+        ],
+      )
+
+      // Add struct offset to match Solidity's abi.encode() behavior
+      const encodedUlnConfig = '0x0000000000000000000000000000000000000000000000000000000000000020' + rawEncodedConfig.substring(2)
+
+      logger.info(`Encoded ULN Config: ${encodedUlnConfig}`)
 
       // Create SetConfigParam for receive configuration
       const setConfigParams: SetConfigParam[] = [
@@ -531,77 +444,42 @@ class LayerZeroProverConfig {
         },
       ]
 
-      logger.info(`Using endpoint address: ${this.ENDPOINT_ADDRESS}`)
-      
-      // Get LayerZero endpoint contract
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
-
-      // Estimate energy for the transaction
-      const energyEstimate = await this.estimateConfigEnergy(setConfigParams)
-      logger.info(`Estimated energy needed: ${energyEstimate}`)
-
-      // Ensure sufficient energy if rental is enabled
-      if (process.env.ENABLE_ENERGY_RENTAL === 'true') {
-        await this.toolkit.autoRentResources(energyEstimate, 0, tronWeb.defaultAddress.base58)
+      // Check energy if rental is disabled
+      if (!this.ENERGY_RENTAL_ENABLED) {
+        const energyNeeded = await this.estimateConfigEnergy(setConfigParams)
+        const tronWeb = this.toolkit.getTronWeb()
+        const resources = await this.toolkit.getAccountResources()
+        
+        if (resources.energy.available < energyNeeded) {
+          throw new Error(`Insufficient energy: need ${energyNeeded}, have ${resources.energy.available}`)
+        }
       }
 
-      // Call setConfig on the LayerZero endpoint
-      logger.info('Calling setConfig on LayerZero endpoint...')
-      logger.info('Contract call parameters:', {
-        oapp: this.LAYERZERO_PROVER_ADDRESS,
-        lib: this.RECEIVE_LIB_ADDRESS,
-        params: setConfigParams,
-        from: tronWeb.defaultAddress.base58
-      })
-      
-      const result = await endpointContract.methods
-        .setConfig(
-          this.LAYERZERO_PROVER_ADDRESS,
-          this.RECEIVE_LIB_ADDRESS,
-          setConfigParams,
-        )
-        .send({
-          from: tronWeb.defaultAddress.base58,
-          shouldPollResponse: true,
-        })
+      // Execute using triggerSmartContract - this is the method that worked!
+      const txid = await this.executeTriggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'setConfig(address,address,(uint32,uint32,bytes)[])',
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'address', value: this.RECEIVE_LIB_ADDRESS },
+          { 
+            type: '(uint32,uint32,bytes)[]', 
+            value: setConfigParams.map(p => [p.eid, p.configType, p.config])
+          }
+        ]
+      )
 
       logger.info('Receive DVN configuration completed successfully!')
-      logger.info(`Transaction ID: ${result}`)
+      logger.info(`Transaction ID: ${txid}`)
+
     } catch (error) {
       logger.error('=== RECEIVE DVN CONFIGURATION FAILED ===')
-      logger.error('Error details:', {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        stack: error.stack,
-        ...(error.receipt && { receipt: error.receipt }),
-        ...(error.transaction && { transaction: error.transaction }),
-      })
-      
-      // Log transaction calldata if available
-      if (error.transaction && error.transaction.raw_data_hex) {
-        logger.error('Full transaction calldata:', error.transaction.raw_data_hex)
-      }
-      
-      logger.error('Call arguments that failed:', {
-        layerZeroProverAddress: this.LAYERZERO_PROVER_ADDRESS,
-        receiveLibraryAddress: this.RECEIVE_LIB_ADDRESS,
-        sourceEID: this.OPTIMISM_EID,
-        configType: this.ULN_CONFIG_TYPE,
-        dvnAddress: this.DVN_ADDRESS,
-        confirmations: this.SEND_CONFIRMATIONS,
-        requiredDVNCount: this.REQUIRED_DVN_COUNT,
-        optionalDVNCount: this.OPTIONAL_DVN_COUNT,
-        optionalDVNThreshold: this.OPTIONAL_DVN_THRESHOLD,
-        encodedConfig: 'See setConfigParams variable above',
-        endpointAddress: this.ENDPOINT_ADDRESS,
-        callerAddress: this.toolkit.getTronWeb().defaultAddress.base58,
-      })
+      logger.error('Error details:', error)
       throw error
     }
   }
+
+
 
   /**
    * Estimate energy needed for setConfig transaction
@@ -609,43 +487,9 @@ class LayerZeroProverConfig {
   private async estimateConfigEnergy(
     setConfigParams: SetConfigParam[],
   ): Promise<number> {
-    try {
-      const tronWeb = this.toolkit.getTronWeb()
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
-
-      // Use TronWeb's energy estimation
-      const energyUsed = await tronWeb.transactionBuilder.estimateEnergy(
-        endpointContract.address,
-        'setConfig(address,address,(uint32,uint32,bytes)[])',
-        {},
-        [
-          {
-            type: 'address',
-            value: this.LAYERZERO_PROVER_ADDRESS,
-          },
-          {
-            type: 'address',
-            value: this.SEND_LIB_ADDRESS,
-          },
-          {
-            type: '(uint32,uint32,bytes)[]',
-            value: setConfigParams.map((param) => [
-              param.eid,
-              param.configType,
-              param.config,
-            ]),
-          },
-        ],
-        tronWeb.defaultAddress.base58,
-      )
-
-      return energyUsed || 200000 // Fallback to reasonable estimate
-    } catch (error) {
-      logger.warn('Failed to estimate energy, using fallback:', error)
-      return 200000 // Conservative fallback estimate
-    }
+    // Based on successful transaction: 78628 energy used
+    // Return 80000 for safety margin
+    return 80000
   }
 
   /**
@@ -654,87 +498,270 @@ class LayerZeroProverConfig {
   private async estimateLibraryEnergy(
     method: 'setSendLibrary' | 'setReceiveLibrary',
   ): Promise<number> {
+    // Library operations are typically lighter than setConfig
+    return 50000
+  }
+
+  /**
+   * Get sender configuration from LayerZero endpoint
+   */
+  async getConfigSender(): Promise<any> {
+    try {
+      logger.info('=== Getting Sender Configuration ===')
+      const tronWeb = this.toolkit.getTronWeb()
+
+      // Call getConfig on the LayerZero endpoint
+      const transaction = await tronWeb.transactionBuilder.triggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'getConfig(address,address,uint32,uint32)',
+        { feeLimit: 50000000, callValue: 0 },
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'address', value: this.SEND_LIB_ADDRESS },
+          { type: 'uint32', value: this.OPTIMISM_EID },
+          { type: 'uint32', value: this.ULN_CONFIG_TYPE }
+        ],
+        tronWeb.defaultAddress.base58
+      )
+
+      if (transaction.result && transaction.result.result && transaction.constant_result) {
+        const result = transaction.constant_result[0]
+        logger.info('Raw sender config result:', result)
+        
+        // Parse the result - it should be ABI-encoded UlnConfig
+        const decoded = this.parseUlnConfig(result)
+        logger.info('Parsed sender configuration:', JSON.stringify(decoded, null, 2))
+        return decoded
+      } else {
+        throw new Error('Failed to retrieve sender configuration')
+      }
+    } catch (error) {
+      logger.error('Failed to get sender configuration:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Get receiver configuration from LayerZero endpoint
+   */
+  async getConfigReceiver(): Promise<any> {
+    try {
+      logger.info('=== Getting Receiver Configuration ===')
+      const tronWeb = this.toolkit.getTronWeb()
+
+      logger.info('getConfig method inputs:')
+      logger.info(`  Endpoint Address: ${this.ENDPOINT_ADDRESS}`)
+      logger.info(`  LayerZero Prover Address: ${this.LAYERZERO_PROVER_ADDRESS}`)
+      logger.info(`  Receive Library Address: ${this.RECEIVE_LIB_ADDRESS}`)
+      logger.info(`  Chain EID: ${this.OPTIMISM_EID}`)
+      logger.info(`  Config Type: ${this.ULN_CONFIG_TYPE}`)
+
+      // Call getConfig on the LayerZero endpoint  
+      const transaction = await tronWeb.transactionBuilder.triggerSmartContract(
+        this.ENDPOINT_ADDRESS,
+        'getConfig(address,address,uint32,uint32)',
+        { feeLimit: 50000000, callValue: 0 },
+        [
+          { type: 'address', value: this.LAYERZERO_PROVER_ADDRESS },
+          { type: 'address', value: this.RECEIVE_LIB_ADDRESS },
+          { type: 'uint32', value: this.OPTIMISM_EID },
+          { type: 'uint32', value: this.ULN_CONFIG_TYPE }
+        ],
+        tronWeb.defaultAddress.base58
+      )
+
+      if (transaction.result && transaction.result.result && transaction.constant_result) {
+        const result = transaction.constant_result[0]
+        logger.info('Raw receiver config result:', result)
+        
+        // Parse the result - it should be ABI-encoded UlnConfig
+        const decoded = this.parseUlnConfig(result)
+        logger.info('Parsed receiver configuration:', JSON.stringify(decoded, null, 2))
+        return decoded
+      } else {
+        throw new Error('Failed to retrieve receiver configuration')
+      }
+    } catch (error) {
+      logger.error('Failed to get receiver configuration:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Parse UlnConfig from hex result
+   */
+  private parseUlnConfig(hexResult: string): any {
     try {
       const tronWeb = this.toolkit.getTronWeb()
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
-
-      let energyUsed: number
-
-      if (method === 'setSendLibrary') {
-        energyUsed = await tronWeb.transactionBuilder.estimateEnergy(
-          endpointContract.address,
-          'setSendLibrary(address,uint32,address)',
-          {},
-          [
-            {
-              type: 'address',
-              value: this.LAYERZERO_PROVER_ADDRESS,
-            },
-            {
-              type: 'uint32',
-              value: this.OPTIMISM_EID,
-            },
-            {
-              type: 'address',
-              value: this.SEND_LIB_ADDRESS,
-            },
-          ],
-          tronWeb.defaultAddress.base58,
-        )
-      } else {
-        energyUsed = await tronWeb.transactionBuilder.estimateEnergy(
-          endpointContract.address,
-          'setReceiveLibrary(address,uint32,address,uint256)',
-          {},
-          [
-            {
-              type: 'address',
-              value: this.LAYERZERO_PROVER_ADDRESS,
-            },
-            {
-              type: 'uint32',
-              value: this.OPTIMISM_EID,
-            },
-            {
-              type: 'address',
-              value: this.SEND_LIB_ADDRESS,
-            },
-            {
-              type: 'uint256',
-              value: 86400, // Grace period
-            },
-          ],
-          tronWeb.defaultAddress.base58,
-        )
+      
+      // The result starts with a struct offset (0x20), skip it
+      let cleanHex = hexResult
+      if (hexResult.startsWith('0000000000000000000000000000000000000000000000000000000000000020')) {
+        cleanHex = hexResult.substring(64) // Skip the first 32 bytes (64 hex chars)
       }
+      
+      // Decode the UlnConfig struct
+      // struct UlnConfig {
+      //   uint64 confirmations;
+      //   uint8 requiredDVNCount;
+      //   uint8 optionalDVNCount; 
+      //   uint8 optionalDVNThreshold;
+      //   address[] requiredDVNs;
+      //   address[] optionalDVNs;
+      // }
+      
+      const decoded = tronWeb.utils.abi.decodeParams(
+        ['uint64', 'uint8', 'uint8', 'uint8', 'address[]', 'address[]'],
+        '0x' + cleanHex
+      )
 
-      return energyUsed || 150000 // Fallback for library methods
+      // Convert hex addresses back to base58 Tron addresses
+      const requiredDVNs = decoded[4].map((addr: string) => {
+        if (addr === '0x0000000000000000000000000000000000000000') return null
+        try {
+          return tronWeb.address.fromHex(addr)
+        } catch {
+          return addr // Return hex if conversion fails
+        }
+      }).filter(Boolean)
+
+      const optionalDVNs = decoded[5].map((addr: string) => {
+        if (addr === '0x0000000000000000000000000000000000000000') return null
+        try {
+          return tronWeb.address.fromHex(addr)
+        } catch {
+          return addr // Return hex if conversion fails
+        }
+      }).filter(Boolean)
+
+      return {
+        confirmations: decoded[0].toString(),
+        requiredDVNCount: decoded[1].toString(),
+        optionalDVNCount: decoded[2].toString(),
+        optionalDVNThreshold: decoded[3].toString(),
+        requiredDVNs,
+        optionalDVNs,
+        primaryDVN: requiredDVNs.length > 0 ? requiredDVNs[0] : null
+      }
     } catch (error) {
-      logger.warn('Failed to estimate library energy, using fallback:', error)
-      return 150000 // Conservative fallback estimate for library methods
+      logger.error('Failed to parse ULN config:', error)
+      logger.info('Raw hex for debugging:', hexResult)
+      
+      // Try manual parsing of the DVN address
+      let manualDVN = null
+      try {
+        const tronWeb = this.toolkit.getTronWeb()
+        
+        // Look for common DVN addresses in the hex
+        const dvnPatterns = [
+          'e369d146219380b24bb5d9b9e08a5b9936f9e719', // LayerZero Labs
+          '73a38738170aca1b2ebcb55538ed9c7fb10ccd3b', // Different DVN
+        ]
+        
+        for (const pattern of dvnPatterns) {
+          if (hexResult.toLowerCase().includes(pattern)) {
+            manualDVN = tronWeb.address.fromHex('0x' + pattern)
+            break
+          }
+        }
+      } catch (e) {
+        // Ignore manual parsing errors
+      }
+      
+      return {
+        raw: hexResult,
+        error: error instanceof Error ? error.message : String(error),
+        manualDVN
+      }
+    }
+  }
+
+  /**
+   * Get proven intent data from the LayerZero prover contract
+   */
+  async getProvenIntent(): Promise<any> {
+    try {
+      logger.info('=== Getting Proven Intent Data ===')
+      const intentHash = '0x1f0ca5f010942f997927d7cecc4110344559bffadbdfc3bf3ee8b8fa6f026e65'
+      logger.info(`Intent Hash: ${intentHash}`)
+      logger.info(`LayerZero Prover Address: ${this.LAYERZERO_PROVER_ADDRESS}`)
+      
+      const tronWeb = this.toolkit.getTronWeb()
+
+      // Call provenIntents on the LayerZero prover contract
+      const transaction = await tronWeb.transactionBuilder.triggerSmartContract(
+        this.LAYERZERO_PROVER_ADDRESS,
+        'provenIntents(bytes32)',
+        { feeLimit: 50000000, callValue: 0 },
+        [
+          { type: 'bytes32', value: intentHash }
+        ],
+        tronWeb.defaultAddress.base58
+      )
+
+      if (transaction.result && transaction.result.result && transaction.constant_result) {
+        const result = transaction.constant_result[0]
+        logger.info('Raw provenIntents result:', result)
+        
+        // Try to decode the ProofData struct
+        // struct ProofData { address claimant; uint64 destination; }
+        if (result && result !== '0x') {
+          try {
+            const decoded = tronWeb.utils.abi.decodeParams(
+              ['address', 'uint64'],
+              result
+            )
+            
+            // Convert claimant address back to Tron base58 if it's not zero
+            let claimantAddress = decoded[0]
+            if (claimantAddress !== '0x0000000000000000000000000000000000000000') {
+              try {
+                claimantAddress = tronWeb.address.fromHex(decoded[0])
+              } catch {
+                // Keep as hex if conversion fails
+              }
+            }
+
+            const proofData = {
+              claimant: claimantAddress,
+              destination: decoded[1].toString()
+            }
+            
+            logger.info('Parsed proof data:', JSON.stringify(proofData, null, 2))
+            return proofData
+          } catch (error) {
+            logger.error('Failed to decode proof data:', error)
+            return { raw: result, error: error instanceof Error ? error.message : String(error) }
+          }
+        } else {
+          logger.info('No proof found for this intent hash')
+          return { claimant: '0x0000000000000000000000000000000000000000', destination: '0' }
+        }
+      } else {
+        throw new Error('Failed to retrieve proven intent data')
+      }
+    } catch (error) {
+      logger.error('Failed to get proven intent:', error)
+      throw error
     }
   }
 
   /**
    * Get current configuration from the LayerZero endpoint
    */
-  async getCurrentConfig(): Promise<void> {
+  async getCurrentConfig(): Promise<any> {
     try {
       logger.info('=== Getting Current Configuration ===')
-
-      const tronWeb = this.toolkit.getTronWeb()
-      const endpointContract = await tronWeb
-        .contract()
-        .at(this.ENDPOINT_ADDRESS)
-
-      // Note: This depends on the specific LayerZero endpoint interface
-      // You may need to adjust based on the actual endpoint contract methods available
       logger.info(`LayerZero Prover: ${this.LAYERZERO_PROVER_ADDRESS}`)
       logger.info(`Endpoint: ${this.ENDPOINT_ADDRESS}`)
       logger.info(`DVN: ${this.DVN_ADDRESS}`)
+      
+      // Get both sender and receiver configs
+      const senderConfig = await this.getConfigSender()
+      const receiverConfig = await this.getConfigReceiver()
+      
       logger.info('Configuration retrieval completed')
+      return { sender: senderConfig, receiver: receiverConfig }
     } catch (error) {
       logger.error('Failed to get current configuration:', error)
       throw error
@@ -767,26 +794,18 @@ class LayerZeroProverConfig {
       logger.info('=== Complete Receive Setup ===')
 
       // Step 1: Set receive library
-    //   logger.info('Step 1/2: Setting receive library...')
-    //   await this.setReceiveLibrary()
-    //   logger.info('✓ Receive library set successfully')
+      logger.info('Step 1/2: Setting receive library...')
+      await this.setReceiveLibrary()
+      logger.info('✓ Receive library set successfully')
 
-      // Step 2: Configure receive DVN (only if library setup succeeded)
+      // Step 2: Configure receive DVN
       logger.info('Step 2/2: Configuring receive DVN...')
       await this.configureReceive()
       logger.info('✓ Receive DVN configured successfully')
 
       logger.info('Receive setup completed successfully!')
     } catch (error) {
-      if (error.message?.includes('receive library')) {
-        logger.error(
-          'Failed during receive library setup. Skipping DVN configuration.',
-        )
-      } else if (error.message?.includes('DVN')) {
-        logger.error('Receive library succeeded, but DVN configuration failed.')
-      } else {
-        logger.error('Failed to complete receive setup:', error)
-      }
+      logger.error('Failed to complete receive setup:', error)
       throw error
     }
   }
@@ -839,24 +858,32 @@ async function main() {
       case 'status':
         await configScript.getCurrentConfig()
         break
+      case 'get-sender':
+        await configScript.getConfigSender()
+        break
+      case 'get-receiver':
+        await configScript.getConfigReceiver()
+        break
+      case 'get-proven-intent':
+        await configScript.getProvenIntent()
+        break
       default:
         logger.info('Usage: ts-node configure-layerzero-prover.ts [ACTION]')
         logger.info('Actions:')
         logger.info('  send        - Configure send DVN settings')
         logger.info('  receive     - Configure receive DVN settings')
-        logger.info(
-          '  both        - Configure both send and receive DVN settings',
-        )
+        logger.info('  both        - Configure both send and receive DVN settings')
         logger.info('  send-lib    - Set send library')
         logger.info('  receive-lib - Set receive library')
         logger.info('  all-libs    - Set both send and receive libraries')
         logger.info('  executor    - Set executor configuration')
-        logger.info(
-          '  setup-send  - Complete send setup (library + executor + DVN)',
-        )
+        logger.info('  setup-send  - Complete send setup (library + executor + DVN)')
         logger.info('  setup-receive - Complete receive setup (library + DVN)')
         logger.info('  full        - Complete setup: send + receive')
         logger.info('  status      - Get current configuration status')
+        logger.info('  get-sender  - Get sender configuration and show DVN')
+        logger.info('  get-receiver - Get receiver configuration and show DVN')
+        logger.info('  get-proven-intent - Get proven intent data for test intent hash')
         process.exit(1)
     }
 

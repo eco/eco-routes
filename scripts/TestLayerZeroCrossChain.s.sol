@@ -54,8 +54,10 @@ contract TestLayerZeroCrossChain is Script {
         // Prepare data for LayerZero prover
         bytes32 claimantBytes32 = bytes32(uint256(uint160(deployer)));
         
-        // Get Tron prover address from .env (already converted to bytes32)
-        bytes32 tronProverAddressBytes32 = vm.envBytes32("TRON_LAYERZERO_PROVER_ADDRESS_BYTES32");
+        // For cross-chain testing, we use the Tron LayerZero prover address as bytes32
+        // TVaUrbN3cm6xxvi4e1fc1jUhs19mbtLEd7 in Tron converts to this hex representation
+        // In production, proper Tron base58 to hex conversion would be used
+        bytes32 tronProverAddressBytes32 = 0x000000000000000000000000d7162ece9939b0a6ace3b143764ec00fe88b15e4;
 
         bytes memory _options = OptionsBuilder.newOptions().addExecutorLzReceiveOption(200000, 0);
         
@@ -75,12 +77,11 @@ contract TestLayerZeroCrossChain is Script {
         
         console.log("=== STEP 1: Fulfilling Intent ===");
         
-        // Call fulfill first
         Portal portal = Portal(payable(OPTIMISM_PORTAL));
         bytes[] memory result = portal.fulfill(
             intentHash,
             intent.route,
-            rewardHash,
+            keccak256(abi.encode(intent.reward)),
             claimantBytes32
         );
         
@@ -89,7 +90,7 @@ contract TestLayerZeroCrossChain is Script {
         console.logUint(result.length);
         
         // Check if intent was fulfilled
-        bytes32 fulfilledClaimant = portal.fulfilled(intentHash);
+        bytes32 fulfilledClaimant = portal.claimants(intentHash);
         console.log("Intent fulfilled with claimant:");
         console.logBytes32(fulfilledClaimant);
         
@@ -107,7 +108,7 @@ contract TestLayerZeroCrossChain is Script {
         bytes memory encodedProofs = _encodeProofs(intentHashes, claimants);
         
         uint256 fee = layerZeroProver.fetchFee(
-            TRON_ENDPOINT_ID, // V2 Endpoint ID
+            uint64(TRON_ENDPOINT_ID), // V2 Endpoint ID
             encodedProofs,
             lzData
         );
@@ -144,8 +145,8 @@ contract TestLayerZeroCrossChain is Script {
         
         // Call prove with the fee (reuse existing portal variable)
         portal.prove{value: fee}(
-            TRON_ENDPOINT_ID, // V2 Endpoint ID
             OPTIMISM_LAYERZERO_PROVER,
+            uint64(TRON_ENDPOINT_ID), // V2 Endpoint ID
             intentHashes,
             lzData
         );
@@ -173,12 +174,12 @@ contract TestLayerZeroCrossChain is Script {
         // Create route tokens (empty for ETH transfer)
         TokenAmount[] memory routeTokens = new TokenAmount[](0);
         
-        // Create calls (transfer 0.0001 ETH to deployer)
+        // Create calls (send 0 ETH to deployer)
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
-            target: 0xca76f536C55Dd5F286b4144b3f18b19e23ef1D78,
+            target: deployer,
             data: "",
-            value: 0 // Set to 0 to skip ETH transfer and just test LayerZero functionality
+            value: 0 // Send 0 ETH to deployer
         });
         
         // Create reward tokens (empty for this test)
@@ -198,7 +199,7 @@ contract TestLayerZeroCrossChain is Script {
             deadline: uint64(block.timestamp + 3600),
             creator: deployer,
             prover: OPTIMISM_LAYERZERO_PROVER,
-            nativeValue: 0,
+            nativeAmount: 0,
             tokens: rewardTokens
         });
         

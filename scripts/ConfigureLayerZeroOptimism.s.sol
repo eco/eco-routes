@@ -42,10 +42,10 @@ contract ConfigureLayerZeroOptimism is Script {
     function setUp() public {
         // Load addresses from environment
         LAYERZERO_PROVER_ADDRESS = vm.envAddress("OP_LAYERZERO_PROVER");
-        DVN_ADDRESS = vm.envOr("OP_DVN_ADDRESS", address(0x6a02d83e8d433304bba74ef1c427913958187142)); // Deutsche Telekom
+        DVN_ADDRESS = vm.envOr("OP_DVN_ADDRESS", address(0x6A02D83e8d433304bba74EF1c427913958187142)); // layerzero labs
         ENDPOINT_ADDRESS = vm.envAddress("OP_LAYERZERO_ENDPOINT");
-        SEND_LIB_ADDRESS = vm.envOr("OP_SEND_LIB_ADDRESS", address(0x1322871e4ab09Bc7f5717189434f97bBD9546e95)); // Deutsche Telekom
-        RECEIVE_LIB_ADDRESS = vm.envOr("OP_RECEIVE_LIB_ADDRESS", address(0x3c4962Ff6258dcfCafD23a814237B7d6Eb712063)); // Receive ULN
+        SEND_LIB_ADDRESS = vm.envOr("OP_SEND_LIB_ADDRESS", address(0x1322871e4ab09Bc7f5717189434f97bBD9546e95)); //default send lib
+        RECEIVE_LIB_ADDRESS = vm.envOr("OP_RECEIVE_LIB_ADDRESS", address(0x3c4962Ff6258dcfCafD23a814237B7d6Eb712063)); // default receive lib
         EXECUTOR_ADDRESS = vm.envOr("OP_EXECUTOR_ADDRESS", address(0x2D2ea0697bdbede3F01553D2Ae4B8d0c486B666e)); // LayerZero Executor
 
         pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
@@ -205,6 +205,156 @@ contract ConfigureLayerZeroOptimism is Script {
         // setReceiveLibrary();
         configureReceive();
         console.log("Complete receive setup finished!");
+    }
+
+    /// @notice Get sender configuration from LayerZero endpoint
+    function getConfigSender() public view {
+        console.log("=== Getting Sender Configuration ===");
+        console.log("getConfig method inputs:");
+        console.log("  Endpoint Address:", vm.toString(ENDPOINT_ADDRESS));
+        console.log("  LayerZero Prover Address:", vm.toString(LAYERZERO_PROVER_ADDRESS));
+        console.log("  Send Library Address:", vm.toString(SEND_LIB_ADDRESS));
+        console.log("  Chain EID:", vm.toString(TRON_EID));
+        console.log("  Config Type:", vm.toString(ULN_CONFIG_TYPE));
+
+        ILayerZeroEndpointV2 endpoint = ILayerZeroEndpointV2(ENDPOINT_ADDRESS);
+        bytes memory config = endpoint.getConfig(
+            LAYERZERO_PROVER_ADDRESS,
+            SEND_LIB_ADDRESS,
+            TRON_EID,
+            ULN_CONFIG_TYPE
+        );
+
+        console.log("Raw sender config result:");
+        console.logBytes(config);
+
+        if (config.length > 0) {
+            // Try to decode UlnConfig
+            try this.decodeUlnConfig(config) returns (UlnConfig memory ulnConfig) {
+                console.log("Parsed sender configuration:");
+                console.log("  Confirmations:", vm.toString(ulnConfig.confirmations));
+                console.log("  Required DVN Count:", vm.toString(ulnConfig.requiredDVNCount));
+                console.log("  Optional DVN Count:", vm.toString(ulnConfig.optionalDVNCount));
+                console.log("  Optional DVN Threshold:", vm.toString(ulnConfig.optionalDVNThreshold));
+                
+                if (ulnConfig.requiredDVNs.length > 0) {
+                    console.log("  Primary DVN:", vm.toString(ulnConfig.requiredDVNs[0]));
+                }
+                
+                for (uint256 i = 0; i < ulnConfig.requiredDVNs.length; i++) {
+                    console.log("  Required DVN", vm.toString(i), ":", vm.toString(ulnConfig.requiredDVNs[i]));
+                }
+            } catch {
+                console.log("Failed to decode ULN config - raw bytes shown above");
+            }
+        } else {
+            console.log("No configuration found");
+        }
+    }
+
+    /// @notice Get receiver configuration from LayerZero endpoint
+    function getConfigReceiver() public view {
+        console.log("=== Getting Receiver Configuration ===");
+        console.log("getConfig method inputs:");
+        console.log("  Endpoint Address:", vm.toString(ENDPOINT_ADDRESS));
+        console.log("  LayerZero Prover Address:", vm.toString(LAYERZERO_PROVER_ADDRESS));
+        console.log("  Receive Library Address:", vm.toString(RECEIVE_LIB_ADDRESS));
+        console.log("  Chain EID:", vm.toString(TRON_EID));
+        console.log("  Config Type:", vm.toString(ULN_CONFIG_TYPE));
+
+        ILayerZeroEndpointV2 endpoint = ILayerZeroEndpointV2(ENDPOINT_ADDRESS);
+        bytes memory config = endpoint.getConfig(
+            LAYERZERO_PROVER_ADDRESS,
+            RECEIVE_LIB_ADDRESS,
+            TRON_EID,
+            ULN_CONFIG_TYPE
+        );
+
+        console.log("Raw receiver config result:");
+        console.logBytes(config);
+
+        if (config.length > 0) {
+            // Try to decode UlnConfig
+            try this.decodeUlnConfig(config) returns (UlnConfig memory ulnConfig) {
+                console.log("Parsed receiver configuration:");
+                console.log("  Confirmations:", vm.toString(ulnConfig.confirmations));
+                console.log("  Required DVN Count:", vm.toString(ulnConfig.requiredDVNCount));
+                console.log("  Optional DVN Count:", vm.toString(ulnConfig.optionalDVNCount));
+                console.log("  Optional DVN Threshold:", vm.toString(ulnConfig.optionalDVNThreshold));
+                
+                if (ulnConfig.requiredDVNs.length > 0) {
+                    console.log("  Primary DVN:", vm.toString(ulnConfig.requiredDVNs[0]));
+                }
+                
+                for (uint256 i = 0; i < ulnConfig.requiredDVNs.length; i++) {
+                    console.log("  Required DVN", vm.toString(i), ":", vm.toString(ulnConfig.requiredDVNs[i]));
+                }
+            } catch {
+                console.log("Failed to decode ULN config - raw bytes shown above");
+            }
+        } else {
+            console.log("No configuration found");
+        }
+    }
+
+    /// @notice Get executor configuration from LayerZero endpoint
+    function getExecutor() public view {
+        console.log("=== Getting Executor Configuration ===");
+        console.log("getConfig method inputs:");
+        console.log("  Endpoint Address:", vm.toString(ENDPOINT_ADDRESS));
+        console.log("  LayerZero Prover Address:", vm.toString(LAYERZERO_PROVER_ADDRESS));
+        console.log("  Send Library Address:", vm.toString(SEND_LIB_ADDRESS));
+        console.log("  Chain EID:", vm.toString(TRON_EID));
+        console.log("  Config Type: 1 (Executor)");
+
+        ILayerZeroEndpointV2 endpoint = ILayerZeroEndpointV2(ENDPOINT_ADDRESS);
+        bytes memory config = endpoint.getConfig(
+            LAYERZERO_PROVER_ADDRESS,
+            SEND_LIB_ADDRESS,
+            TRON_EID,
+            1 // CONFIG_TYPE_EXECUTOR
+        );
+
+        console.log("Raw executor config result:");
+        console.logBytes(config);
+
+        if (config.length > 0) {
+            console.log("Executor configuration found (length:", vm.toString(config.length), "bytes)");
+            // Executor config is typically: abi.encode(address executor, bytes executorConfig)
+            // where executorConfig is: abi.encode(uint128 gasLimit, uint128 value)
+            
+            if (config.length >= 64) {
+                // Try to decode executor address (first 32 bytes after offset)
+                bytes32 executorBytes;
+                assembly {
+                    executorBytes := mload(add(config, 0x40)) // Skip length + offset
+                }
+                address executorAddress = address(uint160(uint256(executorBytes)));
+                console.log("  Executor Address:", vm.toString(executorAddress));
+            }
+        } else {
+            console.log("No executor configuration found");
+        }
+    }
+
+    /// @notice Get current configuration status
+    function getCurrentConfig() public view {
+        console.log("=== Getting Current Configuration Status ===");
+        console.log("LayerZero Prover:", vm.toString(LAYERZERO_PROVER_ADDRESS));
+        console.log("Endpoint:", vm.toString(ENDPOINT_ADDRESS));
+        console.log("DVN:", vm.toString(DVN_ADDRESS));
+        console.log("");
+        
+        getConfigSender();
+        console.log("");
+        getConfigReceiver();
+        
+        console.log("Configuration retrieval completed");
+    }
+
+    /// @notice Helper function to decode UlnConfig
+    function decodeUlnConfig(bytes memory data) external pure returns (UlnConfig memory) {
+        return abi.decode(data, (UlnConfig));
     }
 
     /// @notice Run full LayerZero configuration setup
