@@ -7,9 +7,9 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
   PolymerProver,
-  Portal,
+  Inbox,
   TestCrossL2ProverV2,
-  IIntentSource,
+  IntentSource,
 } from '../typechain-types'
 import { Reward, hashIntent, Intent, Route } from '../utils/intent'
 import { keccak256 } from 'ethers'
@@ -26,14 +26,13 @@ export function calculateStorageSlot(intentHash: string): string {
 
 describe('PolymerProver Test', (): void => {
   let polymerProver: PolymerProver
-  let portal: Portal
+  let inbox: Inbox
   let testCrossL2ProverV2: TestCrossL2ProverV2
-  let intentSource: IIntentSource
+  let intentSource: IntentSource
   let owner: SignerWithAddress
   let claimant: SignerWithAddress
   let claimant2: SignerWithAddress
   let claimant3: SignerWithAddress
-  let destinationProver: string
   let chainIds: number[] = [10, 42161]
   let emptyTopics: string =
     '0x0000000000000000000000000000000000000000000000000000000000000000'
@@ -42,11 +41,10 @@ describe('PolymerProver Test', (): void => {
   let intent: Intent
   async function deployPolymerProverFixture(): Promise<{
     polymerProver: PolymerProver
-    portal: Portal
-    intentSource: IIntentSource
+    inbox: Inbox
+    intentSource: IntentSource
     intent: Intent
     testCrossL2ProverV2: TestCrossL2ProverV2
-    destinationProver: string
     owner: SignerWithAddress
     solver: SignerWithAddress
     claimant: SignerWithAddress
@@ -57,37 +55,34 @@ describe('PolymerProver Test', (): void => {
     const [owner, solver, claimant, claimant2, claimant3, token] =
       await ethers.getSigners()
 
-    const portal = await (
-      await ethers.getContractFactory('Portal')
+    // Deploy Inbox and IntentSource
+    const inbox = await (
+      await ethers.getContractFactory('Inbox')
+    ).deploy(owner.address, true, []) // owner, isSolvingPublic, solvers
+
+    const intentSource = await (
+      await ethers.getContractFactory('IntentSource')
     ).deploy()
 
     const testCrossL2ProverV2 = await (
       await ethers.getContractFactory('TestCrossL2ProverV2')
-    ).deploy(chainIds[0], await portal.getAddress(), emptyTopics, emptyData)
+    ).deploy(chainIds[0], await inbox.getAddress(), emptyTopics, emptyData)
 
-    const destinationProver = '0x1234567890123456789012345678901234567890'
-    
     const polymerProver = await (
       await ethers.getContractFactory('PolymerProver')
-    ).deploy(
-      owner.address, // owner
-      await portal.getAddress(),
-    )
+    ).deploy(owner.address) // just owner for v1.5
 
-    // Initialize with CrossL2ProverV2 and whitelist
+    // Initialize with CrossL2ProverV2 and whitelist Inbox addresses
     const whitelistChainIds = [chainIds[0], chainIds[1]]
-    const provers = [ethers.zeroPadValue(destinationProver, 32), ethers.zeroPadValue(destinationProver, 32)]
-    
+    const inboxAddresses = [
+      ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ethers.zeroPadValue(await inbox.getAddress(), 32)
+    ]
+
     await polymerProver.initialize(
       await testCrossL2ProverV2.getAddress(),
       whitelistChainIds,
-      provers
-    )
-
-    // Use the IIntentSource interface with the Portal implementation
-    const intentSource = await ethers.getContractAt(
-      'IIntentSource',
-      await portal.getAddress(),
+      inboxAddresses
     )
 
     const srcChainId = (await ethers.provider.getNetwork()).chainId
@@ -96,8 +91,9 @@ describe('PolymerProver Test', (): void => {
 
     let route: Route = {
       salt: ethers.keccak256(ethers.toUtf8Bytes('testsalt')),
-      deadline: currentTimestamp + 3600, // Set deadline to 1 hour from now
-      portal: await portal.getAddress(),
+      source: Number(srcChainId),
+      destination: chainIds[1],
+      inbox: await inbox.getAddress(),
       tokens: [],
       calls: [],
     }
@@ -106,12 +102,11 @@ describe('PolymerProver Test', (): void => {
       creator: owner.address,
       prover: await polymerProver.getAddress(),
       deadline: currentTimestamp + 3600, // Set deadline to 1 hour from now
-      nativeAmount: ethers.parseEther('1'),
+      nativeValue: ethers.parseEther('1'),
       tokens: [],
     }
 
     intent = {
-      destination: chainIds[1],
       route,
       reward,
     }
@@ -119,10 +114,9 @@ describe('PolymerProver Test', (): void => {
     return {
       polymerProver,
       intentSource,
-      portal,
+      inbox,
       testCrossL2ProverV2,
       intent,
-      destinationProver,
       owner,
       solver,
       claimant,
@@ -136,10 +130,9 @@ describe('PolymerProver Test', (): void => {
     ;({
       polymerProver,
       intentSource,
-      portal,
+      inbox,
       testCrossL2ProverV2,
       intent,
-      destinationProver,
       owner,
       claimant,
       claimant2,
@@ -155,17 +148,17 @@ describe('PolymerProver Test', (): void => {
     let badEventSignature: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
+      eventSignature = ethers.id('Fulfillment(bytes32,uint256,address)')
       badEventSignature = ethers.id(
-        'BadEventSignature(bytes32,bytes32,uint64)',
+        'BadEventSignature(bytes32,uint256,address)',
       )
       expectedHash = '0x' + '11'.repeat(32)
       data = '0x'
       topics = [
         eventSignature,
         expectedHash,
-        ethers.zeroPadValue(claimant.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
+        ethers.zeroPadValue(claimant.address, 32),
       ]
 
       await expect(
@@ -180,10 +173,10 @@ describe('PolymerProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      // set values for mock prover using the whitelisted destination prover
+      // set values for mock prover using the whitelisted Inbox address
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        destinationProver,
+        await inbox.getAddress(),
         topicsPacked,
         data,
       )
@@ -202,13 +195,13 @@ describe('PolymerProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(destinationProver)
+      expect(emittingContract_returned).to.equal(await inbox.getAddress())
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
       await expect(polymerProver.validate(proof))
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash, claimant.address, chainIds[0])
+        .withArgs(expectedHash, claimant.address)
     })
 
     it('should emit IntentAlreadyProven if the proof is already proven', async (): Promise<void> => {
@@ -216,10 +209,10 @@ describe('PolymerProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      // set values for mock prover using the whitelisted destination prover
+      // set values for mock prover using the whitelisted Inbox address
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        destinationProver,
+        await inbox.getAddress(),
         topicsPacked,
         data,
       )
@@ -238,13 +231,13 @@ describe('PolymerProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(destinationProver)
+      expect(emittingContract_returned).to.equal(await inbox.getAddress())
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
       await expect(polymerProver.validate(proof))
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash, claimant.address, chainIds[0])
+        .withArgs(expectedHash, claimant.address)
 
       await expect(polymerProver.validate(proof))
         .to.emit(polymerProver, 'IntentAlreadyProven')
@@ -302,10 +295,10 @@ describe('PolymerProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      // set values for mock prover using the whitelisted destination prover
+      // set values for mock prover using the whitelisted Inbox address
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        destinationProver,
+        await inbox.getAddress(),
         topicsPacked,
         data,
       )
@@ -324,7 +317,7 @@ describe('PolymerProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(destinationProver)
+      expect(emittingContract_returned).to.equal(await inbox.getAddress())
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -346,10 +339,10 @@ describe('PolymerProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics,
       )
-      // set values for mock prover using the whitelisted destination prover
+      // set values for mock prover using the whitelisted Inbox address
       await testCrossL2ProverV2.setAll(
         chainIds[0],
-        destinationProver,
+        await inbox.getAddress(),
         topicsPacked,
         data,
       )
@@ -368,7 +361,7 @@ describe('PolymerProver Test', (): void => {
       ] = await testCrossL2ProverV2.validateEvent(proof)
 
       expect(chainId_returned).to.equal(chainIds[0])
-      expect(emittingContract_returned).to.equal(destinationProver)
+      expect(emittingContract_returned).to.equal(await inbox.getAddress())
       expect(topics_returned).to.equal(topicsPacked)
       expect(data_returned).to.equal(data)
 
@@ -393,10 +386,9 @@ describe('PolymerProver Test', (): void => {
     let expectedHash2: string
     let expectedHash3: string
     let eventSignature: string
-    let destinationProverAddress: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
+      eventSignature = ethers.id('Fulfillment(bytes32,uint256,address)')
       expectedHash = '0x' + '11'.repeat(32)
       expectedHash2 = '0x' + '22'.repeat(32)
       expectedHash3 = '0x' + '33'.repeat(32)
@@ -405,20 +397,20 @@ describe('PolymerProver Test', (): void => {
       topics_0 = [
         eventSignature,
         expectedHash,
-        ethers.zeroPadValue(claimant.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
+        ethers.zeroPadValue(claimant.address, 32),
       ]
       topics_1 = [
         eventSignature,
         expectedHash2,
-        ethers.zeroPadValue(claimant2.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
+        ethers.zeroPadValue(claimant2.address, 32),
       ]
       topics_2 = [
         eventSignature,
         expectedHash3,
-        ethers.zeroPadValue(claimant3.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
+        ethers.zeroPadValue(claimant3.address, 32),
       ]
       topics_0_packed = ethers.solidityPacked(
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
@@ -432,7 +424,6 @@ describe('PolymerProver Test', (): void => {
         ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
         topics_2,
       )
-      destinationProverAddress = destinationProver
     })
 
     it('should validate a batch of emits', async (): Promise<void> => {
@@ -442,7 +433,7 @@ describe('PolymerProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [destinationProverAddress, destinationProverAddress, destinationProverAddress]
+      const emittingContractsArray = [await inbox.getAddress(), await inbox.getAddress(), await inbox.getAddress()]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
@@ -468,11 +459,11 @@ describe('PolymerProver Test', (): void => {
 
       await expect(polymerProver.validateBatch(proof))
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash, claimant.address, chainIds[0])
+        .withArgs(expectedHash, claimant.address)
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash2, claimant2.address, chainIds[1])
+        .withArgs(expectedHash2, claimant2.address)
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash3, claimant3.address, chainIds[0])
+        .withArgs(expectedHash3, claimant3.address)
     })
 
     it('should validate a batch of emits and emit IntentAlreadyProven if one of the proofs is already proven', async (): Promise<void> => {
@@ -482,7 +473,7 @@ describe('PolymerProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [destinationProverAddress, destinationProverAddress, destinationProverAddress]
+      const emittingContractsArray = [await inbox.getAddress(), await inbox.getAddress(), await inbox.getAddress()]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
@@ -512,11 +503,11 @@ describe('PolymerProver Test', (): void => {
 
       await expect(polymerProver.validateBatch(proofDuplicate))
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash, claimant.address, chainIds[0])
+        .withArgs(expectedHash, claimant.address)
         .to.emit(polymerProver, 'IntentAlreadyProven')
         .withArgs(expectedHash)
         .to.emit(polymerProver, 'IntentProven')
-        .withArgs(expectedHash2, claimant2.address, chainIds[1])
+        .withArgs(expectedHash2, claimant2.address)
     })
   })
 })
