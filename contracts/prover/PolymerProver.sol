@@ -6,6 +6,7 @@ import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {IProver} from "../interfaces/IProver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title PolymerProver
@@ -17,9 +18,14 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     string public constant PROOF_TYPE = "Polymer";
     bytes32 public constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(bytes32,bytes32,uint64)");
+    uint256 public constant EXPECTED_TOPIC_LENGTH = 128; // 4 topics * 32 bytes each
 
     // Events
-    event IntentFulfilledFromSource(bytes32 indexed intentHash, bytes32 indexed claimant, uint64 source);
+    event IntentFulfilledFromSource(
+        bytes32 indexed intentHash,
+        bytes32 indexed claimant,
+        uint64 source
+    );
 
     // Errors
     error InvalidEventSignature();
@@ -34,7 +40,6 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     ICrossL2ProverV2 public CROSS_L2_PROVER_V2;
     mapping(uint64 => bytes32) public WHITELISTED_EMITTERS;
 
-
     /**
      * @notice Initializes the PolymerProver contract
      * @param _owner Temporary owner address for initialization
@@ -42,8 +47,8 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      */
     constructor(
         address _owner,
-        address _portal) BaseProver(_portal) Ownable(_owner) {
-    }
+        address _portal
+    ) BaseProver(_portal) Ownable(_owner) {}
 
     /**
      * @notice Initializes the contract with CrossL2ProverV2 and whitelist settings
@@ -54,9 +59,11 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     function initialize(
         address _crossL2ProverV2,
         uint64[] calldata _chainIds,
-        bytes32[] calldata _whitelistedEmitters) external onlyOwner {
+        bytes32[] calldata _whitelistedEmitters
+    ) external onlyOwner {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
-        if (_chainIds.length != _whitelistedEmitters.length) revert SizeMismatch();
+        if (_chainIds.length != _whitelistedEmitters.length)
+            revert SizeMismatch();
 
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
 
@@ -73,11 +80,14 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      * @notice Validates a single proof
      * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
      */
-    function validate(bytes calldata proof) external {
-        (bytes32 intentHash, address claimant, uint64 destinationChainId) = _validateProof(proof);
+    function validate(bytes calldata proof) public {
+        (
+            bytes32 intentHash,
+            address claimant,
+            uint64 destinationChainId
+        ) = _validateProof(proof);
         processIntent(intentHash, claimant, destinationChainId);
     }
-
 
     /**
      * @notice Validates multiple proofs in a batch
@@ -85,8 +95,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      */
     function validateBatch(bytes[] calldata proofs) external {
         for (uint256 i = 0; i < proofs.length; i++) {
-            (bytes32 intentHash, address claimant, uint64 destinationChainId) = _validateProof(proofs[i]);
-            processIntent(intentHash, claimant, destinationChainId);
+            validate(proofs[i]);
         }
     }
 
@@ -101,39 +110,51 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      */
     function _validateProof(
         bytes calldata proof
-    ) internal view returns (bytes32 intentHash, address claimant, uint64 chainId) {
+    )
+        internal
+        view
+        returns (bytes32 intentHash, address claimant, uint64 chainId)
+    {
         (
             uint32 destinationChainId,
             address emittingContract,
-            bytes memory topics,
-            /* bytes memory data */
+            bytes memory topics /* bytes memory data */,
+
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        if (!isWhitelisted(uint64(destinationChainId), bytes32(uint256(uint160(emittingContract))))) {
+        if (
+            !isWhitelisted(
+                uint64(destinationChainId),
+                AddressConverter.toBytes32(emittingContract)
+            )
+        ) {
             revert InvalidEmittingContract(emittingContract);
         }
-        checkTopicLength(topics, 128); // 4 topics: signature + hash + claimant + sourceChainId
 
-        bytes32[] memory topicsArray = new bytes32[](4);
+        if (topics.length != EXPECTED_TOPIC_LENGTH)
+            revert InvalidTopicsLength();
+
+        bytes32 eventSignature;
+        bytes32 claimantBytes32;
+        bytes32 sourceChainIdBytes32;
 
         assembly {
             let topicsPtr := add(topics, 32)
-            let arrayPtr := add(topicsArray, 32)
 
-            mstore(arrayPtr, mload(topicsPtr))
-            mstore(add(arrayPtr, 32), mload(add(topicsPtr, 32)))
-            mstore(add(arrayPtr, 64), mload(add(topicsPtr, 64)))
-            mstore(add(arrayPtr, 96), mload(add(topicsPtr, 96)))
+            eventSignature := mload(topicsPtr)
+            intentHash := mload(add(topicsPtr, 32))
+            claimantBytes32 := mload(add(topicsPtr, 64))
+            sourceChainIdBytes32 := mload(add(topicsPtr, 96))
         }
 
-        checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
+        checkTopicSignature(eventSignature, PROOF_SELECTOR);
         // Convert bytes32 claimant to address
-        claimant = address(uint160(uint256(topicsArray[2])));
+        claimant = AddressConverter.toAddress(claimantBytes32);
         // Get sourceChainId from event topic and verify it matches current chain
-        uint64 eventSourceChainId = uint64(uint256(topicsArray[3]));
+        uint64 eventSourceChainId = uint64(uint256(sourceChainIdBytes32));
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
-        return (topicsArray[1], claimant, uint64(destinationChainId));
+        return (intentHash, claimant, uint64(destinationChainId));
     }
 
     // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
@@ -143,17 +164,22 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      * @param intentHash Hash of the intent being proven
      * @param claimant Address that fulfilled the intent and should receive rewards
      */
-    function processIntent(bytes32 intentHash, address claimant, uint64 destination) internal {
+    function processIntent(
+        bytes32 intentHash,
+        address claimant,
+        uint64 destination
+    ) internal {
         ProofData storage proof = _provenIntents[intentHash];
         if (proof.claimant != address(0)) {
             emit IntentAlreadyProven(intentHash);
-        } else {
-            proof.claimant = claimant;
-            proof.destination = destination;
-            emit IntentProven(intentHash, claimant, destination);
-        }
-    }
 
+            return;
+        }
+        proof.claimant = claimant;
+        proof.destination = destination;
+
+        emit IntentProven(intentHash, claimant, destination);
+    }
 
     // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
 
@@ -169,24 +195,12 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         if (topic != selector) revert InvalidEventSignature();
     }
 
-    /**
-     * @notice Validates that the topics have the expected length
-     * @param topics The topics to check
-     * @param length The expected length
-     */
-    function checkTopicLength(
-        bytes memory topics,
-        uint256 length
-    ) internal pure {
-        if (topics.length != length) revert InvalidTopicsLength();
-    }
-
-    function isWhitelisted(uint64 chainID, bytes32 addr) internal view returns (bool) {
+    function isWhitelisted(
+        uint64 chainID,
+        bytes32 addr
+    ) internal view returns (bool) {
         bytes32 whitelistedEmitter = WHITELISTED_EMITTERS[chainID];
-        if (whitelistedEmitter == bytes32(0)) {
-            return false;
-        }
-        return whitelistedEmitter == addr;
+        return whitelistedEmitter != bytes32(0) && whitelistedEmitter == addr;
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------
@@ -205,16 +219,14 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     /**
      * @notice Emits IntentFulfilledFromSource events that can be proven by Polymer
      * @dev Only callable by the Portal contract
-     * @param sender Address of the original transaction sender (unused)
      * @param sourceChainDomainID Domain ID of the source chain (treated as chain ID for Polymer)
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
-     * @param data Additional data specific to the proving implementation (unused)
-    */
+     */
     function prove(
-        address sender,
+        address,
         uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
-        bytes calldata data
+        bytes calldata
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
 
@@ -233,10 +245,16 @@ contract PolymerProver is BaseProver, Semver, Ownable {
 
             // Extract intentHash and claimant using slice
             bytes32 intentHash = bytes32(encodedProofs[offset:offset + 32]);
-            bytes32 claimantBytes = bytes32(encodedProofs[offset + 32:offset + 64]);
+            bytes32 claimantBytes = bytes32(
+                encodedProofs[offset + 32:offset + 64]
+            );
 
             // Emit event that can be proven by Polymer
-            emit IntentFulfilledFromSource(intentHash, claimantBytes, sourceChainDomainID);
+            emit IntentFulfilledFromSource(
+                intentHash,
+                claimantBytes,
+                sourceChainDomainID
+            );
         }
     }
 }

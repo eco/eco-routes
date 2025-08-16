@@ -57,16 +57,14 @@ describe('PolymerProver Test', (): void => {
     const [owner, solver, claimant, claimant2, claimant3, token] =
       await ethers.getSigners()
 
-    const portal = await (
-      await ethers.getContractFactory('Portal')
-    ).deploy()
+    const portal = await (await ethers.getContractFactory('Portal')).deploy()
 
     const testCrossL2ProverV2 = await (
       await ethers.getContractFactory('TestCrossL2ProverV2')
     ).deploy(chainIds[0], await portal.getAddress(), emptyTopics, emptyData)
 
     const destinationProver = '0x1234567890123456789012345678901234567890'
-    
+
     const polymerProver = await (
       await ethers.getContractFactory('PolymerProver')
     ).deploy(
@@ -76,12 +74,15 @@ describe('PolymerProver Test', (): void => {
 
     // Initialize with CrossL2ProverV2 and whitelist
     const whitelistChainIds = [chainIds[0], chainIds[1]]
-    const provers = [ethers.zeroPadValue(destinationProver, 32), ethers.zeroPadValue(destinationProver, 32)]
-    
+    const provers = [
+      ethers.zeroPadValue(destinationProver, 32),
+      ethers.zeroPadValue(destinationProver, 32),
+    ]
+
     await polymerProver.initialize(
       await testCrossL2ProverV2.getAddress(),
       whitelistChainIds,
-      provers
+      provers,
     )
 
     // Use the IIntentSource interface with the Portal implementation
@@ -155,17 +156,22 @@ describe('PolymerProver Test', (): void => {
     let badEventSignature: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
-      badEventSignature = ethers.id(
-        'BadEventSignature(bytes32,bytes32,uint64)',
+      eventSignature = ethers.id(
+        'IntentFulfilledFromSource(bytes32,bytes32,uint64)',
       )
+      badEventSignature = ethers.id('BadEventSignature(bytes32,bytes32,uint64)')
       expectedHash = '0x' + '11'.repeat(32)
       data = '0x'
       topics = [
         eventSignature,
         expectedHash,
         ethers.zeroPadValue(claimant.address, 32),
-        ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
+        ethers.zeroPadValue(
+          ethers.toBeHex(
+            await ethers.provider.getNetwork().then((n) => n.chainId),
+          ),
+          32,
+        ),
       ]
 
       await expect(
@@ -289,7 +295,6 @@ describe('PolymerProver Test', (): void => {
       )
     })
 
-
     it('should revert if topics length is not 4', async (): Promise<void> => {
       topics = [
         eventSignature,
@@ -339,7 +344,12 @@ describe('PolymerProver Test', (): void => {
         badEventSignature,
         expectedHash,
         ethers.zeroPadValue(claimant.address, 32),
-        ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
+        ethers.zeroPadValue(
+          ethers.toBeHex(
+            await ethers.provider.getNetwork().then((n) => n.chainId),
+          ),
+          32,
+        ),
       ]
 
       const topicsPacked = ethers.solidityPacked(
@@ -396,12 +406,14 @@ describe('PolymerProver Test', (): void => {
     let destinationProverAddress: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id('IntentFulfilledFromSource(bytes32,bytes32,uint64)')
+      eventSignature = ethers.id(
+        'IntentFulfilledFromSource(bytes32,bytes32,uint64)',
+      )
       expectedHash = '0x' + '11'.repeat(32)
       expectedHash2 = '0x' + '22'.repeat(32)
       expectedHash3 = '0x' + '33'.repeat(32)
       data = '0x'
-      const chainId = await ethers.provider.getNetwork().then(n => n.chainId)
+      const chainId = await ethers.provider.getNetwork().then((n) => n.chainId)
       topics_0 = [
         eventSignature,
         expectedHash,
@@ -442,7 +454,11 @@ describe('PolymerProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [destinationProverAddress, destinationProverAddress, destinationProverAddress]
+      const emittingContractsArray = [
+        destinationProverAddress,
+        destinationProverAddress,
+        destinationProverAddress,
+      ]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
@@ -482,7 +498,11 @@ describe('PolymerProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [destinationProverAddress, destinationProverAddress, destinationProverAddress]
+      const emittingContractsArray = [
+        destinationProverAddress,
+        destinationProverAddress,
+        destinationProverAddress,
+      ]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
