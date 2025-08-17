@@ -16,7 +16,7 @@ contract PolymerProverTest is BaseTest {
     uint32 constant ARBITRUM_CHAIN_ID = 42161;
 
     bytes32 constant PROOF_SELECTOR =
-        keccak256("IntentFulfilledFromSource(bytes32,bytes32,uint64)");
+        keccak256("IntentFulfilledFromSource(uint64,bytes)");
 
     bytes internal emptyTopics =
         hex"0000000000000000000000000000000000000000000000000000000000000000";
@@ -136,9 +136,8 @@ contract PolymerProverTest is BaseTest {
 
         _expectEmit();
         emit PolymerProver.IntentFulfilledFromSource(
-            intentHash,
-            claimants[0],
-            uint64(block.chainid)
+            uint64(block.chainid),
+            encodedProofs
         );
 
         vm.prank(address(portal));
@@ -155,21 +154,53 @@ contract PolymerProverTest is BaseTest {
         polymerProver.prove(creator, uint64(block.chainid), hex"", hex"");
     }
 
+    function testProveEmitsMultipleIntents() public {
+        bytes32[] memory intentHashes = new bytes32[](3);
+        bytes32[] memory claimants = new bytes32[](3);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = bytes32(uint256(uint160(claimant)));
+        }
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        _expectEmit();
+        emit PolymerProver.IntentFulfilledFromSource(
+            uint64(block.chainid),
+            encodedProofs
+        );
+
+        vm.prank(address(portal));
+        polymerProver.prove(
+            creator,
+            uint64(block.chainid),
+            encodedProofs,
+            hex""
+        );
+    }
+
     function testValidateSingleProof() public {
         bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR, // event signature
-            intentHash, // intent hash
-            bytes32(uint256(uint160(claimant))), // claimant address
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
             destinationProver,
             topics,
-            emptyData
+            data
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
@@ -188,19 +219,23 @@ contract PolymerProverTest is BaseTest {
 
     function testValidateEmitsAlreadyProvenForDuplicate() public {
         bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR, // event signature
-            intentHash, // intent hash
-            bytes32(uint256(uint160(claimant))), // claimant address
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
             destinationProver,
             topics,
-            emptyData
+            data
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
@@ -211,6 +246,51 @@ contract PolymerProverTest is BaseTest {
         emit IProver.IntentAlreadyProven(intentHash);
 
         polymerProver.validate(proof);
+    }
+
+    function testValidateMultipleIntentsInSingleEvent() public {
+        bytes32[] memory intentHashes = new bytes32[](3);
+        bytes32[] memory claimants = new bytes32[](3);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = bytes32(uint256(uint160(claimant)));
+        }
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[0], claimant, OPTIMISM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[1], claimant, OPTIMISM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[2], claimant, OPTIMISM_CHAIN_ID);
+
+        polymerProver.validate(proof);
+
+        for (uint256 i = 0; i < 3; i++) {
+            IProver.ProofData memory proofData = polymerProver.provenIntents(
+                intentHashes[i]
+            );
+            assertEq(proofData.claimant, claimant);
+            assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
+        }
     }
 
     function testValidateBatch() public {
@@ -231,18 +311,23 @@ contract PolymerProverTest is BaseTest {
         chainIds[2] = OPTIMISM_CHAIN_ID;
 
         for (uint256 i = 0; i < 3; i++) {
+            bytes32[] memory singleIntentHash = new bytes32[](1);
+            bytes32[] memory singleClaimant = new bytes32[](1);
+            singleIntentHash[0] = intentHashes[i];
+            singleClaimant[0] = bytes32(uint256(uint160(claimants[i])));
+
             bytes memory topics = abi.encodePacked(
                 PROOF_SELECTOR, // event signature
-                intentHashes[i], // intent hash
-                bytes32(uint256(uint160(claimants[i]))), // claimant address
                 bytes32(uint256(uint64(block.chainid))) // source chain ID
             );
+
+            bytes memory data = encodeProofs(singleIntentHash, singleClaimant);
 
             crossL2ProverV2.setAll(
                 chainIds[i],
                 destinationProver,
                 topics,
-                emptyData
+                data
             );
 
             proofs[i] = abi.encodePacked(uint256(i + 1));
@@ -261,19 +346,23 @@ contract PolymerProverTest is BaseTest {
 
     function testValidateRevertsOnInvalidEmittingContract() public {
         bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR, // event signature
-            intentHash, // intent hash
-            bytes32(uint256(uint160(claimant))), // claimant address
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
             creator, // wrong contract
             topics,
-            emptyData
+            data
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
@@ -288,12 +377,9 @@ contract PolymerProverTest is BaseTest {
     }
 
     function testValidateRevertsOnInvalidTopicsLength() public {
-        bytes32 intentHash = _hashIntent(intent);
-
         bytes memory topics = abi.encodePacked(
-            PROOF_SELECTOR,
-            intentHash
-            // missing claimant topic
+            PROOF_SELECTOR
+            // missing source chain ID topic
         );
 
         crossL2ProverV2.setAll(
@@ -310,23 +396,24 @@ contract PolymerProverTest is BaseTest {
     }
 
     function testValidateRevertsOnInvalidEventSignature() public {
-        bytes32 intentHash = _hashIntent(intent);
-        bytes32 wrongSignature = keccak256(
-            "WrongSignature(bytes32,bytes32,uint64)"
-        );
+        bytes32 wrongSignature = keccak256("WrongSignature(uint64,bytes)");
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
 
         bytes memory topics = abi.encodePacked(
             wrongSignature, // wrong event signature
-            intentHash, // intent hash
-            bytes32(uint256(uint160(claimant))), // claimant address
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
             destinationProver,
             topics,
-            emptyData
+            data
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
@@ -337,19 +424,23 @@ contract PolymerProverTest is BaseTest {
 
     function testChallengeIntentProofWithWrongDestination() public {
         bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR, // event signature
-            intentHash, // intent hash
-            bytes32(uint256(uint160(claimant))), // claimant address
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
             destinationProver,
             topics,
-            emptyData
+            data
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));
@@ -377,19 +468,23 @@ contract PolymerProverTest is BaseTest {
         Intent memory localIntent = intent;
         localIntent.destination = OPTIMISM_CHAIN_ID;
         bytes32 intentHash = _hashIntent(localIntent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR, // event signature
-            intentHash, // intent hash
-            bytes32(uint256(uint160(claimant))), // claimant address
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
             destinationProver,
             topics,
-            emptyData
+            data
         );
 
         bytes memory proof = abi.encodePacked(uint256(1));

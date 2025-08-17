@@ -17,15 +17,12 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     // Constants
     string public constant PROOF_TYPE = "Polymer";
     bytes32 public constant PROOF_SELECTOR =
-        keccak256("IntentFulfilledFromSource(bytes32,bytes32,uint64)");
-    uint256 public constant EXPECTED_TOPIC_LENGTH = 128; // 4 topics * 32 bytes each
+        keccak256("IntentFulfilledFromSource(uint64,bytes)");
+    uint256 public constant EXPECTED_TOPIC_LENGTH = 64; // 2 topics * 32 bytes each
+    uint256 constant MAX_LOG_DATA_SIZE = 32 * 1024;
 
     // Events
-    event IntentFulfilledFromSource(
-        bytes32 indexed intentHash,
-        bytes32 indexed claimant,
-        uint64 source
-    );
+    event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
 
     // Errors
     error InvalidEventSignature();
@@ -34,6 +31,8 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     error InvalidTopicsLength();
     error ZeroAddress();
     error SizeMismatch();
+    error MaxDataSizeExceeded();
+    error EmptyProofData();
     error OnlyPortal();
 
     // State variables
@@ -74,20 +73,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         renounceOwnership();
     }
 
-    // ------------- STANDARD PROOF VALIDATION -------------
-
-    /**
-     * @notice Validates a single proof
-     * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
-     */
-    function validate(bytes calldata proof) public {
-        (
-            bytes32 intentHash,
-            address claimant,
-            uint64 destinationChainId
-        ) = _validateProof(proof);
-        processIntent(intentHash, claimant, destinationChainId);
-    }
+    // ------------- LOG EVENT PROOF VALIDATION -------------
 
     /**
      * @notice Validates multiple proofs in a batch
@@ -99,27 +85,16 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         }
     }
 
-    // ------------- INTERNAL FUNCTIONS - PROOF VALIDATION -------------
-
     /**
-     * @notice Core proof validation logic
-     * @param proof The proof data to validate
-     * @return intentHash Hash of the proven intent
-     * @return claimant Address that fulfilled the intent
-     * @return chainId Chain ID where the event was emitted
+     * @notice Validates a single proof and processes contained intents
+     * @param proof of a IntentFulfilledFromSource event
      */
-    function _validateProof(
-        bytes calldata proof
-    )
-        internal
-        view
-        returns (bytes32 intentHash, address claimant, uint64 chainId)
-    {
+    function validate(bytes calldata proof) public {
         (
             uint32 destinationChainId,
             address emittingContract,
-            bytes memory topics /* bytes memory data */,
-
+            bytes memory topics,
+            bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
         if (
@@ -134,27 +109,44 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         if (topics.length != EXPECTED_TOPIC_LENGTH)
             revert InvalidTopicsLength();
 
+        if (data.length == 0) {
+            revert EmptyProofData();
+        }
+
+        if (data.length % 64 != 0) {
+            revert ArrayLengthMismatch();
+        }
+
         bytes32 eventSignature;
-        bytes32 claimantBytes32;
         bytes32 sourceChainIdBytes32;
 
         assembly {
             let topicsPtr := add(topics, 32)
 
             eventSignature := mload(topicsPtr)
-            intentHash := mload(add(topicsPtr, 32))
-            claimantBytes32 := mload(add(topicsPtr, 64))
-            sourceChainIdBytes32 := mload(add(topicsPtr, 96))
+            sourceChainIdBytes32 := mload(add(topicsPtr, 32))
         }
 
-        checkTopicSignature(eventSignature, PROOF_SELECTOR);
-        // Convert bytes32 claimant to address
-        claimant = AddressConverter.toAddress(claimantBytes32);
-        // Get sourceChainId from event topic and verify it matches current chain
+        if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
         uint64 eventSourceChainId = uint64(uint256(sourceChainIdBytes32));
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
-        return (intentHash, claimant, uint64(destinationChainId));
+        uint256 numPairs = data.length / 64;
+        for (uint256 i = 0; i < numPairs; i++) {
+            uint256 offset = i * 64;
+
+            bytes32 intentHash;
+            bytes32 claimantBytes;
+
+            assembly {
+                let dataPtr := add(data, 32)
+                intentHash := mload(add(dataPtr, offset))
+                claimantBytes := mload(add(dataPtr, add(offset, 32)))
+            }
+
+            address claimant = AddressConverter.toAddress(claimantBytes);
+            processIntent(intentHash, claimant, destinationChainId);
+        }
     }
 
     // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
@@ -182,18 +174,6 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     }
 
     // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
-
-    /**
-     * @notice Validates that a topic signature matches the expected selector
-     * @param topic The topic signature to check
-     * @param selector The expected selector
-     */
-    function checkTopicSignature(
-        bytes32 topic,
-        bytes32 selector
-    ) internal pure {
-        if (topic != selector) revert InvalidEventSignature();
-    }
 
     function isWhitelisted(
         uint64 chainID,
@@ -230,31 +210,15 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
 
-        // If data is empty, just return early
         if (encodedProofs.length == 0) return;
 
-        // Ensure encodedProofs length is multiple of 64 bytes (32 for hash + 32 for claimant)
         if (encodedProofs.length % 64 != 0) {
             revert ArrayLengthMismatch();
         }
-
-        uint256 numPairs = encodedProofs.length / 64;
-
-        for (uint256 i = 0; i < numPairs; i++) {
-            uint256 offset = i * 64;
-
-            // Extract intentHash and claimant using slice
-            bytes32 intentHash = bytes32(encodedProofs[offset:offset + 32]);
-            bytes32 claimantBytes = bytes32(
-                encodedProofs[offset + 32:offset + 64]
-            );
-
-            // Emit event that can be proven by Polymer
-            emit IntentFulfilledFromSource(
-                intentHash,
-                claimantBytes,
-                sourceChainDomainID
-            );
+        if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
+            revert MaxDataSizeExceeded();
         }
+
+        emit IntentFulfilledFromSource(sourceChainDomainID, encodedProofs);
     }
 }

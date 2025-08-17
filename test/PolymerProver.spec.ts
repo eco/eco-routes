@@ -156,16 +156,17 @@ describe('PolymerProver Test', (): void => {
     let badEventSignature: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id(
-        'IntentFulfilledFromSource(bytes32,bytes32,uint64)',
-      )
-      badEventSignature = ethers.id('BadEventSignature(bytes32,bytes32,uint64)')
+      eventSignature = ethers.id('IntentFulfilledFromSource(uint64,bytes)')
+      badEventSignature = ethers.id('BadEventSignature(uint64,bytes)')
       expectedHash = '0x' + '11'.repeat(32)
-      data = '0x'
+
+      data = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash, ethers.zeroPadValue(claimant.address, 32)],
+      )
+
       topics = [
         eventSignature,
-        expectedHash,
-        ethers.zeroPadValue(claimant.address, 32),
         ethers.zeroPadValue(
           ethers.toBeHex(
             await ethers.provider.getNetwork().then((n) => n.chainId),
@@ -182,10 +183,7 @@ describe('PolymerProver Test', (): void => {
     })
 
     it('should validate a single emit', async (): Promise<void> => {
-      const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics,
-      )
+      const topicsPacked = ethers.solidityPacked(['bytes32', 'bytes32'], topics)
       // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
@@ -218,10 +216,7 @@ describe('PolymerProver Test', (): void => {
     })
 
     it('should emit IntentAlreadyProven if the proof is already proven', async (): Promise<void> => {
-      const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics,
-      )
+      const topicsPacked = ethers.solidityPacked(['bytes32', 'bytes32'], topics)
       // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
@@ -258,10 +253,7 @@ describe('PolymerProver Test', (): void => {
     })
 
     it('should revert if inbox contract is not the emitting contract', async (): Promise<void> => {
-      const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics,
-      )
+      const topicsPacked = ethers.solidityPacked(['bytes32', 'bytes32'], topics)
 
       // set values for mock prover
       await testCrossL2ProverV2.setAll(
@@ -295,18 +287,13 @@ describe('PolymerProver Test', (): void => {
       )
     })
 
-    it('should revert if topics length is not 4', async (): Promise<void> => {
+    it('should revert if topics length is not 2', async (): Promise<void> => {
       topics = [
         eventSignature,
-        expectedHash,
-        ethers.zeroPadValue(claimant.address, 32),
-        // missing fourth topic (sourceChainId)
+        // missing source chain ID topic
       ]
 
-      const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32'],
-        topics,
-      )
+      const topicsPacked = ethers.solidityPacked(['bytes32'], topics)
       // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
@@ -342,8 +329,6 @@ describe('PolymerProver Test', (): void => {
     it('should revert if event signature is not correct', async (): Promise<void> => {
       topics = [
         badEventSignature,
-        expectedHash,
-        ethers.zeroPadValue(claimant.address, 32),
         ethers.zeroPadValue(
           ethers.toBeHex(
             await ethers.provider.getNetwork().then((n) => n.chainId),
@@ -352,10 +337,7 @@ describe('PolymerProver Test', (): void => {
         ),
       ]
 
-      const topicsPacked = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics,
-      )
+      const topicsPacked = ethers.solidityPacked(['bytes32', 'bytes32'], topics)
       // set values for mock prover using the whitelisted destination prover
       await testCrossL2ProverV2.setAll(
         chainIds[0],
@@ -387,9 +369,56 @@ describe('PolymerProver Test', (): void => {
         'InvalidEventSignature',
       )
     })
-  })
 
-  // Note: Native proof functionality has been removed from this implementation
+    it('should validate multiple intents in a single event', async (): Promise<void> => {
+      const expectedHash1 = '0x' + '11'.repeat(32)
+      const expectedHash2 = '0x' + '22'.repeat(32)
+      const expectedHash3 = '0x' + '33'.repeat(32)
+
+      const multipleIntentsData = ethers.solidityPacked(
+        ['bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32'],
+        [
+          expectedHash1,
+          ethers.zeroPadValue(claimant.address, 32),
+          expectedHash2,
+          ethers.zeroPadValue(claimant2.address, 32),
+          expectedHash3,
+          ethers.zeroPadValue(claimant3.address, 32),
+        ],
+      )
+
+      const topicsPacked = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [
+          eventSignature,
+          ethers.zeroPadValue(
+            ethers.toBeHex(
+              await ethers.provider.getNetwork().then((n) => n.chainId),
+            ),
+            32,
+          ),
+        ],
+      )
+
+      await testCrossL2ProverV2.setAll(
+        chainIds[0],
+        destinationProver,
+        topicsPacked,
+        multipleIntentsData,
+      )
+
+      const proofIndex = 1
+      const proof = ethers.zeroPadValue(ethers.toBeHex(proofIndex), 32)
+
+      await expect(polymerProver.validate(proof))
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(expectedHash1, claimant.address, chainIds[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(expectedHash2, claimant2.address, chainIds[0])
+        .to.emit(polymerProver, 'IntentProven')
+        .withArgs(expectedHash3, claimant3.address, chainIds[0])
+    })
+  })
 
   describe('Batch emit', (): void => {
     let topics_0: string[]
@@ -406,44 +435,27 @@ describe('PolymerProver Test', (): void => {
     let destinationProverAddress: string
 
     beforeEach(async (): Promise<void> => {
-      eventSignature = ethers.id(
-        'IntentFulfilledFromSource(bytes32,bytes32,uint64)',
-      )
+      eventSignature = ethers.id('IntentFulfilledFromSource(uint64,bytes)')
       expectedHash = '0x' + '11'.repeat(32)
       expectedHash2 = '0x' + '22'.repeat(32)
       expectedHash3 = '0x' + '33'.repeat(32)
-      data = '0x'
       const chainId = await ethers.provider.getNetwork().then((n) => n.chainId)
+
       topics_0 = [
         eventSignature,
-        expectedHash,
-        ethers.zeroPadValue(claimant.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
       ]
       topics_1 = [
         eventSignature,
-        expectedHash2,
-        ethers.zeroPadValue(claimant2.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
       ]
       topics_2 = [
         eventSignature,
-        expectedHash3,
-        ethers.zeroPadValue(claimant3.address, 32),
         ethers.zeroPadValue(ethers.toBeHex(chainId), 32),
       ]
-      topics_0_packed = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics_0,
-      )
-      topics_1_packed = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics_1,
-      )
-      topics_2_packed = ethers.solidityPacked(
-        ['bytes32', 'bytes32', 'bytes32', 'bytes32'],
-        topics_2,
-      )
+      topics_0_packed = ethers.solidityPacked(['bytes32', 'bytes32'], topics_0)
+      topics_1_packed = ethers.solidityPacked(['bytes32', 'bytes32'], topics_1)
+      topics_2_packed = ethers.solidityPacked(['bytes32', 'bytes32'], topics_2)
       destinationProverAddress = destinationProver
     })
 
@@ -460,7 +472,19 @@ describe('PolymerProver Test', (): void => {
         destinationProverAddress,
       ]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
-      const dataArray = [data, data, data]
+      const data_0 = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash, ethers.zeroPadValue(claimant.address, 32)],
+      )
+      const data_1 = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash2, ethers.zeroPadValue(claimant2.address, 32)],
+      )
+      const data_2 = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash3, ethers.zeroPadValue(claimant3.address, 32)],
+      )
+      const dataArray = [data_0, data_1, data_2]
 
       for (let i = 0; i < proofIndex.length; i++) {
         await testCrossL2ProverV2.setAll(
@@ -504,7 +528,19 @@ describe('PolymerProver Test', (): void => {
         destinationProverAddress,
       ]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
-      const dataArray = [data, data, data]
+      const data_0 = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash, ethers.zeroPadValue(claimant.address, 32)],
+      )
+      const data_1 = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash2, ethers.zeroPadValue(claimant2.address, 32)],
+      )
+      const data_2 = ethers.solidityPacked(
+        ['bytes32', 'bytes32'],
+        [expectedHash3, ethers.zeroPadValue(claimant3.address, 32)],
+      )
+      const dataArray = [data_0, data_1, data_2]
 
       for (let i = 0; i < proofIndex.length; i++) {
         await testCrossL2ProverV2.setAll(
