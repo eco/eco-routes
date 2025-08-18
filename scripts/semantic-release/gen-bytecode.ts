@@ -42,7 +42,7 @@ const CREATE_X_ABI = [
 ]
 
 type Contract = {
-  name: 'IntentSource' | 'Inbox' | 'HyperProver'
+  name: 'Portal' | 'HyperProver'
   path: string
   args: any[]
 }
@@ -50,11 +50,10 @@ type Contract = {
 // List of contracts to deploy
 const CONTRACTS_TO_DEPLOY: Contract[] = [
   {
-    name: 'IntentSource',
+    name: 'Portal',
     args: [],
-    path: 'contracts/IntentSource.sol:IntentSource',
+    path: 'contracts/Portal.sol:Portal',
   },
-  { name: 'Inbox', args: [], path: 'contracts/Inbox.sol:Inbox' },
   // { name: 'HyperProver', args: [], path: 'contracts/prover/HyperProver.sol:HyperProver' },
 ]
 

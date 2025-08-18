@@ -38,47 +38,57 @@ We also implement ERC-7683 and enable the creation and fulfillment of intents in
 
 ## Components
 
-Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `IntentSource`, `Inbox` and a set of `Prover`s.
+Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `Portal` and a set of `Prover`s.
+
+### Cross-Chain Support
+
+Eco Routes now supports both EVM chains and non-EVM chains like Solana through a dual-type system:
+
+1. **EVM Chains**: Use the `Intent.sol` types with Ethereum's native `address` format
+2. **Future**: Support for non-EVM chains will be added with `bytes32` identifiers for cross-chain compatibility
+
+The protocol provides seamless conversion between these formats through the `IntentConverter` utility.
+For detailed information about cross-chain implementation, see [CROSS_CHAIN.md](./CROSS_CHAIN.md).
 
 ### Intent Publishing
 
-The `IntentSource` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `IntentSource` at all - a user can disseminate intent information directly to solvers if they so choose.
+The `Portal` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `Portal` at all - a user can disseminate intent information directly to solvers if they so choose.
 
 ### Intent Funding
 
-A funded intent effectively has its reward tokens stored in a `Vault`. An intent can be funded on the `IntentSource` contract during publishing, after the fact via permit2 signatures, or a user may directly transfer tokens to the `Vault`.
+A funded intent effectively has its reward tokens stored in a `Vault`. An intent can be funded on the `Portal` contract during publishing, after the fact via permit2 signatures, or a user may directly transfer tokens to the `Vault`.
 
 ### Intent Fulfillment
 
-Intent fulfillment happens on the `Inbox`, which lives on the destination chain. Solvers approve the `Inbox` to pull the required tokens and then call upon the `Inbox` to fulfill the intent. Fulfillment may also trigger some proving-related post-processing, for example relaying a message indicating fulfillment back to the source chain.
+Intent fulfillment happens on the `Portal`, which lives on the destination chain. Solvers approve the `Portal` to pull the required tokens and then call upon the `Portal` to fulfill the intent. Fulfillment may also trigger some proving-related post-processing, for example relaying a message indicating fulfillment back to the source chain.
 
 ### Intent Proving
 
-Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. There are currently two types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, and HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment.
+Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. There are currently three types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment, and LayerZeroProvers(`LayerZeroProver.sol`), which utilize a <a href="https://layerzero.network/" target="_blank">LayerZero</a> bridge for cross-chain verification.
 
 ### Intent Reward Settlement
 
-Intent reward settlement occurs on the `IntentSource` on the destination chain. The withdrawal flow checks that an intent has been fulfilled on the `Prover` and then transfers reward tokens to the address provided by the solver. In the event that an intent was not fulfilled before the deadline, the user can trigger a refund of their reward tokens through the same flow. Other edge cases like overfunding an intent are also handled by the `IntentSource`.
+Intent reward settlement occurs on the `Portal` on the destination chain. The withdrawal flow checks that an intent has been fulfilled on the `Prover` and then transfers reward tokens to the address provided by the solver. In the event that an intent was not fulfilled before the deadline, the user can trigger a refund of their reward tokens through the same flow. Other edge cases like overfunding an intent are also handled by the `Portal`.
 
 ### ERC-7683
 
-Eco's implementation of ERC-7683 allows users to create and fulfill intents on Eco's ecosystem through ERC-7683's rails. `EcoERC7683OriginSettler` is the entrypoint to our system, while `EcoERC7683DestinationSettler` is where they are fulfilled. While `EcoERC7683OriginSettler` is a separate contract, `EcoERC7683DestinationSettler` is an abstract contract inherited by Eco's `Inbox`.
+Eco's implementation of ERC-7683 allows users to create and fulfill intents on Eco's ecosystem through ERC-7683's rails. `EcoERC7683OriginSettler` is the entrypoint to our system, while `EcoERC7683DestinationSettler` is where they are fulfilled. While `EcoERC7683OriginSettler` is a separate contract, `EcoERC7683DestinationSettler` is an abstract contract inherited by Eco's `Portal`.
 
 ## Contract Addresses
 
-| **Mainnet Chains** | IntentSource                               | Inbox                                      | StorageProver                              | HyperProver                                |
-| :----------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- |
-| Optimism           | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xfB853672cE99D9ff0a7DE444bEE1FB2C212D65c0 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xAfD3029f582455ed0f06F22AcD916B27bc9b3a55 |
-| Base               | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xfB853672cE99D9ff0a7DE444bEE1FB2C212D65c0 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xc8E7060Cd790A030164aCbE2Bd125A6c06C06f69 |
-| Mantle             | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xfB853672cE99D9ff0a7DE444bEE1FB2C212D65c0 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xaf034DD5eaeBB49Dc476402C6650e85Cc22a0f1a |
-| Arbitrum           | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xfB853672cE99D9ff0a7DE444bEE1FB2C212D65c0 | WIP                                        | 0xB1017F865c6306319C65266158979278F7f50118 |
+| **Mainnet Chains** | Portal                                     | StorageProver                              | HyperProver                                |
+| :----------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- |
+| Optimism           | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xAfD3029f582455ed0f06F22AcD916B27bc9b3a55 |
+| Base               | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xc8E7060Cd790A030164aCbE2Bd125A6c06C06f69 |
+| Mantle             | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xaf034DD5eaeBB49Dc476402C6650e85Cc22a0f1a |
+| Arbitrum           | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | WIP                                        | 0xB1017F865c6306319C65266158979278F7f50118 |
 
-| **Testnet Chains** | IntentSource                               | Inbox                                      | StorageProver                              | HyperProver                                |
-| :----------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- |
-| OptimismSepolia    | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xB73fD43C293b250Cb354c4631292A318248FB33E | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | 0x39cBD6e1C0E6a30dF33428a54Ac3940cF33B23D6 |
-| BaseSepolia        | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xB73fD43C293b250Cb354c4631292A318248FB33E | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | 0x39cBD6e1C0E6a30dF33428a54Ac3940cF33B23D6 |
-| MantleSepolia      | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xB73fD43C293b250Cb354c4631292A318248FB33E | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | WIP                                        |
-| ArbitrumSepolia    | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xB73fD43C293b250Cb354c4631292A318248FB33E | WIP                                        | 0x6D6556B3a199cbbdcFE4E7Ba3FA6330D066A31a9 |
+| **Testnet Chains** | Portal                                     | StorageProver                              | HyperProver                                |
+| :----------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- |
+| OptimismSepolia    | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | 0x39cBD6e1C0E6a30dF33428a54Ac3940cF33B23D6 |
+| BaseSepolia        | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | 0x39cBD6e1C0E6a30dF33428a54Ac3940cF33B23D6 |
+| MantleSepolia      | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | WIP                                        |
+| ArbitrumSepolia    | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | WIP                                        | 0x6D6556B3a199cbbdcFE4E7Ba3FA6330D066A31a9 |
 
 ## Future Work
 
@@ -173,7 +183,29 @@ $ yarn coverage
 
 ### Deployment
 
-Deploy using `deploy.ts` in the `scripts` directory. This script draws from the configs (found in the `config` directory) as well as a local .env file. See `.env.example`.
+Deploy using the deployment scripts in the `scripts` directory. The deployment system supports both EVM-only and cross-VM deployments (Solana, Cosmos, Sui, etc.).
+
+For production releases, use the semantic release system:
+
+```bash
+yarn semantic:pub  # Local testing
+# Or trigger via GitHub Actions for production
+```
+
+For direct deployment, use the shell scripts:
+
+```bash
+# Standard EVM deployment
+./scripts/deployRoutes.sh
+
+# Cross-VM deployment with Solana support
+CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" ./scripts/deployRoutes.sh
+
+# Multiple cross-VM chains (Solana + Cosmos)
+CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
+```
+
+See `.env.example` and `scripts/README.md` for comprehensive deployment documentation.
 
 ### End-To-End Testing
 

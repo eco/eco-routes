@@ -2,7 +2,7 @@
   "extends": "solhint:recommended",
   "plugins": ["eco"],
   "rules": {
-    "compiler-version": ["error", "^0.8.2"],
+    "compiler-version": ["error", "^0.8.0"],
     "func-visibility": ["warn", { "ignoreConstructors": true }],
     "max-line-length": "off",
     "var-name-mixedcase": "warn",

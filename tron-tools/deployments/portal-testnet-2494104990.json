@@ -1,0 +1,13 @@
+{
+  "network": "Tron Testnet (Shasta)",
+  "chainId": "2494104990",
+  "contractName": "Portal",
+  "contractAddress": "TGhZDJhuELXvnU2pHnVDLJ8UCzNg29aEHU",
+  "transactionId": "730059c23b4c1e02bcdeda2c1708521d998b6e3ebca0b0fc82f6bf8be4230098",
+  "blockNumber": 57066447,
+  "deployedAt": "2025-08-13T20:01:45.084Z",
+  "energyUsed": 4471821,
+  "bandwidthUsed": 0,
+  "actualCost": 968.09141,
+  "deploymentTimeMs": 62568
+}

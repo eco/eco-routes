@@ -2,50 +2,54 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IVaultStorage} from "./IVaultStorage.sol";
+import {Reward} from "../types/Intent.sol";
+import {IPermit} from "./IPermit.sol";
 
 /**
  * @title IVault
- * @notice Interface defining errors for the Vault.sol contract
+ * @notice Interface for Vault contract that manages reward escrow functionality
+ * @dev Handles funding, withdrawal, and refund operations for cross-chain rewards
  */
-interface IVault is IVaultStorage {
-    /**
-     * @notice Thrown when the vault has insufficient token allowance for reward funding
-     * @param token The token address
-     * @param spender The spender address
-     * @param amount The amount of tokens required
-     */
-    error InsufficientTokenAllowance(
-        address token,
-        address spender,
-        uint256 amount
-    );
+interface IVault {
+    /// @notice Thrown when caller is not the portal contract
+    error NotPortalCaller(address caller);
+
+    /// @notice Thrown when attempting to recover a token with zero balance
+    error ZeroRecoverTokenBalance(address token);
+
+    /// @notice Thrown when native token transfer fails
+    error NativeTransferFailed(address to, uint256 amount);
 
     /**
-     * @notice Thrown when the permit contract fails to actually permit the transfer
-     * @param permitContract The permit contract address
-     * @param token The token address
-     * @param amount The amount of tokens attempted for transfer
+     * @notice Funds the vault with reward tokens and native currency
+     * @param reward The reward structure containing tokens and amounts
+     * @param funder Address providing the funding
+     * @param permit Optional permit contract for token transfers
+     * @return fullyFunded True if vault was successfully fully funded
      */
-    error PermitTransferFailed(
-        address permitContract,
-        address token,
-        uint256 amount
-    );
+    function fundFor(
+        Reward calldata reward,
+        address funder,
+        IPermit permit
+    ) external payable returns (bool fullyFunded);
 
     /**
-     * @notice Thrown when the vault has zero balance of the refund token
-     * @param token The token address
+     * @notice Withdraws rewards from the vault to the claimant
+     * @param reward The reward structure to withdraw
+     * @param claimant Address that will receive the rewards
      */
-    error ZeroRefundTokenBalance(address token);
+    function withdraw(Reward calldata reward, address claimant) external;
 
     /**
-     * @notice Thrown when the vault is not able to properly reward the claimant
-     * @dev For edge cases where the reward balance is not sufficient etc
+     * @notice Refunds rewards back to the original creator
+     * @param reward The reward structure to refund
      */
-    event RewardTransferFailed(
-        address indexed token,
-        address indexed to,
-        uint256 amount
-    );
+    function refund(Reward calldata reward) external;
+
+    /**
+     * @notice Recovers tokens that are not part of the reward to the creator
+     * @param refundee Address to receive the recovered tokens
+     * @param token Address of the token to recover (must not be a reward token)
+     */
+    function recover(address refundee, address token) external;
 }

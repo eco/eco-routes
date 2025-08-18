@@ -9,13 +9,10 @@ pragma solidity ^0.8.26;
 interface IDestinationSettler {
     /**
      * @notice Emitted when an intent is fulfilled
-     * @param _orderId Hash of the fulfilled intent
-     * @param _solver Address that fulfilled the intent
+     * @param orderId Hash of the fulfilled intent
+     * @param solver Address that fulfilled the intent
      */
-    event OrderFilled(bytes32 _orderId, address _solver);
-
-    /// @notice Thrown when attempting to fill an order after the fill deadline has passed
-    error FillDeadlinePassed();
+    event OrderFilled(bytes32 orderId, address solver);
 
     /**
      * @notice Fills a single leg of a particular order on the destination chain

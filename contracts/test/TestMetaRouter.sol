@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title TestMetaRouter
@@ -12,8 +11,8 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
  * @dev Simplifies testing of MetaProver without requiring a real Metalayer instance
  */
 contract TestMetaRouter {
-    using TypeCasts for bytes32;
-    using TypeCasts for address;
+    using AddressConverter for bytes32;
+    using AddressConverter for address;
 
     // Immutable domain ID for this chain
     uint32 public immutable LOCAL_DOMAIN;
@@ -22,7 +21,10 @@ contract TestMetaRouter {
     uint256 public constant FEE = 0.001 ether;
 
     // Mapping to track messages sent and enable verification in tests
-    mapping(bytes32 => bool) public sentMessages;
+    mapping(bytes32 => bool) public sentMessageHashes;
+
+    // Counter for total messages sent
+    uint256 public messageCount;
 
     // Variables to store latest dispatch info for tests
     bool public dispatched;
@@ -37,6 +39,9 @@ contract TestMetaRouter {
         bytes32 recipient,
         bytes message
     );
+
+    // Processor address for message handling simulation
+    address public processor;
 
     constructor(address /* _ignored */) {
         LOCAL_DOMAIN = 31337; // Hardhat local chain ID
@@ -76,7 +81,8 @@ contract TestMetaRouter {
         );
 
         // Record that this message was sent
-        sentMessages[messageId] = true;
+        sentMessageHashes[messageId] = true;
+        messageCount++;
 
         // Emit event for test verification
         emit MessageDispatched(_destinationDomain, _recipient, _message);
@@ -90,12 +96,49 @@ contract TestMetaRouter {
      * @return Fixed fee amount for testing
      */
     function quoteDispatch(
-        uint32 /* _destinationDomain */,
-        bytes32 /* _recipient */,
+        uint32,
+        /* _destinationDomain */
+        bytes32,
+        /* _recipient */
         bytes calldata /* _message */
     ) external pure returns (uint256) {
         // Return a fixed fee for testing purposes
         return FEE;
+    }
+
+    /**
+     * @notice Computes quote for dispatching a message with custom hook metadata
+     * @dev 4-parameter version for testing the fixed gas limit issue
+     * @return Fixed fee amount for testing
+     */
+    function quoteDispatch(
+        uint32,
+        /* destinationDomain */
+        bytes32,
+        /* recipient */
+        bytes calldata,
+        /* message */
+        bytes memory /* hookMetadata */
+    ) external pure returns (uint256) {
+        // Return a fixed fee for testing purposes
+        // In a real implementation, this would use the gas limit from hookMetadata
+        return FEE;
+    }
+
+    /**
+     * @notice Returns the total number of messages sent
+     * @return Total number of messages dispatched
+     */
+    function getSentMessageCount() external view returns (uint256) {
+        return messageCount;
+    }
+
+    /**
+     * @notice Returns the total number of messages sent (alias for getSentMessageCount)
+     * @return Total number of messages dispatched
+     */
+    function sentMessages() external view returns (uint256) {
+        return messageCount;
     }
 
     /**
@@ -113,12 +156,41 @@ contract TestMetaRouter {
         bytes calldata _message
     ) external {
         // Convert the sender address to bytes32 for the recipient's handle function
-        bytes32 sender = _sender.addressToBytes32();
+        bytes32 sender = _sender.toBytes32();
 
         // Call the recipient's handle function with empty read operations
         IMetalayerRecipientMock(_recipient).handle(
             _origin,
             sender,
+            _message,
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+    }
+
+    /**
+     * @notice Set the processor address for message handling
+     * @param _processor Address of the processor contract
+     */
+    function setProcessor(address _processor) external {
+        processor = _processor;
+    }
+
+    /**
+     * @notice Simulate handle message for testing
+     * @param _origin Origin chain ID
+     * @param _sender Sender address as bytes32
+     * @param _message Message body
+     */
+    function simulateHandleMessage(
+        uint32 _origin,
+        bytes32 _sender,
+        bytes calldata _message
+    ) external {
+        require(processor != address(0), "Processor not set");
+        IMetalayerRecipientMock(processor).handle(
+            _origin,
+            _sender,
             _message,
             new ReadOperation[](0),
             new bytes[](0)
