@@ -53,7 +53,11 @@ contract BaseTest is Test {
         calls[0] = Call({
             target: address(tokenB),
             value: 0,
-            data: abi.encodeWithSignature("transfer(address,uint256)", claimant, 50 ether)
+            data: abi.encodeWithSignature(
+                "transfer(address,uint256)",
+                claimant,
+                50 ether
+            )
         });
 
         route = Route({
@@ -81,20 +85,19 @@ contract BaseTest is Test {
         });
 
         // Create intent
-        intent = Intent({
-            route: route,
-            reward: reward
-        });
+        intent = Intent({route: route, reward: reward});
     }
 
-    function _hashIntent(Intent memory _intent) internal pure returns (bytes32) {
+    function _hashIntent(
+        Intent memory _intent
+    ) internal pure returns (bytes32) {
         return keccak256(abi.encode(_intent.route, _intent.reward));
     }
 
     function _mintAndApprove(address user, uint256 amount) internal {
         tokenA.mint(user, amount);
         tokenB.mint(user, amount);
-        
+
         vm.startPrank(user);
         tokenA.approve(address(intentSource), amount);
         tokenA.approve(address(inbox), amount);

@@ -16,6 +16,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     ProofType public constant PROOF_TYPE = ProofType.Polymer;
     bytes32 public constant PROOF_SELECTOR =
         keccak256("Fulfillment(bytes32,uint256,address)");
+    uint256 public constant EXPECTED_TOPIC_LENGTH = 128; // 4 topics * 32 bytes each
 
     // Events
     event IntentAlreadyProven(bytes32 _intentHash);
@@ -50,7 +51,8 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         bytes32[] memory _whitelistedEmitters
     ) external onlyOwner {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
-        if (_chainIds.length != _whitelistedEmitters.length) revert SizeMismatch();
+        if (_chainIds.length != _whitelistedEmitters.length)
+            revert SizeMismatch();
 
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
 
@@ -67,7 +69,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      * @notice Validates a single proof
      * @param proof The proof data for CROSS_L2_PROVER_V2 to validate
      */
-    function validate(bytes calldata proof) external {
+    function validate(bytes calldata proof) public {
         (bytes32 intentHash, address claimant) = _validateProof(proof);
         _processIntent(intentHash, claimant);
     }
@@ -78,8 +80,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      */
     function validateBatch(bytes[] calldata proofs) external {
         for (uint256 i = 0; i < proofs.length; i++) {
-            (bytes32 intentHash, address claimant) = _validateProof(proofs[i]);
-            _processIntent(intentHash, claimant);
+            validate(proofs[i]);
         }
     }
 
@@ -97,40 +98,40 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         (
             uint32 destinationChainId,
             address emittingContract,
-            bytes memory topics,
-            /* bytes memory data */
+            bytes memory topics /* bytes memory data */,
+
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        if (!isWhitelisted(uint64(destinationChainId), bytes32(uint256(uint160(emittingContract))))) {
+        if (
+            !isWhitelisted(
+                uint64(destinationChainId),
+                bytes32(uint256(uint160(emittingContract)))
+            )
+        ) {
             revert InvalidEmittingContract(emittingContract);
         }
-        checkTopicLength(topics, 128); // 4 topics: signature + hash + sourceChainID + claimant
+        if (topics.length != EXPECTED_TOPIC_LENGTH)
+            revert InvalidTopicsLength();
 
-        bytes32[] memory topicsArray = new bytes32[](4);
+        bytes32 eventSignature;
+        bytes32 sourceChainIdBytes32;
+        bytes32 claimantBytes32;
 
         assembly {
             let topicsPtr := add(topics, 32)
-            let arrayPtr := add(topicsArray, 32)
 
-            mstore(arrayPtr, mload(topicsPtr))
-            mstore(add(arrayPtr, 32), mload(add(topicsPtr, 32)))
-            mstore(add(arrayPtr, 64), mload(add(topicsPtr, 64)))
-            mstore(add(arrayPtr, 96), mload(add(topicsPtr, 96)))
+            eventSignature := mload(topicsPtr)
+            intentHash := mload(add(topicsPtr, 32))
+            sourceChainIdBytes32 := mload(add(topicsPtr, 64))
+            claimantBytes32 := mload(add(topicsPtr, 96))
         }
 
-        checkTopicSignature(topicsArray[0], PROOF_SELECTOR);
-        // Fulfillment event signature: Fulfillment(bytes32 indexed _hash, uint256 indexed _sourceChainID, address indexed _claimant)
-        // topicsArray[1] = intentHash
-        // topicsArray[2] = sourceChainID
-        // topicsArray[3] = claimant
-        
-        // Convert bytes32 claimant to address
-        claimant = address(uint160(uint256(topicsArray[3])));
-        // Get sourceChainId from event topic and verify it matches current chain
-        uint64 eventSourceChainId = uint64(uint256(topicsArray[2]));
+        if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
+        claimant = address(uint160(uint256(claimantBytes32)));
+        uint64 eventSourceChainId = uint64(uint256(sourceChainIdBytes32));
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
-        return (topicsArray[1], claimant);
+        return (intentHash, claimant);
     }
 
     /**
@@ -141,37 +142,15 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     function _processIntent(bytes32 intentHash, address claimant) internal {
         if (provenIntents[intentHash] != address(0)) {
             emit IntentAlreadyProven(intentHash);
-        } else {
-            provenIntents[intentHash] = claimant;
-            emit IntentProven(intentHash, claimant);
+
+            return;
         }
+        provenIntents[intentHash] = claimant;
+
+        emit IntentProven(intentHash, claimant);
     }
 
     // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
-
-    /**
-     * @notice Validates that a topic signature matches the expected selector
-     * @param topic The topic signature to check
-     * @param selector The expected selector
-     */
-    function checkTopicSignature(
-        bytes32 topic,
-        bytes32 selector
-    ) internal pure {
-        if (topic != selector) revert InvalidEventSignature();
-    }
-
-    /**
-     * @notice Validates that the topics have the expected length
-     * @param topics The topics to check
-     * @param length The expected length
-     */
-    function checkTopicLength(
-        bytes memory topics,
-        uint256 length
-    ) internal pure {
-        if (topics.length != length) revert InvalidTopicsLength();
-    }
 
     /**
      * @notice Checks if an emitting contract is whitelisted for a given chain
@@ -179,12 +158,12 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      * @param addr The address to check (as bytes32)
      * @return Whether the address is whitelisted for the chain
      */
-    function isWhitelisted(uint64 chainID, bytes32 addr) internal view returns (bool) {
+    function isWhitelisted(
+        uint64 chainID,
+        bytes32 addr
+    ) internal view returns (bool) {
         bytes32 whitelistedEmitter = WHITELISTED_EMITTERS[chainID];
-        if (whitelistedEmitter == bytes32(0)) {
-            return false;
-        }
-        return whitelistedEmitter == addr;
+        return whitelistedEmitter != bytes32(0) && whitelistedEmitter == addr;
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------

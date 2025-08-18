@@ -76,13 +76,13 @@ describe('PolymerProver Test', (): void => {
     const whitelistChainIds = [chainIds[0], chainIds[1]]
     const inboxAddresses = [
       ethers.zeroPadValue(await inbox.getAddress(), 32),
-      ethers.zeroPadValue(await inbox.getAddress(), 32)
+      ethers.zeroPadValue(await inbox.getAddress(), 32),
     ]
 
     await polymerProver.initialize(
       await testCrossL2ProverV2.getAddress(),
       whitelistChainIds,
-      inboxAddresses
+      inboxAddresses,
     )
 
     const srcChainId = (await ethers.provider.getNetwork()).chainId
@@ -157,7 +157,12 @@ describe('PolymerProver Test', (): void => {
       topics = [
         eventSignature,
         expectedHash,
-        ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
+        ethers.zeroPadValue(
+          ethers.toBeHex(
+            await ethers.provider.getNetwork().then((n) => n.chainId),
+          ),
+          32,
+        ),
         ethers.zeroPadValue(claimant.address, 32),
       ]
 
@@ -282,7 +287,6 @@ describe('PolymerProver Test', (): void => {
       )
     })
 
-
     it('should revert if topics length is not 4', async (): Promise<void> => {
       topics = [
         eventSignature,
@@ -332,7 +336,12 @@ describe('PolymerProver Test', (): void => {
         badEventSignature,
         expectedHash,
         ethers.zeroPadValue(claimant.address, 32),
-        ethers.zeroPadValue(ethers.toBeHex(await ethers.provider.getNetwork().then(n => n.chainId)), 32),
+        ethers.zeroPadValue(
+          ethers.toBeHex(
+            await ethers.provider.getNetwork().then((n) => n.chainId),
+          ),
+          32,
+        ),
       ]
 
       const topicsPacked = ethers.solidityPacked(
@@ -393,7 +402,7 @@ describe('PolymerProver Test', (): void => {
       expectedHash2 = '0x' + '22'.repeat(32)
       expectedHash3 = '0x' + '33'.repeat(32)
       data = '0x'
-      const chainId = await ethers.provider.getNetwork().then(n => n.chainId)
+      const chainId = await ethers.provider.getNetwork().then((n) => n.chainId)
       topics_0 = [
         eventSignature,
         expectedHash,
@@ -433,7 +442,11 @@ describe('PolymerProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [await inbox.getAddress(), await inbox.getAddress(), await inbox.getAddress()]
+      const emittingContractsArray = [
+        await inbox.getAddress(),
+        await inbox.getAddress(),
+        await inbox.getAddress(),
+      ]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 
@@ -473,7 +486,11 @@ describe('PolymerProver Test', (): void => {
       )
 
       const chainIdsArray = [chainIds[0], chainIds[1], chainIds[0]]
-      const emittingContractsArray = [await inbox.getAddress(), await inbox.getAddress(), await inbox.getAddress()]
+      const emittingContractsArray = [
+        await inbox.getAddress(),
+        await inbox.getAddress(),
+        await inbox.getAddress(),
+      ]
       const topicsArray = [topics_0_packed, topics_1_packed, topics_2_packed]
       const dataArray = [data, data, data]
 

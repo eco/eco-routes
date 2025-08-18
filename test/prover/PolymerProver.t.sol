@@ -14,11 +14,12 @@ contract PolymerProverTest is BaseTest {
     uint32 constant OPTIMISM_CHAIN_ID = 10;
     uint32 constant ARBITRUM_CHAIN_ID = 42161;
 
-    bytes32 constant PROOF_SELECTOR = keccak256("Fulfillment(bytes32,uint256,address)");
+    bytes32 constant PROOF_SELECTOR =
+        keccak256("Fulfillment(bytes32,uint256,address)");
 
-    bytes internal emptyTopics = hex"0000000000000000000000000000000000000000000000000000000000000000";
+    bytes internal emptyTopics =
+        hex"0000000000000000000000000000000000000000000000000000000000000000";
     bytes internal emptyData = hex"";
-
 
     function setUp() public override {
         super.setUp();
@@ -44,11 +45,7 @@ contract PolymerProverTest is BaseTest {
         inboxes[0] = bytes32(uint256(uint160(address(inbox))));
         inboxes[1] = bytes32(uint256(uint160(address(inbox))));
 
-        polymerProver.initialize(
-            address(crossL2ProverV2),
-            chainIds,
-            inboxes
-        );
+        polymerProver.initialize(address(crossL2ProverV2), chainIds, inboxes);
 
         _mintAndApprove(creator, MINT_AMOUNT);
         _fundUserNative(creator, 10 ether);
@@ -56,18 +53,24 @@ contract PolymerProverTest is BaseTest {
 
     function testInitializesCorrectly() public view {
         assertTrue(address(polymerProver) != address(0));
-        assertEq(uint256(polymerProver.getProofType()), uint256(IProver.ProofType.Polymer));
-        assertEq(address(polymerProver.CROSS_L2_PROVER_V2()), address(crossL2ProverV2));
+        assertEq(
+            uint256(polymerProver.getProofType()),
+            uint256(IProver.ProofType.Polymer)
+        );
+        assertEq(
+            address(polymerProver.CROSS_L2_PROVER_V2()),
+            address(crossL2ProverV2)
+        );
     }
 
     function testValidateSingleProof() public {
         bytes32 intentHash = _hashIntent(intent);
 
         bytes memory topics = abi.encodePacked(
-            PROOF_SELECTOR,                                      // event signature
-            intentHash,                                          // intent hash
-            bytes32(uint256(uint64(block.chainid))),             // source chain ID
-            bytes32(uint256(uint160(claimant)))                  // claimant address
+            PROOF_SELECTOR, // event signature
+            intentHash, // intent hash
+            bytes32(uint256(uint64(block.chainid))), // source chain ID
+            bytes32(uint256(uint160(claimant))) // claimant address
         );
 
         crossL2ProverV2.setAll(
@@ -92,10 +95,10 @@ contract PolymerProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         bytes memory topics = abi.encodePacked(
-            PROOF_SELECTOR,                                      // event signature
-            intentHash,                                          // intent hash
-            bytes32(uint256(uint64(block.chainid))),             // source chain ID
-            bytes32(uint256(uint160(claimant)))                  // claimant address
+            PROOF_SELECTOR, // event signature
+            intentHash, // intent hash
+            bytes32(uint256(uint64(block.chainid))), // source chain ID
+            bytes32(uint256(uint160(claimant))) // claimant address
         );
 
         crossL2ProverV2.setAll(
@@ -134,10 +137,10 @@ contract PolymerProverTest is BaseTest {
 
         for (uint256 i = 0; i < 3; i++) {
             bytes memory topics = abi.encodePacked(
-                PROOF_SELECTOR,                                      // event signature
-                intentHashes[i],                                     // intent hash
-                bytes32(uint256(uint64(block.chainid))),             // source chain ID
-                bytes32(uint256(uint160(claimants[i])))              // claimant address
+                PROOF_SELECTOR, // event signature
+                intentHashes[i], // intent hash
+                bytes32(uint256(uint64(block.chainid))), // source chain ID
+                bytes32(uint256(uint160(claimants[i]))) // claimant address
             );
 
             crossL2ProverV2.setAll(
@@ -153,7 +156,9 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validateBatch(proofs);
 
         for (uint256 i = 0; i < 3; i++) {
-            address provenClaimant = polymerProver.provenIntents(intentHashes[i]);
+            address provenClaimant = polymerProver.provenIntents(
+                intentHashes[i]
+            );
             assertEq(provenClaimant, claimants[i]);
         }
     }
@@ -162,10 +167,10 @@ contract PolymerProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         bytes memory topics = abi.encodePacked(
-            PROOF_SELECTOR,                                      // event signature
-            intentHash,                                          // intent hash
-            bytes32(uint256(uint64(block.chainid))),             // source chain ID
-            bytes32(uint256(uint160(claimant)))                  // claimant address
+            PROOF_SELECTOR, // event signature
+            intentHash, // intent hash
+            bytes32(uint256(uint64(block.chainid))), // source chain ID
+            bytes32(uint256(uint160(claimant))) // claimant address
         );
 
         crossL2ProverV2.setAll(
@@ -177,10 +182,14 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(abi.encodeWithSelector(PolymerProver.InvalidEmittingContract.selector, creator));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PolymerProver.InvalidEmittingContract.selector,
+                creator
+            )
+        );
         polymerProver.validate(proof);
     }
-
 
     function testValidateRevertsOnInvalidTopicsLength() public {
         bytes32 intentHash = _hashIntent(intent);
@@ -206,13 +215,15 @@ contract PolymerProverTest is BaseTest {
 
     function testValidateRevertsOnInvalidEventSignature() public {
         bytes32 intentHash = _hashIntent(intent);
-        bytes32 wrongSignature = keccak256("WrongSignature(bytes32,bytes32,uint64)");
+        bytes32 wrongSignature = keccak256(
+            "WrongSignature(bytes32,bytes32,uint64)"
+        );
 
         bytes memory topics = abi.encodePacked(
-            wrongSignature,                                      // wrong event signature
-            intentHash,                                          // intent hash
-            bytes32(uint256(uint160(claimant))),                 // claimant address
-            bytes32(uint256(uint64(block.chainid)))              // source chain ID
+            wrongSignature, // wrong event signature
+            intentHash, // intent hash
+            bytes32(uint256(uint160(claimant))), // claimant address
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
         crossL2ProverV2.setAll(
@@ -232,10 +243,10 @@ contract PolymerProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
 
         bytes memory topics = abi.encodePacked(
-            PROOF_SELECTOR,                                      // event signature
-            intentHash,                                          // intent hash
-            bytes32(uint256(uint64(block.chainid))),             // source chain ID
-            bytes32(uint256(uint160(claimant)))                  // claimant address
+            PROOF_SELECTOR, // event signature
+            intentHash, // intent hash
+            bytes32(uint256(uint64(block.chainid))), // source chain ID
+            bytes32(uint256(uint160(claimant))) // claimant address
         );
 
         crossL2ProverV2.setAll(
@@ -261,11 +272,7 @@ contract PolymerProverTest is BaseTest {
 
         // Should revert since initialize was already called in setUp
         vm.expectRevert();
-        polymerProver.initialize(
-            address(crossL2ProverV2),
-            chainIds,
-            provers
-        );
+        polymerProver.initialize(address(crossL2ProverV2), chainIds, provers);
     }
 
     function testInitializeOnlyCallableByOwner() public {
@@ -281,10 +288,6 @@ contract PolymerProverTest is BaseTest {
         // Should revert when called by non-owner
         vm.prank(creator);
         vm.expectRevert();
-        newProver.initialize(
-            address(crossL2ProverV2),
-            chainIds,
-            provers
-        );
+        newProver.initialize(address(crossL2ProverV2), chainIds, provers);
     }
 }
