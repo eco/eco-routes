@@ -1,6 +1,8 @@
 pragma solidity ^0.8.26;
 
-contract TestCrossL2ProverV2 {
+import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
+
+contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
     uint32[] public chainId;
     address[] public emittingContract;
     bytes[] public topics;
@@ -56,5 +58,17 @@ contract TestCrossL2ProverV2 {
             topics[proofIndex],
             data[proofIndex]
         );
+    }
+
+    function inspectLogIdentifier(
+        bytes calldata
+    ) external pure returns (uint32, uint64, uint16, uint8) {
+        revert("inspectLogIdentifier not implemented");
+    }
+
+    function inspectPolymerState(
+        bytes calldata
+    ) external pure returns (bytes32, uint64, bytes memory) {
+        revert("inspectPolymerState not implemented");
     }
 }
