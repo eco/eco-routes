@@ -23,6 +23,12 @@ abstract contract MessageBridgeProver is
     uint256 public immutable MIN_GAS_LIMIT;
 
     /**
+     * @notice Default minimum gas limit for cross-chain messages
+     * @dev Used if no specific value is provided during contract deployment
+     */
+    uint256 private constant DEFAULT_MIN_GAS_LIMIT = 200_000;
+
+    /**
      * @notice Chain ID stored as uint64 immutable for efficient access
      * @dev Set once at construction time with validation
      */
@@ -39,7 +45,7 @@ abstract contract MessageBridgeProver is
         bytes32[] memory provers,
         uint256 minGasLimit
     ) BaseProver(portal) Whitelist(provers) {
-        MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
+        MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : DEFAULT_MIN_GAS_LIMIT;
 
         // Validate that chain ID fits in uint64 and store it
         if (block.chainid > type(uint64).max) {

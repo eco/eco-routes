@@ -71,8 +71,7 @@ contract HyperProverTest is BaseTest {
         hyperProver = new HyperProver(
             address(mailbox),
             address(portal),
-            provers,
-            100000 // default gas limit
+            provers
         );
 
         // Set the hyperProver as the processor for the mailbox

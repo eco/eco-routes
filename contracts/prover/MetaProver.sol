@@ -53,7 +53,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param router Address of local Metalayer router
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if not specified or zero)
+     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if zero)
      */
     constructor(
         address router,
