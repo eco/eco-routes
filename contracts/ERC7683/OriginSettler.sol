@@ -209,7 +209,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
                 bytes32(0), // token
                 orderData.reward.nativeAmount, // amount
                 bytes32(uint256(uint160(address(0)))), // recipient is zero address
-                uint256(orderData.destination) // chainId
+                block.chainid // chainId
             );
         }
 
