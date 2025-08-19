@@ -64,7 +64,7 @@ interface IProver is ISemver {
 
     /**
      * @notice Initiates the proving process for intents from the destination chain
-     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
+     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer, Polymer)
      * @param _sender Address of the original transaction sender
      * @param _sourceChainId Chain ID of the source chain
      * @param _intentHashes Array of intent hashes to prove

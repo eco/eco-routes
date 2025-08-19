@@ -1,0 +1,622 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.27;
+
+import "../BaseTest.sol";
+import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
+import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+
+contract PolymerProverTest is BaseTest {
+    PolymerProver internal polymerProver;
+    TestCrossL2ProverV2 internal crossL2ProverV2;
+    address internal destinationProver;
+
+    uint32 constant OPTIMISM_CHAIN_ID = 10;
+    uint32 constant ARBITRUM_CHAIN_ID = 42161;
+
+    bytes32 constant PROOF_SELECTOR =
+        keccak256("IntentFulfilledFromSource(uint64,bytes)");
+
+    bytes internal emptyTopics =
+        hex"0000000000000000000000000000000000000000000000000000000000000000";
+    bytes internal emptyData = hex"";
+
+    /**
+     * @notice Helper function to encode proofs from separate arrays
+     * @param intentHashes Array of intent hashes
+     * @param claimants Array of claimant addresses (as bytes32)
+     * @return encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     */
+    function encodeProofs(
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal pure returns (bytes memory encodedProofs) {
+        require(
+            intentHashes.length == claimants.length,
+            "Array length mismatch"
+        );
+
+        encodedProofs = new bytes(intentHashes.length * 64);
+        for (uint256 i = 0; i < intentHashes.length; i++) {
+            assembly {
+                let offset := mul(i, 64)
+                // Store hash in first 32 bytes of each pair
+                mstore(
+                    add(add(encodedProofs, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                // Store claimant in next 32 bytes of each pair
+                mstore(
+                    add(add(encodedProofs, 0x20), add(offset, 32)),
+                    mload(add(claimants, add(0x20, mul(i, 32))))
+                )
+            }
+        }
+    }
+
+    function setUp() public override {
+        super.setUp();
+
+        crossL2ProverV2 = new TestCrossL2ProverV2(
+            OPTIMISM_CHAIN_ID,
+            address(portal),
+            emptyTopics,
+            emptyData
+        );
+
+        // Create mock destination prover address
+        destinationProver = makeAddr("destinationProver");
+
+        // Deploy PolymerProver with owner and portal
+        polymerProver = new PolymerProver(
+            address(this), // owner
+            address(portal)
+        );
+
+        // Initialize with CrossL2ProverV2 and whitelist
+        uint64[] memory chainIds = new uint64[](2);
+        bytes32[] memory provers = new bytes32[](2);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        chainIds[1] = ARBITRUM_CHAIN_ID;
+        provers[0] = bytes32(uint256(uint160(destinationProver)));
+        provers[1] = bytes32(uint256(uint160(destinationProver)));
+
+        polymerProver.initialize(address(crossL2ProverV2), chainIds, provers);
+
+        _mintAndApprove(creator, MINT_AMOUNT);
+        _fundUserNative(creator, 10 ether);
+    }
+
+    function testInitializesCorrectly() public view {
+        assertTrue(address(polymerProver) != address(0));
+        assertEq(polymerProver.getProofType(), "Polymer");
+        assertEq(
+            address(polymerProver.CROSS_L2_PROVER_V2()),
+            address(crossL2ProverV2)
+        );
+        assertEq(polymerProver.PORTAL(), address(portal));
+    }
+
+    function testImplementsIProverInterface() public view {
+        assertTrue(polymerProver.supportsInterface(type(IProver).interfaceId));
+    }
+
+    function testSupportsInterface() public view {
+        assertTrue(polymerProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(polymerProver.supportsInterface(0x01ffc9a7)); // ERC165
+    }
+
+    function testProveOnlyCallableByPortal() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        // Should revert when called by non-portal
+        vm.expectRevert(PolymerProver.OnlyPortal.selector);
+        polymerProver.prove(
+            creator,
+            uint256(block.chainid),
+            intentHashes,
+            claimants,
+            encodedProofs
+        );
+    }
+
+    function testProveEmitsEvents() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        bytes32 intentHash = _hashIntent(intent);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        _expectEmit();
+        emit PolymerProver.IntentFulfilledFromSource(
+            uint64(block.chainid),
+            encodedProofs
+        );
+
+        vm.prank(address(portal));
+        polymerProver.prove(
+            creator,
+            uint256(block.chainid),
+            intentHashes,
+            claimants,
+            encodedProofs
+        );
+    }
+
+    function testProveHandlesEmptyProofs() public {
+        bytes32[] memory emptyHashes = new bytes32[](0);
+        bytes32[] memory emptyClaimants = new bytes32[](0);
+        
+        vm.prank(address(portal));
+        polymerProver.prove(creator, uint256(block.chainid), emptyHashes, emptyClaimants, hex"");
+    }
+
+    function testProveEmitsMultipleIntents() public {
+        bytes32[] memory intentHashes = new bytes32[](3);
+        bytes32[] memory claimants = new bytes32[](3);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = bytes32(uint256(uint160(claimant)));
+        }
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        _expectEmit();
+        emit PolymerProver.IntentFulfilledFromSource(
+            uint64(block.chainid),
+            encodedProofs
+        );
+
+        vm.prank(address(portal));
+        polymerProver.prove(
+            creator,
+            uint256(block.chainid),
+            intentHashes,
+            claimants,
+            encodedProofs
+        );
+    }
+
+    function testValidateSingleProof() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, claimant, OPTIMISM_CHAIN_ID);
+
+        polymerProver.validate(proof);
+
+        IProver.ProofData memory proofData = polymerProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofData.claimant, claimant);
+        assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
+    }
+
+    function testValidateEmitsAlreadyProvenForDuplicate() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        polymerProver.validate(proof);
+
+        _expectEmit();
+        emit IProver.IntentAlreadyProven(intentHash);
+
+        polymerProver.validate(proof);
+    }
+
+    function testValidateMultipleIntentsInSingleEvent() public {
+        bytes32[] memory intentHashes = new bytes32[](3);
+        bytes32[] memory claimants = new bytes32[](3);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = bytes32(uint256(uint160(claimant)));
+        }
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[0], claimant, OPTIMISM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[1], claimant, OPTIMISM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[2], claimant, OPTIMISM_CHAIN_ID);
+
+        polymerProver.validate(proof);
+
+        for (uint256 i = 0; i < 3; i++) {
+            IProver.ProofData memory proofData = polymerProver.provenIntents(
+                intentHashes[i]
+            );
+            assertEq(proofData.claimant, claimant);
+            assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
+        }
+    }
+
+    function testValidateBatch() public {
+        bytes32[] memory intentHashes = new bytes32[](3);
+        address[] memory claimants = new address[](3);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = claimant;
+        }
+
+        bytes[] memory proofs = new bytes[](3);
+        uint32[] memory chainIds = new uint32[](3);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        chainIds[1] = ARBITRUM_CHAIN_ID;
+        chainIds[2] = OPTIMISM_CHAIN_ID;
+
+        for (uint256 i = 0; i < 3; i++) {
+            bytes32[] memory singleIntentHash = new bytes32[](1);
+            bytes32[] memory singleClaimant = new bytes32[](1);
+            singleIntentHash[0] = intentHashes[i];
+            singleClaimant[0] = bytes32(uint256(uint160(claimants[i])));
+
+            bytes memory topics = abi.encodePacked(
+                PROOF_SELECTOR, // event signature
+                bytes32(uint256(uint64(block.chainid))) // source chain ID
+            );
+
+            bytes memory data = encodeProofs(singleIntentHash, singleClaimant);
+
+            crossL2ProverV2.setAll(
+                chainIds[i],
+                destinationProver,
+                topics,
+                data
+            );
+
+            proofs[i] = abi.encodePacked(uint256(i + 1));
+        }
+
+        polymerProver.validateBatch(proofs);
+
+        for (uint256 i = 0; i < 3; i++) {
+            IProver.ProofData memory proofData = polymerProver.provenIntents(
+                intentHashes[i]
+            );
+            assertEq(proofData.claimant, claimants[i]);
+            assertEq(proofData.destination, chainIds[i]);
+        }
+    }
+
+    function testValidateBatchWithDuplicate() public {
+        bytes32[] memory intentHashes = new bytes32[](2);
+        address[] memory claimants = new address[](2);
+
+        for (uint256 i = 0; i < 2; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = claimant;
+        }
+
+        bytes[] memory proofs = new bytes[](3);
+        uint32[] memory chainIds = new uint32[](3);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        chainIds[1] = ARBITRUM_CHAIN_ID;
+        chainIds[2] = OPTIMISM_CHAIN_ID;
+
+        for (uint256 i = 0; i < 2; i++) {
+            bytes32[] memory singleIntentHash = new bytes32[](1);
+            bytes32[] memory singleClaimant = new bytes32[](1);
+            singleIntentHash[0] = intentHashes[i];
+            singleClaimant[0] = bytes32(uint256(uint160(claimants[i])));
+
+            bytes memory topics = abi.encodePacked(
+                PROOF_SELECTOR, // event signature
+                bytes32(uint256(uint64(block.chainid))) // source chain ID
+            );
+
+            bytes memory data = encodeProofs(singleIntentHash, singleClaimant);
+
+            crossL2ProverV2.setAll(
+                chainIds[i],
+                destinationProver,
+                topics,
+                data
+            );
+
+            proofs[i] = abi.encodePacked(uint256(i + 1));
+        }
+
+        bytes32[] memory duplicateIntentHash = new bytes32[](1);
+        bytes32[] memory duplicateClaimant = new bytes32[](1);
+        duplicateIntentHash[0] = intentHashes[0]; // Same as first
+        duplicateClaimant[0] = bytes32(uint256(uint160(claimants[0])));
+
+        bytes memory duplicateTopics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        bytes memory duplicateData = encodeProofs(
+            duplicateIntentHash,
+            duplicateClaimant
+        );
+
+        crossL2ProverV2.setAll(
+            chainIds[2],
+            destinationProver,
+            duplicateTopics,
+            duplicateData
+        );
+
+        proofs[2] = abi.encodePacked(uint256(3));
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[0], claimant, OPTIMISM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[1], claimant, ARBITRUM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentAlreadyProven(intentHashes[0]);
+
+        polymerProver.validateBatch(proofs);
+
+        IProver.ProofData memory firstProofData = polymerProver
+            .provenIntents(intentHashes[0]);
+        assertEq(firstProofData.claimant, claimants[0]);
+        assertEq(firstProofData.destination, OPTIMISM_CHAIN_ID); // Should still be first destination
+
+        IProver.ProofData memory secondProofData = polymerProver
+            .provenIntents(intentHashes[1]);
+        assertEq(secondProofData.claimant, claimants[1]);
+        assertEq(secondProofData.destination, ARBITRUM_CHAIN_ID);
+    }
+
+    function testValidateFailsInvalidEmitter() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        // Use invalid emitter (not whitelisted)
+        address invalidEmitter = makeAddr("invalidEmitter");
+        crossL2ProverV2.setAll(OPTIMISM_CHAIN_ID, invalidEmitter, topics, data);
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PolymerProver.InvalidEmittingContract.selector,
+                invalidEmitter
+            )
+        );
+        polymerProver.validate(proof);
+    }
+
+    function testValidateFailsInvalidTopicsLength() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Invalid topics length (should be 64 bytes = 2 * 32)
+        bytes memory invalidTopics = abi.encodePacked(
+            PROOF_SELECTOR // Only one topic instead of two
+        );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            invalidTopics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.InvalidTopicsLength.selector);
+        polymerProver.validate(proof);
+    }
+
+    function testValidateFailsInvalidEventSignature() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Invalid event signature
+        bytes memory invalidTopics = abi.encodePacked(
+            bytes32("InvalidSelector"), // Wrong selector
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            invalidTopics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.InvalidEventSignature.selector);
+        polymerProver.validate(proof);
+    }
+
+    function testValidateFailsInvalidSourceChain() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Invalid source chain ID (different from block.chainid)
+        bytes memory invalidTopics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(999)) // Wrong source chain ID
+        );
+
+        bytes memory data = encodeProofs(intentHashes, claimants);
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            invalidTopics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.InvalidSourceChain.selector);
+        polymerProver.validate(proof);
+    }
+
+    function testValidateFailsEmptyProofData() public {
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        // Empty data
+        bytes memory emptyProofData = hex"";
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            emptyProofData
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.EmptyProofData.selector);
+        polymerProver.validate(proof);
+    }
+
+    function testValidateFailsInvalidProofDataLength() public {
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        // Invalid data length (not multiple of 64)
+        bytes memory invalidData = hex"1234567890"; // 5 bytes, not multiple of 64
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            invalidData
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.ArrayLengthMismatch.selector);
+        polymerProver.validate(proof);
+    }
+
+    function testProveFailsInvalidProofLength() public {
+        // Invalid proof length (not multiple of 64)
+        bytes memory invalidProofs = hex"1234567890"; // 5 bytes
+
+        bytes32[] memory emptyHashes = new bytes32[](0);
+        bytes32[] memory emptyClaimants = new bytes32[](0);
+        
+        vm.expectRevert(PolymerProver.ArrayLengthMismatch.selector);
+        vm.prank(address(portal));
+        polymerProver.prove(creator, uint256(block.chainid), emptyHashes, emptyClaimants, invalidProofs);
+    }
+
+    function testProveFailsMaxDataSizeExceeded() public {
+        // Create proof data that exceeds MAX_LOG_DATA_SIZE (32KB)
+        bytes memory oversizedProofs = new bytes(33 * 1024); // 33KB
+
+        bytes32[] memory emptyHashes = new bytes32[](0);
+        bytes32[] memory emptyClaimants = new bytes32[](0);
+        
+        vm.expectRevert(PolymerProver.MaxDataSizeExceeded.selector);
+        vm.prank(address(portal));
+        polymerProver.prove(
+            creator,
+            uint256(block.chainid),
+            emptyHashes,
+            emptyClaimants,
+            oversizedProofs
+        );
+    }
+}
