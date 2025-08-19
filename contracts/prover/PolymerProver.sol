@@ -14,6 +14,9 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
 contract PolymerProver is BaseProver, Semver, Ownable {
+    using AddressConverter for bytes32;
+    using AddressConverter for address;
+
     // Constants
     string public constant PROOF_TYPE = "Polymer";
     bytes32 public constant PROOF_SELECTOR =
@@ -100,7 +103,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         if (
             !isWhitelisted(
                 uint64(destinationChainId),
-                AddressConverter.toBytes32(emittingContract)
+                emittingContract.toBytes32()
             )
         ) {
             revert InvalidEmittingContract(emittingContract);
@@ -128,7 +131,11 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         }
 
         if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
-        uint64 eventSourceChainId = uint64(uint256(sourceChainIdBytes32));
+        uint256 sourceChainIdUint256 = uint256(sourceChainIdBytes32);
+        if (sourceChainIdUint256 > type(uint64).max) {
+            revert InvalidSourceChain();
+        }
+        uint64 eventSourceChainId = uint64(sourceChainIdUint256);
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
         uint256 numPairs = data.length / 64;
@@ -144,7 +151,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
 
-            address claimant = AddressConverter.toAddress(claimantBytes);
+            address claimant = claimantBytes.toAddress();
             processIntent(intentHash, claimant, destinationChainId);
         }
     }

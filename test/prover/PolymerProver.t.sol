@@ -344,6 +344,88 @@ contract PolymerProverTest is BaseTest {
         }
     }
 
+    function testValidateBatchWithDuplicate() public {
+        bytes32[] memory intentHashes = new bytes32[](2);
+        address[] memory claimants = new address[](2);
+
+        for (uint256 i = 0; i < 2; i++) {
+            Intent memory testIntent = intent;
+            testIntent.route.salt = keccak256(abi.encodePacked(salt, i));
+            intentHashes[i] = _hashIntent(testIntent);
+            claimants[i] = claimant;
+        }
+
+        bytes[] memory proofs = new bytes[](3);
+        uint32[] memory chainIds = new uint32[](3);
+        chainIds[0] = OPTIMISM_CHAIN_ID;
+        chainIds[1] = ARBITRUM_CHAIN_ID;
+        chainIds[2] = OPTIMISM_CHAIN_ID;
+
+        for (uint256 i = 0; i < 2; i++) {
+            bytes32[] memory singleIntentHash = new bytes32[](1);
+            bytes32[] memory singleClaimant = new bytes32[](1);
+            singleIntentHash[0] = intentHashes[i];
+            singleClaimant[0] = bytes32(uint256(uint160(claimants[i])));
+
+            bytes memory topics = abi.encodePacked(
+                PROOF_SELECTOR, // event signature
+                bytes32(uint256(uint64(block.chainid))) // source chain ID
+            );
+
+            bytes memory data = encodeProofs(singleIntentHash, singleClaimant);
+
+            crossL2ProverV2.setAll(
+                chainIds[i],
+                destinationProver,
+                topics,
+                data
+            );
+
+            proofs[i] = abi.encodePacked(uint256(i + 1));
+        }
+
+        bytes32[] memory duplicateIntentHash = new bytes32[](1);
+        bytes32[] memory duplicateClaimant = new bytes32[](1);
+        duplicateIntentHash[0] = intentHashes[0]; // Same as first
+        duplicateClaimant[0] = bytes32(uint256(uint160(claimants[0])));
+
+        bytes memory duplicateTopics = abi.encodePacked(
+            PROOF_SELECTOR, // event signature
+            bytes32(uint256(uint64(block.chainid))) // source chain ID
+        );
+
+        bytes memory duplicateData = encodeProofs(
+            duplicateIntentHash,
+            duplicateClaimant
+        );
+
+        crossL2ProverV2.setAll(
+            chainIds[2],
+            destinationProver,
+            duplicateTopics,
+            duplicateData
+        );
+
+        proofs[2] = abi.encodePacked(uint256(3));
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[0], claimant, OPTIMISM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentProven(intentHashes[1], claimant, ARBITRUM_CHAIN_ID);
+        _expectEmit();
+        emit IProver.IntentAlreadyProven(intentHashes[0]);
+
+        polymerProver.validateBatch(proofs);
+
+        for (uint256 i = 0; i < 2; i++) {
+            IProver.ProofData memory proofData = polymerProver.provenIntents(
+                intentHashes[i]
+            );
+            assertEq(proofData.claimant, claimants[i]);
+            assertEq(proofData.destination, chainIds[i]);
+        }
+    }
+
     function testValidateRevertsOnInvalidEmittingContract() public {
         bytes32 intentHash = _hashIntent(intent);
         bytes32[] memory intentHashes = new bytes32[](1);
