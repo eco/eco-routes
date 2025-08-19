@@ -27,7 +27,7 @@ contract IntentSource is IIntentSource, Semver {
 
     /// @dev Tron Mainnet chain ID
     uint256 private constant TRON_MAINNET_CHAIN_ID = 728126428;
-    /// @dev Tron Testnet (Nile) chain ID
+    /// @dev Tron Testnet (Shasta) chain ID
     uint256 private constant TRON_TESTNET_CHAIN_ID = 2494104990;
     /// @dev CREATE2 prefix for deterministic address calculation (0xff standard, 0x41 TRON)
     bytes1 private immutable CREATE2_PREFIX;
