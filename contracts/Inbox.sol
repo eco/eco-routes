@@ -225,7 +225,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 computedIntentHash = keccak256(
             abi.encodePacked(
-                _validateChainID(block.chainid),
+                CHAIN_ID,
                 routeHash,
                 rewardHash
             )
@@ -268,13 +268,5 @@ abstract contract Inbox is DestinationSettler, IInbox {
         }
 
         return executor.execute{value: route.nativeAmount}(route.calls);
-    }
-
-    function _validateChainID(uint256 chainId) internal pure returns (uint64) {
-        if (chainId > type(uint64).max) {
-            revert ChainIdTooLarge(chainId);
-        }
-
-        return uint64(chainId);
     }
 }
