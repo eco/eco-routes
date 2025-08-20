@@ -483,4 +483,146 @@ describe('PolymerProver Test', (): void => {
         .withArgs(intentHash1, claimantAddress)
     })
   })
+
+  describe('6. ChallengeIntentProof', () => {
+    beforeEach(async () => {
+      polymerProver = await (
+        await ethers.getContractFactory('PolymerProver')
+      ).deploy(await owner.getAddress(), await inbox.getAddress())
+
+      await polymerProver.connect(owner).initialize(
+        await crossL2ProverV2.getAddress(),
+        [31337, 666, 54321], // Add more chain IDs for testing
+        [
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(await inbox.getAddress(), 32),
+          ethers.zeroPadValue(await inbox.getAddress(), 32)
+        ]
+      )
+
+      // Create a test intent
+      const sourceChainID = 12345
+      const calldata = await encodeTransfer(await claimant.getAddress(), amount)
+      const timeStamp = Math.floor(Date.now() / 1000) + 1000
+
+      const routeTokens = [
+        { token: await token.getAddress(), amount: amount }
+      ]
+      const route = {
+        salt: ethers.encodeBytes32String('salt'),
+        source: sourceChainID,
+        destination: 54321,
+        inbox: await inbox.getAddress(),
+        tokens: routeTokens,
+        calls: [
+          {
+            target: await token.getAddress(),
+            data: calldata,
+            value: 0
+          }
+        ]
+      }
+      const reward = {
+        creator: await owner.getAddress(),
+        prover: await polymerProver.getAddress(),
+        deadline: timeStamp + 1000,
+        nativeValue: 1n,
+        tokens: []
+      }
+      intent = { route, reward }
+    })
+
+    it('should clear claimant and emit BadProofCleared for incorrect destination chain ID', async () => {
+      const intentHash = hashIntent(intent).intentHash
+      const badChainID = 666
+
+      // First, manually set up a bad proof by setting the proof data directly
+      // We'll simulate this by validating a proof with wrong chain ID
+      const claimantAddress = await claimant.getAddress()
+      const proofData = ethers.concat([
+        intentHash,
+        ethers.zeroPadValue(claimantAddress, 32)
+      ])
+
+      await crossL2ProverV2.setAll(
+        badChainID, // Wrong destination chain
+        await inbox.getAddress(),
+        ethers.concat([
+          ethers.keccak256(ethers.toUtf8Bytes('IntentFulfilledFromSource(uint64,bytes)')),
+          ethers.zeroPadValue(ethers.toBeHex(31337), 32)
+        ]),
+        proofData
+      )
+
+      // Validate with wrong chain ID to create bad proof
+      await polymerProver.validate(ethers.zeroPadValue(ethers.toBeHex(1), 32))
+
+      // Verify bad proof is recorded
+      const proofBefore = await polymerProver.provenIntents(intentHash)
+      expect(proofBefore.claimant).to.equal(claimantAddress)
+      expect(proofBefore.destinationChainID).to.equal(badChainID)
+
+      // Challenge the proof
+      await expect(
+        polymerProver.challengeIntentProof(intent)
+      )
+        .to.emit(polymerProver, 'BadProofCleared')
+        .withArgs(intentHash)
+
+      // Verify proof is cleared and chain ID updated
+      const proofAfter = await polymerProver.provenIntents(intentHash)
+      expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
+      expect(proofAfter.destinationChainID).to.equal(intent.route.destination)
+    })
+
+    it('should update destination chain ID when challenging unproven intent', async () => {
+      const intentHash = hashIntent(intent).intentHash
+
+      // Challenge an intent that hasn't been proven yet
+      await polymerProver.challengeIntentProof(intent)
+
+      // Should set the correct destination chain ID
+      const proofData = await polymerProver.provenIntents(intentHash)
+      expect(proofData.claimant).to.equal(ethers.ZeroAddress)
+      expect(proofData.destinationChainID).to.equal(intent.route.destination)
+    })
+
+    it('should do nothing when destination chain ID is already correct', async () => {
+      const intentHash = hashIntent(intent).intentHash
+      const correctChainID = intent.route.destination
+
+      // Set up a correct proof
+      const claimantAddress = await claimant.getAddress()
+      const proofData = ethers.concat([
+        intentHash,
+        ethers.zeroPadValue(claimantAddress, 32)
+      ])
+
+      await crossL2ProverV2.setAll(
+        correctChainID, // Correct destination chain
+        await inbox.getAddress(),
+        ethers.concat([
+          ethers.keccak256(ethers.toUtf8Bytes('IntentFulfilledFromSource(uint64,bytes)')),
+          ethers.zeroPadValue(ethers.toBeHex(31337), 32)
+        ]),
+        proofData
+      )
+
+      // Validate with correct chain ID
+      await polymerProver.validate(ethers.zeroPadValue(ethers.toBeHex(1), 32))
+
+      // Verify correct proof is recorded
+      const proofBefore = await polymerProver.provenIntents(intentHash)
+      expect(proofBefore.claimant).to.equal(claimantAddress)
+      expect(proofBefore.destinationChainID).to.equal(correctChainID)
+
+      // Challenge should do nothing
+      await polymerProver.challengeIntentProof(intent)
+
+      // Verify proof is unchanged
+      const proofAfter = await polymerProver.provenIntents(intentHash)
+      expect(proofAfter.claimant).to.equal(claimantAddress)
+      expect(proofAfter.destinationChainID).to.equal(correctChainID)
+    })
+  })
 })
