@@ -845,6 +845,7 @@ contract IntentSourceTest is BaseTest {
                 salt: keccak256("salt2"),
                 deadline: intent.route.deadline,
                 portal: intent.route.portal,
+                nativeAmount: intent.route.nativeAmount,
                 tokens: intent.route.tokens,
                 calls: intent.route.calls
             }),
@@ -859,6 +860,7 @@ contract IntentSourceTest is BaseTest {
                 salt: keccak256("salt3"),
                 deadline: intent.route.deadline,
                 portal: intent.route.portal,
+                nativeAmount: intent.route.nativeAmount,
                 tokens: intent.route.tokens,
                 calls: intent.route.calls
             }),
@@ -1012,6 +1014,7 @@ contract IntentSourceTest is BaseTest {
                     salt: _evmIntent.route.salt,
                     deadline: _evmIntent.route.deadline,
                     portal: _evmIntent.route.portal,
+                    nativeAmount: _evmIntent.route.nativeAmount,
                     tokens: evmRouteTokens,
                     calls: evmCalls
                 }),

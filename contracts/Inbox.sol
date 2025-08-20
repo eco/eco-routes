@@ -10,6 +10,7 @@ import {IExecutor} from "./interfaces/IExecutor.sol";
 
 import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+import {Refund} from "./libs/Refund.sol";
 
 import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
 import {Executor} from "./Executor.sol";
@@ -60,6 +61,9 @@ abstract contract Inbox is DestinationSettler, IInbox {
             rewardHash,
             claimant
         );
+
+        // Refund any remaining balance (excess ETH)
+        Refund.excessNative();
 
         return result;
     }
@@ -166,12 +170,16 @@ abstract contract Inbox is DestinationSettler, IInbox {
             emit IntentProven(intentHashes[i], claimantBytes);
         }
 
+        // Provide left over balance to the prover
         IProver(prover).prove{value: address(this).balance}(
             msg.sender,
             sourceChainDomainID,
             encodedClaimants,
             data
         );
+
+        // Refund any remaining balance (excess ETH)
+        Refund.excessNative();
     }
 
     /**
@@ -223,6 +231,12 @@ abstract contract Inbox is DestinationSettler, IInbox {
         // Transfer ERC20 tokens to the executor
         uint256 tokensLength = route.tokens.length;
 
+        // Validate that msg.value is at least the route's nativeAmount
+        // Allow extra value for cross-chain message fees when using fulfillAndProve
+        if (msg.value < route.nativeAmount) {
+            revert InsufficientNativeAmount(msg.value, route.nativeAmount);
+        }
+
         for (uint256 i = 0; i < tokensLength; ++i) {
             TokenAmount memory token = route.tokens[i];
 
@@ -233,13 +247,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
             );
         }
 
-        uint256 callsLength = route.calls.length;
-        uint256 callsValue = 0;
-        for (uint256 i = 0; i < callsLength; ++i) {
-            callsValue += route.calls[i].value;
-        }
-
-        return executor.execute{value: callsValue}(route.calls);
+        return executor.execute{value: route.nativeAmount}(route.calls);
     }
 
     function _validateChainID(uint256 chainId) internal pure returns (uint64) {

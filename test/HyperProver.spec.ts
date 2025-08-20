@@ -306,6 +306,7 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -436,6 +437,7 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -549,6 +551,7 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -861,6 +864,7 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: routeTokens,
           calls: [
             {
@@ -996,6 +1000,7 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: routeTokens,
           calls: [
             {
@@ -1168,6 +1173,7 @@ describe('HyperProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
+        nativeAmount: 0,
         tokens: routeTokens,
         calls: [
           {
@@ -1227,6 +1233,7 @@ describe('HyperProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
+        nativeAmount: 0,
         tokens: routeTokens,
         calls: [
           {
@@ -1363,6 +1370,7 @@ describe('HyperProver Test', (): void => {
           salt: ethers.randomBytes(32),
           deadline: (await time.latest()) + 3600,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {

@@ -27,6 +27,13 @@ interface IInbox {
     event IntentProven(bytes32 indexed intentHash, bytes32 indexed claimant);
 
     /**
+     * @notice Emitted when excess native token refund fails
+     * @param recipient Address that should have received the refund
+     * @param amount Amount of native tokens that failed to refund
+     */
+    event RefundFailed(address indexed recipient, uint256 amount);
+
+    /**
      * @notice Intent has already been fulfilled
      * @param intentHash Hash of the fulfilled intent
      */
@@ -65,6 +72,13 @@ interface IInbox {
      * @param chainId The chain ID that is too large
      */
     error ChainIdTooLarge(uint256 chainId);
+
+    /**
+     * @notice Sent native amount is insufficient for route execution
+     * @param sent Amount of native tokens sent with the transaction
+     * @param required Minimum amount of native tokens required by the route
+     */
+    error InsufficientNativeAmount(uint256 sent, uint256 required);
 
     /**
      * @notice Fulfills an intent using storage proofs

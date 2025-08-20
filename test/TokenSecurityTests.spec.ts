@@ -89,6 +89,7 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: routeTokens,
       calls: calls,
     }
@@ -144,6 +145,7 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: [],
       calls: [],
     }
@@ -193,6 +195,7 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: [],
       calls: [],
     }
@@ -256,6 +259,7 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: [],
       calls: [],
     }

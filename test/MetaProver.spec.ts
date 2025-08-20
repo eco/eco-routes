@@ -350,6 +350,7 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -458,6 +459,7 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -553,6 +555,7 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -814,6 +817,7 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: routeTokens,
           calls: [
             {
@@ -927,6 +931,7 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
+          nativeAmount: 0,
           tokens: routeTokens,
           calls: [
             {
@@ -1078,6 +1083,7 @@ describe('MetaProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
+        nativeAmount: 0,
         tokens: routeTokens,
         calls: [
           {
@@ -1133,6 +1139,7 @@ describe('MetaProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
+        nativeAmount: 0,
         tokens: routeTokens,
         calls: [
           {

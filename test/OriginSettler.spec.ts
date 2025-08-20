@@ -145,6 +145,7 @@ describe('Origin Settler Test', (): void => {
         salt,
         deadline: expiry_fill,
         portal: await inbox.getAddress(),
+        nativeAmount: 0,
         tokens: routeTokens,
         calls,
       }
