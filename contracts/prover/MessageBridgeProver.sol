@@ -23,6 +23,12 @@ abstract contract MessageBridgeProver is
     uint256 public immutable MIN_GAS_LIMIT;
 
     /**
+     * @notice Default minimum gas limit for cross-chain messages
+     * @dev Used if no specific value is provided during contract deployment
+     */
+    uint256 private constant DEFAULT_MIN_GAS_LIMIT = 200_000;
+
+    /**
      * @notice Initializes the MessageBridgeProver contract
      * @param portal Address of the Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)

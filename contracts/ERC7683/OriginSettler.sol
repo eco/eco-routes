@@ -8,9 +8,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
-import {IIntentSource} from "../interfaces/IIntentSource.sol";
 
-import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
+import {Reward} from "../types/Intent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction, OrderData, ORDER_DATA_TYPEHASH} from "../types/ERC7683.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 
@@ -209,7 +208,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
                 bytes32(0), // token
                 orderData.reward.nativeAmount, // amount
                 bytes32(uint256(uint160(address(0)))), // recipient is zero address
-                uint256(orderData.destination) // chainId
+                block.chainid // chainId
             );
         }
 

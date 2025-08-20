@@ -97,6 +97,7 @@ describe('Inbox Test', (): void => {
         salt,
         deadline,
         portal: await inbox.getAddress(),
+        nativeAmount: 0,
         tokens: [{ token: await erc20.getAddress(), amount: amount }],
         calls: [
           {
@@ -363,12 +364,66 @@ describe('Inbox Test', (): void => {
       ).to.be.revertedWithCustomError(inbox, 'IntentAlreadyFulfilled')
     })
 
+    it('should revert if msg.value is insufficient for route.nativeAmount', async () => {
+      const ethAmount = ethers.parseEther('1.0')
+      const insufficientAmount = ethers.parseEther('0.5')
+
+      // Create intent with ETH amount
+      const _route: Route = {
+        ...route,
+        nativeAmount: ethAmount,
+        calls: [
+          {
+            target: dstAddr.address,
+            data: '0x',
+            value: ethAmount,
+          },
+        ],
+      }
+
+      const intentHash = hashIntent({
+        destination: Number((await owner.provider.getNetwork()).chainId),
+        route: _route,
+        reward: reward,
+      }).intentHash
+
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
+      // Should revert with insufficient native amount
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            intentHash,
+            _route,
+            rewardHash,
+            addressToBytes32(dstAddr.address),
+            { value: insufficientAmount },
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
+        .withArgs(insufficientAmount, ethAmount)
+
+      // Should also revert with zero native amount when expecting ETH
+      await expect(
+        inbox
+          .connect(solver)
+          .fulfill(
+            intentHash,
+            _route,
+            rewardHash,
+            addressToBytes32(dstAddr.address),
+          ),
+      ).to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
+        .withArgs(0, ethAmount)
+    })
+
     it('should send ETH if one of the targets is an EOA', async () => {
       const ethAmount = ethers.parseEther('1.0')
 
       // Create intent with ETH transfer to EOA
       const _route: Route = {
         ...route,
+        nativeAmount: ethAmount, // Update nativeAmount to match the call value
         calls: [
           {
             target: dstAddr.address,

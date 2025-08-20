@@ -52,15 +52,15 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @param endpoint Address of local LayerZero endpoint
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if zero)
      */
     constructor(
         address endpoint,
         address delegate,
         address portal,
         bytes32[] memory provers,
-        uint256 defaultGasLimit
-    ) MessageBridgeProver(portal, provers, defaultGasLimit) {
+        uint256 minGasLimit
+    ) MessageBridgeProver(portal, provers, minGasLimit) {
         if (endpoint == address(0)) revert EndpointCannotBeZeroAddress();
         if (delegate == address(0)) revert DelegateCannotBeZeroAddress();
 

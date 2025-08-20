@@ -89,6 +89,7 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
+                nativeAmount: 0,
                 tokens: tokens,
                 calls: calls
             }),
@@ -140,6 +141,7 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
+                nativeAmount: 0,
                 tokens: tokens,
                 calls: calls
             }),
@@ -194,6 +196,7 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
+                nativeAmount: ethAmount,
                 tokens: tokens,
                 calls: calls
             }),
@@ -218,7 +221,8 @@ contract InboxAdvancedTest is BaseTest {
         uint256 initialBalance = recipient2.balance;
 
         vm.prank(solver);
-        portal.fulfill(
+        vm.deal(solver, ethAmount);
+        portal.fulfill{value: ethAmount}(
             intentHash,
             intent.route,
             rewardHash,
@@ -386,6 +390,7 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
+                nativeAmount: 0,
                 tokens: tokens,
                 calls: calls
             }),
@@ -482,6 +487,7 @@ contract InboxAdvancedTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
+                    nativeAmount: 0,
                     tokens: tokens,
                     calls: calls
                 }),

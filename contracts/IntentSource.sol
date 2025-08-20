@@ -13,6 +13,7 @@ import {IPermit} from "./interfaces/IPermit.sol";
 
 import {Intent, Route, Reward} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
+import {Refund} from "./libs/Refund.sol";
 
 import {OriginSettler} from "./ERC7683/OriginSettler.sol";
 import {Vault} from "./vault/Vault.sol";
@@ -34,7 +35,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /// @dev Tron Mainnet chain ID
     uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
-    /// @dev Tron Testnet (Nile) chain ID
+    /// @dev Tron Testnet (Shasta) chain ID
     uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
 
     /// @dev Implementation contract address for vault cloning
@@ -331,7 +332,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             msg.sender,
             allowPartial
         );
-        _returnExcessEth(intentHash, address(this).balance);
+        Refund.excessNative();
     }
 
     /**
@@ -586,7 +587,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         (intentHash, vault) = publish(destination, route, reward);
 
         _fundIntent(intentHash, vault, reward, funder, allowPartial);
-        _returnExcessEth(intentHash, address(this).balance);
+        Refund.excessNative();
     }
 
     /**
@@ -743,21 +744,6 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         }
 
         return true;
-    }
-
-    /**
-     * @notice Returns excess ETH to the sender - OriginSettler implementation
-     * @dev Called by _publishAndFund to return any ETH overpayment to the sender
-     * @dev Essential for user experience when overfunding native token rewards
-     * @param intentHash Hash of the intent (used for error context)
-     * @param amount Amount of ETH to return
-     */
-    function _returnExcessEth(bytes32 intentHash, uint256 amount) internal {
-        if (amount == 0) return;
-
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-
-        if (!success) revert NativeRewardTransferFailed(intentHash);
     }
 
     /**
