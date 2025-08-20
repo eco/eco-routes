@@ -22,11 +22,6 @@ interface IIntentSource {
     }
 
     /**
-     * @notice Indicates a failed native token transfer during reward distribution
-     */
-    error NativeRewardTransferFailed();
-
-    /**
      * @notice Indicates an attempt to publish a duplicate intent
      * @param intentHash The hash of the pre-existing intent
      */
