@@ -89,6 +89,16 @@ describe('PolymerProver Test', (): void => {
       )
       expect(await polymerProver.EXPECTED_TOPIC_LENGTH()).to.equal(64)
     })
+
+
+    it('should support ERC165 interface detection', async () => {
+      polymerProver = await (
+        await ethers.getContractFactory('PolymerProver')
+      ).deploy(await owner.getAddress(), await inbox.getAddress())
+      
+      const ERC165InterfaceId = '0x01ffc9a7' // ERC165 interface ID
+      expect(await polymerProver.supportsInterface(ERC165InterfaceId)).to.be.true
+    })
   })
 
   describe('2. Initialize', () => {
