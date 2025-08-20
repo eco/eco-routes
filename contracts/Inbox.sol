@@ -114,6 +114,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         intentHashes[0] = intentHash;
 
         // Call prove with the intent hash array
+        // This will also refund any excess ETH
         prove(prover, sourceChainDomainID, intentHashes, data);
 
         return result;
