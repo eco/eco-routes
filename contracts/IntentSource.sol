@@ -35,7 +35,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /// @dev Tron Mainnet chain ID
     uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
-    /// @dev Tron Testnet (Nile) chain ID
+    /// @dev Tron Testnet (Shasta) chain ID
     uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
 
     /// @dev Implementation contract address for vault cloning
