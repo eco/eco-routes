@@ -793,17 +793,6 @@ contract VaultTest is Test {
     }
 
     function test_recover_success_differentToken() public {
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(token), amount: 1000});
-
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
         TestERC20 differentToken = new TestERC20("Different Token", "DIFF");
         differentToken.mint(address(vault), 500);
 
@@ -820,15 +809,6 @@ contract VaultTest is Test {
     }
 
     function test_recover_not_portal_caller() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
         TestERC20 recoverToken = new TestERC20("Recover Token", "REC");
 
         vm.prank(unauthorized);
@@ -842,15 +822,6 @@ contract VaultTest is Test {
     }
 
     function test_recover_zero_balance() public {
-        TokenAmount[] memory tokens = new TokenAmount[](0);
-        Reward memory reward = Reward({
-            creator: creator,
-            prover: address(0),
-            deadline: uint64(block.timestamp + 1000),
-            nativeAmount: 0,
-            tokens: tokens
-        });
-
         TestERC20 recoverToken = new TestERC20("Recover Token", "REC");
 
         vm.prank(portal);

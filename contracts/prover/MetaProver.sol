@@ -227,7 +227,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes32 sourceChainProver
     )
         internal
-        view
+        pure
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
         // Convert domain ID to domain with overflow check

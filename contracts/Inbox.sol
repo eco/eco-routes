@@ -43,6 +43,11 @@ abstract contract Inbox is DestinationSettler, IInbox {
      */
     constructor() {
         executor = new Executor();
+
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert ChainIdTooLarge(block.chainid);
+        }
         CHAIN_ID = uint64(block.chainid);
     }
 

@@ -242,7 +242,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         UnpackedData memory unpacked
     )
         internal
-        view
+        pure
         returns (ILayerZeroEndpointV2.MessagingParams memory params)
     {
         // Use domain ID directly as endpoint ID with overflow check
