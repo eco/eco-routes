@@ -51,7 +51,7 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Process intent proofs from a cross-chain message
-     * @param data Encoded (intentHash, claimant) pairs
+     * @param data Encoded (intentHash, claimant) pairs (without chain ID prefix)
      * @param destination Chain ID where the intent is being proven
      */
     function _processIntentProofs(

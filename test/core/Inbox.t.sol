@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
+import {Portal} from "../../contracts/Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
@@ -29,6 +30,16 @@ contract InboxTest is BaseTest {
 
     function testInboxExists() public view {
         assertTrue(address(portal) != address(0));
+    }
+
+    function testInboxChainIdWithinRangeSucceeds() public {
+        // Set chain ID to max valid value
+        uint256 validChainId = type(uint64).max;
+        vm.chainId(validChainId);
+
+        // This should not revert
+        Portal newPortal = new Portal();
+        assertTrue(address(newPortal) != address(0));
     }
 
     function testPortalBasicProperties() public view {

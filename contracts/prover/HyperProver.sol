@@ -203,11 +203,6 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes calldata encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (DispatchParams memory params) {
-        // Validate that encodedProofs length is multiple of 64 bytes
-        if (encodedProofs.length % 64 != 0) {
-            revert ArrayLengthMismatch();
-        }
-
         // Convert domain ID to Hyperlane domain ID format with overflow check
         if (domainID > type(uint32).max) {
             revert DomainIdTooLarge(domainID);
@@ -217,8 +212,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.recipientAddress = unpacked.sourceChainProver;
 
-        // Prepend current chain ID to the message body with encoded proofs
-        params.messageBody = abi.encodePacked(CHAIN_ID, encodedProofs);
+        params.messageBody = encodedProofs;
 
         // Pass through metadata as provided
         params.metadata = unpacked.metadata;
