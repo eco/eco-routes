@@ -8,9 +8,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
-import {IIntentSource} from "../interfaces/IIntentSource.sol";
 
-import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
+import {Reward} from "../types/Intent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction, OrderData, ORDER_DATA_TYPEHASH} from "../types/ERC7683.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 

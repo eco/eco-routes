@@ -110,7 +110,7 @@ describe('HyperProver Test', (): void => {
     it('should initialize with the correct mailbox and inbox addresses', async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
 
       expect(await hyperProver.MAILBOX()).to.equal(await mailbox.getAddress())
       expect(await hyperProver.PORTAL()).to.equal(await inbox.getAddress())
@@ -120,15 +120,10 @@ describe('HyperProver Test', (): void => {
       const additionalProver = await owner.getAddress()
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [
-          ethers.zeroPadValue(additionalProver, 32),
-          ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
-        ],
-        200000,
-      )
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(additionalProver, 32),
+        ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
+      ])
 
       // Check if the prover address is in the whitelist
       expect(
@@ -148,7 +143,7 @@ describe('HyperProver Test', (): void => {
       // use owner as mailbox so we can test handle
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
       expect(await hyperProver.getProofType()).to.equal('Hyperlane')
     })
   })
@@ -157,15 +152,10 @@ describe('HyperProver Test', (): void => {
     beforeEach(async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        owner.address,
-        await inbox.getAddress(),
-        [
-          ethers.zeroPadValue(await inbox.getAddress(), 32),
-          ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
-        ],
-        200000,
-      )
+      ).deploy(owner.address, await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+        ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
+      ])
     })
 
     it('should revert when msg.sender is not the mailbox', async () => {
@@ -274,12 +264,9 @@ describe('HyperProver Test', (): void => {
       const chainId = 12345 // Use test chainId
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
-      )
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ])
     })
 
     it('should revert on underpayment', async () => {
@@ -710,7 +697,7 @@ describe('HyperProver Test', (): void => {
 
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
 
       const sourceChainId = 12345
       const intentHashes = [
@@ -745,7 +732,7 @@ describe('HyperProver Test', (): void => {
 
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
 
       const sourceChainId = 12345
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -782,7 +769,6 @@ describe('HyperProver Test', (): void => {
         await owner.getAddress(), // owner as mailbox
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
       )
 
       // Create test data
@@ -826,12 +812,9 @@ describe('HyperProver Test', (): void => {
       const chainId = 12345
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
-      )
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ])
 
       // Set processor to 0x0 for non-EVM test to prevent automatic processing since handle will be on non-EVM chain
       // await mailbox.setProcessor(ethers.ZeroAddress) - commented out to allow automatic processing
@@ -962,12 +945,9 @@ describe('HyperProver Test', (): void => {
       const chainId = 12345 // Use test chainId
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
-      )
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ])
 
       // Set the hyperProver as the processor so mailbox.dispatch calls hyperProver.handle
       await mailbox.setProcessor(await hyperProver.getAddress())
@@ -1097,12 +1077,9 @@ describe('HyperProver Test', (): void => {
       // by deploying a new hyperProver with owner as the mailbox
       const simulatedHyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await owner.getAddress(),
-        await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
-      )
+      ).deploy(await owner.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ])
 
       // Handle the message and verify the intent is proven
       await expect(
@@ -1124,12 +1101,9 @@ describe('HyperProver Test', (): void => {
     it('should work with batched message bridge fulfillment end-to-end', async () => {
       hyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await mailbox.getAddress(),
-        await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
-      )
+      ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ])
 
       // Set the hyperProver as the processor so mailbox.dispatch calls hyperProver.handle
       await mailbox.setProcessor(await hyperProver.getAddress())
@@ -1321,12 +1295,9 @@ describe('HyperProver Test', (): void => {
       // by deploying a new hyperProver with owner as the mailbox
       const simulatedHyperProver = await (
         await ethers.getContractFactory('HyperProver')
-      ).deploy(
-        await owner.getAddress(),
-        await inbox.getAddress(),
-        [ethers.zeroPadValue(await inbox.getAddress(), 32)],
-        200000,
-      )
+      ).deploy(await owner.getAddress(), await inbox.getAddress(), [
+        ethers.zeroPadValue(await inbox.getAddress(), 32),
+      ])
 
       // Simulate handling of the batch message
       await expect(

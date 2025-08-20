@@ -200,14 +200,10 @@ contract Deploy is Script {
             provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
         }
 
-        // Default gas limit for cross-chain messages
-        uint256 defaultGasLimit = 200000;
-
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
             ctx.portal,
-            provers,
-            defaultGasLimit
+            provers
         );
 
         bytes memory hyperProverBytecode = abi.encodePacked(
@@ -241,14 +237,14 @@ contract Deploy is Script {
             provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
         }
 
-        // Default gas limit for cross-chain messages
-        uint256 defaultGasLimit = 200000;
+        // Minimum gas limit for cross-chain messages
+        uint256 minGasLimit = 200000;
 
         ctx.metaProverConstructorArgs = abi.encode(
             ctx.router,
             ctx.portal,
             provers,
-            defaultGasLimit
+            minGasLimit
         );
 
         bytes memory metaProverBytecode = abi.encodePacked(
@@ -282,15 +278,15 @@ contract Deploy is Script {
             provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
         }
 
-        // Default gas limit for LayerZero messages
-        uint256 defaultGasLimit = 200000;
+        // Minimum gas limit for LayerZero messages
+        uint256 minGasLimit = 200000;
 
         ctx.layerZeroProverConstructorArgs = abi.encode(
             ctx.layerZeroEndpoint,
             ctx.layerZeroDelegate,
             ctx.portal,
             provers,
-            defaultGasLimit
+            minGasLimit
         );
 
         bytes memory layerZeroProverBytecode = abi.encodePacked(

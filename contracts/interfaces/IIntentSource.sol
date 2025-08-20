@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IVault} from "./IVault.sol";
 import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
