@@ -98,6 +98,7 @@ describe('Destination Settler Test', (): void => {
       salt,
       deadline: _timestamp,
       portal: await inbox.getAddress(),
+      nativeAmount: _nativeAmount,
       tokens: routeTokens,
       calls: _calls,
     }

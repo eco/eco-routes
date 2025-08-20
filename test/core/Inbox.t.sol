@@ -149,6 +149,7 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
+                nativeAmount: ethAmount,
                 tokens: tokens,
                 calls: calls
             }),
@@ -173,7 +174,8 @@ contract InboxTest is BaseTest {
         );
 
         vm.prank(solver);
-        portal.fulfill(
+        vm.deal(solver, ethAmount);
+        portal.fulfill{value: ethAmount}(
             intentHash,
             intent.route,
             rewardHash,
@@ -182,6 +184,129 @@ contract InboxTest is BaseTest {
 
         // Verify ETH was transferred to EOA
         assertEq(recipient.balance, initialBalance + ethAmount);
+    }
+
+    function testRevertOnInsufficientNativeAmount() public {
+        // Create intent with native amount
+        uint256 ethAmount = 1 ether;
+        TokenAmount[] memory tokens = new TokenAmount[](0);
+
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({target: recipient, data: "", value: ethAmount});
+
+        Intent memory intent = Intent({
+            destination: uint64(block.chainid),
+            route: Route({
+                salt: salt,
+                deadline: uint64(expiry),
+                portal: address(portal),
+                nativeAmount: ethAmount,
+                tokens: tokens,
+                calls: calls
+            }),
+            reward: Reward({
+                deadline: uint64(expiry),
+                creator: creator,
+                prover: address(prover),
+                nativeAmount: 0,
+                tokens: new TokenAmount[](0)
+            })
+        });
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
+
+        // Try to fulfill with insufficient native amount
+        vm.prank(solver);
+        vm.deal(solver, ethAmount / 2);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IInbox.InsufficientNativeAmount.selector,
+                ethAmount / 2,
+                ethAmount
+            )
+        );
+        portal.fulfill{value: ethAmount / 2}(
+            intentHash,
+            intent.route,
+            rewardHash,
+            bytes32(uint256(uint160(recipient)))
+        );
+
+        // Try to fulfill with zero native amount
+        vm.prank(solver);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IInbox.InsufficientNativeAmount.selector,
+                0,
+                ethAmount
+            )
+        );
+        portal.fulfill(
+            intentHash,
+            intent.route,
+            rewardHash,
+            bytes32(uint256(uint160(recipient)))
+        );
+    }
+
+    function testAllowExtraNativeAmountForProvingFees() public {
+        // Create intent with native amount
+        uint256 ethAmount = 1 ether;
+        uint256 extraFee = 0.1 ether;
+        TokenAmount[] memory tokens = new TokenAmount[](0);
+
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({target: recipient, data: "", value: ethAmount});
+
+        Intent memory intent = Intent({
+            destination: uint64(block.chainid),
+            route: Route({
+                salt: salt,
+                deadline: uint64(expiry),
+                portal: address(portal),
+                nativeAmount: ethAmount,
+                tokens: tokens,
+                calls: calls
+            }),
+            reward: Reward({
+                deadline: uint64(expiry),
+                creator: creator,
+                prover: address(prover),
+                nativeAmount: 0,
+                tokens: new TokenAmount[](0)
+            })
+        });
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
+
+        uint256 initialBalance = recipient.balance;
+
+        // Should succeed with extra native amount and refund the excess
+        vm.prank(solver);
+        vm.deal(solver, ethAmount + extraFee);
+        uint256 solverInitialBalance = solver.balance;
+        
+        portal.fulfill{value: ethAmount + extraFee}(
+            intentHash,
+            intent.route,
+            rewardHash,
+            bytes32(uint256(uint160(recipient)))
+        );
+
+        // Verify only the route's nativeAmount was used for the call
+        assertEq(recipient.balance, initialBalance + ethAmount);
+        // Extra fee should be refunded to solver
+        assertEq(solver.balance, solverInitialBalance - ethAmount);
+        // Contract should have no balance
+        assertEq(address(portal).balance, 0);
     }
 
     function testPortalFulfillWithNonAddressClaimant() public {
@@ -368,6 +493,7 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
+                    nativeAmount: 0,
                     tokens: tokens,
                     calls: calls
                 }),
@@ -420,6 +546,7 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
+                    nativeAmount: 0,
                     tokens: tokens,
                     calls: calls
                 }),
@@ -455,6 +582,7 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
+                    nativeAmount: 0,
                     tokens: tokens,
                     calls: calls
                 }),
