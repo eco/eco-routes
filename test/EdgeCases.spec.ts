@@ -27,28 +27,37 @@ describe('Edge Cases and Integration Tests', function () {
 
   describe('Invalid Encoding Length Tests', function () {
     it('should revert with encoding not multiple of 64 bytes', async function () {
-      // 65 bytes - not multiple of 64
-      const invalidProofs = '0x' + '00'.repeat(65)
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdHex = chainId.toString(16).padStart(16, '0')
+
+      // 8 bytes chain ID + 65 bytes - not multiple of 64
+      const invalidProofs = '0x' + chainIdHex + '00'.repeat(65)
 
       await expect(
         testProver.prove(owner.address, sourceChain, invalidProofs, '0x'),
       ).to.be.revertedWithCustomError(testProver, 'ArrayLengthMismatch')
 
-      // 1 byte
-      const singleByte = '0x00'
+      // Just 7 bytes (less than chain ID)
+      const singleByte = '0x' + '00'.repeat(7)
       await expect(
         testProver.prove(owner.address, sourceChain, singleByte, '0x'),
-      ).to.be.revertedWithCustomError(testProver, 'ArrayLengthMismatch')
+      ).to.be.revertedWithCustomError(testProver, 'InvalidProofMessage')
 
-      // 127 bytes
-      const oddLength = '0x' + '00'.repeat(127)
+      // 8 bytes chain ID + 127 bytes
+      const oddLength = '0x' + chainIdHex + '00'.repeat(127)
       await expect(
         testProver.prove(owner.address, sourceChain, oddLength, '0x'),
       ).to.be.revertedWithCustomError(testProver, 'ArrayLengthMismatch')
     })
 
     it('should handle empty proofs correctly', async function () {
-      const emptyProofs = '0x'
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdHex = chainId.toString(16).padStart(16, '0')
+
+      // Just chain ID with no proofs
+      const emptyProofs = '0x' + chainIdHex
 
       // Should not revert with empty proofs
       await expect(
@@ -63,8 +72,16 @@ describe('Edge Cases and Integration Tests', function () {
       const invalidClaimant =
         '0x0000000100000000000000000000000000000000000000000000000000000001' // High bytes set
 
-      // Encode as (intentHash, claimant)
-      const encodedProofs = ethers.concat([intentHash, invalidClaimant])
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdBytes = ethers.zeroPadValue(ethers.toBeHex(chainId), 8)
+
+      // Encode as chain ID + (intentHash, claimant)
+      const encodedProofs = ethers.concat([
+        chainIdBytes,
+        intentHash,
+        invalidClaimant,
+      ])
 
       // Should succeed but skip the invalid claimant
       await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
@@ -79,7 +96,15 @@ describe('Edge Cases and Integration Tests', function () {
       const intentHash = ethers.id('test-intent')
       const zeroClaimant = ethers.ZeroHash
 
-      const encodedProofs = ethers.concat([intentHash, zeroClaimant])
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdBytes = ethers.zeroPadValue(ethers.toBeHex(chainId), 8)
+
+      const encodedProofs = ethers.concat([
+        chainIdBytes,
+        intentHash,
+        zeroClaimant,
+      ])
 
       // Should succeed but skip the zero claimant
       await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
@@ -95,7 +120,15 @@ describe('Edge Cases and Integration Tests', function () {
       // High bytes set - indicates non-EVM address
       const crossVMClaimant = '0x' + 'F'.repeat(16) + '0'.repeat(47) + '1'
 
-      const encodedProofs = ethers.concat([intentHash, crossVMClaimant])
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdBytes = ethers.zeroPadValue(ethers.toBeHex(chainId), 8)
+
+      const encodedProofs = ethers.concat([
+        chainIdBytes,
+        intentHash,
+        crossVMClaimant,
+      ])
 
       // Should not revert
       await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
@@ -121,10 +154,14 @@ describe('Edge Cases and Integration Tests', function () {
         ethers.zeroPadValue(user.address, 32), // Valid
       ]
 
-      // Encode all pairs
-      let encodedProofs = '0x'
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdBytes = ethers.zeroPadValue(ethers.toBeHex(chainId), 8)
+
+      // Encode chain ID + all pairs
+      let encodedProofs = chainIdBytes
       for (let i = 0; i < hashes.length; i++) {
-        encodedProofs += hashes[i].slice(2) + claimants[i].slice(2)
+        encodedProofs = ethers.concat([encodedProofs, hashes[i], claimants[i]])
       }
 
       // Should succeed but skip the invalid claimant
@@ -147,13 +184,18 @@ describe('Edge Cases and Integration Tests', function () {
 
     it('should process large batch successfully', async function () {
       const numProofs = 50
-      let encodedProofs = '0x'
+
+      // Get current chain ID
+      const chainId = (await ethers.provider.getNetwork()).chainId
+      const chainIdBytes = ethers.zeroPadValue(ethers.toBeHex(chainId), 8)
+
+      let encodedProofs = chainIdBytes
 
       for (let i = 0; i < numProofs; i++) {
         const intentHash = ethers.id(`intent-${i}`)
         const claimant = ethers.zeroPadValue(ethers.toBeHex(1000 + i), 32)
 
-        encodedProofs += intentHash.slice(2) + claimant.slice(2)
+        encodedProofs = ethers.concat([encodedProofs, intentHash, claimant])
       }
 
       // Should process successfully

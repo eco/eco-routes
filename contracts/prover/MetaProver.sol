@@ -230,11 +230,6 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         view
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
-        // Validate that encodedProofs length is multiple of 64 bytes
-        if (encodedProofs.length % 64 != 0) {
-            revert ArrayLengthMismatch();
-        }
-
         // Convert domain ID to domain with overflow check
         if (domainID > type(uint32).max) {
             revert DomainIdTooLarge(domainID);
@@ -244,7 +239,6 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Use pre-decoded source chain prover address as recipient
         recipient = sourceChainProver;
 
-        // Prepend current chain ID to the message with encoded proofs
-        message = abi.encodePacked(CHAIN_ID, encodedProofs);
+        message = encodedProofs;
     }
 }

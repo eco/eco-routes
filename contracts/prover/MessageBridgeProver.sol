@@ -23,12 +23,6 @@ abstract contract MessageBridgeProver is
     uint256 public immutable MIN_GAS_LIMIT;
 
     /**
-     * @notice Chain ID stored as uint64 immutable for efficient access
-     * @dev Set once at construction time with validation
-     */
-    uint64 internal immutable CHAIN_ID;
-
-    /**
      * @notice Initializes the MessageBridgeProver contract
      * @param portal Address of the Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
@@ -40,12 +34,6 @@ abstract contract MessageBridgeProver is
         uint256 minGasLimit
     ) BaseProver(portal) Whitelist(provers) {
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
-
-        // Validate that chain ID fits in uint64 and store it
-        if (block.chainid > type(uint64).max) {
-            revert ChainIdTooLarge(block.chainid);
-        }
-        CHAIN_ID = uint64(block.chainid);
     }
 
     /**

@@ -32,11 +32,18 @@ abstract contract Inbox is DestinationSettler, IInbox {
     IExecutor public immutable executor;
 
     /**
+     * @notice Chain ID stored as immutable for gas efficiency
+     * @dev Used to prepend to proof messages for cross-chain identification
+     */
+    uint64 private immutable CHAIN_ID;
+
+    /**
      * @notice Initializes the Inbox contract
      * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
     constructor() {
         executor = new Executor();
+        CHAIN_ID = uint64(block.chainid);
     }
 
     /**
@@ -139,8 +146,15 @@ abstract contract Inbox is DestinationSettler, IInbox {
     ) public payable {
         uint256 size = intentHashes.length;
 
-        // Encode intent hash/claimant pairs as bytes
-        bytes memory encodedClaimants = new bytes(size * 64); // 32 bytes for intent hash + 32 bytes for claimant
+        // Encode chain ID followed by intent hash/claimant pairs as bytes
+        // 8 bytes for chain ID + (32 bytes for intent hash + 32 bytes for claimant) * size
+        bytes memory encodedClaimants = new bytes(8 + size * 64);
+
+        // Prepend chain ID to the encoded data
+        uint64 chainId = CHAIN_ID;
+        assembly {
+            mstore(add(encodedClaimants, 0x20), shl(192, chainId))
+        }
 
         for (uint256 i = 0; i < size; ++i) {
             bytes32 claimantBytes = claimants[intentHashes[i]];
@@ -149,9 +163,9 @@ abstract contract Inbox is DestinationSettler, IInbox {
                 revert IntentNotFulfilled(intentHashes[i]);
             }
 
-            // Pack intent hash and claimant into encodedData
+            // Pack intent hash and claimant into encodedData (after 8-byte chain ID)
             assembly {
-                let offset := mul(i, 64)
+                let offset := add(8, mul(i, 64))
                 mstore(
                     add(add(encodedClaimants, 0x20), offset),
                     mload(add(intentHashes, add(0x20, mul(i, 32))))

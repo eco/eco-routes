@@ -62,16 +62,24 @@ contract LayerZeroProverTest is BaseTest {
     function encodeProofs(
         bytes32[] memory intentHashes,
         bytes32[] memory claimants
-    ) internal pure returns (bytes memory encodedProofs) {
+    ) internal view returns (bytes memory encodedProofs) {
         require(
             intentHashes.length == claimants.length,
             "Array length mismatch"
         );
 
-        encodedProofs = new bytes(intentHashes.length * 64);
+        // Simulate what Inbox does - prepend 8 bytes for chain ID
+        encodedProofs = new bytes(8 + intentHashes.length * 64);
+
+        // Prepend chain ID
+        uint64 chainId = uint64(block.chainid);
+        assembly {
+            mstore(add(encodedProofs, 0x20), shl(192, chainId))
+        }
+
         for (uint256 i = 0; i < intentHashes.length; i++) {
             assembly {
-                let offset := mul(i, 64)
+                let offset := add(8, mul(i, 64))
                 // Store hash in first 32 bytes of each pair
                 mstore(
                     add(add(encodedProofs, 0x20), offset),

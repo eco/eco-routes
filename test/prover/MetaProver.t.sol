@@ -64,10 +64,15 @@ contract MetaProverTest is BaseTest {
     ) internal {
         vm.deal(address(portal), value);
         vm.prank(address(portal));
+        // Simulate what Inbox does - prepend chain ID to the packed pairs
+        bytes memory messageWithChainId = abi.encodePacked(
+            uint64(block.chainid),
+            _packClaimantHashPairs(intentHashes, claimants)
+        );
         metaProver.prove{value: value}(
             sender,
             sourceChainId,
-            _packClaimantHashPairs(intentHashes, claimants),
+            messageWithChainId,
             data
         );
     }
