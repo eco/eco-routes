@@ -7,6 +7,7 @@ import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {IProver} from "../interfaces/IProver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
+import {Intent} from "../types/Intent.sol";
 
 /**
  * @title PolymerProver
@@ -36,7 +37,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     error SizeMismatch();
     error MaxDataSizeExceeded();
     error EmptyProofData();
-    error OnlyPortal();
+    error OnlyInbox();
 
     // State variables
     ICrossL2ProverV2 public CROSS_L2_PROVER_V2;
@@ -45,12 +46,12 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     /**
      * @notice Initializes the PolymerProver contract
      * @param _owner Temporary owner address for initialization
-     * @param _portal Address of the Portal contract
+     * @param _inbox Address of the Inbox contract
      */
     constructor(
         address _owner,
-        address _portal
-    ) BaseProver(_portal) Ownable(_owner) {}
+        address _inbox
+    ) BaseProver(_inbox) Ownable(_owner) {}
 
     /**
      * @notice Initializes the contract with CrossL2ProverV2 and whitelist settings
@@ -152,7 +153,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
             }
 
             address claimant = claimantBytes.toAddress();
-            processIntent(intentHash, claimant, destinationChainId);
+            processIntent(intentHash, claimant, uint96(destinationChainId));
         }
     }
 
@@ -166,7 +167,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     function processIntent(
         bytes32 intentHash,
         address claimant,
-        uint64 destination
+        uint96 destination
     ) internal {
         ProofData storage proof = _provenIntents[intentHash];
         if (proof.claimant != address(0)) {
@@ -175,9 +176,9 @@ contract PolymerProver is BaseProver, Semver, Ownable {
             return;
         }
         proof.claimant = claimant;
-        proof.destination = destination;
+        proof.destinationChainID = uint96(destination);
 
-        emit IntentProven(intentHash, claimant, destination);
+        emit IntentProven(intentHash, claimant);
     }
 
     // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
@@ -201,25 +202,31 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         return PROOF_TYPE;
     }
 
+    /**
+     * @notice Challenges a recorded proof
+     * @param _intent Intent to challenge
+     * @dev Currently does nothing - to be implemented in future versions
+     */
+    function challengeIntentProof(Intent calldata _intent) external {
+        // Do nothing for now
+    }
+
     // ------------ EXTERNAL PROVE FUNCTION -------------
 
     /**
      * @notice Emits IntentFulfilledFromSource events that can be proven by Polymer
-     * @dev Only callable by the Portal contract
-     * @param _sender Address of the original transaction sender (unused)
+     * @dev Only callable by the Inbox contract
      * @param _sourceChainId Domain ID of the source chain (treated as chain ID for Polymer)
-     * @param _intentHashes Array of intent hashes to prove (unused, data is in _data)
-     * @param _claimants Array of claimant addresses (unused, data is in _data) 
      * @param _data Encoded (intentHash, claimant) pairs as bytes
      */
     function prove(
-        address _sender,
+        address /* _sender */,
         uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
+        bytes32[] calldata /* _intentHashes */,
+        address[] calldata /* _claimants */,
         bytes calldata _data
     ) external payable {
-        if (msg.sender != PORTAL) revert OnlyPortal();
+        if (msg.sender != INBOX) revert OnlyInbox();
 
         if (_data.length == 0) return;
 
