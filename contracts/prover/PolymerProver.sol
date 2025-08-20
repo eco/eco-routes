@@ -24,6 +24,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
 
     // Events
     event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
+    event BadProofCleared(bytes32 indexed _intentHash);
 
     // Errors
     error InvalidEventSignature();
@@ -202,10 +203,29 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     /**
      * @notice Challenges a recorded proof
      * @param _intent Intent to challenge
-     * @dev Currently does nothing - to be implemented in future versions
+     * @dev Clears the proof if the destination chain ID in the intent does not match the one in the proof
+     * @dev even if not challenged, an incorrect proof cannot be used to claim rewards.
+     * @dev does nothing if chainID is correct.
      */
     function challengeIntentProof(Intent calldata _intent) external {
-        // Do nothing for now
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(
+                keccak256(abi.encode(_intent.route)),
+                keccak256(abi.encode(_intent.reward))
+            )
+        );
+        uint96 trueDestinationChainID = uint96(_intent.route.destination);
+
+        ProofData storage proofData = _provenIntents[intentHash];
+
+        if (trueDestinationChainID != proofData.destinationChainID) {
+            if (proofData.destinationChainID != 0) {
+                proofData.claimant = address(0);
+                emit BadProofCleared(intentHash);
+            }
+
+            proofData.destinationChainID = trueDestinationChainID;
+        }
     }
 
     // ------------ EXTERNAL PROVE FUNCTION -------------
