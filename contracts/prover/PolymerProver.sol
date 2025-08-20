@@ -6,7 +6,6 @@ import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {IProver} from "../interfaces/IProver.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {AddressConverter} from "../libs/AddressConverter.sol";
 import {Intent} from "../types/Intent.sol";
 
 /**
@@ -15,8 +14,6 @@ import {Intent} from "../types/Intent.sol";
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
 contract PolymerProver is BaseProver, Semver, Ownable {
-    using AddressConverter for bytes32;
-    using AddressConverter for address;
 
     // Constants
     string public constant PROOF_TYPE = "Polymer";
@@ -104,7 +101,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         if (
             !isWhitelisted(
                 uint64(destinationChainId),
-                emittingContract.toBytes32()
+                bytes32(uint256(uint160(emittingContract)))
             )
         ) {
             revert InvalidEmittingContract(emittingContract);
@@ -152,7 +149,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
 
-            address claimant = claimantBytes.toAddress();
+            address claimant = address(uint160(uint256(claimantBytes)));
             processIntent(intentHash, claimant, uint96(destinationChainId));
         }
     }
