@@ -27,13 +27,6 @@ interface IInbox {
     event IntentProven(bytes32 indexed intentHash, bytes32 indexed claimant);
 
     /**
-     * @notice Emitted when excess native token refund fails
-     * @param recipient Address that should have received the refund
-     * @param amount Amount of native tokens that failed to refund
-     */
-    event RefundFailed(address indexed recipient, uint256 amount);
-
-    /**
      * @notice Intent has already been fulfilled
      * @param intentHash Hash of the fulfilled intent
      */
