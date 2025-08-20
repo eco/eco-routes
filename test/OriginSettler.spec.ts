@@ -465,7 +465,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(resolvedOrder.user).to.eq(reward.creator)
         expect(resolvedOrder.originChainId).to.eq(
-          Number((await originSettler.runner?.provider?.getNetwork())?.chainId),
+          (await originSettler.runner?.provider?.getNetwork())?.chainId,
         )
         // For onchain orders, openDeadline is block.timestamp when resolve() is called
         // since the order is immediately opened by the user
@@ -523,7 +523,7 @@ describe('Origin Settler Test', (): void => {
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
-          chainId, // native rewards go to destination chain
+          (await originSettler.runner?.provider?.getNetwork())?.chainId,
         )
         expect(resolvedOrder.fillInstructions.length).to.eq(1)
         const fillInstruction = resolvedOrder.fillInstructions[0]
@@ -677,7 +677,7 @@ describe('Origin Settler Test', (): void => {
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
         expect(resolvedOrder.minReceived[i].chainId).to.eq(
-          chainId, // native rewards go to destination chain
+          (await originSettler.runner?.provider?.getNetwork())?.chainId,
         )
         expect(resolvedOrder.fillInstructions.length).to.eq(1)
         const fillInstruction = resolvedOrder.fillInstructions[0]
