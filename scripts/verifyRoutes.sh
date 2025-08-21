@@ -111,14 +111,16 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   VERIFY_KEY="$VERIFICATION_KEY"
   echo "   🔑 Using verification key for chain ID $CHAIN_ID"
   
-  # Get RPC URL for this chain from the chain data if available
-  RPC_URL=""
+  # Get verifier URL and type for this chain from the chain data if available
+  VERIFIER_URL=""
+  VERIFIER_TYPE=""
   if [ -n "$CHAIN_JSON" ]; then
-    RPC_URL=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].url // empty')
-    if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
+    VERIFIER_URL=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].verifier.url // empty')
+    VERIFIER_TYPE=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].verifier.type // empty')
+    if [ -n "$VERIFIER_URL" ] && [ "$VERIFIER_URL" != "null" ] && [ -n "$VERIFIER_TYPE" ] && [ "$VERIFIER_TYPE" != "null" ]; then
       # Replace environment variable placeholders if necessary
-      RPC_URL=$(eval echo "$RPC_URL")
-      echo "   🌐 Using RPC URL for verification"
+      VERIFIER_URL=$(eval echo "$VERIFIER_URL")
+      echo "   🔍 Using custom verifier: $VERIFIER_TYPE at $VERIFIER_URL"
     fi
   fi
   
@@ -127,9 +129,9 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   VERIFY_CMD+=" --chain $CHAIN_ID"
   VERIFY_CMD+=" --etherscan-api-key \"$VERIFY_KEY\""
   
-  # Add RPC URL if available
-  if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
-    VERIFY_CMD+=" --rpc-url \"$RPC_URL\""
+  # Add custom verifier if available
+  if [ -n "$VERIFIER_URL" ] && [ "$VERIFIER_URL" != "null" ] && [ -n "$VERIFIER_TYPE" ] && [ "$VERIFIER_TYPE" != "null" ]; then
+    VERIFY_CMD+=" --verifier $VERIFIER_TYPE --verifier-url '$VERIFIER_URL'"
   fi
   
   # Add remaining parameters
