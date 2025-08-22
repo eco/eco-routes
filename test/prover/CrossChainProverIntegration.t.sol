@@ -63,8 +63,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
         hyperProver = new HyperProver(
             address(mailbox),
             address(portal),
-            hyperProvers,
-            200000
+            hyperProvers
         );
         bytes32[] memory lzProvers = new bytes32[](1);
         lzProvers[0] = bytes32(uint256(uint160(address(prover))));

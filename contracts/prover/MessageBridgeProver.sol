@@ -23,10 +23,10 @@ abstract contract MessageBridgeProver is
     uint256 public immutable MIN_GAS_LIMIT;
 
     /**
-     * @notice Chain ID stored as uint64 immutable for efficient access
-     * @dev Set once at construction time with validation
+     * @notice Default minimum gas limit for cross-chain messages
+     * @dev Used if no specific value is provided during contract deployment
      */
-    uint64 internal immutable CHAIN_ID;
+    uint256 private constant DEFAULT_MIN_GAS_LIMIT = 200_000;
 
     /**
      * @notice Initializes the MessageBridgeProver contract
@@ -40,12 +40,6 @@ abstract contract MessageBridgeProver is
         uint256 minGasLimit
     ) BaseProver(portal) Whitelist(provers) {
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
-
-        // Validate that chain ID fits in uint64 and store it
-        if (block.chainid > type(uint64).max) {
-            revert ChainIdTooLarge(block.chainid);
-        }
-        CHAIN_ID = uint64(block.chainid);
     }
 
     /**
@@ -137,20 +131,6 @@ abstract contract MessageBridgeProver is
 
         // Send refund if needed
         _sendRefund(sender, refundAmount);
-    }
-
-    /**
-     * @notice Validates and converts chain ID to uint32
-     * @dev Common validation for chain ID conversion
-     * @param chainId Chain ID to validate
-     * @return uint32 representation of the chain ID
-     */
-    function _validateChainId(uint256 chainId) internal pure returns (uint32) {
-        if (chainId > type(uint32).max) {
-            revert ChainIdTooLarge(chainId);
-        }
-
-        return uint32(chainId);
     }
 
     /**

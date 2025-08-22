@@ -8,6 +8,7 @@ import {LayerZeroProver} from "../../contracts/prover/LayerZeroProver.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMessageBridgeProver} from "../../contracts/test/TestMessageBridgeProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract ProverInterfaceTest is Test {
     TestProver testProver;
@@ -26,6 +27,38 @@ contract ProverInterfaceTest is Test {
         );
     }
 
+    // Helper function to encode proofs with chain ID prefix
+    function encodeProofsWithChainId(
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal view returns (bytes memory) {
+        require(intentHashes.length == claimants.length, "Length mismatch");
+
+        bytes memory encodedProofs = new bytes(8 + intentHashes.length * 64);
+        uint64 chainId = uint64(block.chainid);
+
+        assembly {
+            // Store chain ID in first 8 bytes
+            mstore(add(encodedProofs, 0x20), shl(192, chainId))
+        }
+
+        for (uint256 i = 0; i < intentHashes.length; i++) {
+            assembly {
+                let offset := add(8, mul(i, 64))
+                mstore(
+                    add(add(encodedProofs, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                mstore(
+                    add(add(encodedProofs, 0x20), add(offset, 32)),
+                    mload(add(claimants, add(0x20, mul(i, 32))))
+                )
+            }
+        }
+
+        return encodedProofs;
+    }
+
     function testProverInterface() public {
         // Test encoding proofs
         bytes32[] memory intentHashes = new bytes32[](2);
@@ -36,16 +69,11 @@ contract ProverInterfaceTest is Test {
         claimants[0] = bytes32(uint256(uint160(makeAddr("claimant1"))));
         claimants[1] = bytes32(uint256(uint160(makeAddr("claimant2"))));
 
-        // Encode proofs manually
-        bytes memory encodedProofs = new bytes(128); // 2 pairs * 64 bytes each
-        assembly {
-            // First pair: intent1 + claimant1
-            mstore(add(encodedProofs, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(encodedProofs, 0x40), mload(add(claimants, 0x20)))
-            // Second pair: intent2 + claimant2
-            mstore(add(encodedProofs, 0x60), mload(add(intentHashes, 0x40)))
-            mstore(add(encodedProofs, 0x80), mload(add(claimants, 0x40)))
-        }
+        // Encode proofs with chain ID prefix
+        bytes memory encodedProofs = encodeProofsWithChainId(
+            intentHashes,
+            claimants
+        );
 
         // Test that we can call prove with new interface
         testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
@@ -98,39 +126,42 @@ contract ProverInterfaceTest is Test {
     // Edge Case Tests
 
     function testProveWithInvalidEncodingLength() public {
-        // Test with 65 bytes (not multiple of 64)
-        bytes memory invalidProofs = new bytes(65);
+        // Test with 8 + 65 bytes (chain ID + invalid proof length)
+        bytes memory invalidProofs = new bytes(8 + 65);
+        uint64 chainId = uint64(block.chainid);
+        assembly {
+            mstore(add(invalidProofs, 0x20), shl(192, chainId))
+        }
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IProver.ArrayLengthMismatch.selector)
-        );
+        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         testProver.prove(makeAddr("sender"), 1, invalidProofs, "");
 
-        // Test with 63 bytes
-        invalidProofs = new bytes(63);
-        vm.expectRevert(
-            abi.encodeWithSelector(IProver.ArrayLengthMismatch.selector)
-        );
+        // Test with 8 + 63 bytes
+        invalidProofs = new bytes(8 + 63);
+        assembly {
+            mstore(add(invalidProofs, 0x20), shl(192, chainId))
+        }
+        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         testProver.prove(makeAddr("sender"), 1, invalidProofs, "");
 
-        // Test with 1 byte
-        invalidProofs = new bytes(1);
-        vm.expectRevert(
-            abi.encodeWithSelector(IProver.ArrayLengthMismatch.selector)
-        );
+        // Test with just 7 bytes (less than chain ID)
+        invalidProofs = new bytes(7);
+        vm.expectRevert(IMessageBridgeProver.InvalidProofMessage.selector);
         testProver.prove(makeAddr("sender"), 1, invalidProofs, "");
     }
 
     function testProveWithInvalidClaimantAddress() public {
         // Create encoded proofs with invalid claimant (not a valid address format)
-        bytes memory encodedProofs = new bytes(64);
+        bytes memory encodedProofs = new bytes(8 + 64);
         bytes32 intentHash = keccak256("intent1");
         // Use a claimant with high bytes set to make it invalid
         bytes32 invalidClaimant = 0x0000000100000000000000000000000000000000000000000000000000000001;
 
+        uint64 chainId = uint64(block.chainid);
         assembly {
-            mstore(add(encodedProofs, 0x20), intentHash)
-            mstore(add(encodedProofs, 0x40), invalidClaimant)
+            mstore(add(encodedProofs, 0x20), shl(192, chainId))
+            mstore(add(encodedProofs, 0x28), intentHash)
+            mstore(add(encodedProofs, 0x48), invalidClaimant)
         }
 
         // Should succeed but skip the invalid claimant
@@ -146,7 +177,7 @@ contract ProverInterfaceTest is Test {
         // Test with all zeros claimant
         invalidClaimant = bytes32(0);
         assembly {
-            mstore(add(encodedProofs, 0x40), invalidClaimant)
+            mstore(add(encodedProofs, 0x48), invalidClaimant)
         }
 
         // Should succeed but skip the zero claimant
@@ -160,8 +191,6 @@ contract ProverInterfaceTest is Test {
 
     function testProveWithMalformedProofData() public {
         // Test with multiple invalid claimants in batch
-        bytes memory encodedProofs = new bytes(192); // 3 pairs
-
         bytes32[] memory intentHashes = new bytes32[](3);
         intentHashes[0] = keccak256("intent1");
         intentHashes[1] = keccak256("intent2");
@@ -174,17 +203,11 @@ contract ProverInterfaceTest is Test {
         ] = 0x0000000100000000000000000000000000000000000000000000000000000001; // Invalid - high bytes set
         claimants[2] = bytes32(uint256(uint160(makeAddr("anotherValid"))));
 
-        assembly {
-            // First pair - valid
-            mstore(add(encodedProofs, 0x20), mload(add(intentHashes, 0x20)))
-            mstore(add(encodedProofs, 0x40), mload(add(claimants, 0x20)))
-            // Second pair - invalid claimant
-            mstore(add(encodedProofs, 0x60), mload(add(intentHashes, 0x40)))
-            mstore(add(encodedProofs, 0x80), mload(add(claimants, 0x40)))
-            // Third pair - valid
-            mstore(add(encodedProofs, 0xA0), mload(add(intentHashes, 0x60)))
-            mstore(add(encodedProofs, 0xC0), mload(add(claimants, 0x60)))
-        }
+        // Use helper to encode with chain ID
+        bytes memory encodedProofs = encodeProofsWithChainId(
+            intentHashes,
+            claimants
+        );
 
         // Should succeed but skip the invalid claimant
         testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
@@ -213,7 +236,6 @@ contract ProverInterfaceTest is Test {
 
     function testProveWithCrossVMClaimant() public {
         // Test with non-EVM claimant (high bytes set)
-        bytes memory encodedProofs = new bytes(64);
         bytes32 intentHash = keccak256("crossVMIntent");
         bytes32 crossVMClaimant = bytes32(
             uint256(
@@ -221,10 +243,12 @@ contract ProverInterfaceTest is Test {
             )
         );
 
-        assembly {
-            mstore(add(encodedProofs, 0x20), intentHash)
-            mstore(add(encodedProofs, 0x40), crossVMClaimant)
-        }
+        bytes32[] memory hashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        hashes[0] = intentHash;
+        claimants[0] = crossVMClaimant;
+
+        bytes memory encodedProofs = encodeProofsWithChainId(hashes, claimants);
 
         // This should succeed but skip the non-EVM claimant
         testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
@@ -240,20 +264,21 @@ contract ProverInterfaceTest is Test {
     function testProveLargeProofBatch() public {
         // Test with maximum reasonable batch size (100 proofs)
         uint256 numProofs = 100;
-        bytes memory encodedProofs = new bytes(numProofs * 64);
+
+        bytes32[] memory intentHashes = new bytes32[](numProofs);
+        bytes32[] memory claimants = new bytes32[](numProofs);
 
         for (uint256 i = 0; i < numProofs; i++) {
-            bytes32 intentHash = keccak256(abi.encodePacked("intent", i));
-            bytes32 claimant = bytes32(
+            intentHashes[i] = keccak256(abi.encodePacked("intent", i));
+            claimants[i] = bytes32(
                 uint256(uint160(address(uint160(i + 1000))))
             );
-
-            assembly {
-                let offset := mul(i, 64)
-                mstore(add(add(encodedProofs, 0x20), offset), intentHash)
-                mstore(add(add(encodedProofs, 0x20), add(offset, 32)), claimant)
-            }
         }
+
+        bytes memory encodedProofs = encodeProofsWithChainId(
+            intentHashes,
+            claimants
+        );
 
         // Should process all proofs successfully
         testProver.prove(makeAddr("sender"), 1, encodedProofs, "");

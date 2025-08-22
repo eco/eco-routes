@@ -16,6 +16,7 @@ export type Route = {
   salt: string
   deadline: number | bigint
   portal: string
+  nativeAmount: number | bigint
   tokens: TokenAmount[]
   calls: Call[]
 }
@@ -38,6 +39,7 @@ const RouteStruct = [
   { name: 'salt', type: 'bytes32' },
   { name: 'deadline', type: 'uint64' },
   { name: 'portal', type: 'address' },
+  { name: 'nativeAmount', type: 'uint256' },
   {
     name: 'tokens',
     type: 'tuple[]',
@@ -84,6 +86,7 @@ const IntentStruct = [
       { name: 'salt', type: 'bytes32' },
       { name: 'deadline', type: 'uint64' },
       { name: 'portal', type: 'address' },
+      { name: 'nativeAmount', type: 'uint256' },
       {
         name: 'tokens',
         type: 'tuple[]',

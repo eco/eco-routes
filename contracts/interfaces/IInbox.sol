@@ -67,6 +67,13 @@ interface IInbox {
     error ChainIdTooLarge(uint256 chainId);
 
     /**
+     * @notice Sent native amount is insufficient for route execution
+     * @param sent Amount of native tokens sent with the transaction
+     * @param required Minimum amount of native tokens required by the route
+     */
+    error InsufficientNativeAmount(uint256 sent, uint256 required);
+
+    /**
      * @notice Fulfills an intent using storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
      * @param intentHash The hash of the intent to fulfill

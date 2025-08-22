@@ -52,15 +52,15 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @param endpoint Address of local LayerZero endpoint
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
-     * @param defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if zero)
      */
     constructor(
         address endpoint,
         address delegate,
         address portal,
         bytes32[] memory provers,
-        uint256 defaultGasLimit
-    ) MessageBridgeProver(portal, provers, defaultGasLimit) {
+        uint256 minGasLimit
+    ) MessageBridgeProver(portal, provers, minGasLimit) {
         if (endpoint == address(0)) revert EndpointCannotBeZeroAddress();
         if (delegate == address(0)) revert DelegateCannotBeZeroAddress();
 
@@ -242,14 +242,9 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         UnpackedData memory unpacked
     )
         internal
-        view
+        pure
         returns (ILayerZeroEndpointV2.MessagingParams memory params)
     {
-        // Validate that encodedProofs length is multiple of 64 bytes
-        if (encodedProofs.length % 64 != 0) {
-            revert ArrayLengthMismatch();
-        }
-
         // Use domain ID directly as endpoint ID with overflow check
         if (domainID > type(uint32).max) {
             revert DomainIdTooLarge(domainID);
@@ -259,8 +254,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // Use the source chain prover address as the message recipient
         params.receiver = unpacked.sourceChainProver;
 
-        // Prepend current chain ID to the message body with encoded proofs
-        params.message = abi.encodePacked(CHAIN_ID, encodedProofs);
+        params.message = encodedProofs;
 
         // Use provided options or create default options with gas limit
         params.options = unpacked.options.length > 0

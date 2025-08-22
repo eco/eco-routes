@@ -32,6 +32,7 @@ struct TokenAmount {
  * @param salt Unique identifier provided by the intent creator, used to prevent duplicates
  * @param deadline Timestamp by which the route must be executed
  * @param portal Address of the portal contract on the destination chain that receives messages
+ * @param nativeAmount Amount of native tokens to send with the route execution
  * @param tokens Array of tokens required for execution of calls on destination chain
  * @param calls Array of contract calls to execute on the destination chain in sequence
  */
@@ -39,6 +40,7 @@ struct Route {
     bytes32 salt;
     uint64 deadline;
     address portal;
+    uint256 nativeAmount;
     TokenAmount[] tokens;
     Call[] calls;
 }

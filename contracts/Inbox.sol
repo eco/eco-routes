@@ -10,6 +10,7 @@ import {IExecutor} from "./interfaces/IExecutor.sol";
 
 import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+import {Refund} from "./libs/Refund.sol";
 
 import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
 import {Executor} from "./Executor.sol";
@@ -32,11 +33,23 @@ abstract contract Inbox is DestinationSettler, IInbox {
     IExecutor public immutable executor;
 
     /**
+     * @notice Chain ID stored as immutable for gas efficiency
+     * @dev Used to prepend to proof messages for cross-chain identification
+     */
+    uint64 private immutable CHAIN_ID;
+
+    /**
      * @notice Initializes the Inbox contract
      * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
     constructor() {
         executor = new Executor();
+
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert ChainIdTooLarge(block.chainid);
+        }
+        CHAIN_ID = uint64(block.chainid);
     }
 
     /**
@@ -60,6 +73,9 @@ abstract contract Inbox is DestinationSettler, IInbox {
             rewardHash,
             claimant
         );
+
+        // Refund any remaining balance (excess ETH)
+        Refund.excessNative();
 
         return result;
     }
@@ -111,6 +127,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         intentHashes[0] = intentHash;
 
         // Call prove with the intent hash array
+        // This will also refund any excess ETH
         prove(prover, sourceChainDomainID, intentHashes, data);
 
         return result;
@@ -141,8 +158,15 @@ abstract contract Inbox is DestinationSettler, IInbox {
     ) public payable {
         uint256 size = intentHashes.length;
 
-        // Encode intent hash/claimant pairs as bytes
-        bytes memory encodedClaimants = new bytes(size * 64); // 32 bytes for intent hash + 32 bytes for claimant
+        // Encode chain ID followed by intent hash/claimant pairs as bytes
+        // 8 bytes for chain ID + (32 bytes for intent hash + 32 bytes for claimant) * size
+        bytes memory encodedClaimants = new bytes(8 + size * 64);
+
+        // Prepend chain ID to the encoded data
+        uint64 chainId = CHAIN_ID;
+        assembly {
+            mstore(add(encodedClaimants, 0x20), shl(192, chainId))
+        }
 
         for (uint256 i = 0; i < size; ++i) {
             bytes32 claimantBytes = claimants[intentHashes[i]];
@@ -151,9 +175,9 @@ abstract contract Inbox is DestinationSettler, IInbox {
                 revert IntentNotFulfilled(intentHashes[i]);
             }
 
-            // Pack intent hash and claimant into encodedData
+            // Pack intent hash and claimant into encodedData (after 8-byte chain ID)
             assembly {
-                let offset := mul(i, 64)
+                let offset := add(8, mul(i, 64))
                 mstore(
                     add(add(encodedClaimants, 0x20), offset),
                     mload(add(intentHashes, add(0x20, mul(i, 32))))
@@ -168,12 +192,16 @@ abstract contract Inbox is DestinationSettler, IInbox {
             emit IntentProven(intentHashes[i], claimantBytes);
         }
 
+        // Provide left over balance to the prover
         IProver(prover).prove{value: address(this).balance}(
             msg.sender,
             sourceChainDomainID,
             encodedClaimants,
             data
         );
+
+        // Refund any remaining balance (excess ETH)
+        Refund.excessNative();
     }
 
     /**
@@ -199,7 +227,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 computedIntentHash = keccak256(
             abi.encodePacked(
-                _validateChainID(block.chainid),
+                CHAIN_ID,
                 routeHash,
                 rewardHash
             )
@@ -225,6 +253,12 @@ abstract contract Inbox is DestinationSettler, IInbox {
         // Transfer ERC20 tokens to the executor
         uint256 tokensLength = route.tokens.length;
 
+        // Validate that msg.value is at least the route's nativeAmount
+        // Allow extra value for cross-chain message fees when using fulfillAndProve
+        if (msg.value < route.nativeAmount) {
+            revert InsufficientNativeAmount(msg.value, route.nativeAmount);
+        }
+
         for (uint256 i = 0; i < tokensLength; ++i) {
             TokenAmount memory token = route.tokens[i];
 
@@ -235,20 +269,6 @@ abstract contract Inbox is DestinationSettler, IInbox {
             );
         }
 
-        uint256 callsLength = route.calls.length;
-        uint256 callsValue = 0;
-        for (uint256 i = 0; i < callsLength; ++i) {
-            callsValue += route.calls[i].value;
-        }
-
-        return executor.execute{value: callsValue}(route.calls);
-    }
-
-    function _validateChainID(uint256 chainId) internal pure returns (uint64) {
-        if (chainId > type(uint64).max) {
-            revert ChainIdTooLarge(chainId);
-        }
-
-        return uint64(chainId);
+        return executor.execute{value: route.nativeAmount}(route.calls);
     }
 }

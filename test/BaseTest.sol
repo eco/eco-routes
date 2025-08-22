@@ -129,6 +129,7 @@ contract BaseTest is Test {
             salt: salt,
             deadline: uint64(expiry),
             portal: address(portal),
+            nativeAmount: 0,
             tokens: routeTokensMemory,
             calls: callsMemory
         });

@@ -82,11 +82,12 @@ If your application only needs to interact with EVM chains:
 
    ```solidity
    Intent memory intent = Intent({
+       destination: 137,  // Polygon chain ID
        route: Route({
            salt: bytes32(0),
-           source: 1,
-           destination: 2,
-           inbox: 0x1234...,  // regular address type
+           deadline: block.timestamp + 86400,
+           portal: 0x1234...,  // Portal address on destination chain
+           nativeAmount: 0,  // Amount of native tokens for execution
            tokens: tokenAmounts,
            calls: calls
        }),
@@ -116,11 +117,12 @@ If your application needs to interact with both EVM and non-EVM chains:
 
    ```solidity
    Intent memory intent = Intent({
+       destination: 137,  // Polygon chain ID
        route: Route({
            salt: bytes32(0),
-           source: 1,
-           destination: 2,
-           inbox: AddressConverter.toBytes32(0x1234...),  // convert EVM address to bytes32
+           deadline: block.timestamp + 86400,
+           portal: AddressConverter.toBytes32(0x1234...),  // Portal address as bytes32
+           nativeAmount: 0,  // Amount of native tokens for execution
            tokens: tokenAmounts,
            calls: calls
        }),

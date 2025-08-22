@@ -3,6 +3,8 @@
 pragma solidity ^0.8.26;
 
 import {BaseProver} from "../prover/BaseProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 
 /**
  * @title TestProver
@@ -79,18 +81,26 @@ contract TestProver is BaseProver {
         });
         proveCallCount++;
 
-        // Extract and store proofs for test verification
-        uint256 numPairs = _encodedProofs.length / 64;
+        // Skip the first 8 bytes (chain ID) and extract proofs for test verification
+        if (_encodedProofs.length < 8) {
+            revert IMessageBridgeProver.InvalidProofMessage();
+        }
+        if ((_encodedProofs.length - 8) % 64 != 0) {
+            revert IProver.ArrayLengthMismatch();
+        }
+
+        bytes calldata proofsData = _encodedProofs[8:];
+        uint256 numPairs = proofsData.length / 64;
         delete argIntentHashes;
         delete argClaimants;
 
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = i * 64;
-            argIntentHashes.push(bytes32(_encodedProofs[offset:offset + 32]));
-            argClaimants.push(bytes32(_encodedProofs[offset + 32:offset + 64]));
+            argIntentHashes.push(bytes32(proofsData[offset:offset + 32]));
+            argClaimants.push(bytes32(proofsData[offset + 32:offset + 64]));
         }
 
-        // Process the encoded proofs to update internal state
-        _processIntentProofs(_encodedProofs, _sourceChainId);
+        // Process the encoded proofs to update internal state (pass without chain ID)
+        _processIntentProofs(proofsData, _sourceChainId);
     }
 }

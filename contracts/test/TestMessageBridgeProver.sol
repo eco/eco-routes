@@ -2,6 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
+import {IProver} from "../interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 
 /**
  * @title TestMessageBridgeProver
@@ -71,9 +73,13 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         bytes calldata _encodedProofs,
         bytes calldata /* _data */
     ) external payable override {
-        // Basic validation
-        require(_encodedProofs.length > 0, "Empty proofs");
-        require(_encodedProofs.length % 64 == 0, "Invalid proofs length");
+        // Basic validation - the message includes 8 bytes chain ID + proof pairs
+        if (_encodedProofs.length < 8) {
+            revert IMessageBridgeProver.InvalidProofMessage();
+        }
+        if ((_encodedProofs.length - 8) % 64 != 0) {
+            revert IProver.ArrayLengthMismatch();
+        }
 
         // Process the intent proofs using the base implementation
         _handleCrossChainMessage(

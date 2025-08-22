@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IVault} from "./IVault.sol";
 import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
 
 /**
@@ -20,12 +19,6 @@ interface IIntentSource {
         Withdrawn, /// @dev Rewards have been withdrawn by claimant
         Refunded /// @dev Rewards have been refunded to creator
     }
-
-    /**
-     * @notice Indicates a failed native token transfer during reward distribution
-     * @param intentHash The hash of the intent whose reward transfer failed
-     */
-    error NativeRewardTransferFailed(bytes32 intentHash);
 
     /**
      * @notice Indicates an attempt to publish a duplicate intent
