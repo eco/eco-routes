@@ -606,7 +606,7 @@ contract InboxTest is BaseTest {
             "test_data"
         );
 
-        // Verify portal has no remaining native funds
+        // Verify portal has not retained native funds sent during prove
         assertEq(address(portal).balance, portalInitialBalance);
         
         // Verify the prover received the funds and handled refund correctly
