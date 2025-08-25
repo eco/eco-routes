@@ -116,7 +116,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
             revert EmptyProofData();
         }
 
-        if (data.length % 64 != 0) {
+        if ((data.length - 8) % 64 != 0) {
             revert ArrayLengthMismatch();
         }
 
@@ -138,9 +138,9 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         uint64 eventSourceChainId = uint64(sourceChainIdUint256);
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
-        uint256 numPairs = data.length / 64;
+        uint256 numPairs = (data.length - 8) / 64;
         for (uint256 i = 0; i < numPairs; i++) {
-            uint256 offset = i * 64;
+            uint256 offset = 8 + i * 64;
 
             bytes32 intentHash;
             bytes32 claimantBytes;
@@ -219,7 +219,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
 
         if (encodedProofs.length == 0) return;
 
-        if (encodedProofs.length % 64 != 0) {
+        if ((encodedProofs.length - 8 ) % 64 != 0) {
             revert ArrayLengthMismatch();
         }
         if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
