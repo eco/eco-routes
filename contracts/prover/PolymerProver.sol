@@ -31,6 +31,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     error InvalidEventSignature();
     error InvalidEmittingContract(address emittingContract);
     error InvalidSourceChain();
+    error InvalidDestinationChain();
     error InvalidTopicsLength();
     error ZeroAddress();
     error SizeMismatch();
@@ -122,12 +123,15 @@ contract PolymerProver is BaseProver, Semver, Ownable {
 
         bytes32 eventSignature;
         bytes32 sourceChainIdBytes32;
+        uint64 proofDataChainId;
 
         assembly {
             let topicsPtr := add(topics, 32)
+            let dataPtr := add(data, 32)
 
             eventSignature := mload(topicsPtr)
             sourceChainIdBytes32 := mload(add(topicsPtr, 32))
+            proofDataChainId := shr(192, mload(dataPtr)) // Extract first 8 bytes (64 bits) from the 32-byte word
         }
 
         if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
@@ -137,6 +141,9 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         }
         uint64 eventSourceChainId = uint64(sourceChainIdUint256);
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
+        
+        // Verify the chain ID from proof data matches the destination chain from validateEvent
+        if (proofDataChainId != uint64(destinationChainId)) revert InvalidDestinationChain();
 
         uint256 numPairs = (data.length - 8) / 64;
         for (uint256 i = 0; i < numPairs; i++) {

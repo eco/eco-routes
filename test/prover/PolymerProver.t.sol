@@ -23,25 +23,46 @@ contract PolymerProverTest is BaseTest {
     bytes internal emptyData = hex"";
 
     /**
-     * @notice Helper function to encode proofs from separate arrays
+     * @notice Helper function to encode proofs from separate arrays with 8-byte chain ID prefix
      * @param intentHashes Array of intent hashes
      * @param claimants Array of claimant addresses (as bytes32)
-     * @return encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @return encodedProofs Encoded 8-byte chain ID + (intentHash, claimant) pairs as bytes
      */
     function encodeProofs(
         bytes32[] memory intentHashes,
         bytes32[] memory claimants
+    ) internal view returns (bytes memory encodedProofs) {
+        return encodeProofsWithChainId(intentHashes, claimants, uint64(block.chainid));
+    }
+
+    /**
+     * @notice Helper function to encode proofs with specific chain ID prefix
+     * @param intentHashes Array of intent hashes
+     * @param claimants Array of claimant addresses (as bytes32)
+     * @param chainId Chain ID to encode in the prefix
+     * @return encodedProofs Encoded 8-byte chain ID + (intentHash, claimant) pairs as bytes
+     */
+    function encodeProofsWithChainId(
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants,
+        uint64 chainId
     ) internal pure returns (bytes memory encodedProofs) {
         require(
             intentHashes.length == claimants.length,
             "Array length mismatch"
         );
 
-        encodedProofs = new bytes(intentHashes.length * 64);
+        encodedProofs = new bytes(8 + intentHashes.length * 64);
+        
+        // Add 8-byte chain ID prefix
+        assembly {
+            mstore(add(encodedProofs, 0x20), shl(192, chainId))
+        }
+        
         for (uint256 i = 0; i < intentHashes.length; i++) {
             assembly {
-                let offset := mul(i, 64)
-                // Store hash in first 32 bytes of each pair
+                let offset := add(8, mul(i, 64))
+                // Store hash in first 32 bytes of each pair (after 8-byte prefix)
                 mstore(
                     add(add(encodedProofs, 0x20), offset),
                     mload(add(intentHashes, add(0x20, mul(i, 32))))
@@ -194,7 +215,7 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -229,7 +250,7 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -259,7 +280,7 @@ contract PolymerProverTest is BaseTest {
             claimants[i] = bytes32(uint256(uint160(claimant)));
         }
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR,
@@ -321,7 +342,7 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint64(block.chainid))) // source chain ID
             );
 
-            bytes memory data = encodeProofs(singleIntentHash, singleClaimant);
+            bytes memory data = encodeProofsWithChainId(singleIntentHash, singleClaimant, chainIds[i]);
 
             crossL2ProverV2.setAll(
                 chainIds[i],
@@ -372,7 +393,7 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint64(block.chainid))) // source chain ID
             );
 
-            bytes memory data = encodeProofs(singleIntentHash, singleClaimant);
+            bytes memory data = encodeProofsWithChainId(singleIntentHash, singleClaimant, chainIds[i]);
 
             crossL2ProverV2.setAll(
                 chainIds[i],
@@ -394,9 +415,10 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory duplicateData = encodeProofs(
+        bytes memory duplicateData = encodeProofsWithChainId(
             duplicateIntentHash,
-            duplicateClaimant
+            duplicateClaimant,
+            chainIds[2]
         );
 
         crossL2ProverV2.setAll(
@@ -438,7 +460,7 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -489,7 +511,7 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -516,7 +538,7 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -560,7 +582,7 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofs(intentHashes, claimants);
+        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
