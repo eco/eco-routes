@@ -197,9 +197,6 @@ abstract contract Inbox is DestinationSettler, IInbox {
             encodedClaimants,
             data
         );
-
-        // Refund any remaining balance (excess ETH)
-        Refund.excessNative();
     }
 
     /**
