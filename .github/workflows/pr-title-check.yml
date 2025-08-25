@@ -1,0 +1,15 @@
+name: PR Title Conventional Commit Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  pr-title-check:
+    runs-on: ubuntu-latest
+    name: Validate PR Title
+    steps:
+      - name: Check PR title follows conventional commit format
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

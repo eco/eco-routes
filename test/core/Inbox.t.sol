@@ -304,7 +304,7 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         vm.deal(solver, ethAmount + extraFee);
         uint256 solverInitialBalance = solver.balance;
-        
+
         portal.fulfill{value: ethAmount + extraFee}(
             intentHash,
             intent.route,
