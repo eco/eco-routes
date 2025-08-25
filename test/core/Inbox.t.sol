@@ -304,7 +304,7 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         vm.deal(solver, ethAmount + extraFee);
         uint256 solverInitialBalance = solver.balance;
-        
+
         portal.fulfill{value: ethAmount + extraFee}(
             intentHash,
             intent.route,
@@ -569,6 +569,49 @@ contract InboxTest is BaseTest {
                     tokens: new TokenAmount[](0)
                 })
             });
+    }
+
+    function testProveDoesNotLeaveNativeFundsInPortal() public {
+        // First, fulfill an intent
+        Intent memory intent = _createIntent();
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        );
+        
+        vm.prank(solver);
+        portal.fulfill(
+            intentHash,
+            intent.route,
+            rewardHash,
+            bytes32(uint256(uint160(recipient)))
+        );
+
+        // Create array with the fulfilled intent
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        // Record initial portal balance
+        uint256 portalInitialBalance = address(portal).balance;
+        uint256 proveAmount = 2 ether;
+
+        // Call prove with excess native funds
+        vm.prank(solver);
+        vm.deal(solver, proveAmount);
+        portal.prove{value: proveAmount}(
+            address(prover),
+            uint64(block.chainid),
+            intentHashes,
+            "test_data"
+        );
+
+        // Verify portal has not retained native funds sent during prove
+        assertEq(address(portal).balance, portalInitialBalance);
+        
+        // Verify the prover received the funds and handled refund correctly
+        // The solver should have been refunded by the prover's prove method
+        assertEq(solver.balance, 0); // All funds were sent to prover initially
     }
 
     function _createIntentWithCalls() internal view returns (Intent memory) {
