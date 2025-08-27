@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {SetConfigParam} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
+
 /**
  * @title ILayerZeroEndpointV2
  * @notice Interface for LayerZero V2 endpoint contract
@@ -70,14 +72,14 @@ interface ILayerZeroEndpointV2 {
 
     /**
      * @notice Set configuration for a specific endpoint and config type
-     * @param eid Endpoint ID
-     * @param configType Configuration type
-     * @param config Configuration data
+     * @param _oapp Address of the OAPP contract
+     * @param _lib Address of the message library
+     * @param _params Configuration parameters
      */
     function setConfig(
-        uint32 eid,
-        uint32 configType,
-        bytes calldata config
+        address _oapp,
+        address _lib,
+        SetConfigParam[] calldata _params
     ) external;
 
     /**
@@ -85,4 +87,45 @@ interface ILayerZeroEndpointV2 {
      * @param delegate Address of the delegate
      */
     function setDelegate(address delegate) external;
+
+    /**
+     * @notice Set the send library for a specific OAPP and endpoint
+     * @param _oapp Address of the OAPP (Omnichain Application) contract
+     * @param _eid Endpoint ID of the destination chain
+     * @param _newLib Address of the new send library to use
+     */
+    function setSendLibrary(
+        address _oapp,
+        uint32 _eid,
+        address _newLib
+    ) external;
+
+    /**
+     * @notice Set the receive library for a specific OAPP and endpoint
+     * @param _oapp Address of the OAPP (Omnichain Application) contract
+     * @param _eid Endpoint ID of the source chain
+     * @param _newLib Address of the new receive library to use
+     * @param _gracePeriod Grace period before the library change takes effect
+     */
+    function setReceiveLibrary(
+        address _oapp,
+        uint32 _eid,
+        address _newLib,
+        uint256 _gracePeriod
+    ) external;
+
+    /**
+     * @notice Get configuration for a specific OAPP, library, endpoint and config type
+     * @param _oapp Address of the OAPP contract
+     * @param _lib Address of the message library
+     * @param _eid Endpoint ID of the target chain
+     * @param _configType Type of configuration to retrieve
+     * @return config The configuration data as bytes
+     */
+    function getConfig(
+        address _oapp,
+        address _lib,
+        uint32 _eid,
+        uint32 _configType
+    ) external view returns (bytes memory config);
 }

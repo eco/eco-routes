@@ -4,3 +4,4 @@ forge-std/=lib/forge-std/src/
 @hyperlane-xyz/core/=node_modules/@hyperlane-xyz/core/
 @eth-optimism/contracts-bedrock/=node_modules/@eth-optimism/contracts-bedrock/
 @metalayer/contracts/=node_modules/@metalayer/contracts/
+@layerzerolabs/lz-evm-protocol-v2/=node_modules/@layerzerolabs/lz-evm-protocol-v2/
