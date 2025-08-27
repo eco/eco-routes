@@ -13,6 +13,7 @@ import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
+import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -40,10 +41,13 @@ contract Deploy is Script {
     // Define a struct to consolidate deployment data and avoid stack too deep errors
     struct DeploymentContext {
         bytes32 salt;
+        address existingPortal;
         address mailbox;
         address router;
         address layerZeroEndpoint;
         address layerZeroDelegate;
+        address polymerCrossL2ProverV2;
+        address polymerOwner;
         string deployFilePath;
         bytes32[] crossVmProvers;
         address deployer;
@@ -51,23 +55,29 @@ contract Deploy is Script {
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
         bytes32 layerZeroProverSalt;
+        bytes32 polymerProverSalt;
         address portal;
         address hyperProver;
         address metaProver;
         address layerZeroProver;
+        address polymerProver;
         bytes hyperProverConstructorArgs;
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
+        bytes polymerProverConstructorArgs;
     }
 
     function run() external {
         // Initialize the deployment context struct with environment variables
         DeploymentContext memory ctx;
         ctx.salt = vm.envBytes32("SALT");
+        ctx.existingPortal = vm.envOr("PORTAL_CONTRACT", address(0));
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
         ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
+        ctx.polymerCrossL2ProverV2 = vm.envOr("POLYMER_CROSS_L2_PROVER_V2", address(0));
+        ctx.polymerOwner = vm.envOr("POLYMER_OWNER", ctx.deployer);
 
         // Load cross-VM provers from environment variable (optional)
         try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
@@ -79,11 +89,16 @@ contract Deploy is Script {
         }
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
+        bool hasExistingPortal = ctx.existingPortal != address(0);
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
+        bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
+        bool needsPortal = !hasExistingPortal && (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
         // Compute salts for each contract
-        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
+        if (needsPortal) {
+            ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
+        }
         if (hasMailbox) {
             ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
         }
@@ -99,13 +114,22 @@ contract Deploy is Script {
             );
         }
 
+        if (hasPolymer) {
+            ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
+        }
+
         vm.startBroadcast();
 
         // Deploy deployer if it hasn't been deployed
         deployCreate3Deployer();
 
-        // Deploy Portal
-        deployPortal(ctx);
+        // Deploy Portal or use existing
+        if (hasExistingPortal) {
+            ctx.portal = ctx.existingPortal;
+            console.log("Using existing Portal :", ctx.portal);
+        } else if (needsPortal) {
+            deployPortal(ctx);
+        }
 
         // Deploy HyperProver
         if (hasMailbox) {
@@ -122,6 +146,11 @@ contract Deploy is Script {
             deployLayerZeroProver(ctx);
         }
 
+        // Deploy PolymerProver
+        if (hasPolymer) {
+            deployPolymerProver(ctx);
+        }
+
         vm.stopBroadcast();
 
         // Write deployment results to file
@@ -130,21 +159,31 @@ contract Deploy is Script {
 
     // Separate function to handle writing deployment data to file
     function writeDeploymentData(DeploymentContext memory ctx) internal {
-        uint num = 1;
+        bool hasExistingPortal = ctx.existingPortal != address(0);
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
+        bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
+        bool needsPortal = !hasExistingPortal && (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+        
+        uint num = 0;
+        num = needsPortal ? num + 1 : num;
         num = hasMailbox ? num + 1 : num;
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
+        num = hasPolymer ? num + 1 : num;
+        
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
-        contracts[count++] = VerificationData({
-            contractAddress: ctx.portal,
-            contractPath: "contracts/Portal.sol:Portal",
-            constructorArgs: new bytes(0),
-            chainId: block.chainid
-        });
+        
+        if (needsPortal) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.portal,
+                contractPath: "contracts/Portal.sol:Portal",
+                constructorArgs: new bytes(0),
+                chainId: block.chainid
+            });
+        }
 
         if (hasMailbox) {
             contracts[count++] = VerificationData({
@@ -167,6 +206,14 @@ contract Deploy is Script {
                 contractAddress: ctx.layerZeroProver,
                 contractPath: "contracts/prover/LayerZeroProver.sol:LayerZeroProver",
                 constructorArgs: ctx.layerZeroProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+        if (hasPolymer) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.polymerProver,
+                contractPath: "contracts/prover/PolymerProver.sol:PolymerProver",
+                constructorArgs: ctx.polymerProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -302,6 +349,29 @@ contract Deploy is Script {
         );
 
         console.log("LayerZeroProver :", ctx.layerZeroProver);
+    }
+
+    function deployPolymerProver(
+        DeploymentContext memory ctx
+    ) internal returns (address polymerProver) {
+        ctx.polymerProverConstructorArgs = abi.encode(
+            ctx.polymerOwner,
+            ctx.portal
+        );
+
+        bytes memory polymerProverBytecode = abi.encodePacked(
+            type(PolymerProver).creationCode,
+            ctx.polymerProverConstructorArgs
+        );
+
+        bool deployed;
+        (ctx.polymerProver, deployed) = deployWithCreate3(
+            polymerProverBytecode,
+            ctx.deployer,
+            ctx.polymerProverSalt
+        );
+
+        console.log("PolymerProver :", ctx.polymerProver);
     }
 
     function isDeployed(address _addr) internal view returns (bool) {
