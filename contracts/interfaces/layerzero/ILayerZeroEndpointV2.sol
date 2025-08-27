@@ -3,13 +3,12 @@ pragma solidity ^0.8.26;
 
 /**
  * @title ILayerZeroEndpointV2
- * @notice Interface for LayerZero V2 endpoint contract
- * @dev Defines the core messaging functions for cross-chain communication
+ * @notice Minimal interface for LayerZero V2 endpoint contract
+ * @dev Only includes functions actually used by LayerZeroProver
  */
 interface ILayerZeroEndpointV2 {
     /**
-     * @notice Struct containing messaging parameters for LayerZero
-     * @param dstEid Destination endpoint ID
+     * @notice Struct containing messaging fee information
      * @param nativeFee Native fee amount to send
      * @param lzTokenFee LayerZero token fee amount
      */
@@ -67,18 +66,6 @@ interface ILayerZeroEndpointV2 {
         MessagingParams calldata params,
         address sender
     ) external view returns (MessagingFee memory fee);
-
-    /**
-     * @notice Set configuration for a specific endpoint and config type
-     * @param eid Endpoint ID
-     * @param configType Configuration type
-     * @param config Configuration data
-     */
-    function setConfig(
-        uint32 eid,
-        uint32 configType,
-        bytes calldata config
-    ) external;
 
     /**
      * @notice Set delegate for message handling
