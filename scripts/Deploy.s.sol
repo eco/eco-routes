@@ -48,7 +48,10 @@ contract Deploy is Script {
         address layerZeroDelegate;
         address polymerCrossL2ProverV2;
         string deployFilePath;
-        bytes32[] crossVmProvers;
+        bytes32[] hyperCrossVmProvers;
+        bytes32[] metaCrossVmProvers;
+        bytes32[] layerZeroCrossVmProvers;
+        bytes32[] polymerCrossVmProvers;
         address deployer;
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
@@ -77,13 +80,37 @@ contract Deploy is Script {
         ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
         ctx.polymerCrossL2ProverV2 = vm.envOr("POLYMER_CROSS_L2_PROVER_V2", address(0));
 
-        // Load cross-VM provers from environment variable (optional)
-        try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
+        // Load cross-VM provers from environment variables (optional)
+        try vm.envBytes32("HYPER_CROSS_VM_PROVERS", ",") returns (
             bytes32[] memory provers
         ) {
-            ctx.crossVmProvers = provers;
+            ctx.hyperCrossVmProvers = provers;
         } catch {
-            ctx.crossVmProvers = new bytes32[](0);
+            ctx.hyperCrossVmProvers = new bytes32[](0);
+        }
+        
+        try vm.envBytes32("META_CROSS_VM_PROVERS", ",") returns (
+            bytes32[] memory provers
+        ) {
+            ctx.metaCrossVmProvers = provers;
+        } catch {
+            ctx.metaCrossVmProvers = new bytes32[](0);
+        }
+        
+        try vm.envBytes32("LAYERZERO_CROSS_VM_PROVERS", ",") returns (
+            bytes32[] memory provers
+        ) {
+            ctx.layerZeroCrossVmProvers = provers;
+        } catch {
+            ctx.layerZeroCrossVmProvers = new bytes32[](0);
+        }
+        
+        try vm.envBytes32("POLYMER_CROSS_VM_PROVERS", ",") returns (
+            bytes32[] memory provers
+        ) {
+            ctx.polymerCrossVmProvers = provers;
+        } catch {
+            ctx.polymerCrossVmProvers = new bytes32[](0);
         }
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -239,10 +266,10 @@ contract Deploy is Script {
         );
 
         // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
-        bytes32[] memory provers = new bytes32[](1 + ctx.crossVmProvers.length);
+        bytes32[] memory provers = new bytes32[](1 + ctx.hyperCrossVmProvers.length);
         provers[0] = bytes32(bytes20(hyperProverPreviewAddr)); // Self-reference for EVM
-        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
-            provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
+        for (uint256 i = 0; i < ctx.hyperCrossVmProvers.length; i++) {
+            provers[i + 1] = ctx.hyperCrossVmProvers[i]; // Cross-VM prover addresses
         }
 
         ctx.hyperProverConstructorArgs = abi.encode(
@@ -276,10 +303,10 @@ contract Deploy is Script {
         );
 
         // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
-        bytes32[] memory provers = new bytes32[](1 + ctx.crossVmProvers.length);
+        bytes32[] memory provers = new bytes32[](1 + ctx.metaCrossVmProvers.length);
         provers[0] = bytes32(bytes20(metaProverPreviewAddr)); // Self-reference for EVM
-        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
-            provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
+        for (uint256 i = 0; i < ctx.metaCrossVmProvers.length; i++) {
+            provers[i + 1] = ctx.metaCrossVmProvers[i]; // Cross-VM prover addresses
         }
 
         // Minimum gas limit for cross-chain messages
@@ -317,10 +344,10 @@ contract Deploy is Script {
         );
 
         // Initialize provers array properly with inbox address (as bytes32 for cross-VM compatibility)
-        bytes32[] memory provers = new bytes32[](1 + ctx.crossVmProvers.length);
+        bytes32[] memory provers = new bytes32[](1 + ctx.layerZeroCrossVmProvers.length);
         provers[0] = bytes32(bytes20(layerZeroProverPreviewAddr)); // Self-reference for EVM
-        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
-            provers[i + 1] = ctx.crossVmProvers[i]; // Cross-VM prover addresses
+        for (uint256 i = 0; i < ctx.layerZeroCrossVmProvers.length; i++) {
+            provers[i + 1] = ctx.layerZeroCrossVmProvers[i]; // Cross-VM prover addresses
         }
 
         // Minimum gas limit for LayerZero messages
@@ -352,10 +379,10 @@ contract Deploy is Script {
     function deployPolymerProver(
         DeploymentContext memory ctx
     ) internal returns (address polymerProver) {
-        // Create provers array (empty array since whitelist is contract-specific)
-        bytes32[] memory provers = new bytes32[](ctx.crossVmProvers.length);
-        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
-            provers[i] = ctx.crossVmProvers[i];
+        // Create provers array for PolymerProver whitelist
+        bytes32[] memory provers = new bytes32[](ctx.polymerCrossVmProvers.length);
+        for (uint256 i = 0; i < ctx.polymerCrossVmProvers.length; i++) {
+            provers[i] = ctx.polymerCrossVmProvers[i];
         }
 
         ctx.polymerProverConstructorArgs = abi.encode(
