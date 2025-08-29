@@ -89,21 +89,16 @@ contract PolymerProverTest is BaseTest {
         // Create mock destination prover address
         destinationProver = makeAddr("destinationProver");
 
-        // Deploy PolymerProver with owner and portal
-        polymerProver = new PolymerProver(
-            address(this), // owner
-            address(portal)
-        );
-
-        // Initialize with CrossL2ProverV2 and whitelist
-        uint64[] memory chainIds = new uint64[](2);
-        bytes32[] memory provers = new bytes32[](2);
-        chainIds[0] = OPTIMISM_CHAIN_ID;
-        chainIds[1] = ARBITRUM_CHAIN_ID;
+        // Create whitelist array for constructor
+        bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(destinationProver)));
-        provers[1] = bytes32(uint256(uint160(destinationProver)));
 
-        polymerProver.initialize(address(crossL2ProverV2), chainIds, provers);
+        // Deploy PolymerProver with portal, crossL2ProverV2, and whitelist
+        polymerProver = new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            provers
+        );
 
         _mintAndApprove(creator, MINT_AMOUNT);
         _fundUserNative(creator, 10 ether);
@@ -117,6 +112,10 @@ contract PolymerProverTest is BaseTest {
             address(crossL2ProverV2)
         );
         assertEq(polymerProver.PORTAL(), address(portal));
+        
+        // Test whitelist functionality
+        assertTrue(polymerProver.isWhitelisted(bytes32(uint256(uint160(destinationProver)))));
+        assertEq(polymerProver.getWhitelistSize(), 1);
     }
 
     function testImplementsIProverInterface() public view {
@@ -609,31 +608,28 @@ contract PolymerProverTest is BaseTest {
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
     }
 
-    function testInitializeCanOnlyBeCalledOnce() public {
-        uint64[] memory chainIds = new uint64[](1);
-        bytes32[] memory provers = new bytes32[](1);
-        chainIds[0] = OPTIMISM_CHAIN_ID;
-        provers[0] = bytes32(uint256(uint160(destinationProver)));
-
-        // Should revert since initialize was already called in setUp
-        vm.expectRevert();
-        polymerProver.initialize(address(crossL2ProverV2), chainIds, provers);
+    function testWhitelistFunctionality() public {
+        // Test that our destination prover is whitelisted
+        assertTrue(polymerProver.isWhitelisted(bytes32(uint256(uint160(destinationProver)))));
+        
+        // Test that a random address is not whitelisted
+        address randomAddr = makeAddr("random");
+        assertFalse(polymerProver.isWhitelisted(bytes32(uint256(uint160(randomAddr)))));
+        
+        // Test zero address is not whitelisted
+        assertFalse(polymerProver.isWhitelisted(bytes32(0)));
     }
 
-    function testInitializeOnlyCallableByOwner() public {
+    function testConstructorWithEmptyWhitelist() public {
+        bytes32[] memory emptyProvers = new bytes32[](0);
+        
         PolymerProver newProver = new PolymerProver(
-            address(this), // owner
-            address(portal)
+            address(portal),
+            address(crossL2ProverV2),
+            emptyProvers
         );
-
-        uint64[] memory chainIds = new uint64[](1);
-        bytes32[] memory provers = new bytes32[](1);
-        chainIds[0] = OPTIMISM_CHAIN_ID;
-        provers[0] = bytes32(uint256(uint160(destinationProver)));
-
-        // Should revert when called by non-owner
-        vm.prank(creator);
-        vm.expectRevert();
-        newProver.initialize(address(crossL2ProverV2), chainIds, provers);
+        
+        assertEq(newProver.getWhitelistSize(), 0);
+        assertFalse(newProver.isWhitelisted(bytes32(uint256(uint160(destinationProver)))));
     }
 }

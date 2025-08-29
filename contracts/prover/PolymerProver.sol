@@ -5,15 +5,15 @@ import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {IProver} from "../interfaces/IProver.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
+import {Whitelist} from "../libs/Whitelist.sol";
 
 /**
  * @title PolymerProver
  * @notice Prover implementation using Polymer's cross-chain messaging system
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
-contract PolymerProver is BaseProver, Semver, Ownable {
+contract PolymerProver is BaseProver, Whitelist, Semver {
     using AddressConverter for bytes32;
     using AddressConverter for address;
 
@@ -40,41 +40,21 @@ contract PolymerProver is BaseProver, Semver, Ownable {
     error OnlyPortal();
 
     // State variables
-    ICrossL2ProverV2 public CROSS_L2_PROVER_V2;
-    mapping(uint64 => bytes32) public WHITELISTED_EMITTERS;
+    ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
 
     /**
      * @notice Initializes the PolymerProver contract
-     * @param _owner Temporary owner address for initialization
      * @param _portal Address of the Portal contract
+     * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
+     * @param _provers Array of whitelisted prover addresses as bytes32
      */
     constructor(
-        address _owner,
-        address _portal
-    ) BaseProver(_portal) Ownable(_owner) {}
-
-    /**
-     * @notice Initializes the contract with CrossL2ProverV2 and whitelist settings
-     * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
-     * @param _chainIds Array of chain IDs for whitelisted emitters
-     * @param _whitelistedEmitters Array of whitelisted emitter addresses
-     */
-    function initialize(
+        address _portal,
         address _crossL2ProverV2,
-        uint64[] calldata _chainIds,
-        bytes32[] calldata _whitelistedEmitters
-    ) external onlyOwner {
+        bytes32[] memory _provers
+    ) BaseProver(_portal) Whitelist(_provers) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
-        if (_chainIds.length != _whitelistedEmitters.length)
-            revert SizeMismatch();
-
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
-
-        for (uint256 i = 0; i < _chainIds.length; i++) {
-            WHITELISTED_EMITTERS[_chainIds[i]] = _whitelistedEmitters[i];
-        }
-
-        renounceOwnership();
     }
 
     // ------------- LOG EVENT PROOF VALIDATION -------------
@@ -91,7 +71,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
 
     /**
      * @notice Validates a single proof and processes contained intents
-     * @param proof of a IntentFulfilledFromSource event
+     * @param proof Proof of an IntentFulfilledFromSource event
      */
     function validate(bytes calldata proof) public {
         (
@@ -101,12 +81,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        if (
-            !isWhitelisted(
-                uint64(destinationChainId),
-                emittingContract.toBytes32()
-            )
-        ) {
+        if (!isWhitelisted(emittingContract.toBytes32())) {
             revert InvalidEmittingContract(emittingContract);
         }
 
@@ -169,6 +144,7 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      * @notice Processes a single intent proof
      * @param intentHash Hash of the intent being proven
      * @param claimant Address that fulfilled the intent and should receive rewards
+     * @param destination Destination chain ID for the intent
      */
     function processIntent(
         bytes32 intentHash,
@@ -185,16 +161,6 @@ contract PolymerProver is BaseProver, Semver, Ownable {
         proof.destination = destination;
 
         emit IntentProven(intentHash, claimant, destination);
-    }
-
-    // ------------- INTERNAL FUNCTIONS - VALIDATION HELPERS -------------
-
-    function isWhitelisted(
-        uint64 chainID,
-        bytes32 addr
-    ) internal view returns (bool) {
-        bytes32 whitelistedEmitter = WHITELISTED_EMITTERS[chainID];
-        return whitelistedEmitter != bytes32(0) && whitelistedEmitter == addr;
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------
@@ -217,10 +183,10 @@ contract PolymerProver is BaseProver, Semver, Ownable {
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      */
     function prove(
-        address,
+        address, /* unused */
         uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
-        bytes calldata
+        bytes calldata /* unused */
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
 
