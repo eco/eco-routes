@@ -47,7 +47,6 @@ contract Deploy is Script {
         address layerZeroEndpoint;
         address layerZeroDelegate;
         address polymerCrossL2ProverV2;
-        address polymerOwner;
         string deployFilePath;
         bytes32[] crossVmProvers;
         address deployer;
@@ -77,7 +76,6 @@ contract Deploy is Script {
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
         ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
         ctx.polymerCrossL2ProverV2 = vm.envOr("POLYMER_CROSS_L2_PROVER_V2", address(0));
-        ctx.polymerOwner = vm.envOr("POLYMER_OWNER", ctx.deployer);
 
         // Load cross-VM provers from environment variable (optional)
         try vm.envBytes32("CROSS_VM_PROVERS", ",") returns (
@@ -354,9 +352,16 @@ contract Deploy is Script {
     function deployPolymerProver(
         DeploymentContext memory ctx
     ) internal returns (address polymerProver) {
+        // Create provers array (empty array since whitelist is contract-specific)
+        bytes32[] memory provers = new bytes32[](ctx.crossVmProvers.length);
+        for (uint256 i = 0; i < ctx.crossVmProvers.length; i++) {
+            provers[i] = ctx.crossVmProvers[i];
+        }
+
         ctx.polymerProverConstructorArgs = abi.encode(
-            ctx.polymerOwner,
-            ctx.portal
+            ctx.portal,
+            ctx.polymerCrossL2ProverV2,
+            provers
         );
 
         bytes memory polymerProverBytecode = abi.encodePacked(
