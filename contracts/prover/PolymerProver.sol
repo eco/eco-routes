@@ -92,7 +92,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             revert EmptyProofData();
         }
 
-        if ((data.length - 8) % 64 != 0) {
+        // ABI-decode the unindexedData as per Polymer documentation
+        // The data parameter contains ABI-encoded bytes from the event
+        bytes memory decodedData = abi.decode(data, (bytes));
+
+        if ((decodedData.length - 8) % 64 != 0) {
             revert ArrayLengthMismatch();
         }
 
@@ -102,7 +106,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
         assembly {
             let topicsPtr := add(topics, 32)
-            let dataPtr := add(data, 32)
+            let dataPtr := add(decodedData, 32)
 
             eventSignature := mload(topicsPtr)
             sourceChainIdBytes32 := mload(add(topicsPtr, 32))
@@ -120,7 +124,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         // Verify the chain ID from proof data matches the destination chain from validateEvent
         if (proofDataChainId != uint64(destinationChainId)) revert InvalidDestinationChain();
 
-        uint256 numPairs = (data.length - 8) / 64;
+        uint256 numPairs = (decodedData.length - 8) / 64;
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = 8 + i * 64;
 
@@ -128,7 +132,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             bytes32 claimantBytes;
 
             assembly {
-                let dataPtr := add(data, 32)
+                let dataPtr := add(decodedData, 32)
                 intentHash := mload(add(dataPtr, offset))
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
