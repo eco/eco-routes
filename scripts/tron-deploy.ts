@@ -1,8 +1,5 @@
 import { TronWeb } from 'tronweb'
-import type {
-  ContractInstance,
-  ContractAbiInterface,
-} from 'tronweb/lib/esm/types/ABI'
+import type { ContractAbiInterface } from 'tronweb/lib/esm/types/ABI'
 import fs from 'fs'
 import path from 'path'
 import 'dotenv/config'
@@ -38,12 +35,18 @@ class TronDeployer {
   private deploymentContext: DeploymentContext
 
   constructor() {
+    // Clean private key - remove 0x prefix if present
+    let privateKey = process.env.PRIVATE_KEY || ''
+    if (privateKey.startsWith('0x')) {
+      privateKey = privateKey.slice(2)
+    }
+
     this.tronWeb = new TronWeb({
       fullHost:
         process.env.TRON_RPC_URL ||
-        process.env.URL ||
-        'https://nile.trongrid.io',
-      privateKey: process.env.PRIVATE_KEY,
+        process.env.TRON_SHASTA_RPC_URL ||
+        'https://api.shasta.trongrid.io',
+      privateKey,
     })
 
     this.deploymentContext = {
@@ -73,32 +76,44 @@ class TronDeployer {
 
   async init(): Promise<void> {
     // Set deployer address from private key
-    if (this.tronWeb.defaultAddress && this.tronWeb.defaultAddress.hex) {
-      this.deploymentContext.deployer = this.tronWeb.defaultAddress.hex
-    } else {
-      // Fallback: derive address from private key
-      const account = this.tronWeb.address.fromPrivateKey(process.env.PRIVATE_KEY!)
-      this.deploymentContext.deployer = account
+    let privateKey = process.env.PRIVATE_KEY || ''
+    if (privateKey.startsWith('0x')) {
+      privateKey = privateKey.slice(2)
     }
+    const account = this.tronWeb.address.fromPrivateKey(privateKey)
+    this.deploymentContext.deployer = account || ''
     console.log('Deployer address:', this.deploymentContext.deployer)
-    
-    // Get network info
-    try {
-      const nodeInfo = await this.tronWeb.trx.getNodeInfo()
-      const network = this.getNetworkName(nodeInfo)
-      console.log('Connected to TRON network:', network)
-    } catch (error) {
-      console.log('Connected to TRON network (network detection failed)')
+
+    // Determine network based on the RPC URL being used
+    const rpcUrl =
+      process.env.TRON_RPC_URL ||
+      process.env.TRON_SHASTA_RPC_URL ||
+      'https://api.shasta.trongrid.io'
+    let network = 'unknown'
+    if (rpcUrl.includes('api.trongrid.io')) {
+      network = 'mainnet'
+    } else if (rpcUrl.includes('shasta')) {
+      network = 'shasta'
+    } else if (rpcUrl.includes('nile')) {
+      network = 'nile'
     }
+    console.log('Using RPC URL:', rpcUrl)
+    console.log('Connected to TRON network:', network)
   }
 
   private getNetworkName(nodeInfo: any): string {
     // Check node info to determine network
-    if (nodeInfo.configNodeInfo?.p2pVersion?.includes('mainnet') || 
-        nodeInfo.machineInfo?.memorySize > 1000000000) { // Heuristic for mainnet
+    if (
+      nodeInfo.configNodeInfo?.p2pVersion?.includes('mainnet') ||
+      nodeInfo.machineInfo?.memorySize > 1000000000
+    ) {
+      // Heuristic for mainnet
       return 'mainnet'
-    } else if (nodeInfo.configNodeInfo?.p2pVersion?.includes('shasta') ||
-               nodeInfo.beginSyncNum < 1000000) { // Heuristic for testnet
+    } else if (
+      nodeInfo.configNodeInfo?.p2pVersion?.includes('shasta') ||
+      nodeInfo.beginSyncNum < 1000000
+    ) {
+      // Heuristic for testnet
       return 'shasta'
     } else {
       return 'nile'
@@ -107,7 +122,7 @@ class TronDeployer {
 
   private loadContract(contractName: string): ContractArtifact {
     let artifactPath: string
-    
+
     // Special path handling for prover contracts
     if (contractName.includes('Prover')) {
       artifactPath = path.join(
@@ -129,42 +144,47 @@ class TronDeployer {
         `${contractName}.json`,
       )
     }
-    
+
     if (!fs.existsSync(artifactPath)) {
       throw new Error(`Contract artifact not found: ${artifactPath}`)
     }
 
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'))
-    
+
     // Helper function to check if a parameter has complex types that TronWeb can't handle
     const hasComplexTypes = (inputs: any[]): boolean => {
-      return inputs.some((input: any) => 
-        input.type === 'tuple' || 
-        input.internalType?.includes('struct') ||
-        input.internalType?.includes('contract ') ||
-        input.components // nested tuple components
+      return inputs.some(
+        (input: any) =>
+          input.type === 'tuple' ||
+          input.internalType?.includes('struct') ||
+          input.internalType?.includes('contract ') ||
+          input.components, // nested tuple components
       )
     }
-    
+
     // Filter out problematic items
     artifact.abi = artifact.abi.filter((item: any) => {
       // Keep constructor, events, and errors
-      if (item.type === 'constructor' || item.type === 'event' || item.type === 'error') {
+      if (
+        item.type === 'constructor' ||
+        item.type === 'event' ||
+        item.type === 'error'
+      ) {
         return true
       }
-      
+
       // For functions, filter out ones with complex parameter types
       if (item.type === 'function') {
         const hasComplexInputs = item.inputs && hasComplexTypes(item.inputs)
         const hasComplexOutputs = item.outputs && hasComplexTypes(item.outputs)
-        
+
         // Keep simple functions, filter out complex ones
         return !hasComplexInputs && !hasComplexOutputs
       }
-      
+
       return true
     })
-    
+
     return artifact
   }
 
@@ -258,13 +278,13 @@ class TronDeployer {
 
   private async writeDeploymentResults(): Promise<void> {
     const results: string[] = []
-    
+
     // Get network info and map to chain ID
-    let chainId = TRON_NILE_CHAIN_ID // Default
+    let chainId = TRON_SHASTA_CHAIN_ID // Default
     try {
       const nodeInfo = await this.tronWeb.trx.getNodeInfo()
       const network = this.getNetworkName(nodeInfo)
-      
+
       switch (network) {
         case 'mainnet':
           chainId = TRON_MAINNET_CHAIN_ID
