@@ -22,7 +22,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     bytes32 public constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(uint64,bytes)");
     uint256 public constant EXPECTED_TOPIC_LENGTH = 64; // 2 topics * 32 bytes each
-    uint256 constant MAX_LOG_DATA_SIZE = 32 * 1024;
+    uint256 public constant MAX_LOG_DATA_SIZE = 32 * 1024;
 
     // Events
     event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
