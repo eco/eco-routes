@@ -58,6 +58,9 @@
     "deploy:plugin": "npx tsx scripts/semantic-release/deploy-contracts.ts",
     "genBytecode": "npx tsx scripts/semantic-release/gen-bytecode.ts",
     "build:semantic-plugin": "tsc",
+    "create-intent": "npx hardhat run scripts/v2/create_intent.ts",
+    "create-intent:base": "SOURCE_NETWORK=base DEST_NETWORK=optimism npx hardhat run scripts/v2/create_intent.ts --network base",
+    "create-intent:optimism": "SOURCE_NETWORK=optimism DEST_NETWORK=base npx hardhat run scripts/v2/create_intent.ts --network optimism",
     "release": "semantic-release"
   },
   "devDependencies": {
