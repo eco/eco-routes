@@ -251,7 +251,8 @@ contract Deploy is Script {
         bool deployed;
         (ctx.hyperProver, deployed) = deployWithCreate3(
             hyperProverBytecode,
-            ctx
+            ctx,
+            ctx.hyperProverSalt
         );
 
         console.log("HyperProver :", ctx.hyperProver);
@@ -291,7 +292,8 @@ contract Deploy is Script {
         bool deployed;
         (ctx.metaProver, deployed) = deployWithCreate3(
             metaProverBytecode,
-            ctx
+            ctx,
+            ctx.metaProverSalt
         );
 
         console.log("MetaProver :", ctx.metaProver);
@@ -332,7 +334,8 @@ contract Deploy is Script {
         bool deployed;
         (ctx.layerZeroProver, deployed) = deployWithCreate3(
             layerZeroProverBytecode,
-            ctx
+            ctx,
+            ctx.layerZeroProverSalt
         );
 
         console.log("LayerZeroProver :", ctx.layerZeroProver);
@@ -479,14 +482,14 @@ contract Deploy is Script {
 
     function deployWithCreate3(
         bytes memory bytecode,
-        DeploymentContext memory ctx
+        DeploymentContext memory ctx,
+        bytes32 salt
     ) internal returns (address deployAddress, bool deployed) {
-        bytes32 salt = ctx.hyperProverSalt;
         address sender = ctx.deployer;
         address expectedAddress;
         
         if (useCreateXForChainID()) {
-            expectedAddress = createXContract.computeCreate3Address(salt);
+            expectedAddress = createXContract.computeCreate3Address(salt, sender);
         } else {
             expectedAddress = create3Deployer.deployedAddress(bytecode, sender, salt);
         }
