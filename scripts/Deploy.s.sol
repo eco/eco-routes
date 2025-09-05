@@ -489,7 +489,7 @@ contract Deploy is Script {
         address expectedAddress;
         
         if (useCreateXForChainID()) {
-            expectedAddress = createXContract.computeCreate3Address(salt, sender);
+        expectedAddress = createXContract.computeCreate3Address(salt, sender);
         } else {
             expectedAddress = create3Deployer.deployedAddress(bytecode, sender, salt);
         }

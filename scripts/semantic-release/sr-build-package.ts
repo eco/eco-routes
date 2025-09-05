@@ -119,6 +119,7 @@ export async function buildPackage(context: SemanticContext): Promise<void> {
       recursive: true,
     })
     fs.mkdirSync(path.join(buildDir, 'src', 'utils'), { recursive: true })
+    fs.mkdirSync(path.join(buildDir, 'src', 'typechain'), { recursive: true })
 
     // Copy ABIs using the approach from prepack.sh
     logger.log('Copying ABI files')
@@ -156,6 +157,10 @@ export async function buildPackage(context: SemanticContext): Promise<void> {
         fs.copyFileSync(sourcePath, targetPath)
         logger.log(`Copied ${sourcePath} to ${targetPath}`)
       })
+    // Copy TypeChain files for core contracts
+    logger.log('Copying TypeChain files for core contracts')
+    copyTypeChainFiles(buildDir, cwd, logger)
+
     // Generate TypeScript files from ABI JSON files
     logger.log('Generating TypeScript files from ABI JSON files')
     generateAbiTypeScriptFiles(buildDir, logger)
@@ -379,6 +384,7 @@ function generateIndexFile(
 import { Hex } from 'viem'
 export * from './abi'
 export * from './utils'
+export * from './typechain'
 
 /**
  * This file contains the addresses of the contracts deployed on the EcoProtocol network
@@ -435,6 +441,91 @@ export function getContractAddress<T extends EcoChainIdsEnv>(
   fs.writeFileSync(path.join(buildDir, 'src', 'index.ts'), indexContent)
 
   logger.log(`Index files generated in ${buildDir}`)
+}
+
+/**
+ * Copies TypeChain generated files for core contracts to the build directory.
+ * This includes the main contract types and factory files for IntentSource, Portal, and Inbox.
+ * The TypeChain types provide full type safety when interacting with these contracts.
+ *
+ * @param buildDir - Directory where build artifacts and generated files should be placed
+ * @param cwd - Current working directory (project root)
+ * @param logger - The logger instance for output messages and errors
+ */
+function copyTypeChainFiles(
+  buildDir: string,
+  cwd: string,
+  logger: Logger,
+): void {
+  const typeChainDir = path.join(cwd, 'typechain-types')
+  const targetDir = path.join(buildDir, 'src', 'typechain')
+
+  // Core contracts to include in the package
+  const coreContracts = ['IntentSource', 'Portal', 'Inbox']
+
+  try {
+    // Copy common types first
+    const commonFile = path.join(typeChainDir, 'common.ts')
+    if (fs.existsSync(commonFile)) {
+      const targetCommonFile = path.join(targetDir, 'common.ts')
+      fs.copyFileSync(commonFile, targetCommonFile)
+      logger.log('Copied TypeChain common types')
+    } else {
+      logger.error(`TypeChain common file not found: ${commonFile}`)
+    }
+
+    // Copy contract type files only (no factories to avoid complexity)
+    coreContracts.forEach((contractName) => {
+      const contractFile = path.join(
+        typeChainDir,
+        'contracts',
+        `${contractName}.ts`,
+      )
+
+      if (fs.existsSync(contractFile)) {
+        const targetFile = path.join(targetDir, `${contractName}.ts`)
+        
+        // Read and fix the import path for common.ts
+        let content = fs.readFileSync(contractFile, 'utf-8')
+        content = content.replace('../common', './common')
+        
+        fs.writeFileSync(targetFile, content)
+        logger.log(`Copied and fixed TypeChain contract: ${contractName}.ts`)
+      } else {
+        logger.error(`TypeChain contract file not found: ${contractFile}`)
+      }
+    })
+
+    // Create a custom index file to avoid export conflicts
+    const indexContent = `// TypeChain struct types only (avoiding conflicts)
+// Only export the essential struct types needed for encoding/decoding
+
+// Common types used across contracts
+export type {
+  TokenAmountStruct,
+  CallStruct,
+  RouteStruct,
+  RewardStruct,
+  IntentStruct,
+} from './IntentSource';
+
+// Portal-specific types if needed
+export type {
+  Portal,
+} from './Portal';
+
+// Inbox-specific types if needed  
+export type {
+  Inbox,
+} from './Inbox';
+`
+
+    fs.writeFileSync(path.join(targetDir, 'index.ts'), indexContent)
+    logger.log('Created custom TypeChain index file')
+  } catch (error) {
+    logger.error(`Failed to copy TypeChain files: ${(error as Error).message}`)
+    throw error
+  }
 }
 
 /**

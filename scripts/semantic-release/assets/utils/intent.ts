@@ -4,118 +4,41 @@
  * Intent-related utilities for Eco Routes protocol.
  *
  * This file provides type-safe functions for encoding, decoding, and hashing
- * protocol intent structures. It extracts the necessary type information directly
- * from the contract ABI, ensuring that any contract changes that affect intent
+ * protocol intent structures. It uses TypeChain generated types for maximum
+ * type safety and ensures that any contract changes that affect intent
  * structures will be caught at compile time.
  *
  * Key features:
- * - Type-safe encoding and decoding of Route and Reward structures
+ * - Type-safe encoding and decoding using TypeChain generated types
  * - Intent hashing functions that match the on-chain implementations
- * - TypeScript types derived directly from contract ABI
+ * - Automatic type conversion between ethers (TypeChain) and viem types
  */
 
 import {
-  Abi,
-  ContractFunctionArgs,
   decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
   Hex,
   keccak256,
 } from 'viem'
+import type { RouteStruct, RewardStruct, IntentStruct } from '../typechain'
 import { extractAbiStruct } from './utils'
-import { PortalAbi } from '../abi'
+import { PortalAbi } from '../abi/contracts'
 
 /**
- * Extracts the functions from an ABI
+ * ABI struct definitions extracted from Portal ABI for encoding/decoding
+ * These are used with viem's encoding functions
  */
-export type ExtractAbiFunctions<abi extends Abi> = Extract<
-  abi[number],
-  { type: 'function' }
->
+const RouteStructAbi = extractAbiStruct(PortalAbi, 'Route')
+const RewardStructAbi = extractAbiStruct(PortalAbi, 'Reward')
+const IntentStructAbi = extractAbiStruct(PortalAbi, 'Intent')
 
 /**
- * The getIntentHash function from the Portal ABI
+ * Type aliases for TypeChain struct types
  */
-type GetIntentHashFunction = Extract<
-  ExtractAbiFunctions<typeof PortalAbi>,
-  { name: 'getIntentHash' }
->['inputs'][number]
-
-type GetIntentHashFunctionComponents = Extract<
-  ExtractAbiFunctions<typeof PortalAbi>,
-  { name: 'getIntentHash' }
->['inputs'][number]['components'][number]
-
-/**
- * The Route struct abi
- */
-type Route = Extract<
-  GetIntentHashFunctionComponents,
-  { name: 'route' }
->['components']
-
-/**
- * The Reward struct abi
- */
-type Reward = Extract<
-  GetIntentHashFunctionComponents,
-  { name: 'reward' }
->['components']
-
-/**
- * The Intent struct abi
- */
-type Intent = Extract<GetIntentHashFunction, { name: 'intent' }>['components']
-
-/**
- * The Route struct object in the Portal ABI
- */
-const RouteStruct = extractAbiStruct<typeof PortalAbi, Route>(
-  PortalAbi,
-  'route',
-)
-
-/**
- * The Reward struct object in the Portal ABI
- */
-const RewardStruct = extractAbiStruct<typeof PortalAbi, Reward>(
-  PortalAbi,
-  'reward',
-)
-
-/**
- * The Intent struct object in the Portal ABI
- */
-const IntentStruct = extractAbiStruct<typeof PortalAbi, Intent>(
-  PortalAbi,
-  'intent',
-)
-
-/**
- * Define the type for the Intent struct in the Portal
- */
-export type IntentType = ContractFunctionArgs<
-  typeof PortalAbi,
-  'pure',
-  'getIntentHash'
->[number]
-
-/**
- * Define the type for the Route struct in Portal
- */
-export type EvmRouteType = IntentType['route']
-
-/**
- * Define the type for the Reward struct in Portal
- */
-export type EvmRewardType = IntentType['reward']
-
-/**
- * Define the multichaintype for the Route struct in Portal
- */
-export type RouteType = EvmRouteType
-export type RewardType = EvmRewardType
+export type RouteType = RouteStruct
+export type RewardType = RewardStruct
+export type IntentType = IntentStruct
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -135,10 +58,10 @@ export type RewardType = EvmRewardType
  *   targetAddress: '0x9876...'
  * });
  */
-export function encodeRoute(route: RouteType) {
+export function encodeRoute(route: RouteStruct) {
   return encodeAbiParameters(
-    [{ type: 'tuple', components: RouteStruct }],
-    [route],
+    [{ type: 'tuple', components: RouteStructAbi as any }],
+    [route as any],
   )
 }
 
@@ -155,11 +78,11 @@ export function encodeRoute(route: RouteType) {
  * const route = decodeRoute('0x...');
  * console.log(`Transfer from chain ${route.fromChain} to ${route.toChain}`);
  */
-export function decodeRoute(route: Hex): RouteType {
+export function decodeRoute(route: Hex): RouteStruct {
   return decodeAbiParameters(
-    [{ type: 'tuple', components: RouteStruct }],
+    [{ type: 'tuple', components: RouteStructAbi as any }],
     route,
-  )[0]
+  )[0] as RouteStruct
 }
 
 /**
@@ -179,10 +102,10 @@ export function decodeRoute(route: Hex): RouteType {
  *   recipient: '0x9876...'
  * });
  */
-export function encodeReward(reward: RewardType) {
+export function encodeReward(reward: RewardStruct) {
   return encodeAbiParameters(
-    [{ type: 'tuple', components: RewardStruct }],
-    [reward],
+    [{ type: 'tuple', components: RewardStructAbi as any }],
+    [reward as any],
   )
 }
 
@@ -199,11 +122,11 @@ export function encodeReward(reward: RewardType) {
  * const reward = decodeReward('0x...');
  * console.log(`Reward of ${reward.rewardAmount} tokens available until ${new Date(Number(reward.deadline) * 1000)}`);
  */
-export function decodeReward(reward: Hex): RewardType {
+export function decodeReward(reward: Hex): RewardStruct {
   return decodeAbiParameters(
-    [{ type: 'tuple', components: RewardStruct }],
+    [{ type: 'tuple', components: RewardStructAbi as any }],
     reward,
-  )[0]
+  )[0] as RewardStruct
 }
 
 /**
@@ -221,8 +144,11 @@ export function decodeReward(reward: Hex): RewardType {
  *   reward: { rewardToken: '0x1234...', rewardAmount: 1000000n, ... }
  * });
  */
-export function encodeIntent(intent: IntentType) {
-  return encodePacked(IntentStruct, [intent.route, intent.reward])
+export function encodeIntent(intent: IntentStruct) {
+  return encodeAbiParameters(
+    [{ type: 'tuple', components: IntentStructAbi as any }],
+    [intent as any],
+  )
 }
 
 /**
@@ -238,11 +164,11 @@ export function encodeIntent(intent: IntentType) {
  * const intent = decodeIntent('0x...');
  * console.log(`Intent: ${intent.route.fromChain} -> ${intent.route.toChain} with reward ${intent.reward.rewardAmount}`);
  */
-export function decodeIntent(intent: Hex): IntentType {
+export function decodeIntent(intent: Hex): IntentStruct {
   return decodeAbiParameters(
-    [{ type: 'tuple', components: IntentStruct }],
+    [{ type: 'tuple', components: IntentStructAbi as any }],
     intent,
-  )[0]
+  )[0] as IntentStruct
 }
 
 /**
@@ -261,7 +187,7 @@ export function decodeIntent(intent: Hex): IntentType {
  *   // other route parameters
  * });
  */
-export function hashRoute(route: RouteType): Hex {
+export function hashRoute(route: RouteStruct): Hex {
   return keccak256(encodeRoute(route))
 }
 
@@ -281,12 +207,12 @@ export function hashRoute(route: RouteType): Hex {
  *   // other reward parameters
  * });
  */
-export function hashReward(reward: RewardType): Hex {
+export function hashReward(reward: RewardStruct): Hex {
   return keccak256(encodeReward(reward))
 }
 
 /**
- * Computes all hashes for an intent, including the route hash, reward hash, and
+ * Computes all hashes for an intent object, including the route hash, reward hash, and
  * the combined intent hash that uniquely identifies the entire intent. This function
  * precisely matches the on-chain hashing algorithms used by the Portal contract.
  *
@@ -299,15 +225,50 @@ export function hashReward(reward: RewardType): Hex {
  * @example
  * // Generate all hashes for an intent
  * const hashes = hashIntent({
- *   route: { fromChain: 1n, toChain: 10n,  },
- *   reward: { rewardToken: '0x1234...', rewardAmount: 1000000n, }
+ *   destination: 10n,
+ *   route: { salt: '0x...', deadline: 1234567890n, ... },
+ *   reward: { deadline: 1234567890n, creator: '0x1234...', ... }
  * });
  * console.log(`Intent hash: ${hashes.intentHash}`);
  */
-export function hashIntent(
+export function hashIntent(intent: IntentStruct): {
+  routeHash: Hex
+  rewardHash: Hex
+  intentHash: Hex
+} {
+  return hashIntentFromComponents(
+    BigInt(intent.destination),
+    intent.route,
+    intent.reward,
+  )
+}
+
+/**
+ * Computes all hashes for an intent from individual components, including the route hash,
+ * reward hash, and the combined intent hash that uniquely identifies the entire intent.
+ * This function precisely matches the on-chain hashing algorithms used by the Portal contract.
+ *
+ * The intent hash is derived from the route and reward hashes (not directly from their structures),
+ * ensuring consistency with the on-chain implementation which uses the same approach.
+ *
+ * @param destination - The destination chain ID for the intent
+ * @param route - The route object containing routing and execution instructions
+ * @param reward - The reward object containing reward and validation parameters
+ * @returns Object containing the routeHash, rewardHash, and the combined intentHash
+ *
+ * @example
+ * // Generate all hashes for an intent from components
+ * const hashes = hashIntentFromComponents(
+ *   10n,
+ *   { salt: '0x...', deadline: 1234567890n, ... },
+ *   { deadline: 1234567890n, creator: '0x1234...', ... }
+ * );
+ * console.log(`Intent hash: ${hashes.intentHash}`);
+ */
+export function hashIntentFromComponents(
   destination: bigint,
-  route: RouteType,
-  reward: RewardType,
+  route: RouteStruct,
+  reward: RewardStruct,
 ): {
   routeHash: Hex
   rewardHash: Hex
