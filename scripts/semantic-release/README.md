@@ -302,13 +302,13 @@ The npm packages provide the following features to developers:
 ```typescript
 import {
   EcoProtocolAddresses,
-  IntentSourceAbi,
+  PortalAbi,
   encodeIntent,
   hashIntent,
 } from "@eco-foundation/routes"
 
-// Get IntentSource address for Optimism (chain ID 10)
-const intentSourceAddress = EcoProtocolAddresses["10"].IntentSource
+// Get Portal address for Optimism (chain ID 10)
+const portalAddress = EcoProtocolAddresses["10"].Portal
 
 // Create and hash an intent
 const intent = {

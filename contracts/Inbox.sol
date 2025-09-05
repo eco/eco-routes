@@ -1,67 +1,81 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IProver} from "./interfaces/IProver.sol";
-import {Eco7683DestinationSettler} from "./Eco7683DestinationSettler.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
+import {IExecutor} from "./interfaces/IExecutor.sol";
 
 import {Route, Call, TokenAmount} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
+import {Refund} from "./libs/Refund.sol";
+
+import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
+import {Executor} from "./Executor.sol";
 
 /**
  * @title Inbox
  * @notice Main entry point for fulfilling intents on the destination chain
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
- * to claim rewards on the source chain by checking the fulfilled mapping
+ * to claim rewards on the source chain by checking the claimants mapping
  */
-contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
-    using TypeCasts for address;
+abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
 
     /**
-     * @notice Interface ID for IProver used to detect prover contracts
+     * @notice Mapping of intent hashes to their claimant identifiers
+     * @dev Stores the cross-VM compatible claimant identifier for each fulfilled intent
      */
-    bytes4 public constant IPROVER_INTERFACE_ID = type(IProver).interfaceId;
+    mapping(bytes32 => bytes32) public claimants;
+
+    IExecutor public immutable executor;
 
     /**
-     * @notice Mapping of intent hashes to their claimant addresses
-     * @dev Stores the address eligible to claim rewards for each fulfilled intent
+     * @notice Chain ID stored as immutable for gas efficiency
+     * @dev Used to prepend to proof messages for cross-chain identification
      */
-    mapping(bytes32 => address) public fulfilled;
+    uint64 private immutable CHAIN_ID;
 
     /**
      * @notice Initializes the Inbox contract
+     * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
-    constructor() {}
+    constructor() {
+        executor = new Executor();
+
+        // Validate that chain ID fits in uint64 and store it
+        if (block.chainid > type(uint64).max) {
+            revert ChainIdTooLarge(block.chainid);
+        }
+        CHAIN_ID = uint64(block.chainid);
+    }
 
     /**
      * @notice Fulfills an intent to be proven via storage proofs
      * @dev Validates intent hash, executes calls, and marks as fulfilled
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward details
-     * @param _claimant The address that will receive the reward on the source chain
-     * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _localProver The prover contract to use for verification
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
      * @return Array of execution results from each call
      */
     function fulfill(
-        Route memory _route,
-        bytes32 _rewardHash,
-        address _claimant,
-        bytes32 _expectedHash,
-        address _localProver
-    ) external payable override returns (bytes[] memory) {
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant
+    ) external payable returns (bytes[] memory) {
         bytes[] memory result = _fulfill(
-            _route,
-            _rewardHash,
-            _claimant,
-            _expectedHash,
-            _localProver
+            intentHash,
+            route,
+            rewardHash,
+            claimant
         );
+
+        // Refund any remaining balance (excess ETH)
+        Refund.excessNative();
 
         return result;
     }
@@ -69,175 +83,187 @@ contract Inbox is IInbox, Eco7683DestinationSettler, Semver {
     /**
      * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Executes intent actions and sends proof message to source chain
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward details
-     * @param _claimant The address that will receive the reward on the source chain
-     * @param _expectedHash The hash of the intent as created on the source chain
-     * @param _localProver Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
+     * @param data Additional data for message formatting
      * @return Array of execution results
+     *
+     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
+     *      Each bridge provider uses their own domain ID mapping system:
+     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
+     *      - LayerZero: Uses endpoint IDs that map to chains differently
+     *      - Metalayer: Uses domain IDs specific to their routing system
+     *      You MUST consult the specific bridge provider's documentation to determine
+     *      the correct domain ID for the source chain.
      */
     function fulfillAndProve(
-        Route memory _route,
-        bytes32 _rewardHash,
-        address _claimant,
-        bytes32 _expectedHash,
-        address _localProver,
-        bytes memory _data
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant,
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes memory data
     )
         public
         payable
-        override(Eco7683DestinationSettler, IInbox)
+        override(DestinationSettler, IInbox)
         returns (bytes[] memory)
     {
         bytes[] memory result = _fulfill(
-            _route,
-            _rewardHash,
-            _claimant,
-            _expectedHash,
-            _localProver
+            intentHash,
+            route,
+            rewardHash,
+            claimant
         );
 
-        bytes32[] memory hashes = new bytes32[](1);
-        hashes[0] = _expectedHash;
+        // Create array with single intent hash
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
 
-        initiateProving(_route.source, hashes, _localProver, _data);
+        // Call prove with the intent hash array
+        // This will also refund any excess ETH
+        prove(prover, sourceChainDomainID, intentHashes, data);
+
         return result;
     }
 
     /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
-     * @param _sourceChainId Chain ID of the source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _localProver Address of prover on the destination chain
-     * @param _data Additional data for message formatting
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
+     *
+     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
+     *      Each bridge provider uses their own domain ID mapping system:
+     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
+     *      - LayerZero: Uses endpoint IDs that map to chains differently
+     *      - Metalayer: Uses domain IDs specific to their routing system
+     *      You MUST consult the specific bridge provider's documentation to determine
+     *      the correct domain ID for the source chain.
      */
-    function initiateProving(
-        uint256 _sourceChainId,
-        bytes32[] memory _intentHashes,
-        address _localProver,
-        bytes memory _data
+    function prove(
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes,
+        bytes memory data
     ) public payable {
-        if (_localProver == address(0)) {
-            // storage prover case, this method should do nothing
-            return;
-        }
-        uint256 size = _intentHashes.length;
-        address[] memory claimants = new address[](size);
-        for (uint256 i = 0; i < size; ++i) {
-            address claimant = fulfilled[_intentHashes[i]];
+        uint256 size = intentHashes.length;
 
-            if (claimant == address(0)) {
-                revert IntentNotFulfilled(_intentHashes[i]);
-            }
-            claimants[i] = claimant;
+        // Encode chain ID followed by intent hash/claimant pairs as bytes
+        // 8 bytes for chain ID + (32 bytes for intent hash + 32 bytes for claimant) * size
+        bytes memory encodedClaimants = new bytes(8 + size * 64);
+
+        // Prepend chain ID to the encoded data
+        uint64 chainId = CHAIN_ID;
+        assembly {
+            mstore(add(encodedClaimants, 0x20), shl(192, chainId))
         }
-        IProver(_localProver).prove{value: address(this).balance}(
+
+        for (uint256 i = 0; i < size; ++i) {
+            bytes32 claimantBytes = claimants[intentHashes[i]];
+
+            if (claimantBytes == bytes32(0)) {
+                revert IntentNotFulfilled(intentHashes[i]);
+            }
+
+            // Pack intent hash and claimant into encodedData (after 8-byte chain ID)
+            assembly {
+                let offset := add(8, mul(i, 64))
+                mstore(
+                    add(add(encodedClaimants, 0x20), offset),
+                    mload(add(intentHashes, add(0x20, mul(i, 32))))
+                )
+                mstore(
+                    add(add(encodedClaimants, 0x20), add(offset, 32)),
+                    claimantBytes
+                )
+            }
+
+            // Emit IntentProven event
+            emit IntentProven(intentHashes[i], claimantBytes);
+        }
+
+        // Provide left over balance to the prover
+        IProver(prover).prove{value: address(this).balance}(
             msg.sender,
-            _sourceChainId,
-            _intentHashes,
-            claimants,
-            _data
+            sourceChainDomainID,
+            encodedClaimants,
+            data
         );
     }
 
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls
-     * @param _route The route of the intent
-     * @param _rewardHash The hash of the reward
-     * @param _claimant The reward recipient address
-     * @param _expectedHash The expected intent hash
-     * @param _localProver The prover contract to use
+     * @param intentHash The hash of the intent to fulfill
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     * @param claimant Cross-VM compatible claimant identifier
      * @return Array of execution results
      */
     function _fulfill(
-        Route memory _route,
-        bytes32 _rewardHash,
-        address _claimant,
-        bytes32 _expectedHash,
-        address _localProver
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        bytes32 claimant
     ) internal returns (bytes[] memory) {
-        if (_route.destination != block.chainid) {
-            revert WrongChain(_route.destination);
+        // Check if the route has expired
+        if (block.timestamp > route.deadline) {
+            revert IntentExpired();
         }
 
-        bytes32 routeHash = keccak256(abi.encode(_route));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(routeHash, _rewardHash)
+        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 computedIntentHash = keccak256(
+            abi.encodePacked(
+                CHAIN_ID,
+                routeHash,
+                rewardHash
+            )
         );
 
-        if (_route.inbox != address(this)) {
-            revert InvalidInbox(_route.inbox);
+        if (route.portal != address(this)) {
+            revert InvalidPortal(route.portal);
         }
-        if (intentHash != _expectedHash) {
-            revert InvalidHash(_expectedHash);
+        if (computedIntentHash != intentHash) {
+            revert InvalidHash(intentHash);
         }
-        if (fulfilled[intentHash] != address(0)) {
+        if (claimants[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
-        if (_claimant == address(0)) {
+        if (claimant == bytes32(0)) {
             revert ZeroClaimant();
         }
 
-        fulfilled[intentHash] = _claimant;
+        claimants[intentHash] = claimant;
 
-        emit Fulfillment(_expectedHash, _route.source, _localProver, _claimant);
+        emit IntentFulfilled(intentHash, claimant);
 
-        uint256 routeTokenCount = _route.tokens.length;
-        // Transfer ERC20 tokens to the inbox
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            TokenAmount memory approval = _route.tokens[i];
-            IERC20(approval.token).safeTransferFrom(
+        // Transfer ERC20 tokens to the executor
+        uint256 tokensLength = route.tokens.length;
+
+        // Validate that msg.value is at least the route's nativeAmount
+        // Allow extra value for cross-chain message fees when using fulfillAndProve
+        if (msg.value < route.nativeAmount) {
+            revert InsufficientNativeAmount(msg.value, route.nativeAmount);
+        }
+
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            TokenAmount memory token = route.tokens[i];
+
+            IERC20(token.token).safeTransferFrom(
                 msg.sender,
-                address(this),
-                approval.amount
+                address(executor),
+                token.amount
             );
         }
 
-        // Store the results of the calls
-        bytes[] memory results = new bytes[](_route.calls.length);
-
-        for (uint256 i = 0; i < _route.calls.length; ++i) {
-            Call memory call = _route.calls[i];
-            if (call.target.code.length == 0) {
-                if (call.data.length > 0) {
-                    // no code at this address
-                    revert CallToEOA(call.target);
-                }
-            } else {
-                try
-                    IERC165(call.target).supportsInterface(IPROVER_INTERFACE_ID)
-                returns (bool isProverCall) {
-                    if (isProverCall) {
-                        // call to prover
-                        revert CallToProver();
-                    }
-                } catch {
-                    // If target doesn't support ERC-165, continue.
-                }
-            }
-
-            (bool success, bytes memory result) = call.target.call{
-                value: call.value
-            }(call.data);
-            if (!success) {
-                revert IntentCallFailed(
-                    call.target,
-                    call.data,
-                    call.value,
-                    result
-                );
-            }
-            results[i] = result;
-        }
-        return (results);
+        return executor.execute{value: route.nativeAmount}(route.calls);
     }
-
-    /**
-     * @notice Allows the contract to receive ETH
-     * @dev Required for handling ETH transfer for intent execution
-     */
-    receive() external payable {}
 }

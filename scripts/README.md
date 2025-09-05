@@ -216,6 +216,7 @@ ALCHEMY_API_KEY=<Your Alchemy API key if using Alchemy RPCs>
 # For Deploy.s.sol
 MAILBOX=<Optional: Mailbox contract address for HyperProver>
 ROUTER=<Optional: Router contract address for MetaProver>
+LAYERZERO_ENDPOINT=<Optional: LayerZero Endpoint address for LayerZeroProver>
 
 # For VerifyResults.sh
 VERIFICATION_KEY=<Single API key for all chains>
@@ -265,12 +266,49 @@ The script:
 
 This Foundry script handles the actual contract deployments using CREATE2/CREATE3:
 
-- **IntentSource**: Deployed using CREATE2
-- **Inbox**: Deployed using CREATE2
+- **Portal**: Deployed using CREATE2
 - **HyperProver**: Deployed using CREATE3 (if MAILBOX is provided)
 - **MetaProver**: Deployed using CREATE3 (if ROUTER is provided)
+- **LayerZeroProver**: Deployed using CREATE3 (if LAYERZERO_ENDPOINT is provided)
 
 The script logs all deployed contract addresses and generates verification data.
+
+#### Cross-VM Deployment Support
+
+The deployment script supports **cross-VM compatibility** by accepting an array of non-EVM prover addresses that will be whitelisted alongside the EVM prover addresses. This enables seamless integration with chains like Solana, Cosmos, Sui, and others.
+
+**Usage Examples:**
+
+```bash
+# EVM-only deployment (default)
+forge script scripts/Deploy.s.sol --broadcast --verify
+
+# Single cross-VM chain (e.g., Solana)
+CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" \
+  forge script scripts/Deploy.s.sol --broadcast --verify
+
+# Multiple cross-VM chains (Solana + Cosmos + Sui)
+CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos,0x9abc...sui" \
+  forge script scripts/Deploy.s.sol --broadcast --verify
+
+# Using the deployment script (recommended)
+CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
+```
+
+**Resulting Whitelist:**
+
+Each deployed prover (HyperProver, MetaProver, and LayerZeroProver) will have a whitelist containing:
+
+- The EVM prover's own address (self-reference for authorization)
+- All provided cross-VM prover addresses
+
+**Address Format Requirements:**
+
+- **EVM chains**: Automatically converted via `bytes32(bytes20(address))`
+- **Solana**: Native 32-byte public keys
+- **Cosmos/Sui/Other**: Must be provided as 32-byte hex strings
+
+This approach provides unlimited scalability for cross-VM deployments while maintaining clean, generic code without hardcoded chain-specific logic.
 
 ### 4. VerifyResults.sh
 

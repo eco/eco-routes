@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {Reward} from "./Intent.sol";
+
 /**
  * @title GaslessCrossChainOrder CrossChainOrder type
  * @notice Standard order struct to be signed by users, disseminated to fillers, and submitted to origin settler contracts
@@ -27,6 +29,7 @@ struct GaslessCrossChainOrder {
     bytes32 orderDataType;
     bytes orderData;
 }
+
 /**
  * @title OnchainCrossChainOrder CrossChainOrder type
  * @notice Standard order struct for user-opened orders, where the user is the msg.sender.
@@ -97,7 +100,32 @@ struct Output {
  * @param originData The data generated on the origin chain needed by the destinationSettler to process the fill
  */
 struct FillInstruction {
-    uint64 destinationChainId;
+    uint256 destinationChainId;
     bytes32 destinationSettler;
     bytes originData;
 }
+
+/**
+ * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
+ * is sufficient to publish an intent via Eco Protocol
+ * @dev the orderData field of GaslessCrossChainOrder should be decoded as OrderData
+ * @param destination the destination chain ID for the intent
+ * @param route the route data for execution on the destination chain
+ * @param reward the reward structure containing creator, prover, amounts, and deadline information
+ * @param routePortal the portal contract address on the destination chain
+ * @param routeDeadline the deadline for route execution on the destination chain
+ * @param maxSpent the maximum outputs that the filler will send
+ */
+struct OrderData {
+    uint64 destination;
+    bytes route;
+    Reward reward;
+    bytes32 routePortal;
+    uint64 routeDeadline;
+    Output[] maxSpent;
+}
+
+// EIP712 type hash
+bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
+    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Reward(uint64 deadline,address creator,address prover,uint256 nativeAmount,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)"
+);

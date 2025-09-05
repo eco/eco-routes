@@ -2,6 +2,7 @@
 /* solhint-disable gas-custom-errors */
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
+
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/hooks/IPostDispatchHook.sol";
@@ -47,23 +48,30 @@ contract TestMailbox {
 
         dispatchedWithRelayer = true;
 
-        if (processor != address(0)) {
-            process(_messageBody);
-        }
-
         if (msg.value < FEE) {
             revert("no");
+        }
+
+        // Process the message if we have a processor
+        // This simulates the cross-chain message being delivered
+        if (processor != address(0)) {
+            // In Hyperlane, the sender would be the prover contract on the source chain
+            // which is passed as recipientAddress in the dispatch call
+            IMessageRecipient(processor).handle(
+                _destinationDomain, // The origin domain (source chain)
+                _recipientAddress, // The sender (prover on source chain)
+                _messageBody
+            );
         }
 
         return (msg.value);
     }
 
-    function process(bytes calldata _msg) public {
-        IMessageRecipient(recipientAddress.bytes32ToAddress()).handle(
-            uint32(block.chainid),
-            msg.sender.addressToBytes32(),
-            _msg
-        );
+    function process(bytes calldata) public pure {
+        // solhint-disable-previous-line no-unused-vars
+        // This function is kept for compatibility but not used in the new flow
+        // The dispatch function handles the message processing directly
+        return;
     }
 
     function quoteDispatch(
@@ -79,12 +87,16 @@ contract TestMailbox {
         bytes32,
         bytes calldata,
         bytes calldata,
-        address
-    ) public pure returns (bytes32) {
-        return bytes32(FEE);
+        IPostDispatchHook
+    ) public pure returns (uint256) {
+        return FEE;
     }
 
     function defaultHook() public pure returns (IPostDispatchHook) {
         return IPostDispatchHook(address(0));
+    }
+
+    function setProcessor(address _processor) public {
+        processor = _processor;
     }
 }

@@ -7,8 +7,9 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
 // Import Semver for versioning support
 import {Semver} from "../libs/Semver.sol";
-import {IMetalayerRouter} from "@metalayer/contracts/src/interfaces/IMetalayerRouter.sol";
+import {StandardHookMetadata} from "@hyperlane-xyz/core/contracts/hooks/libs/StandardHookMetadata.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {IMetalayerRouterExt} from "../interfaces/IMetalayerRouterExt.sol";
 
 /**
  * @title MetaProver
@@ -22,118 +23,106 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     using SafeCast for uint256;
 
     /**
+     * @notice Struct for unpacked data from _data parameter
+     * @dev Contains fields decoded from the _data parameter
+     */
+    struct UnpackedData {
+        bytes32 sourceChainProver; // Address of prover on source chain
+        uint256 gasLimit; // Gas limit for execution
+    }
+
+    /**
      * @notice Constant indicating this contract uses Metalayer for proving
      */
-    string public constant PROOF_TYPE = "Metalayer";
+    string public constant PROOF_TYPE = "Meta";
+
+    /**
+     * @notice ETH message value used in fee calculation metadata
+     * @dev Set to very high value (1e36) to avoid fee calculation failures
+     *      in the Metalayer router's quote dispatch function
+     */
+    uint256 private immutable ETH_QUOTE_VALUE = 1e36;
 
     /**
      * @notice Address of local Metalayer router
      */
-    address public immutable ROUTER;
+    IMetalayerRouterExt public immutable ROUTER;
 
     /**
      * @notice Initializes the MetaProver contract
-     * @param _router Address of local Metalayer router
-     * @param _inbox Address of Inbox contract
-     * @param _provers Array of trusted prover addresses
-     * @param _defaultGasLimit Default gas limit for cross-chain messages (200k if not specified)
+     * @param router Address of local Metalayer router
+     * @param portal Address of Portal contract
+     * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
+     * @param minGasLimit Minimum gas limit for cross-chain messages (200k if zero)
      */
     constructor(
-        address _router,
-        address _inbox,
-        address[] memory _provers,
-        uint256 _defaultGasLimit
-    ) MessageBridgeProver(_inbox, _provers, _defaultGasLimit) {
-        if (_router == address(0)) revert RouterCannotBeZeroAddress();
-        ROUTER = _router;
+        address router,
+        address portal,
+        bytes32[] memory provers,
+        uint256 minGasLimit
+    ) MessageBridgeProver(portal, provers, minGasLimit) {
+        if (router == address(0)) revert RouterCannotBeZeroAddress();
+
+        ROUTER = IMetalayerRouterExt(router);
     }
 
     /**
      * @notice Handles incoming Metalayer messages containing proof data
      * @dev Processes batch updates to proven intents from valid sources
      * @dev called by the Metalayer Router on the source chain
-     * @param _origin Origin chain ID from the destination chain
-     * @param _sender Address that dispatched the message on destination chain
-     * @param _message Encoded array of intent hashes and claimants
+     * @param origin Origin chain ID from the destination chain
+     * @param sender Address that dispatched the message on destination chain
+     * @param message Encoded array of intent hashes and claimants
      */
     function handle(
-        uint32 _origin,
-        bytes32 _sender,
-        bytes calldata _message,
-        ReadOperation[] calldata /* _operations */,
-        bytes[] calldata /* _operationsData */
-    ) external payable {
-        // Verify message is from authorized router
-        _validateMessageSender(msg.sender, ROUTER);
+        uint32 origin,
+        bytes32 sender,
+        bytes calldata message,
+        ReadOperation[] calldata /* operations */,
+        bytes[] calldata /* operationsData */
+    ) external payable only(address(ROUTER)) {
+        // Verify origin and sender are valid
+        if (origin == 0) revert ZeroDomainID();
 
-        // Verify _origin and _sender are valid
-        if (_origin == 0) revert InvalidOriginChainId();
+        // Validate sender is not zero
+        if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
 
-        // Convert bytes32 sender to address and delegate to shared handler
-        address sender = _sender.bytes32ToAddress();
-        if (sender == address(0)) revert SenderCannotBeZeroAddress();
-
-        _handleCrossChainMessage(_origin, sender, _message);
+        _handleCrossChainMessage(sender, message);
     }
 
     /**
-     * @notice Initiates proving of intents via Metalayer
-     * @dev Sends message to source chain prover with intent data
-     * @dev called by the Inbox contract on the destination chain
-     * @param _sender Address that initiated the proving request
-     * @param _sourceChainId Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data used for proving.
-     * @dev the _data parameter is expected to contain the sourceChainProver (a bytes32), plus an optional gas limit override
-     * @dev The gas limit override is expected to be a uint256 value, and will only be used if it is greater than the default gas limit
+     * @notice Decodes the raw cross-chain message data into a structured format
+     * @dev Parses ABI-encoded parameters into the UnpackedData struct and enforces minimum gas limit
+     * @param data Raw message data containing source chain information
+     * @return unpacked Structured representation of the decoded parameters with validated gas limit
      */
-    function prove(
-        address _sender,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
-    ) external payable override {
-        // Validate the request is from Inbox
-        _validateProvingRequest(msg.sender);
+    function _unpackData(
+        bytes calldata data
+    ) internal view returns (UnpackedData memory unpacked) {
+        unpacked = abi.decode(data, (UnpackedData));
 
-        // Decode source chain prover address only once
-        bytes32 sourceChainProver = abi.decode(_data, (bytes32));
-
-        // Calculate fee with pre-decoded value
-        uint256 fee = _fetchFee(
-            _sourceChainId,
-            _intentHashes,
-            _claimants,
-            sourceChainProver
-        );
-
-        // Check if enough fee was provided
-        if (msg.value < fee) {
-            revert InsufficientFee(fee);
+        // Enforce minimum gas limit to prevent underfunded transactions
+        if (unpacked.gasLimit < MIN_GAS_LIMIT) {
+            unpacked.gasLimit = MIN_GAS_LIMIT;
         }
+    }
 
-        // Calculate refund amount if overpaid
-        uint256 _refundAmount = 0;
-        if (msg.value > fee) {
-            _refundAmount = msg.value - fee;
-        }
-
-        emit BatchSent(_intentHashes, _sourceChainId);
-
-        // Decode any additional gas limit data from the _data parameter
-        uint256 gasLimit = DEFAULT_GAS_LIMIT;
-
-        // For Metalayer, we expect data to include sourceChainProver(32 bytes)
-        // If data is long enough, the gas limit is packed at position 64-96
-        // will only use custom gas limit if it is greater than the default
-        if (_data.length >= 64) {
-            uint256 customGasLimit = uint256(bytes32(_data[32:64]));
-            if (customGasLimit > DEFAULT_GAS_LIMIT) {
-                gasLimit = customGasLimit;
-            }
-        }
+    /**
+     * @notice Implementation of message dispatch for Metalayer
+     * @dev Called by base prove() function after common validations
+     * @param domainID Domain ID of the source chain
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param data Additional data for message formatting
+     * @param fee Fee amount for message dispatch
+     */
+    function _dispatchMessage(
+        uint64 domainID,
+        bytes calldata encodedProofs,
+        bytes calldata data,
+        uint256 fee
+    ) internal override {
+        // Parse incoming data into a structured format
+        UnpackedData memory unpacked = _unpackData(data);
 
         // Format message for dispatch using pre-decoded value
         (
@@ -141,84 +130,77 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
             bytes32 recipient,
             bytes memory message
         ) = _formatMetalayerMessage(
-                _sourceChainId,
-                _intentHashes,
-                _claimants,
-                sourceChainProver
+                domainID,
+                encodedProofs,
+                unpacked.sourceChainProver
             );
 
         // Call Metalayer router's send message function
-        IMetalayerRouter(ROUTER).dispatch{value: fee}(
+        ROUTER.dispatch{value: fee}(
             sourceChainDomain,
             recipient,
             new ReadOperation[](0),
             message,
             FinalityState.INSTANT,
-            gasLimit
+            unpacked.gasLimit
         );
-
-        // Send refund if needed
-        _sendRefund(_sender, _refundAmount);
     }
 
     /**
      * @notice Fetches fee required for message dispatch
-     * @dev Queries Metalayer router for fee information
-     * @param _sourceChainID Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _data Additional data for message formatting
+     * @dev Uses custom hook metadata with actual gas limit to ensure accurate fee estimation.
+     *      Fixes issue where 3-parameter quoteDispatch used hardcoded 100k gas limit.
+     * @param domainID Domain ID of source chain
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param data Additional data containing gas limit that will be used in dispatch
      * @return Fee amount required for message dispatch
      */
     function fetchFee(
-        uint256 _sourceChainID,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
+        uint64 domainID,
+        bytes calldata encodedProofs,
+        bytes calldata data
     ) public view override returns (uint256) {
-        // Decode source chain prover once at the entry point
-        bytes32 sourceChainProver = abi.decode(_data, (bytes32));
-
         // Delegate to internal function with pre-decoded value
-        return
-            _fetchFee(
-                _sourceChainID,
-                _intentHashes,
-                _claimants,
-                sourceChainProver
-            );
+        return _fetchFee(domainID, encodedProofs, _unpackData(data));
     }
 
     /**
      * @notice Internal function to calculate fee with pre-decoded data
-     * @param _sourceChainID Chain ID of source chain
-     * @param _intentHashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _sourceChainProver Pre-decoded prover address on source chain
+     * @dev Uses actual gas limit from unpacked data to ensure accurate fee estimation
+     * @param domainID Domain ID of source chain
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param unpacked Pre-decoded data including actual gas limit that will be used
      * @return Fee amount required for message dispatch
      */
     function _fetchFee(
-        uint256 _sourceChainID,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes32 _sourceChainProver
+        uint64 domainID,
+        bytes calldata encodedProofs,
+        UnpackedData memory unpacked
     ) internal view returns (uint256) {
         (
             uint32 sourceChainDomain,
             bytes32 recipient,
             bytes memory message
         ) = _formatMetalayerMessage(
-                _sourceChainID,
-                _intentHashes,
-                _claimants,
-                _sourceChainProver
+                domainID,
+                encodedProofs,
+                unpacked.sourceChainProver
             );
 
+        // Create custom hook metadata with the actual gas limit that will be used in dispatch
+        bytes memory feeHookMetadata = StandardHookMetadata.formatMetadata(
+            ETH_QUOTE_VALUE,
+            unpacked.gasLimit, // Use actual gas limit (min 200k)
+            msg.sender, // Refund address
+            bytes("") // Optional custom metadata
+        );
+
         return
-            IMetalayerRouter(ROUTER).quoteDispatch(
+            ROUTER.quoteDispatch(
                 sourceChainDomain,
                 recipient,
-                message
+                message,
+                feeHookMetadata
             );
     }
 
@@ -231,37 +213,32 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     }
 
     /**
-     * @notice Formats data for Metalayer message dispatch with pre-decoded values
-     * @param _sourceChainID Chain ID of the source chain
-     * @param _hashes Array of intent hashes to prove
-     * @param _claimants Array of claimant addresses
-     * @param _sourceChainProver Pre-decoded prover address on source chain
+     * @notice Formats data for Metalayer message dispatch with encoded proofs
+     * @param domainID Domain ID of the source chain
+     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param sourceChainProver Pre-decoded prover address on source chain
      * @return domain Metalayer domain ID
      * @return recipient Recipient address encoded as bytes32
      * @return message Encoded message body with intent hashes and claimants
      */
     function _formatMetalayerMessage(
-        uint256 _sourceChainID,
-        bytes32[] calldata _hashes,
-        address[] calldata _claimants,
-        bytes32 _sourceChainProver
+        uint64 domainID,
+        bytes calldata encodedProofs,
+        bytes32 sourceChainProver
     )
         internal
         pure
         returns (uint32 domain, bytes32 recipient, bytes memory message)
     {
-        // Centralized validation ensures arrays match exactly once in the call flow
-        if (_hashes.length != _claimants.length) {
-            revert ArrayLengthMismatch();
+        // Convert domain ID to domain with overflow check
+        if (domainID > type(uint32).max) {
+            revert DomainIdTooLarge(domainID);
         }
-
-        // Convert chain ID to domain
-        domain = _sourceChainID.toUint32();
+        domain = uint32(domainID);
 
         // Use pre-decoded source chain prover address as recipient
-        recipient = _sourceChainProver;
+        recipient = sourceChainProver;
 
-        // Pack intent hashes and claimant addresses together as message payload
-        message = abi.encode(_hashes, _claimants);
+        message = encodedProofs;
     }
 }

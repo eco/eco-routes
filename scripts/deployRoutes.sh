@@ -23,7 +23,7 @@
 # - HYPERPROVER_SALT: Salt for HyperProver contract
 # - HYPERPROVER_CREATEX_ADDRESS: CreateX address for HyperProver contract
 # - HYPERPROVER_2470_ADDRESS: 2470 address for HyperProver contract
-
+# - CROSS_VM_PROVERS: Optional comma-separated list of cross-VM prover addresses (bytes32)
 
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,6 +81,8 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     RPC_URL=$(echo "$value" | jq -r '.url')
     MAILBOX_CONTRACT=$(echo "$value" | jq -r '.mailbox')
+    ROUTER_CONTRACT=$(echo "$value" | jq -r '.router // ""')
+    LAYERZERO_ENDPOINT=$(echo "$value" | jq -r '.layerzero // ""')
     META_PROVER=$(echo "$value" | jq -r '.metaProver // false')
     GAS_MULTIPLIER=$(echo "$value" | jq -r '.gasMultiplier // ""')
 
@@ -100,20 +102,30 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     echo "🔄 Deploying contracts for Chain ID: $CHAIN_ID"
     echo "📬 Mailbox Contract: $MAILBOX_CONTRACT"
+    echo "📬 Router Contract: $ROUTER_CONTRACT"
+    echo "📬 LayerZero Endpoint: $LAYERZERO_ENDPOINT"
     echo "📬 SALT: $SALT"
-    echo "📬 SALT: $HYPERPROVER_SALT"
+    echo "📬 HYPERPROVER_SALT: $HYPERPROVER_SALT"
     echo "📬 Meta Prover: $META_PROVER"
     echo "📬 HyperProver CreateX Address: $HYPERPROVER_CREATEX_ADDRESS"
     echo "📬 HyperProver 2470 Address: $HYPERPROVER_2470_ADDRESS"
 
     # Construct Foundry command
-    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" forge script scripts/Deploy.s.sol \
-            --rpc-url \"$RPC_URL\" \
-            --slow \
-            --broadcast \
-            --private-key \"$PRIVATE_KEY\""
-            # --verify \
-            # --verifier blockscout"
+    if [ -n "$CROSS_VM_PROVERS" ]; then
+        echo "🌐 Cross-VM Provers: $CROSS_VM_PROVERS"
+        FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" LAYERZERO_ENDPOINT=\"$LAYERZERO_ENDPOINT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" CROSS_VM_PROVERS=\"$CROSS_VM_PROVERS\" forge script scripts/Deploy.s.sol \
+                --rpc-url \"$RPC_URL\" \
+                --slow \
+                --broadcast \
+                --private-key \"$PRIVATE_KEY\""
+    else
+        echo "🔗 EVM-only deployment (no cross-VM provers)"
+        FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" LAYERZERO_ENDPOINT=\"$LAYERZERO_ENDPOINT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" forge script scripts/Deploy.s.sol \
+                --rpc-url \"$RPC_URL\" \
+                --slow \
+                --broadcast \
+                --private-key \"$PRIVATE_KEY\""
+    fi
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
     if [[ -n "$GAS_MULTIPLIER" && "$GAS_MULTIPLIER" != "null" ]]; then

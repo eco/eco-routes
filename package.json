@@ -42,7 +42,7 @@
     "depcheck": "depcheck --ignore-bin-package --ignores @openzeppelin/contracts,@openzeppelin/contracts-upgradeable,prettier-plugin-solidity,solhint-plugin-eco,concurrently,@types/mocha",
     "lint": "yarn format",
     "build": "hardhat compile",
-    "test": "yarn test:hardhat && yarn test:ts",
+    "test": "yarn test:hardhat && yarn test:ts && forge test",
     "test:hardhat": "hardhat test",
     "test:ts": "jest",
     "clean": "hardhat clean && yarn pub:clean",
@@ -58,6 +58,9 @@
     "deploy:plugin": "npx tsx scripts/semantic-release/deploy-contracts.ts",
     "genBytecode": "npx tsx scripts/semantic-release/gen-bytecode.ts",
     "build:semantic-plugin": "tsc",
+    "create-intent": "npx hardhat run scripts/v2/create_intent.ts",
+    "create-intent:base": "SOURCE_NETWORK=base DEST_NETWORK=optimism npx hardhat run scripts/v2/create_intent.ts --network base",
+    "create-intent:optimism": "SOURCE_NETWORK=optimism DEST_NETWORK=base npx hardhat run scripts/v2/create_intent.ts --network optimism",
     "release": "semantic-release"
   },
   "devDependencies": {
@@ -138,6 +141,8 @@
     "@metalayer/contracts": "^0.0.7",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "tronweb": "^6.0.4",
     "viem": "^2.22.21"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
