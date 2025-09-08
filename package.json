@@ -58,7 +58,11 @@
     "deploy:plugin": "npx tsx scripts/semantic-release/deploy-contracts.ts",
     "genBytecode": "npx tsx scripts/semantic-release/gen-bytecode.ts",
     "build:semantic-plugin": "tsc",
-    "release": "semantic-release"
+    "release": "semantic-release",
+    "deploy:tron": "npx tsx scripts/tron-deploy.ts",
+    "deploy:tron:nile": "TRON_RPC_URL=https://nile.trongrid.io npx tsx scripts/tron-deploy.ts",
+    "deploy:tron:shasta": "TRON_RPC_URL=https://api.shasta.trongrid.io npx tsx scripts/tron-deploy.ts",
+    "deploy:tron:mainnet": "TRON_RPC_URL=https://api.trongrid.io npx tsx scripts/tron-deploy.ts"
   },
   "devDependencies": {
     "@actions/core": "^1.11.1",
