@@ -1,5 +1,4 @@
 import { TronWeb } from 'tronweb'
-import type { ContractAbiInterface } from 'tronweb/lib/esm/types/ABI'
 import fs from 'fs'
 import path from 'path'
 import 'dotenv/config'

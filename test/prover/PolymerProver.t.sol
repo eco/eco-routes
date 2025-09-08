@@ -32,7 +32,12 @@ contract PolymerProverTest is BaseTest {
         bytes32[] memory intentHashes,
         bytes32[] memory claimants
     ) internal view returns (bytes memory encodedProofs) {
-        return encodeProofsWithChainId(intentHashes, claimants, uint64(block.chainid));
+        return
+            encodeProofsWithChainId(
+                intentHashes,
+                claimants,
+                uint64(block.chainid)
+            );
     }
 
     /**
@@ -53,12 +58,12 @@ contract PolymerProverTest is BaseTest {
         );
 
         encodedProofs = new bytes(8 + intentHashes.length * 64);
-        
+
         // Add 8-byte chain ID prefix
         assembly {
             mstore(add(encodedProofs, 0x20), shl(192, chainId))
         }
-        
+
         for (uint256 i = 0; i < intentHashes.length; i++) {
             assembly {
                 let offset := add(8, mul(i, 64))
@@ -112,9 +117,13 @@ contract PolymerProverTest is BaseTest {
             address(crossL2ProverV2)
         );
         assertEq(polymerProver.PORTAL(), address(portal));
-        
+
         // Test whitelist functionality
-        assertTrue(polymerProver.isWhitelisted(bytes32(uint256(uint160(destinationProver)))));
+        assertTrue(
+            polymerProver.isWhitelisted(
+                bytes32(uint256(uint160(destinationProver)))
+            )
+        );
         assertEq(polymerProver.getWhitelistSize(), 1);
     }
 
@@ -214,7 +223,11 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -249,7 +262,11 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -279,7 +296,11 @@ contract PolymerProverTest is BaseTest {
             claimants[i] = bytes32(uint256(uint160(claimant)));
         }
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR,
@@ -341,7 +362,11 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint64(block.chainid))) // source chain ID
             );
 
-            bytes memory data = encodeProofsWithChainId(singleIntentHash, singleClaimant, chainIds[i]);
+            bytes memory data = encodeProofsWithChainId(
+                singleIntentHash,
+                singleClaimant,
+                chainIds[i]
+            );
 
             crossL2ProverV2.setAll(
                 chainIds[i],
@@ -392,7 +417,11 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint64(block.chainid))) // source chain ID
             );
 
-            bytes memory data = encodeProofsWithChainId(singleIntentHash, singleClaimant, chainIds[i]);
+            bytes memory data = encodeProofsWithChainId(
+                singleIntentHash,
+                singleClaimant,
+                chainIds[i]
+            );
 
             crossL2ProverV2.setAll(
                 chainIds[i],
@@ -459,7 +488,11 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -510,7 +543,11 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -537,7 +574,11 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -581,7 +622,11 @@ contract PolymerProverTest is BaseTest {
             bytes32(uint256(uint64(block.chainid))) // source chain ID
         );
 
-        bytes memory data = encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID);
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
@@ -610,26 +655,36 @@ contract PolymerProverTest is BaseTest {
 
     function testWhitelistFunctionality() public {
         // Test that our destination prover is whitelisted
-        assertTrue(polymerProver.isWhitelisted(bytes32(uint256(uint160(destinationProver)))));
-        
+        assertTrue(
+            polymerProver.isWhitelisted(
+                bytes32(uint256(uint160(destinationProver)))
+            )
+        );
+
         // Test that a random address is not whitelisted
         address randomAddr = makeAddr("random");
-        assertFalse(polymerProver.isWhitelisted(bytes32(uint256(uint160(randomAddr)))));
-        
+        assertFalse(
+            polymerProver.isWhitelisted(bytes32(uint256(uint160(randomAddr))))
+        );
+
         // Test zero address is not whitelisted
         assertFalse(polymerProver.isWhitelisted(bytes32(0)));
     }
 
     function testConstructorWithEmptyWhitelist() public {
         bytes32[] memory emptyProvers = new bytes32[](0);
-        
+
         PolymerProver newProver = new PolymerProver(
             address(portal),
             address(crossL2ProverV2),
             emptyProvers
         );
-        
+
         assertEq(newProver.getWhitelistSize(), 0);
-        assertFalse(newProver.isWhitelisted(bytes32(uint256(uint160(destinationProver)))));
+        assertFalse(
+            newProver.isWhitelisted(
+                bytes32(uint256(uint160(destinationProver)))
+            )
+        );
     }
 }

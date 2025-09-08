@@ -223,11 +223,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(
-                CHAIN_ID,
-                routeHash,
-                rewardHash
-            )
+            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
         );
 
         if (route.portal != address(this)) {

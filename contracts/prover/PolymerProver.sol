@@ -120,9 +120,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         }
         uint64 eventSourceChainId = uint64(sourceChainIdUint256);
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
-        
+
         // Verify the chain ID from proof data matches the destination chain from validateEvent
-        if (proofDataChainId != uint64(destinationChainId)) revert InvalidDestinationChain();
+        if (proofDataChainId != uint64(destinationChainId))
+            revert InvalidDestinationChain();
 
         uint256 numPairs = (decodedData.length - 8) / 64;
         for (uint256 i = 0; i < numPairs; i++) {
@@ -187,7 +188,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      */
     function prove(
-        address, /* unused */
+        address /* unused */,
         uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
         bytes calldata /* unused */
@@ -196,7 +197,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
         if (encodedProofs.length == 0) return;
 
-        if ((encodedProofs.length - 8 ) % 64 != 0) {
+        if ((encodedProofs.length - 8) % 64 != 0) {
             revert ArrayLengthMismatch();
         }
         if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
