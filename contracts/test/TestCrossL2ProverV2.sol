@@ -17,7 +17,7 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
         chainId.push(_chainId);
         emittingContract.push(_emittingContract);
         topics.push(_topics);
-        data.push(_data);
+        data.push(abi.encode(_data));
     }
 
     function setAll(
@@ -29,7 +29,7 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
         chainId.push(_chainId);
         emittingContract.push(_emittingContract);
         topics.push(_topics);
-        data.push(_data);
+        data.push(abi.encode(_data));
     }
 
     function setChainId(uint32 _chainId) public {
@@ -45,7 +45,7 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
     }
 
     function setData(bytes memory _data) public {
-        data.push(_data);
+        data.push(abi.encode(_data));
     }
 
     function validateEvent(
