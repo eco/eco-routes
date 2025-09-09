@@ -21,7 +21,7 @@ import {
   Hex,
   keccak256,
 } from 'viem'
-import type { RouteStruct, RewardStruct, IntentStruct } from '../typechain'
+import type { RouteStruct, RewardStruct, IntentStruct } from '../types'
 import { extractAbiStruct } from './utils'
 import { PortalAbi } from '../abi/contracts'
 

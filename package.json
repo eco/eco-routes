@@ -1,6 +1,6 @@
 {
   "name": "@eco-foundation/routes",
-  "version": "2.8.15",
+  "version": "2.8.16",
   "description": "The Eco Routes Protocol is a decentralized intent based system that allows users to submit their intent to the network and have it fulfilled by a solver on the destination rollup of their choice.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -93,7 +93,6 @@
     "@types/semver-utils": "^1.1.3",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
-    "@wagmi/cli": "^2.0.0-rc.3",
     "chai": "^4.3.10",
     "concurrently": "^8.2.2",
     "csv-parse": "^5.6.0",
@@ -141,6 +140,7 @@
     "@metalayer/contracts": "^0.0.7",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "abitype": "^1.1.0",
     "tronweb": "^6.0.4",
     "viem": "^2.22.21"
   },
