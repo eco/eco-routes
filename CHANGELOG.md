@@ -1,3 +1,38 @@
+## [2.8.17](https://github.com/eco/eco-routes/compare/v2.8.16...v2.8.17) (2025-09-10)
+
+
+### Bug Fixes
+
+* add legacy support ([#339](https://github.com/eco/eco-routes/issues/339)) ([29048868](https://github.com/eco/eco-routes/commit/29048868))
+
+## [2.8.16](https://github.com/eco/eco-routes/compare/v2.8.15...v2.8.16) (2025-09-10)
+
+
+### Bug Fixes
+
+* trigger patch release ([1d4dabc3](https://github.com/eco/eco-routes/commit/1d4dabc3))
+
+## [2.8.15](https://github.com/eco/eco-routes/compare/v2.8.14...v2.8.15) (2025-09-10)
+
+
+### Bug Fixes
+
+* adding the plasma mainnet ([#338](https://github.com/eco/eco-routes/issues/338)) ([b5bc9f01](https://github.com/eco/eco-routes/commit/b5bc9f01))
+
+## [2.8.14](https://github.com/eco/eco-routes/compare/v2.8.13...v2.8.14) (2025-09-10)
+
+
+### Bug Fixes
+
+* trigger patch release ([1f0a802a](https://github.com/eco/eco-routes/commit/1f0a802a))
+
+## [2.8.13](https://github.com/eco/eco-routes/compare/v2.8.12...v2.8.13) (2025-09-10)
+
+
+### Bug Fixes
+
+* trigger patch release ([4bd4fd07](https://github.com/eco/eco-routes/commit/4bd4fd07))
+
 ## [2.8.12](https://github.com/eco/eco-routes/compare/v2.8.11...v2.8.12) (2025-07-25)
 
 

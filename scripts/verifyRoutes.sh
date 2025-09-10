@@ -136,7 +136,7 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
   
   # Add remaining parameters
   VERIFY_CMD+=" --watch"
-  VERIFY_CMD+=" --retries 2"
+  VERIFY_CMD+=" --retries 0" #set to 0 to handle retries manually
   
   # Add constructor args if not empty
   if [ -n "$CONSTRUCTOR_ARGS" ] && [ "$CONSTRUCTOR_ARGS" != "0x" ]; then
