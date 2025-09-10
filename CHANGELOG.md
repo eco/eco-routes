@@ -1,3 +1,11 @@
+## [2.8.15](https://github.com/eco/eco-routes/compare/v2.8.14...v2.8.15) (2025-09-10)
+
+
+### Bug Fixes
+
+* get 17 to publish ([ef8ea9f](https://github.com/eco/eco-routes/commit/ef8ea9fa68b725e0f13599f59a0868e2937270fe))
+* trigger release for version 2.8.14 ([3ae5887](https://github.com/eco/eco-routes/commit/3ae58879797e8b4a1b302f98ff9cf9090c6e321e))
+
 ## [2.8.17](https://github.com/eco/eco-routes/compare/v2.8.16...v2.8.17) (2025-09-10)
 
 
