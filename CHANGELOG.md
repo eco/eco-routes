@@ -1,4 +1,4 @@
-## [2.8.17](https://github.com/eco/eco-routes/compare/v2.8.16...v2.8.17) (2025-09-10)
+## [2.8.17](https://github.com/eco/eco-routes/compare/v2.8.11...v2.8.12) (2025-09-10)
 
 
 ### Bug Fixes
