@@ -54,6 +54,7 @@ echo "$PROCESS_ENTRIES" | jq -c 'to_entries[]' | while IFS= read -r entry; do
   value=$(echo "$entry" | jq -c '.value')
 
   RPC_URL=$(echo "$value" | jq -r '.url')
+  LEGACY_TX=$(echo "$value" | jq -r '.legacy // false')
   if [[ "$RPC_URL" == "null" || -z "$RPC_URL" ]]; then
     echo "⚠️  Skipping chain $CHAIN_ID_NOW due to missing RPC URL"
     continue
@@ -61,10 +62,20 @@ echo "$PROCESS_ENTRIES" | jq -c 'to_entries[]' | while IFS= read -r entry; do
   RPC_URL=$(eval echo "$RPC_URL")
 
   echo "🔄 Deploying TestUSDC to chain $CHAIN_ID_NOW (RPC: $RPC_URL)"
+  
+  # Check if legacy transactions should be used
+  if [[ "$LEGACY_TX" == "true" ]]; then
+    echo "🔧 Using legacy transaction mode for Chain ID: $CHAIN_ID_NOW"
+  fi
 
   # Build the forge create command to deploy the contract and return address
   # Use the contract path: contracts/test/TestUSDC.sol:TestUSDC
-  CREATE_CMD=(forge create --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY" --legacy --json --broadcast "contracts/test/TestUSDC.sol:TestUSDC")
+  CREATE_CMD=(forge create --rpc-url "$RPC_URL" --private-key "$PRIVATE_KEY" --json --broadcast "contracts/test/TestUSDC.sol:TestUSDC")
+  
+  # Add --legacy flag if needed
+  if [[ "$LEGACY_TX" == "true" ]]; then
+    CREATE_CMD+=(--legacy)
+  fi
 
   # Execute the create command and capture output
   echo "   📝 Executing: ${CREATE_CMD[*]}"

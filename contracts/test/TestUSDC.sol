@@ -8,12 +8,10 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract TestUSDC is ERC20 {
     uint8 private immutable DECIMALS_OVERRIDE;
 
-    constructor()
-        ERC20("Fake USD Coin", "USDC")
-    {
-    DECIMALS_OVERRIDE = 6;
-    // 1,000,000 USDC with 6 decimals
-    _mint(msg.sender, 1_000_000 * 10 ** uint256(DECIMALS_OVERRIDE));
+    constructor() ERC20("Fake USD Coin", "USDC") {
+        DECIMALS_OVERRIDE = 6;
+        // 1,000,000 USDC with 6 decimals
+        _mint(msg.sender, 1_000_000 * 10 ** uint256(DECIMALS_OVERRIDE));
     }
 
     function decimals() public view virtual override returns (uint8) {

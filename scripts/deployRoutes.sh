@@ -83,6 +83,7 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     MAILBOX_CONTRACT=$(echo "$value" | jq -r '.mailbox')
     META_PROVER=$(echo "$value" | jq -r '.metaProver // false')
     GAS_MULTIPLIER=$(echo "$value" | jq -r '.gasMultiplier // ""')
+    LEGACY_TX=$(echo "$value" | jq -r '.legacy // false')
 
     if [[ "$RPC_URL" == "null" || -z "$RPC_URL" ]]; then
         echo "⚠️  Warning: Missing required data for Chain ID $CHAIN_ID. Skipping..."
@@ -105,6 +106,11 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     echo "📬 Meta Prover: $META_PROVER"
     echo "📬 HyperProver CreateX Address: $HYPERPROVER_CREATEX_ADDRESS"
     echo "📬 HyperProver 2470 Address: $HYPERPROVER_2470_ADDRESS"
+    
+    # Check if legacy transactions should be used
+    if [[ "$LEGACY_TX" == "true" ]]; then
+        echo "🔧 Using legacy transaction mode for Chain ID: $CHAIN_ID"
+    fi
 
     # Construct Foundry command
     FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" forge script scripts/Deploy.s.sol \
@@ -114,6 +120,11 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
             --private-key \"$PRIVATE_KEY\""
             # --verify \
             # --verifier blockscout"
+    
+    # Add --legacy flag if needed
+    if [[ "$LEGACY_TX" == "true" ]]; then
+        FOUNDRY_CMD+=" --legacy"
+    fi
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
     if [[ -n "$GAS_MULTIPLIER" && "$GAS_MULTIPLIER" != "null" ]]; then
