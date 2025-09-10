@@ -1,3 +1,11 @@
+## [2.8.14](https://github.com/eco/eco-routes/compare/v2.8.13...v2.8.14) (2025-09-10)
+
+
+### Bug Fixes
+
+* merge ([96c0362](https://github.com/eco/eco-routes/commit/96c036256f63a9334f9b63ef71a87bd88fe0bbf2))
+* update the release version ([8c60681](https://github.com/eco/eco-routes/commit/8c60681e8cb8c22a0db765efaeeb161459a1ff8e))
+
 ## [2.8.17](https://github.com/eco/eco-routes/compare/v2.8.16...v2.8.17) (2025-09-10)
 
 
