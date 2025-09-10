@@ -3,6 +3,11 @@
     {
       "name": "beta",
       "channel": "beta"
+    },
+    {
+      "name": "alpha",
+      "channel": "alpha", 
+      "prerelease": "alpha"
     }
   ],
   "repositoryUrl": "https://github.com/eco/eco-routes.git",

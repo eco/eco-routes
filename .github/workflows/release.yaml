@@ -3,11 +3,20 @@ name: Release
 # This workflow creates a new release using semantic-release
 # It can be triggered in two ways:
 # 1. Manually via the GitHub UI with optional release type
-# 2. Automatically when commits are pushed to the main branch
+# 2. Automatically when commits are pushed to beta or alpha branches
+#
+# Release Strategy:
+# - beta branch: Publishes 2.x.x versions to @beta npm tag
+# - alpha branch: Publishes 3.x.x-alpha.x versions to @alpha npm tag
+#
+# Installation:
+# - npm install @eco-foundation/routes@beta    (2.x.x stable versions)
+# - npm install @eco-foundation/routes@alpha   (3.x.x alpha versions)
 on:
   push:
     branches:
       - beta
+      - alpha
   repository_dispatch:
     types: [manual-release-trigger]
 
@@ -32,7 +41,6 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-release to generate changelogs
           token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
-          ref: beta # Explicitly checkout the beta branch
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
@@ -72,10 +80,9 @@ jobs:
         with:
           cmd: tsc
 
-      # Ensure we're on beta branch and that Git knows about it
+      # Verify current branch (works for both beta and alpha)
       - name: Verify current branch
         run: |
-          git checkout beta
           echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
 
       # Run semantic-release
@@ -92,7 +99,5 @@ jobs:
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
           VERIFICATION_KEY: ${{ secrets.VERIFICATION_KEY }}
-          # Explicitly tell semantic-release which branch we're on
-          GITHUB_REF: refs/heads/beta
         run: |
           npx semantic-release --debug
