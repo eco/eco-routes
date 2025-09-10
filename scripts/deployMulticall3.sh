@@ -55,6 +55,7 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
   value=$(echo "$entry" | jq -c '.value')
 
   RPC_URL=$(echo "$value" | jq -r '.url')
+  LEGACY_TX=$(echo "$value" | jq -r '.legacy // false')
 
   if [ "$RPC_URL" = "null" ] || [ -z "$RPC_URL" ]; then
     echo "⚠️  Warning: Missing required data for Chain ID $CHAIN_ID. Skipping..."
@@ -71,6 +72,11 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
   fi
 
   echo "🔄 Processing Chain ID: $CHAIN_ID with RPC URL"
+  
+  # Check if legacy transactions should be used
+  if [ "$LEGACY_TX" = "true" ]; then
+    echo "🔧 Using legacy transaction mode for Chain ID: $CHAIN_ID"
+  fi
 
   # Check Multicall3 deployment
   code=$(cast code $MULTICALL3_ADDRESS --rpc-url "$RPC_URL")
@@ -99,7 +105,11 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
       # Send the exact amount needed
       echo "Sending $to_send ETH to deployer account..."
-      tx=$(cast send --private-key "$PRIVATE_KEY" --value $(cast --to-wei "$to_send" eth) $MULTICALL3_DEPLOYER --rpc-url "$RPC_URL")
+      if [ "$LEGACY_TX" = "true" ]; then
+        tx=$(cast send --private-key "$PRIVATE_KEY" --legacy --value $(cast --to-wei "$to_send" eth) $MULTICALL3_DEPLOYER --rpc-url "$RPC_URL")
+      else
+        tx=$(cast send --private-key "$PRIVATE_KEY" --value $(cast --to-wei "$to_send" eth) $MULTICALL3_DEPLOYER --rpc-url "$RPC_URL")
+      fi
       tx_hash=$(echo "$tx" | grep "transactionHash" | awk '{print $2}')
       echo "Funding transaction: $tx"
 
