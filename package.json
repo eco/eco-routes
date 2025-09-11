@@ -138,6 +138,7 @@
     "@metalayer/contracts": "^0.0.7",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "@solana/web3.js": "^1.98.2",
     "viem": "^2.22.21"
   }
 }
