@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
-import {IProver} from "../interfaces/IProver.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {Whitelist} from "../libs/Whitelist.sol";
 
@@ -101,7 +100,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         }
 
         bytes32 eventSignature;
-        bytes32 sourceChainIdBytes32;
+        uint64 eventSourceChainId;
         uint64 proofDataChainId;
 
         assembly {
@@ -109,16 +108,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             let dataPtr := add(decodedData, 32)
 
             eventSignature := mload(topicsPtr)
-            sourceChainIdBytes32 := mload(add(topicsPtr, 32))
+            eventSourceChainId := mload(add(topicsPtr, 32))
             proofDataChainId := shr(192, mload(dataPtr)) // Extract first 8 bytes (64 bits) from the 32-byte word
         }
 
         if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
-        uint256 sourceChainIdUint256 = uint256(sourceChainIdBytes32);
-        if (sourceChainIdUint256 > type(uint64).max) {
-            revert InvalidSourceChain();
-        }
-        uint64 eventSourceChainId = uint64(sourceChainIdUint256);
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
         // Verify the chain ID from proof data matches the destination chain from validateEvent
@@ -194,12 +188,6 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         bytes calldata /* unused */
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
-
-        if (encodedProofs.length == 0) return;
-
-        if ((encodedProofs.length - 8) % 64 != 0) {
-            revert ArrayLengthMismatch();
-        }
         if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
             revert MaxDataSizeExceeded();
         }
