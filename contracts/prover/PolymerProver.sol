@@ -21,7 +21,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     bytes32 public constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(uint64,bytes)");
     uint256 public constant EXPECTED_TOPIC_LENGTH = 64; // 2 topics * 32 bytes each
-    uint256 public constant MAX_LOG_DATA_SIZE = 32 * 1024;
+    uint256 public constant MAX_LOG_DATA_SIZE_GUARD = 32 * 1024;
 
     // Events
     event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
@@ -35,24 +35,32 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     error ZeroAddress();
     error SizeMismatch();
     error MaxDataSizeExceeded();
+    error InvalidMaxLogDataSize();
     error EmptyProofData();
     error OnlyPortal();
 
     // State variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
+    uint256 public immutable MAX_LOG_DATA_SIZE;
 
     /**
      * @notice Initializes the PolymerProver contract
      * @param _portal Address of the Portal contract
      * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
+     * @param _maxLogDataSize Maximum allowed size for encodedProofs in IntentFulfilledFromSource event data
      * @param _proverIds Array of whitelisted prover (address | chainID)s as bytes32
      */
     constructor(
         address _portal,
         address _crossL2ProverV2,
+        uint256 _maxLogDataSize,
         bytes32[] memory _proverIds
     ) BaseProver(_portal) Whitelist(_proverIds) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
+        if (_maxLogDataSize == 0 || _maxLogDataSize > MAX_LOG_DATA_SIZE_GUARD) {
+            revert InvalidMaxLogDataSize();
+        }
+        MAX_LOG_DATA_SIZE = _maxLogDataSize;
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
     }
 
