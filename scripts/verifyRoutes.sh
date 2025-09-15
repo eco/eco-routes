@@ -15,7 +15,8 @@
 #
 # Environment variables:
 # - RESULTS_FILE: Path to the CSV file with deployment results
-# - VERIFICATION_KEY: Single API key for all chains
+# - VERIFICATION_KEYS_FILE: Path to JSON with API keys by chain ID
+# - VERIFICATION_KEYS: JSON string with API keys (alternative to file)
 # - CHAIN_DATA_URL: Optional URL to fetch chain RPC URLs
 #
 # CSV format expected:
@@ -38,14 +39,25 @@ if [ ! -f "$RESULTS_FILE" ]; then
   exit 1
 fi
 
-# Check for single verification key
-echo "📝 Loading verification key"
-if [ -z "$VERIFICATION_KEY" ]; then
-  echo "❌ Error: VERIFICATION_KEY environment variable not found."
+# Load verification keys from environment variable or file
+echo "📝 Loading verification keys"
+VERIFICATION_KEYS_JSON=""
+if [ ! -z "$VERIFICATION_KEYS" ]; then
+  echo "📝 Using verification keys from VERIFICATION_KEYS environment variable"
+  VERIFICATION_KEYS_JSON="$VERIFICATION_KEYS"
+elif [ -f "$VERIFICATION_KEYS_FILE" ]; then
+  echo "📝 Using verification keys from $VERIFICATION_KEYS_FILE"
+  VERIFICATION_KEYS_JSON=$(cat "$VERIFICATION_KEYS_FILE")
+else
+  echo "❌ Error: Neither VERIFICATION_KEYS environment variable nor $VERIFICATION_KEYS_FILE found."
   exit 1
 fi
 
-echo "📝 Using single verification key for all chains"
+# Validate JSON format for verification keys
+if ! echo "$VERIFICATION_KEYS_JSON" | jq empty 2>/dev/null; then
+  echo "❌ Error: Invalid JSON format in verification keys"
+  exit 1
+fi
 
 # Load chain data for RPC URLs if CHAIN_DATA_URL is provided
 if [ -n "$CHAIN_DATA_URL" ]; then
@@ -76,7 +88,6 @@ TOTAL_CONTRACTS=$(wc -l < "$RESULTS_FILE" | tr -d ' ')
 CURRENT_CONTRACT=0
 SUCCESSFUL_VERIFICATIONS=0
 FAILED_VERIFICATIONS=0
-SKIPPED_VERIFICATIONS=0
 
 # Process each deployed contract
 cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PATH CONSTRUCTOR_ARGS; do
@@ -90,75 +101,80 @@ cat "$RESULTS_FILE" | while IFS=, read -r CHAIN_ID CONTRACT_ADDRESS CONTRACT_PAT
     CONTRACT_NAME=$(basename "$CONTRACT_PATH")
   fi
   
-  # Skip verification for MetaProver contracts (they use hardcoded addresses)
-  if [[ "$CONTRACT_NAME" == "MetaProver" ]]; then
-    echo "⏭️ Skipping verification ($CURRENT_CONTRACT of $TOTAL_CONTRACTS): $CONTRACT_NAME (hardcoded address)"
-    echo "   Chain ID: $CHAIN_ID"
-    echo "   Address: $CONTRACT_ADDRESS"
-    echo "   Contract Path: $CONTRACT_PATH"
-    echo "   📝 MetaProver uses a hardcoded address and cannot be verified"
-    SKIPPED_VERIFICATIONS=$((SKIPPED_VERIFICATIONS + 1))
-    echo ""
-    continue
-  fi
-  
   echo "🔄 Verifying contract ($CURRENT_CONTRACT of $TOTAL_CONTRACTS): $CONTRACT_NAME"
   echo "   Chain ID: $CHAIN_ID"
   echo "   Address: $CONTRACT_ADDRESS"
   echo "   Contract Path: $CONTRACT_PATH"
   
-  # Use the single verification key for all chains
-  VERIFY_KEY="$VERIFICATION_KEY"
-  echo "   🔑 Using verification key for chain ID $CHAIN_ID"
+  # Get the verification key using JQ with simple key access
+  VERIFY_KEY=$(echo "$VERIFICATION_KEYS_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain] // empty')
   
-  # Get verifier URL and type for this chain from the chain data if available
-  VERIFIER_URL=""
-  VERIFIER_TYPE=""
-  if [ -n "$CHAIN_JSON" ]; then
-    VERIFIER_URL=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].verifier.url // empty')
-    VERIFIER_TYPE=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].verifier.type // empty')
-    if [ -n "$VERIFIER_URL" ] && [ "$VERIFIER_URL" != "null" ] && [ -n "$VERIFIER_TYPE" ] && [ "$VERIFIER_TYPE" != "null" ]; then
-      # Replace environment variable placeholders if necessary
-      VERIFIER_URL=$(eval echo "$VERIFIER_URL")
-      echo "   🔍 Using custom verifier: $VERIFIER_TYPE at $VERIFIER_URL"
+  # If we have a verification key for this chain
+  if [ -n "$VERIFY_KEY" ] && [ "$VERIFY_KEY" != "null" ]; then
+    echo "   🔑 Using verification key for chain ID $CHAIN_ID"
+    
+    # Get RPC URL for this chain from the chain data if available
+    RPC_URL=""
+    if [ -n "$CHAIN_JSON" ]; then
+      RPC_URL=$(echo "$CHAIN_JSON" | jq -r --arg chain "$CHAIN_ID" '.[$chain].url // empty')
+      if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
+        # Replace environment variable placeholders if necessary
+        RPC_URL=$(eval echo "$RPC_URL")
+        echo "   🌐 Using RPC URL for verification"
+      fi
     fi
-  fi
-  
-  # Build verification command
-  VERIFY_CMD="forge verify-contract"
-  VERIFY_CMD+=" --chain $CHAIN_ID"
-  VERIFY_CMD+=" --etherscan-api-key \"$VERIFY_KEY\""
-  
-  # Add custom verifier if available
-  if [ -n "$VERIFIER_URL" ] && [ "$VERIFIER_URL" != "null" ] && [ -n "$VERIFIER_TYPE" ] && [ "$VERIFIER_TYPE" != "null" ]; then
-    VERIFY_CMD+=" --verifier $VERIFIER_TYPE --verifier-url '$VERIFIER_URL'"
-  fi
-  
-  # Add remaining parameters
-  VERIFY_CMD+=" --watch"
-  VERIFY_CMD+=" --retries 2"
-  
-  # Add constructor args if not empty
-  if [ -n "$CONSTRUCTOR_ARGS" ] && [ "$CONSTRUCTOR_ARGS" != "0x" ]; then
-    echo "   🧩 Using constructor arguments: $CONSTRUCTOR_ARGS"
-    VERIFY_CMD+=" --constructor-args \"$CONSTRUCTOR_ARGS\""
+    
+    # Build verification command
+    VERIFY_CMD="forge verify-contract"
+    VERIFY_CMD+=" --chain $CHAIN_ID"
+    VERIFY_CMD+=" --etherscan-api-key \"$VERIFY_KEY\""
+    
+    # Add RPC URL if available
+    if [ -n "$RPC_URL" ] && [ "$RPC_URL" != "null" ]; then
+      VERIFY_CMD+=" --rpc-url \"$RPC_URL\""
+    fi
+    
+    # Add remaining parameters
+    VERIFY_CMD+=" --watch"
+    
+    # Add constructor args if not empty
+    if [ -n "$CONSTRUCTOR_ARGS" ] && [ "$CONSTRUCTOR_ARGS" != "0x" ]; then
+      echo "   🧩 Using constructor arguments: $CONSTRUCTOR_ARGS"
+      VERIFY_CMD+=" --constructor-args \"$CONSTRUCTOR_ARGS\""
+    else
+      echo "   📝 No constructor arguments"
+    fi
+    
+    VERIFY_CMD+=" \"$CONTRACT_ADDRESS\" \"$CONTRACT_PATH\""
+    
+    # Execute verification command
+    echo "   📝 Executing verification command..."
+    eval "$VERIFY_CMD"
+    
+    VERIFY_RESULT=$?
+    if [ $VERIFY_RESULT -eq 0 ]; then
+      echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
+      SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+    else
+      echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
+      echo "   🔄 Retrying verification in 5 seconds..."
+      sleep 5
+      
+      # Retry once
+      eval "$VERIFY_CMD"
+      VERIFY_RESULT=$?
+      
+      if [ $VERIFY_RESULT -eq 0 ]; then
+        echo "   ✅ Verification succeeded on retry for $CONTRACT_NAME on chain $CHAIN_ID"
+        SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+      else
+        echo "   ❌ Verification failed again for $CONTRACT_NAME on chain $CHAIN_ID"
+        FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
+      fi
+    fi
   else
-    echo "   📝 No constructor arguments"
-  fi
-  
-  VERIFY_CMD+=" \"$CONTRACT_ADDRESS\" \"$CONTRACT_PATH\""
-  
-  # Execute verification command
-  echo "   📝 Executing verification command..."
-  eval "$VERIFY_CMD"
-  
-  VERIFY_RESULT=$?
-  if [ $VERIFY_RESULT -eq 0 ]; then
-    echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
-    SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
-  else
-    echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
-    echo "   🔄 Retrying verification in 5 seconds..."
+    echo "   ❌ No verification key found for chain ID $CHAIN_ID"
+    FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
   fi
   
   echo ""
@@ -169,11 +185,9 @@ echo "📊 Verification Summary:"
 echo "Total contracts processed: $TOTAL_CONTRACTS"
 echo "Successfully verified: $SUCCESSFUL_VERIFICATIONS"
 echo "Failed to verify: $FAILED_VERIFICATIONS"
-echo "Skipped (hardcoded): $SKIPPED_VERIFICATIONS"
 
-VERIFIABLE_CONTRACTS=$((TOTAL_CONTRACTS - SKIPPED_VERIFICATIONS))
-if [ $SUCCESSFUL_VERIFICATIONS -eq $VERIFIABLE_CONTRACTS ]; then
-  echo "✅ All verifiable contracts were successfully verified!"
+if [ $SUCCESSFUL_VERIFICATIONS -eq $TOTAL_CONTRACTS ]; then
+  echo "✅ All contracts were successfully verified!"
 else
   if [ $SUCCESSFUL_VERIFICATIONS -ge 0 ]; then
     echo "⚠️ Some contracts were verified, but others failed. Check the logs for details."

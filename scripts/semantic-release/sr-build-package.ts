@@ -119,7 +119,6 @@ export async function buildPackage(context: SemanticContext): Promise<void> {
       recursive: true,
     })
     fs.mkdirSync(path.join(buildDir, 'src', 'utils'), { recursive: true })
-    fs.mkdirSync(path.join(buildDir, 'src', 'types'), { recursive: true })
 
     // Copy ABIs using the approach from prepack.sh
     logger.log('Copying ABI files')
@@ -140,8 +139,8 @@ export async function buildPackage(context: SemanticContext): Promise<void> {
     const contractsDir = path.join(cwd, 'contracts')
     const solidityFiles = listFilesRecursively(contractsDir)
 
-    // Define directories to skip (including types since we generate TypeScript types from ABIs)
-    const skipDirs = ['test', 'tools', 'build', 'types']
+    // Define directories to skip
+    const skipDirs = ['test', 'tools', 'build']
 
     solidityFiles
       .filter(
@@ -157,10 +156,6 @@ export async function buildPackage(context: SemanticContext): Promise<void> {
         fs.copyFileSync(sourcePath, targetPath)
         logger.log(`Copied ${sourcePath} to ${targetPath}`)
       })
-    // Generate abitype-based contract types (replacing TypeChain)
-    logger.log('Generating abitype-based contract types')
-    generateAbiTypeFiles(buildDir, cwd, logger)
-
     // Generate TypeScript files from ABI JSON files
     logger.log('Generating TypeScript files from ABI JSON files')
     generateAbiTypeScriptFiles(buildDir, logger)
@@ -215,9 +210,6 @@ export async function buildPackage(context: SemanticContext): Promise<void> {
  * generateAbiTypeScriptFiles('/path/to/build', logger);
  */
 function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
-  // Import the struct extraction utilities
-  const { extractStructsFromAbi, generateTypeDefinitions, generateHashUtilities, generateModelClasses } = require('./abi-struct-extractor')
-  
   // Directory containing the JSON files
   const abiParentDir = path.join(buildDir, 'src', 'abi')
   const dirs = [
@@ -225,8 +217,8 @@ function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
     path.join(abiParentDir, 'interfaces'),
   ]
 
-  let mainIndexContent = `// Export all ABIs with proper typing for viem and abitype\n`
-  logger.log('Starting ABI exports with abitype integration')
+  let mainIndexContent = `// Export all ABIs with proper typing for viem\n`
+  logger.log('Starting ABI exports')
 
   dirs.forEach((abiDir) => {
     logger.log(`Processing directory: ${abiDir}`)
@@ -253,7 +245,7 @@ function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
       return acc
     }, [])
 
-    let indexContent = `// Contract ABIs for ${path.basename(abiDir)} with abitype integration\n`
+    let indexContent = `// Contract ABIs for ${path.basename(abiDir)}\n`
     const indexFilePath = path.join(abiDir, 'index.ts')
 
     // Generate the TypeScript code
@@ -265,12 +257,8 @@ function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
       // Add export to directory index
       indexContent += `export * from './${abiFile.contractName}'\n`
 
-      // Extract struct definitions from ABI
-      const extractionResult = extractStructsFromAbi(abiFile.abi)
-      logger.log(`Extracted ${Object.keys(extractionResult.structs).length} structs from ${abiFile.contractName}`)
-
-      // Generate basic ABI export with proper typing
-      let outputContent =
+      // Generate contract ABI file with proper typing
+      const outputContent =
         `/**\n * ABI for the ${abiFile.contractName} contract\n */\n` +
         `export const ${abiVarName} = ${JSON.stringify(abiFile.abi, null, 2)} as const\n\n` +
         `/**\n * Type-safe ABI for the ${abiFile.contractName} contract\n */\n` +
@@ -278,50 +266,7 @@ function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
         `/**\n * Bytecode for the ${abiFile.contractName} contract\n */\n` +
         `export const ${bytecodeVarName} = "${abiFile.bytecode}"\n\n` +
         `/**\n * Deployed bytecode for the ${abiFile.contractName} contract\n */\n` +
-        `export const ${deployedBytecodeVarName} = "${abiFile.deployedBytecode}"\n\n`
-
-      // If this is IntentSource, generate additional abitype-based utilities
-      if (abiFile.contractName === 'IntentSource' && Object.keys(extractionResult.structs).length > 0) {
-        logger.log('Generating IntentSource struct types and hash utilities')
-        
-        // Filter to include only the core Intent structs we care about
-        const meaningfulStructs: Record<string, any> = {};
-        const coreStructNames = ['Intent', 'Route', 'Reward', 'TokenAmount', 'Call', 'intent', 'route', 'reward', 'tokens', 'calls'];
-        
-        Object.entries(extractionResult.structs).forEach(([name, struct]) => {
-          // Include if it's a core struct or has meaningful components
-          if (coreStructNames.some(core => name.toLowerCase().includes(core.toLowerCase())) && 
-              struct.parameter.components && struct.parameter.components.length > 1) {
-            meaningfulStructs[name] = struct;
-          }
-        });
-        
-        if (Object.keys(meaningfulStructs).length > 0) {
-          // Add necessary imports for abitype and viem
-          outputContent += `\n// === Imports for Generated Types ===\n\n`
-          outputContent += `import type { AbiParameterToPrimitiveType } from 'abitype';\n`
-          outputContent += `import { keccak256, encodeAbiParameters, decodeAbiParameters } from 'viem';\n`
-          outputContent += `import type { Hex } from 'viem';\n\n`
-          
-          // Generate type definitions
-          outputContent += `// === Struct Type Definitions (Generated from ABI) ===\n\n`
-          outputContent += generateTypeDefinitions(meaningfulStructs, abiFile.contractName)
-          
-          // Generate hash utilities class
-          outputContent += `\n// === Hash Utilities ===\n\n`
-          outputContent += generateHashUtilities(meaningfulStructs, abiFile.contractName)
-          
-          // Generate model classes
-          outputContent += `\n// === Model Classes ===\n\n`
-          outputContent += generateModelClasses(meaningfulStructs, abiFile.contractName)
-
-          // Export struct information for external use
-          outputContent += `\n// === Struct Metadata ===\n\n`
-          outputContent += `export const ${abiFile.contractName}Structs = ${JSON.stringify(meaningfulStructs, null, 2)} as const\n`
-        } else {
-          logger.log('No meaningful structs found in IntentSource for type generation')
-        }
-      }
+        `export const ${deployedBytecodeVarName} = "${abiFile.deployedBytecode}"\n`
 
       const filePath = path.join(abiDir, `${abiFile.contractName}.ts`)
       fs.writeFileSync(filePath, outputContent, 'utf-8')
@@ -338,7 +283,7 @@ function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
     'utf-8',
   )
 
-  logger.log('Finished ABI exports with abitype integration')
+  logger.log('Finished ABI exports')
 }
 
 /**
@@ -434,7 +379,6 @@ function generateIndexFile(
 import { Hex } from 'viem'
 export * from './abi'
 export * from './utils'
-export * from './types'
 
 /**
  * This file contains the addresses of the contracts deployed on the EcoProtocol network
@@ -491,86 +435,6 @@ export function getContractAddress<T extends EcoChainIdsEnv>(
   fs.writeFileSync(path.join(buildDir, 'src', 'index.ts'), indexContent)
 
   logger.log(`Index files generated in ${buildDir}`)
-}
-
-/**
- * Copies TypeChain generated files for core contracts to the build directory.
- * This includes the main contract types and factory files for IntentSource, Portal, and Inbox.
- * The TypeChain types provide full type safety when interacting with these contracts.
- *
- * @param buildDir - Directory where build artifacts and generated files should be placed
- * @param cwd - Current working directory (project root)
- * @param logger - The logger instance for output messages and errors
- */
-function generateAbiTypeFiles(
-  buildDir: string,
-  cwd: string,
-  logger: Logger,
-): void {
-  const targetDir = path.join(buildDir, 'src', 'types')
-
-  try {
-    logger.log('Generating abitype-based contract types (replacing TypeChain)')
-
-    // Create a simple index file that re-exports abitype-generated types from ABI files
-    const indexContent = `// Generated contract types using abitype (replaces TypeChain)
-// Re-export struct types from the ABI-generated files
-
-// Import and re-export IntentSource struct types (using actual generated names)
-export type {
-  intent as IntentStruct,
-  route as RouteStruct,
-  reward as RewardStruct,
-  tokens as TokenAmountStruct,
-  calls as CallStruct,
-} from '../abi/contracts/IntentSource';
-
-// Import hash utilities for IntentSource
-export {
-  IntentSourceHasher,
-  intentModel as IntentStructModel,
-  routeModel as RouteStructModel,
-  rewardModel as RewardStructModel,
-  tokensModel as TokenAmountStructModel,
-  callsModel as CallStructModel,
-} from '../abi/contracts/IntentSource';
-
-// Re-export other contract types as needed
-export type {
-  PortalAbiType,
-} from '../abi/contracts/Portal';
-
-export type {
-  InboxAbiType,
-} from '../abi/contracts/Inbox';
-
-// Utility type helpers for contract interactions
-import type { Hex } from 'viem';
-
-export type ContractAddress = Hex;
-export type TransactionHash = Hex;
-export type BlockNumber = bigint;
-
-// Helper types for common contract interactions
-export interface ContractCallParams<T = any> {
-  address: ContractAddress;
-  functionName: string;
-  args?: T[];
-}
-
-export interface ContractWriteParams<T = any> extends ContractCallParams<T> {
-  value?: bigint;
-  gasLimit?: bigint;
-}
-`
-
-    fs.writeFileSync(path.join(targetDir, 'index.ts'), indexContent)
-    logger.log('Generated abitype-based contract types index')
-
-  } catch (error) {
-    logger.error(`Failed to generate abitype contract types: ${(error as Error).message}`)
-    throw error
-  }
 }
 
 /**

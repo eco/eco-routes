@@ -26,17 +26,18 @@
 import { prepare, SemanticContext, SemanticPluginConfig } from './sr-prepare'
 import { publish } from './sr-publish'
 import { verifyConditions } from './sr-verify-conditions'
+import { version } from './sr-version'
 
 async function main() {
   // Create plugin config and context
   const pluginConfig: SemanticPluginConfig = {}
   const context: SemanticContext = {
     nextRelease: {
-      version: '2.8.16',
-      gitTag: 'v2.8.16',
+      version: '2.1.12',
+      gitTag: 'v2.1.12',
       notes: 'Forcing publish',
       type: 'patch',
-      channel: 'beta_v2',
+      channel: 'beta',
     },
     logger: {
       log: console.log,
@@ -52,11 +53,15 @@ async function main() {
     console.log('--- Starting verifyConditions phase ---')
     await verifyConditions(pluginConfig, context)
 
-    // 2. Then run prepare phase (build the solidity files, deploy contracts, verify contracts)
+    // 2. Run version update phase
+    console.log('\n--- Starting version phase ---')
+    await version(pluginConfig, context)
+
+    // 3. Then run prepare phase (build the solidity files, deploy contracts, verify contracts)
     console.log('\n--- Starting prepare phase ---')
     await prepare(pluginConfig, context)
 
-    // 3. Finally run publish phase (publish to npm)
+    // 4. Finally run publish phase (publish to npm)
     console.log('\n--- Starting publish phase ---')
     const result = await publish(pluginConfig, context)
 

@@ -1,31 +1,33 @@
 /**
  * @file sr-version.ts
  *
- * Manages version information updates for npm packages in the semantic-release process.
+ * Manages version information updates across both Solidity contracts and npm packages.
+ * This critical step in the semantic-release process ensures version consistency
+ * between on-chain and off-chain components of the protocol.
  *
- * NOTE: Solidity contract versions are now manually managed in contracts/libs/Semver.sol
- * and are NOT automatically updated by this script. This approach provides better control
- * over contract versioning and avoids potential issues with automated version updates
- * affecting deployed smart contracts.
- *
- * The version module handles:
- * 1. Updating the semantic version in package.json for npm publishing
- * 2. Manual management note: Solidity versions must be updated manually in contracts/libs/Semver.sol
+ * The version module handles the complex task of synchronizing version information
+ * across different file types and ensuring that deployed smart contracts properly
+ * report their version information through standardized interfaces. This includes
+ * embedding Git commit information for traceability between deployed code and source.
  *
  * Key responsibilities:
  * 1. Updating the semantic version in package.json for npm publishing
- * 2. Logging version update activities for traceability
- * 3. Error handling for version update failures
+ * 2. Finding and updating all Solidity contracts implementing Semver interfaces
+ * 3. Converting semantic versions to appropriate on-chain representations
+ * 4. Embedding Git commit hash information in deployed contract versions
+ * 5. Ensuring version consistency across all protocol components
+ * 6. Generating version changelogs and documentation
  *
- * For Solidity contract versions:
- * - Contract versions are manually set in contracts/libs/Semver.sol
- * - This ensures explicit control over on-chain version reporting
- * - Developers must manually update the version() function when needed
- * - Current version in Semver.sol should be kept in sync with major releases
+ * This synchronization is essential for protocol security and auditability,
+ * allowing both off-chain and on-chain verification of deployed contract versions
+ * and maintaining a clear lineage between source code and deployed bytecode.
  */
 
 import { SemanticContext, SemanticPluginConfig } from './sr-prepare'
-import { updatePackageJsonVersion } from './solidity-version-updater'
+import {
+  updateSolidityVersions,
+  updatePackageJsonVersion,
+} from './solidity-version-updater'
 import dotenv from 'dotenv'
 dotenv.config()
 
@@ -72,9 +74,9 @@ export async function version(
   logger.log(`Updating version information to ${version}`)
 
   try {
-    // // 1. Update version in Solidity files
-    // const updatedFiles = updateSolidityVersions(cwd, version, logger)
-    // logger.log(`Updated version in ${updatedFiles} Solidity files`)
+    // 1. Update version in Solidity files
+    const updatedFiles = updateSolidityVersions(cwd, version, logger)
+    logger.log(`Updated version in ${updatedFiles} Solidity files`)
 
     // 2. Update version in package.json
     updatePackageJsonVersion(cwd, version, logger)

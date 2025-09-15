@@ -65,5 +65,3 @@ jobs:
         uses: borales/actions-yarn@v5
         with:
           cmd: test # will run `yarn test` command
-        env:
-          VERIFICATION_KEY: dummy-test-key

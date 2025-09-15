@@ -50,8 +50,6 @@ Eco Routes now supports both EVM chains and non-EVM chains like Solana through a
 The protocol provides seamless conversion between these formats through the `IntentConverter` utility.
 For detailed information about cross-chain implementation, see [CROSS_CHAIN.md](./CROSS_CHAIN.md).
 
-The protocol now supports additional chains for enhanced cross-chain functionality.
-
 ### Intent Publishing
 
 The `Portal` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `Portal` at all - a user can disseminate intent information directly to solvers if they so choose.

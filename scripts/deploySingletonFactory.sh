@@ -53,17 +53,6 @@ echo "$CHAIN_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
   CHAIN_ID=$(echo "$entry" | jq -r '.key')
   value=$(echo "$entry" | jq -c '.value')
 
-  # Skip World Chain (480) - uses createx instead of singleton factory
-  # Skip chain 9745 - has EIP-1559 issues with null blobGasUsedRatio
-  if [ "$CHAIN_ID" = "480" ] || [ "$CHAIN_ID" = "9745" ]; then
-    if [ "$CHAIN_ID" = "480" ]; then
-      echo "⏭️  Skipping Chain ID $CHAIN_ID (World Chain) - uses createx instead of singleton factory"
-    else
-      echo "⏭️  Skipping Chain ID $CHAIN_ID (Plasma) - has EIP-1559 compatibility issues"
-    fi
-    continue
-  fi
-
   RPC_URL=$(echo "$value" | jq -r '.url')
 
   if [ "$RPC_URL" = "null" ] || [ -z "$RPC_URL" ]; then

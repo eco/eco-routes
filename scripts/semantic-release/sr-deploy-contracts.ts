@@ -21,7 +21,7 @@ import fs from 'fs'
 // eslint-disable-next-line node/no-missing-import
 import { parse as parseCSV } from 'csv-parse/sync'
 import { determineSalts } from '../utils/extract-salt'
-import { getAddress, Hex, hexToBytes, keccak256 } from 'viem'
+import { getAddress, Hex } from 'viem'
 import { SemanticContext } from './sr-prepare'
 import {
   PATHS,
@@ -34,9 +34,6 @@ import dotenv from 'dotenv'
 import { Logger } from './helpers'
 import { validateEnvVariables } from '../utils/envUtils'
 import { executeProcess } from '../utils/processUtils'
-import { getDeployerAddress } from '../utils/address'
-import { create2470Create3Address } from '../contracts/erc2470'
-import { createCreateXSalt, createXCreate3Address } from '../contracts'
 
 dotenv.config()
 
@@ -242,33 +239,6 @@ async function deployContracts(
         )
         fs.unlinkSync(resultsPath)
       }
-
-      // Generate HyperProver CreateX address using the salt and deployer
-      // Use the new getHyperProverSalt function to match Solidity implementation
-      const deployer = getDeployerAddress()
-      // Do secondary keccak256 force a redeploy for version 2.8.* for the hyper prover
-      const hyperProverSalt = createCreateXSalt(
-        deployer,
-        0,
-        hexToBytes(keccak256(salt)),
-      )
-      const hyperProverCreateXAddress = await createXCreate3Address(
-        deployer,
-        hyperProverSalt,
-      )
-
-      const hyperProver2470Address = await create2470Create3Address(
-        deployer,
-        hyperProverSalt,
-      )
-
-      logger.log(
-        `Generated HyperProver CreateX address: ${hyperProverCreateXAddress}`,
-      )
-      logger.log(
-        `Generated HyperProver erc2470 address: ${hyperProver2470Address}`,
-      )
-
       // Run the deployment script
       // Create a properly merged environment by spreading process.env first
       const exitCode = await executeProcess(
@@ -277,9 +247,6 @@ async function deployContracts(
         {
           ...process.env, // Spread existing env first
           [ENV_VARS.SALT]: salt, // Then override with our custom value
-          [ENV_VARS.HYPERPROVER_SALT]: hyperProverSalt, // Then override with our custom value
-          [ENV_VARS.HYPERPROVER_CREATEX_ADDRESS]: hyperProverCreateXAddress,
-          [ENV_VARS.HYPERPROVER_2470_ADDRESS]: hyperProver2470Address,
         },
         cwd,
       )

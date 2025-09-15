@@ -3,20 +3,11 @@ name: Release
 # This workflow creates a new release using semantic-release
 # It can be triggered in two ways:
 # 1. Manually via the GitHub UI with optional release type
-# 2. Automatically when commits are pushed to beta or alpha branches
-#
-# Release Strategy:
-# - beta branch: Publishes 2.x.x versions to @beta npm tag
-# - alpha branch: Publishes 3.x.x-alpha.x versions to @alpha npm tag
-#
-# Installation:
-# - npm install @eco-foundation/routes@beta    (2.x.x stable versions)
-# - npm install @eco-foundation/routes@alpha   (3.x.x alpha versions)
+# 2. Automatically when commits are pushed to the main branch
 on:
   push:
     branches:
       - beta
-      - alpha
   repository_dispatch:
     types: [manual-release-trigger]
 
@@ -41,6 +32,34 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-release to generate changelogs
           token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
+          ref: beta # Explicitly checkout the beta branch
+      # Set up AWS credentials using OIDC for secure authentication
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Fetch secrets from AWS Secrets Manager as a JSON string
+      # The secret will be available as an environment variable: VERIFICATION_KEYS
+      - name: Get secrets from AWS Secrets Manager
+        id: fetch-secrets
+        uses: aws-actions/aws-secretsmanager-get-secrets@v1
+        with:
+          secret-ids: |
+            VERIFICATION_KEYS, ${{ secrets.AWS_SECRET_NAME }}
+          parse-json-secrets: false # Keep as raw JSON string
+
+      # Verify that secrets were loaded successfully
+      - name: Verify secrets were loaded
+        id: check-secrets
+        run: |
+          # Check if the secret was loaded properly
+          if [ -z "$VERIFICATION_KEYS" ]; then
+            echo "Error: VERIFICATION_KEYS environment variable is empty"
+            exit 1
+          fi
+          echo "AWS Secrets loaded successfully"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
@@ -80,12 +99,13 @@ jobs:
         with:
           cmd: tsc
 
-      # Verify current branch (works for both beta and alpha)
+      # Ensure we're on beta branch and that Git knows about it
       - name: Verify current branch
         run: |
+          git checkout beta
           echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
 
-      # Run semantic-release
+      # Run semantic-release with access to the AWS secrets
       - name: Run Semantic Release
         id: semantic-release
         env:
@@ -98,6 +118,8 @@ jobs:
           CHAIN_DATA_URL: ${{ secrets.CHAIN_DATA_URL }}
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
-          VERIFICATION_KEY: ${{ secrets.VERIFICATION_KEY }}
+          VERIFICATION_KEYS: ${{ env.VERIFICATION_KEYS }}
+          # Explicitly tell semantic-release which branch we're on
+          GITHUB_REF: refs/heads/beta
         run: |
           npx semantic-release --debug

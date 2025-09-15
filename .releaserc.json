@@ -3,14 +3,14 @@
     {
       "name": "beta",
       "channel": "beta"
-    },
-    {
-      "name": "alpha",
-      "channel": "alpha", 
-      "prerelease": "alpha"
     }
   ],
-  "repositoryUrl": "https://github.com/eco/eco-routes.git",
+  "repositoryUrl": "git@github.com:eco/eco-routes.git",
+  "lastRelease": {
+    "version": "2.1.5",
+    "gitTag": "v2.1.5",
+    "gitHead": "1c1fdd412f40a7d2e13ac357173da73fe1416559"
+  },
   "plugins": [
     [
       "@semantic-release/commit-analyzer",

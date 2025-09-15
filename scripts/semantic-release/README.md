@@ -51,7 +51,7 @@ Required GitHub repository secrets:
 - `NPM_TOKEN`: For publishing to npm
 - `PRIVATE_KEY`: Deployer wallet private key
 - `ALCHEMY_API_KEY`: Used for contract deployment and verification
-- `VERIFICATION_KEY`: Single API key for etherscan verification
+- `VERIFICATION_KEYS`: API keys for etherscan verification
 
 ## Testing Locally
 
@@ -216,7 +216,7 @@ When a new version is released:
 1. **Missing environment variables**:
 
    - Ensure all required environment variables are set
-   - Check for spaces in the VERIFICATION_KEY environment variable
+   - Check for spaces in JSON-formatted environment variables like VERIFICATION_KEYS
 
 2. **Authentication errors**:
 

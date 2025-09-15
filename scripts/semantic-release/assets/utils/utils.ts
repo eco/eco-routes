@@ -47,8 +47,7 @@ function extractAbiStructRecursive<
 >(abi: AbiExt, structName: string): AbiReturn | undefined {
   for (const item of abi) {
     const obj = item as any
-    // Check for struct by internalType (inline struct definitions)
-    if (obj.internalType === `struct ${structName}`) {
+    if (obj.name === structName) {
       return obj as AbiReturn
     }
     if (obj.inputs) {

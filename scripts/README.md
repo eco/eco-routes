@@ -185,7 +185,9 @@ RESULTS_FILE=<Path for deployment results>
 NPM_TOKEN=<NPM token with publish access>
 
 # For verification
-VERIFICATION_KEY=<Single API key for all chains>
+VERIFICATION_KEYS=<JSON string of API keys>
+# or
+VERIFICATION_KEYS_FILE=<Path to verification keys file>
 ```
 
 In GitHub Actions, these are stored as secrets and passed to the workflow.
@@ -219,7 +221,8 @@ ROUTER=<Optional: Router contract address for MetaProver>
 LAYERZERO_ENDPOINT=<Optional: LayerZero Endpoint address for LayerZeroProver>
 
 # For VerifyResults.sh
-VERIFICATION_KEY=<Single API key for all chains>
+VERIFICATION_KEYS_FILE=<Path to verification keys JSON file>
+VERIFICATION_KEYS=<Optional: JSON string of verification keys>
 ```
 
 ### Account Funding
@@ -321,7 +324,7 @@ This script verifies all contracts deployed by MultiDeploy.sh on their respectiv
 The script:
 
 - Reads deployment data from RESULTS_FILE
-- Uses verification API key from VERIFICATION_KEY
+- Uses verification API keys from VERIFICATION_KEYS_FILE
 - Verifies each contract on the appropriate block explorer
 - Supports constructor arguments stored in the deployment data
 - Automatically retries failed verifications
@@ -331,7 +334,7 @@ The script:
 Follow these steps for a complete deployment:
 
 1. Configure your `.env` file with all required environment variables
-2. Set your VERIFICATION_KEY environment variable with a single API key
+2. Create a verification keys file (see `verification-keys-example.json`)
 3. Run `./scripts/deploySingletonFactory.sh` to ensure the Singleton Factory is deployed
 4. Run `./scripts/MultiDeploy.sh` to deploy all contracts across chains
 5. Run `./scripts/VerifyResults.sh` to verify the deployed contracts
@@ -375,12 +378,26 @@ Each entry contains:
 
 ## Verification Keys Format
 
-The VERIFICATION_KEY should contain a single API key that works across all supported chains:
+The VERIFICATION_KEYS_FILE should contain a JSON object with chain IDs as keys and API keys as values:
 
-```bash
-VERIFICATION_KEY=YOUR_ETHERSCAN_API_KEY
+```json
+{
+  "1": "YOUR_ETHERSCAN_API_KEY",
+  "10": "YOUR_OPTIMISM_API_KEY",
+  "56": "YOUR_BSCSCAN_API_KEY",
+  "137": "YOUR_POLYGONSCAN_API_KEY",
+  "43114": "YOUR_AVALANCHE_API_KEY",
+  "42161": "YOUR_ARBISCAN_API_KEY"
+}
 ```
 
-This single API key will be used for verification on all chains. Make sure the API key you provide is compatible with the block explorers for all chains you plan to deploy to.
+Each chain requires its own specific API key for the relevant block explorer:
+
+- Chain ID 1: Etherscan API key
+- Chain ID 10: Optimism Explorer API key
+- Chain ID 56: BscScan API key
+- And so on for other chains
+
+You can also provide the verification keys as a JSON string in the VERIFICATION_KEYS environment variable instead of using a file.
 
 5-13-2025 - add manta

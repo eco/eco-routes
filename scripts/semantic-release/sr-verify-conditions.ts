@@ -90,7 +90,6 @@ export async function verifyConditions(
     ENV_VARS.PRIVATE_KEY,
     ENV_VARS.ALCHEMY_API_KEY,
     ENV_VARS.NPM_TOKEN,
-    ENV_VARS.VERIFICATION_KEY,
   ]
   const missingVars = requiredEnvVars.filter((varName) => !process.env[varName])
 

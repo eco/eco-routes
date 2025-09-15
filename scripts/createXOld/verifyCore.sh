@@ -31,13 +31,18 @@ if [ -z "$CHAIN_JSON" ]; then
 fi
 echo "Chain JSON loaded successfully"
 
-# Check for single verification key
-if [ -z "$VERIFICATION_KEY" ]; then
-  echo "❌ Error: VERIFICATION_KEY environment variable not found."
+# Load verification keys from environment variable or file
+VERIFICATION_KEYS=""
+if [ \! -z "$VERIFICATION_KEYS" ]; then
+  echo "📝 Using verification keys from VERIFICATION_KEYS environment variable"
+  VERIFICATION_KEYS="$VERIFICATION_KEYS"
+elif [ -f "$VERIFICATION_KEYS_FILE" ]; then
+  echo "📝 Using verification keys from $VERIFICATION_KEYS_FILE"
+  VERIFICATION_KEYS=$(cat "$VERIFICATION_KEYS_FILE")
+else
+  echo "❌ Error: Neither VERIFICATION_KEYS environment variable nor $VERIFICATION_KEYS_FILE found."
   exit 1
 fi
-
-echo "📝 Using single verification key for all chains"
 
 # Process the deployment data for verification
 echo "📝 Starting contract verification process..."
@@ -59,24 +64,60 @@ tail -n +2 "$DEPLOYED_CONTRACTS_FILE" | while IFS=, read -r CHAIN_ID ENV_NAME CO
   echo "   Contract Path: $CONTRACT_PATH"
   echo "   Environment: $ENV_NAME"
 
-  # Use the single verification key for all chains
-  VERIFY_KEY="$VERIFICATION_KEY"
-  echo "   🔑 Using verification key for chain ID $CHAIN_ID"
+  # Get the verification key using JQ with simple key access
+  VERIFY_KEY=""
+  if [ -n "$VERIFICATION_KEYS" ]; then
+    # Use --arg to properly handle the CHAIN_ID as a string key
+    VERIFY_KEY=$(echo "$VERIFICATION_KEYS" | jq -r --arg chain "$CHAIN_ID" '.[$chain] // empty')
+  fi
 
-  # Build verification command
-  VERIFY_CMD="forge verify-contract --chain $CHAIN_ID --etherscan-api-key \"$VERIFY_KEY\" --watch --constructor-args \"\" $CONTRACT_ADDRESS $CONTRACT_PATH"
+  # If we have a verification key for this chain
+  if [ -n "$VERIFY_KEY" ] && [ "$VERIFY_KEY" \!= "null" ]; then
+    echo "   🔑 Using chain-specific verification key for chain ID $CHAIN_ID"
 
-  # Execute verification command
-  echo "   📝 Executing verification..."
-  eval "$VERIFY_CMD"
+    # Build verification command
+    VERIFY_CMD="forge verify-contract --chain $CHAIN_ID --etherscan-api-key \"$VERIFY_KEY\" --watch --constructor-args \"\" $CONTRACT_ADDRESS $CONTRACT_PATH"
 
-  VERIFY_RESULT=$?
-  if [ $VERIFY_RESULT -eq 0 ]; then
-    echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
-    SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+    # Execute verification command
+    echo "   📝 Executing verification with chain-specific key..."
+    eval "$VERIFY_CMD"
+
+    VERIFY_RESULT=$?
+    if [ $VERIFY_RESULT -eq 0 ]; then
+      echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
+      SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+    else
+      echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
+      FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
+    fi
   else
-    echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
-    FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
+    # If no verification key found, try fallback to ETHERSCAN_API_KEY
+    if [ -n "$ETHERSCAN_API_KEY" ]; then
+      echo "   🔑 Using fallback ETHERSCAN_API_KEY for verification"
+      forge verify-contract --chain $CHAIN_ID --etherscan-api-key "$ETHERSCAN_API_KEY" --watch --constructor-args "" $CONTRACT_ADDRESS $CONTRACT_PATH
+      
+      VERIFY_RESULT=$?
+      if [ $VERIFY_RESULT -eq 0 ]; then
+        echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID with fallback key"
+        SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+      else
+        echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID with fallback key"
+        FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
+      fi
+    else
+      # Try standard verification without specific key
+      echo "   📝 Executing standard verification..."
+      forge verify-contract --chain $CHAIN_ID --watch --constructor-args "" $CONTRACT_ADDRESS $CONTRACT_PATH
+
+      VERIFY_RESULT=$?
+      if [ $VERIFY_RESULT -eq 0 ]; then
+        echo "   ✅ Verification succeeded for $CONTRACT_NAME on chain $CHAIN_ID"
+        SUCCESSFUL_VERIFICATIONS=$((SUCCESSFUL_VERIFICATIONS + 1))
+      else
+        echo "   ❌ Verification failed for $CONTRACT_NAME on chain $CHAIN_ID"
+        FAILED_VERIFICATIONS=$((FAILED_VERIFICATIONS + 1))
+      fi
+    fi
   fi
 
   echo ""
