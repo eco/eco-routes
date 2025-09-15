@@ -61,11 +61,7 @@
     "create-intent": "npx hardhat run scripts/v2/create_intent.ts",
     "create-intent:base": "SOURCE_NETWORK=base DEST_NETWORK=optimism npx hardhat run scripts/v2/create_intent.ts --network base",
     "create-intent:optimism": "SOURCE_NETWORK=optimism DEST_NETWORK=base npx hardhat run scripts/v2/create_intent.ts --network optimism",
-    "release": "semantic-release",
-    "deploy:tron": "npx tsx scripts/tron-deploy.ts",
-    "deploy:tron:nile": "TRON_RPC_URL=https://nile.trongrid.io npx tsx scripts/tron-deploy.ts",
-    "deploy:tron:shasta": "TRON_RPC_URL=https://api.shasta.trongrid.io npx tsx scripts/tron-deploy.ts",
-    "deploy:tron:mainnet": "TRON_RPC_URL=https://api.trongrid.io npx tsx scripts/tron-deploy.ts"
+    "release": "semantic-release"
   },
   "devDependencies": {
     "@actions/core": "^1.11.1",

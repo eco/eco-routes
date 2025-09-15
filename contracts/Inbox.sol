@@ -97,7 +97,6 @@ abstract contract Inbox is DestinationSettler, IInbox {
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
      *      - LayerZero: Uses endpoint IDs that map to chains differently
      *      - Metalayer: Uses domain IDs specific to their routing system
-     *      - Polymer: Uses chain IDs
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */
@@ -146,7 +145,6 @@ abstract contract Inbox is DestinationSettler, IInbox {
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
      *      - LayerZero: Uses endpoint IDs that map to chains differently
      *      - Metalayer: Uses domain IDs specific to their routing system
-     *      - Polymer: Uses chainIDs
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */
@@ -223,7 +221,11 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
+            abi.encodePacked(
+                CHAIN_ID,
+                routeHash,
+                rewardHash
+            )
         );
 
         if (route.portal != address(this)) {
