@@ -94,14 +94,16 @@ contract PolymerProverTest is BaseTest {
         // Create mock destination prover address
         destinationProver = makeAddr("destinationProver");
 
-        // Create whitelist array for constructor
-        bytes32[] memory provers = new bytes32[](1);
-        provers[0] = bytes32(uint256(uint160(destinationProver)));
+        // Create whitelist array for constructor (address | chainID)
+        bytes32[] memory provers = new bytes32[](2);
+        provers[0] = bytes32(uint256(uint160(destinationProver))) | (bytes32(uint256(OPTIMISM_CHAIN_ID)) << 160);
+        provers[1] = bytes32(uint256(uint160(destinationProver))) | (bytes32(uint256(ARBITRUM_CHAIN_ID)) << 160);
 
-        // Deploy PolymerProver with portal, crossL2ProverV2, and whitelist
+        // Deploy PolymerProver with portal, crossL2ProverV2, maxLogDataSize, and whitelist
         polymerProver = new PolymerProver(
             address(portal),
             address(crossL2ProverV2),
+            32 * 1024, // maxLogDataSize
             provers
         );
 
@@ -121,10 +123,10 @@ contract PolymerProverTest is BaseTest {
         // Test whitelist functionality
         assertTrue(
             polymerProver.isWhitelisted(
-                bytes32(uint256(uint160(destinationProver)))
+                bytes32(uint256(uint160(destinationProver))) | (bytes32(uint256(OPTIMISM_CHAIN_ID)) << 160)
             )
         );
-        assertEq(polymerProver.getWhitelistSize(), 1);
+        assertEq(polymerProver.getWhitelistSize(), 2);
     }
 
     function testImplementsIProverInterface() public view {
@@ -654,17 +656,17 @@ contract PolymerProverTest is BaseTest {
     }
 
     function testWhitelistFunctionality() public {
-        // Test that our destination prover is whitelisted
+        // Test that our destination prover is whitelisted (address | chainID)
         assertTrue(
             polymerProver.isWhitelisted(
-                bytes32(uint256(uint160(destinationProver)))
+                bytes32(uint256(uint160(destinationProver))) | (bytes32(uint256(OPTIMISM_CHAIN_ID)) << 160)
             )
         );
 
         // Test that a random address is not whitelisted
         address randomAddr = makeAddr("random");
         assertFalse(
-            polymerProver.isWhitelisted(bytes32(uint256(uint160(randomAddr))))
+            polymerProver.isWhitelisted(bytes32(uint256(uint160(randomAddr))) | (bytes32(uint256(OPTIMISM_CHAIN_ID)) << 160))
         );
 
         // Test zero address is not whitelisted
@@ -677,14 +679,64 @@ contract PolymerProverTest is BaseTest {
         PolymerProver newProver = new PolymerProver(
             address(portal),
             address(crossL2ProverV2),
+            32 * 1024, // maxLogDataSize
             emptyProvers
         );
 
         assertEq(newProver.getWhitelistSize(), 0);
         assertFalse(
             newProver.isWhitelisted(
-                bytes32(uint256(uint160(destinationProver)))
+                bytes32(uint256(uint160(destinationProver))) | (bytes32(uint256(OPTIMISM_CHAIN_ID)) << 160)
             )
         );
+    }
+
+    function testValidateFailsWithAddressOnlyWhitelist() public {
+        // Create a new prover with address-only whitelist (no chainID suffix)
+        bytes32[] memory addressOnlyProvers = new bytes32[](1);
+        addressOnlyProvers[0] = bytes32(uint256(uint160(destinationProver))); // Missing chainID
+
+        PolymerProver addressOnlyProver = new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            32 * 1024,
+            addressOnlyProvers
+        );
+
+        // Create proof data
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = keccak256("test_intent");
+        claimants[0] = bytes32(uint256(uint160(makeAddr("claimant"))));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        // setUp() used index 0, our setAll() used index 1
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        // Fails because whitelist has address without chainID
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PolymerProver.InvalidEmittingContract.selector,
+                destinationProver
+            )
+        );
+        addressOnlyProver.validate(proof);
     }
 }
