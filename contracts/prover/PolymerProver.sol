@@ -132,6 +132,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
 
+            if (claimantBytes >> 160 != 0) continue;
+
             address claimant = claimantBytes.toAddress();
             processIntent(intentHash, claimant, destinationChainId);
         }
