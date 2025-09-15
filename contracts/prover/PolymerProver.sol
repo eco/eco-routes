@@ -45,13 +45,13 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      * @notice Initializes the PolymerProver contract
      * @param _portal Address of the Portal contract
      * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
-     * @param _provers Array of whitelisted prover addresses as bytes32
+     * @param _proverIds Array of whitelisted prover (address | chainID)s as bytes32
      */
     constructor(
         address _portal,
         address _crossL2ProverV2,
-        bytes32[] memory _provers
-    ) BaseProver(_portal) Whitelist(_provers) {
+        bytes32[] memory _proverIds
+    ) BaseProver(_portal) Whitelist(_proverIds) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
     }
@@ -80,7 +80,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        if (!isWhitelisted(emittingContract.toBytes32())) {
+        bytes32 fullContractIdentifier = emittingContract.toBytes32() | (bytes32(uint256(destinationChainId)) << 160);
+        if (!isWhitelisted(fullContractIdentifier)) {
             revert InvalidEmittingContract(emittingContract);
         }
 
