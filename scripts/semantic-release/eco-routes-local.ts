@@ -33,8 +33,8 @@ async function main() {
   const pluginConfig: SemanticPluginConfig = {}
   const context: SemanticContext = {
     nextRelease: {
-      version: '2.1.12',
-      gitTag: 'v2.1.12',
+      version: '3.0.0',
+      gitTag: 'v3.0.0',
       notes: 'Forcing publish',
       type: 'patch',
       channel: 'beta',
@@ -51,7 +51,7 @@ async function main() {
   try {
     // 1. First verify conditions
     console.log('--- Starting verifyConditions phase ---')
-    await verifyConditions(pluginConfig, context)
+    // await verifyConditions(pluginConfig, context)
 
     // 2. Run version update phase
     console.log('\n--- Starting version phase ---')
@@ -63,10 +63,10 @@ async function main() {
 
     // 4. Finally run publish phase (publish to npm)
     console.log('\n--- Starting publish phase ---')
-    const result = await publish(pluginConfig, context)
+    // const result = await publish(pluginConfig, context)
 
     console.log('\n✅ Semantic release simulation completed successfully')
-    return result
+    // return result
   } catch (error) {
     console.error('\n❌ Semantic release simulation failed:')
     console.error((error as Error).message)

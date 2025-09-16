@@ -2,6 +2,7 @@ import { TronWeb } from 'tronweb'
 import fs from 'fs'
 import path from 'path'
 import 'dotenv/config'
+import axios from 'axios'
 
 // TRON Chain IDs
 const TRON_MAINNET_CHAIN_ID = 728126428
@@ -15,6 +16,7 @@ interface ContractArtifact {
 
 interface DeploymentContext {
   existingPortal?: string
+  existingPolymerProver?: string
   layerZeroEndpoint?: string
   layerZeroDelegate?: string
   polymerCrossL2ProverV2?: string
@@ -50,6 +52,7 @@ class TronDeployer {
 
     this.deploymentContext = {
       existingPortal: process.env.PORTAL_CONTRACT,
+      existingPolymerProver: process.env.POLYMER_PROVER_CONTRACT,
       layerZeroEndpoint: process.env.LAYERZERO_ENDPOINT,
       layerZeroDelegate: process.env.LAYERZERO_DELEGATE,
       polymerCrossL2ProverV2: process.env.POLYMER_CROSS_L2_PROVER_V2,
@@ -73,6 +76,58 @@ class TronDeployer {
       .filter((p) => p.length > 0)
   }
 
+  private async fetchPolymerCrossL2ProverV2(): Promise<void> {
+    const chainDataUrl = process.env.CHAIN_DATA_URL
+    if (!chainDataUrl) {
+      console.log(
+        '⚠️  CHAIN_DATA_URL not set, cannot fetch POLYMER_CROSS_L2_PROVER_V2',
+      )
+      return
+    }
+
+    try {
+      console.log('📡 Fetching POLYMER_CROSS_L2_PROVER_V2 from chain data...')
+      const response = await axios.get(chainDataUrl)
+      const data: Record<string, any> = response.data
+
+      // Find the first chain with crossL2proverV2 configured
+      for (const [chainId, config] of Object.entries(data)) {
+        if (config.crossL2proverV2) {
+          // Convert hex address to Tron base58 format
+          const base58Address = this.tronWeb.address.fromHex(
+            config.crossL2proverV2,
+          )
+          this.deploymentContext.polymerCrossL2ProverV2 = base58Address
+          console.log(
+            `✅ Found POLYMER_CROSS_L2_PROVER_V2 from chain ${chainId}: ${config.crossL2proverV2} -> ${base58Address}`,
+          )
+          return
+        }
+      }
+
+      console.log('⚠️  No crossL2proverV2 found in chain data')
+    } catch (error) {
+      console.error(
+        '❌ Failed to fetch POLYMER_CROSS_L2_PROVER_V2 from chain data:',
+        (error as Error).message,
+      )
+    }
+  }
+
+  private getExistingContractAddress(contractName: string): string | undefined {
+    // Check if we have an existing deployment context address
+    switch (contractName.toLowerCase()) {
+      case 'portal':
+        return this.deploymentContext.contracts.portal
+      case 'layerzeroprover':
+        return this.deploymentContext.contracts.layerZeroProver
+      case 'polymerprover':
+        return this.deploymentContext.contracts.polymerProver
+      default:
+        return undefined
+    }
+  }
+
   async init(): Promise<void> {
     // Set deployer address from private key
     let privateKey = process.env.PRIVATE_KEY || ''
@@ -82,6 +137,11 @@ class TronDeployer {
     const account = this.tronWeb.address.fromPrivateKey(privateKey)
     this.deploymentContext.deployer = account || ''
     console.log('Deployer address:', this.deploymentContext.deployer)
+
+    // Fetch POLYMER_CROSS_L2_PROVER_V2 from chain data if not set
+    if (!this.deploymentContext.polymerCrossL2ProverV2) {
+      await this.fetchPolymerCrossL2ProverV2()
+    }
 
     // Determine network based on the RPC URL being used
     const rpcUrl =
@@ -194,6 +254,23 @@ class TronDeployer {
   ): Promise<string> {
     console.log(`Deploying ${contractName}...`)
 
+    // Check if contract already exists in deployment context (from previous deployment)
+    const existingAddress = this.getExistingContractAddress(contractName)
+    if (existingAddress) {
+      try {
+        const account = await this.tronWeb.trx.getAccount(existingAddress)
+        if (account && account.code) {
+          console.log(`${contractName} already deployed at: ${existingAddress}`)
+          return existingAddress
+        }
+      } catch (error) {
+        // Account doesn't exist or has no code, proceed with deployment
+        console.log(
+          `Existing address ${existingAddress} not found or has no code, proceeding with deployment`,
+        )
+      }
+    }
+
     try {
       const contract = await this.tronWeb.contract().new({
         abi: contractArtifact.abi,
@@ -278,6 +355,9 @@ class TronDeployer {
   private async writeDeploymentResults(): Promise<void> {
     const results: string[] = []
 
+    // Add CSV header
+    results.push('ChainID,ContractAddress,ContractPath,ContractArguments')
+
     // Get network info and map to chain ID
     let chainId = TRON_SHASTA_CHAIN_ID // Default
     try {
@@ -346,12 +426,17 @@ class TronDeployer {
       console.log('Starting TRON deployment process...')
 
       const hasExistingPortal = !!this.deploymentContext.existingPortal
+      const hasExistingPolymerProver =
+        !!this.deploymentContext.existingPolymerProver
       const hasLayerZero = !!this.deploymentContext.layerZeroEndpoint
-      const hasPolymer = !!this.deploymentContext.polymerCrossL2ProverV2
-      const needsPortal = !hasExistingPortal && (hasLayerZero || hasPolymer)
+      const hasPolymerCrossL2 = !!this.deploymentContext.polymerCrossL2ProverV2
+      const polymerProverDeployed =
+        !!this.deploymentContext.existingPolymerProver
+
+      // const needsPortal = !hasExistingPortal && (hasLayerZero || hasPolymer)
 
       // Deploy Portal
-      if (needsPortal) {
+      if (!hasExistingPortal) {
         await this.deployPortal()
       } else if (hasExistingPortal) {
         this.deploymentContext.contracts.portal =
@@ -363,12 +448,19 @@ class TronDeployer {
       }
 
       // Deploy provers based on configuration
-      if (hasLayerZero) {
-        await this.deployLayerZeroProver()
-      }
+      // if (!hasLayerZero) {
+      //   await this.deployLayerZeroProver()
+      // }
 
-      if (hasPolymer) {
+      if (hasPolymerCrossL2 && !polymerProverDeployed) {
         await this.deployPolymerProver()
+      } else {
+        this.deploymentContext.contracts.polymerProver =
+          this.deploymentContext.existingPolymerProver
+        console.log(
+          'Using existing polymerProver:',
+          this.deploymentContext.existingPolymerProver,
+        )
       }
 
       await this.writeDeploymentResults()

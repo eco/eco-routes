@@ -21,6 +21,8 @@
 # - CHAIN_DATA_URL: URL to chain configuration JSON
 # - APPEND_RESULTS: If "true", append to existing results file
 # - CROSS_VM_PROVERS: Optional comma-separated list of cross-VM prover addresses (bytes32)
+# - TRON_POLYMER_PROVER: Optional Tron Polymer Prover address to include as cross-VM prover
+# - ENABLE_TRON_INTEGRATION: If "true", includes Tron addresses in cross-VM provers
 
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,6 +73,22 @@ fi
 PUBLIC_ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
 echo "Wallet Public Address: $PUBLIC_ADDRESS"
 echo "Using SALT: $SALT"
+
+# Handle Tron integration if enabled
+if [ "$ENABLE_TRON_INTEGRATION" = "true" ] && [ -n "$TRON_POLYMER_PROVER" ]; then
+    echo "🔗 Tron integration enabled"
+    echo "📍 Tron Polymer Prover: $TRON_POLYMER_PROVER"
+
+    # Pass Tron address as-is, conversion to hex will happen in EVM deployment
+    if [ -n "$CROSS_VM_PROVERS" ]; then
+        CROSS_VM_PROVERS="$CROSS_VM_PROVERS,$TRON_POLYMER_PROVER"
+    else
+        CROSS_VM_PROVERS="$TRON_POLYMER_PROVER"
+    fi
+
+    echo "🌐 Enhanced Cross-VM Provers with Tron: $CROSS_VM_PROVERS"
+fi
+
 # Process each chain from the JSON data
 echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     CHAIN_ID=$(echo "$entry" | jq -r '.key')
