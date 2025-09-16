@@ -394,6 +394,7 @@ async function deployEVMWithSalt(
     ...process.env,
     SALT: salt,
     DEPLOY_FILE: resultsPath,
+    RESULTS_FILE: resultsPath, // deployRoutes.sh requires RESULTS_FILE to be set
     // Include Tron Polymer Prover as cross-VM prover if available
     ENABLE_TRON_INTEGRATION: 'true',
     TRON_POLYMER_PROVER: tronProverHex,
