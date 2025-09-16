@@ -147,11 +147,12 @@ const networks: any = {
     },
   },
 }
-// TODO Update Bedrock with from BaseSepolia to ECOTestNet
-// Need to Prove Sepolia Settlement World State
-// Need to Prove BaseSepolia Settlement World State Using Cannon
-// Need to Prove ECOTestNet Destination World State Using Bedrock
-// Need to Prove Intent
+// Bedrock configuration for cross-chain proof verification
+// This configuration enables proving settlement states across chains:
+// 1. Sepolia Settlement World State (main settlement chain)
+// 2. BaseSepolia Settlement World State (using Cannon prover)
+// 3. ECOTestNet Destination World State (using Bedrock prover)
+// 4. Intent proof verification across these chains
 const bedrock: any = {
   settlementChain: {
     blockNumber: '0x62cbc2', // 6474690n

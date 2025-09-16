@@ -49,8 +49,9 @@ describe('Destination Settler Test', (): void => {
       await ethers.getContractFactory('TestMailbox')
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
-    const inboxFactory = await ethers.getContractFactory('Inbox')
-    const inbox = await inboxFactory.deploy()
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const prover = await (
       await ethers.getContractFactory('TestProver')
     ).deploy(await inbox.getAddress())
@@ -95,9 +96,9 @@ describe('Destination Settler Test', (): void => {
 
     const _route: Route = {
       salt,
-      source: sourceChainID,
-      destination: Number((await owner.provider.getNetwork()).chainId),
-      inbox: await inbox.getAddress(),
+      deadline: _timestamp,
+      portal: await inbox.getAddress(),
+      nativeAmount: _nativeAmount,
       tokens: routeTokens,
       calls: _calls,
     }
@@ -105,7 +106,7 @@ describe('Destination Settler Test', (): void => {
       creator: creator.address,
       prover: await prover.getAddress(),
       deadline: _timestamp,
-      nativeValue: BigInt(0),
+      nativeAmount: BigInt(0),
       tokens: [
         {
           token: erc20Address,
@@ -114,6 +115,7 @@ describe('Destination Settler Test', (): void => {
       ],
     }
     const _intent: Intent = {
+      destination: Number((await owner.provider.getNetwork()).chainId),
       route: _route,
       reward: _reward,
     }
@@ -148,13 +150,21 @@ describe('Destination Settler Test', (): void => {
       [solver.address],
     )
     await expect(
-      inbox.connect(solver).fill(intentHash, encodeIntent(intent), fillerData, {
-        value: nativeAmount,
-      }),
-    ).to.be.revertedWithCustomError(inbox, 'FillDeadlinePassed')
+      inbox
+        .connect(solver)
+        .fulfill(
+          intentHash,
+          intent.route,
+          hashIntent(intent).rewardHash,
+          ethers.zeroPadValue(solver.address, 32),
+          {
+            value: nativeAmount,
+          },
+        ),
+    ).to.be.revertedWithCustomError(inbox, 'IntentExpired')
   })
   it('successfully calls fulfill with testprover', async (): Promise<void> => {
-    expect(await inbox.fulfilled(intentHash)).to.equal(ethers.ZeroAddress)
+    expect(await inbox.claimants(intentHash)).to.equal(ethers.ZeroHash)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction
@@ -167,22 +177,21 @@ describe('Destination Settler Test', (): void => {
         keccak256(await prover.getAddress()), //doesnt matter, just bytes
       ],
     )
-    expect(
-      await inbox
+    await expect(
+      inbox
         .connect(solver)
-        .fill(intentHash, encodeIntent(intent), fillerData, {
-          value: nativeAmount,
-        }),
+        .fulfill(
+          intentHash,
+          intent.route,
+          hashIntent(intent).rewardHash,
+          ethers.zeroPadValue(solver.address, 32),
+          {
+            value: nativeAmount,
+          },
+        ),
     )
-      .to.emit(inbox, 'OrderFilled')
-      .withArgs(intentHash, solver.address)
-      .and.to.emit(inbox, 'Fulfillment')
-      .withArgs(
-        intentHash,
-        route.source,
-        await prover.getAddress(),
-        solver.address,
-      )
+      .to.emit(inbox, 'IntentFulfilled')
+      .withArgs(intentHash, ethers.zeroPadValue(solver.address, 32))
 
     expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
   })

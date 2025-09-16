@@ -20,6 +20,7 @@
 # - RESULTS_FILE: Path to write deployment results
 # - CHAIN_DATA_URL: URL to chain configuration JSON
 # - APPEND_RESULTS: If "true", append to existing results file
+# - CROSS_VM_PROVERS: Optional comma-separated list of cross-VM prover addresses (bytes32)
 
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,11 +100,21 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     echo "📬 Router Contract: $ROUTER_CONTRACT"
 
     # Construct Foundry command
-    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" forge script scripts/Deploy.s.sol \
-            --rpc-url \"$RPC_URL\" \
-            --slow \
-            --broadcast \
-            --private-key \"$PRIVATE_KEY\""
+    if [ -n "$CROSS_VM_PROVERS" ]; then
+        echo "🌐 Cross-VM Provers: $CROSS_VM_PROVERS"
+        FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" CROSS_VM_PROVERS=\"$CROSS_VM_PROVERS\" forge script scripts/Deploy.s.sol \
+                --rpc-url \"$RPC_URL\" \
+                --slow \
+                --broadcast \
+                --private-key \"$PRIVATE_KEY\""
+    else
+        echo "🔗 EVM-only deployment (no cross-VM provers)"
+        FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" forge script scripts/Deploy.s.sol \
+                --rpc-url \"$RPC_URL\" \
+                --slow \
+                --broadcast \
+                --private-key \"$PRIVATE_KEY\""
+    fi
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
     if [[ -n "$GAS_MULTIPLIER" && "$GAS_MULTIPLIER" != "null" ]]; then

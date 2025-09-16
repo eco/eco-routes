@@ -10,7 +10,7 @@ contract TestERC20 is ERC20 {
         string memory symbol_
     ) ERC20(name_, symbol_) {}
 
-    function mint(address recipient, uint256 amount) public {
+    function mint(address recipient, uint256 amount) public virtual {
         _mint(recipient, amount);
     }
 

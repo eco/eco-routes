@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseProver} from "../prover/BaseProver.sol";
 import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
 import {IProver} from "../interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
@@ -9,25 +8,23 @@ import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
 /**
  * @title TestMessageBridgeProver
  * @notice Test implementation of MessageBridgeProver for unit testing
- * @dev Provides dummy implementations of required methods and adds helper methods for testing
+ * @dev Focuses on testing the MessageBridgeProver interface and whitelist functionality
  */
 contract TestMessageBridgeProver is MessageBridgeProver {
+    // Track dispatch state for testing
     bool public dispatched = false;
-    uint256 public lastSourceChainId;
-    bytes32[] public lastIntentHashes;
-    address[] public lastClaimants;
-    bytes32 public lastSourceChainProver;
-    bytes public lastData;
+    uint256 public dispatchCallCount = 0;
 
+    // Fee configuration for testing
     uint256 public feeAmount = 100000;
 
     // No events needed for testing
 
     constructor(
-        address _inbox,
-        address[] memory _provers,
+        address _portal,
+        bytes32[] memory _provers,
         uint256 _gasLimit
-    ) MessageBridgeProver(_inbox, _provers, _gasLimit) {}
+    ) MessageBridgeProver(_portal, _provers, _gasLimit) {}
 
     /**
      * @notice Legacy test method for backward compatibility
@@ -40,7 +37,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     function isAddressWhitelisted(
         address _prover
     ) external view returns (bool) {
-        return isWhitelisted(_prover);
+        return isWhitelisted(bytes32(uint256(uint160(_prover))));
     }
 
     /**
@@ -52,39 +49,47 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         view
         returns (address[] memory)
     {
-        return getWhitelist();
+        bytes32[] memory whitelistBytes32 = getWhitelist();
+        address[] memory whitelistAddresses = new address[](
+            whitelistBytes32.length
+        );
+
+        for (uint256 i = 0; i < whitelistBytes32.length; i++) {
+            whitelistAddresses[i] = address(bytes20(whitelistBytes32[i]));
+        }
+
+        return whitelistAddresses;
     }
 
     // No custom events needed for testing
 
     /**
-     * @notice Mock implementation of initiateProving
-     * @dev Records arguments and marks dispatched = true
+     * @notice Mock implementation of prove
+     * @dev Simply processes the proofs without actual dispatch
      */
     function prove(
-        address /* _sender */,
-        uint256 _sourceChainId,
-        bytes32[] calldata _intentHashes,
-        address[] calldata _claimants,
-        bytes calldata _data
+        address _sender,
+        uint64,
+        bytes calldata _encodedProofs,
+        bytes calldata /* _data */
     ) external payable override {
+        // Basic validation - the message includes 8 bytes chain ID + proof pairs
+        if (_encodedProofs.length < 8) {
+            revert IMessageBridgeProver.InvalidProofMessage();
+        }
+        if ((_encodedProofs.length - 8) % 64 != 0) {
+            revert IProver.ArrayLengthMismatch();
+        }
+
+        // Process the intent proofs using the base implementation
+        _handleCrossChainMessage(
+            bytes32(uint256(uint160(_sender))),
+            _encodedProofs
+        );
+
+        // For testing, we don't actually dispatch, just mark it
         dispatched = true;
-        lastSourceChainId = _sourceChainId;
-
-        // Store arrays for later verification
-        delete lastIntentHashes;
-        delete lastClaimants;
-
-        for (uint256 i = 0; i < _intentHashes.length; i++) {
-            lastIntentHashes.push(_intentHashes[i]);
-        }
-
-        for (uint256 i = 0; i < _claimants.length; i++) {
-            lastClaimants.push(_claimants[i]);
-        }
-
-        lastSourceChainProver = abi.decode(_data, (bytes32));
-        lastData = _data;
+        dispatchCallCount++;
     }
 
     /**
@@ -92,21 +97,54 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      * @dev Returns a fixed fee amount for testing
      */
     function fetchFee(
-        uint256 /* _sourceChainId */,
-        bytes32[] calldata /* _intentHashes */,
-        address[] calldata /* _claimants */,
+        uint64 /* domainID */,
+        bytes calldata /* _encodedProofs */,
         bytes calldata /* _data */
     ) public view override returns (uint256) {
         return feeAmount;
     }
 
+    /**
+     * @notice Mock implementation of _dispatchMessage
+     * @dev Just tracks that dispatch was called
+     */
+    function _dispatchMessage(
+        uint64 /* domainID */,
+        bytes calldata /* encodedProofs */,
+        bytes calldata /* data */,
+        uint256 /* fee */
+    ) internal override {
+        dispatched = true;
+        dispatchCallCount++;
+    }
+
+    /**
+     * @notice Helper to manually add proven intents for testing
+     */
     function addProvenIntent(
         bytes32 _hash,
-        uint96 _destinationChainID,
-        address _claimant
+        address _claimant,
+        uint64 _destination
     ) public {
-        _provenIntents[_hash].claimant = _claimant;
-        _provenIntents[_hash].destinationChainID = _destinationChainID;
+        _provenIntents[_hash] = ProofData({
+            claimant: _claimant,
+            destination: _destination
+        });
+    }
+
+    /**
+     * @notice Helper to set fee amount for testing
+     */
+    function setFeeAmount(uint256 _feeAmount) public {
+        feeAmount = _feeAmount;
+    }
+
+    /**
+     * @notice Helper to reset dispatch state for testing
+     */
+    function resetDispatchState() public {
+        dispatched = false;
+        dispatchCallCount = 0;
     }
 
     /**

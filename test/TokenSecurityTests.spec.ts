@@ -5,7 +5,13 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, IntentSource, TestProver, Inbox } from '../typechain-types'
+import {
+  TestERC20,
+  IntentSource,
+  Portal,
+  TestProver,
+  Inbox,
+} from '../typechain-types'
 import { hashIntent, TokenAmount } from '../utils/intent'
 
 /**
@@ -22,17 +28,22 @@ describe('Token Security Tests', () => {
   async function deployContractsFixture() {
     const [creator, claimant] = await ethers.getSigners()
 
-    // Deploy IntentSource
-    const intentSourceFactory = await ethers.getContractFactory('IntentSource')
-    const intentSource = await intentSourceFactory.deploy()
+    // Deploy Portal (which includes IntentSource and Inbox)
+    const portalFactory = await ethers.getContractFactory('Portal')
+    const portal = await portalFactory.deploy()
+    // Use the IIntentSource interface with the Portal implementation
+    const intentSource = await ethers.getContractAt(
+      'IIntentSource',
+      await portal.getAddress(),
+    )
 
-    // Deploy Inbox
-    inbox = await (await ethers.getContractFactory('Inbox')).deploy()
+    // Get Inbox interface from Portal
+    inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // Deploy test prover
     prover = await (
       await ethers.getContractFactory('TestProver')
-    ).deploy(await inbox.getAddress())
+    ).deploy(await portal.getAddress())
 
     // Deploy test token
     const tokenFactory = await ethers.getContractFactory('TestERC20')
@@ -76,9 +87,9 @@ describe('Token Security Tests', () => {
     // Create route and reward
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: routeTokens,
       calls: calls,
     }
@@ -87,11 +98,11 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: 0n,
+      nativeAmount: 0n,
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Approve tokens for spending
     await token
@@ -107,8 +118,8 @@ describe('Token Security Tests', () => {
     const { intentHash } = hashIntent(intent)
     expect(await intentSource.isIntentFunded(intent)).to.be.true
 
-    // Verify reward status is correct - RewardStatus.Created = 0
-    expect(await intentSource.getRewardStatus(intentHash)).to.equal(0)
+    // Verify reward status is correct - RewardStatus.Funded = 1
+    expect(await intentSource.getRewardStatus(intentHash)).to.equal(1)
   })
 
   it('should handle multiple token rewards correctly', async () => {
@@ -132,9 +143,9 @@ describe('Token Security Tests', () => {
 
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: [],
       calls: [],
     }
@@ -143,11 +154,11 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: 0n,
+      nativeAmount: 0n,
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Approve both tokens for spending
     await token
@@ -182,9 +193,9 @@ describe('Token Security Tests', () => {
 
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: [],
       calls: [],
     }
@@ -193,11 +204,11 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: ethers.parseEther('0.1'), // Add native ETH to reward
+      nativeAmount: ethers.parseEther('0.1'), // Add native ETH to reward
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Track starting balance
     const startTokenBalance = await token.balanceOf(creator.address)
@@ -246,9 +257,9 @@ describe('Token Security Tests', () => {
 
     const route = {
       salt,
-      source: chainId,
-      destination: chainId + 1,
-      inbox: await inbox.getAddress(),
+      deadline: expiry,
+      portal: await inbox.getAddress(),
+      nativeAmount: 0,
       tokens: [],
       calls: [],
     }
@@ -257,11 +268,11 @@ describe('Token Security Tests', () => {
       creator: await creator.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
-      nativeValue: 0n,
+      nativeAmount: 0n,
       tokens: rewardTokens,
     }
 
-    const intent = { route, reward }
+    const intent = { destination: chainId + 1, route, reward }
 
     // Approve tokens
     await token
@@ -278,6 +289,6 @@ describe('Token Security Tests', () => {
 
     // Get intent hash to check reward status
     const { intentHash } = hashIntent(intent)
-    expect(await intentSource.getRewardStatus(intentHash)).to.equal(0) // Created
+    expect(await intentSource.getRewardStatus(intentHash)).to.equal(1) // Funded
   })
 })
