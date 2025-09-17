@@ -19,8 +19,9 @@ export async function determineSalts(
   logger.log(
     `major/minor version (${versionBase}) with optional salt (${optionalSalt}), calculating salt`,
   )
-  const rootSalt = keccak256(toHex(versionBase + optionalSalt))
-  const stagingRootSalt = keccak256(toHex(`${versionBase}-staging`))
+  const sum = versionBase + optionalSalt
+  const rootSalt = keccak256(toHex(sum))
+  const stagingRootSalt = keccak256(toHex(`${sum}-staging`))
 
   logger.log(`Using salt for production: ${rootSalt}`)
   logger.log(`Using salt for staging: ${stagingRootSalt}`)

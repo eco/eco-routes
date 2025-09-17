@@ -20,7 +20,7 @@ import path from 'path'
 import fs from 'fs'
 // eslint-disable-next-line node/no-missing-import
 import { parse as parseCSV } from 'csv-parse/sync'
-import { determineSalts } from '../utils/extract-salt'
+import { determineSalts, getBaseVersion } from '../utils/extract-salt'
 import { getAddress, Hex, hexToBytes, keccak256, toHex } from 'viem'
 import { SemanticContext } from './sr-prepare'
 import {
@@ -80,68 +80,6 @@ interface DeploymentRecord {
 }
 
 /**
- * Reads cross-chain prover addresses from the deployment configuration file.
- * This function extracts Solana HyperProver and Tron PolymerProver addresses
- * from the mainnet configuration JSON to pass to the deployment script.
- *
- * @param cwd - Current working directory to locate the config file
- * @param environment - Environment to read addresses for ('production' or 'staging')
- * @param logger - Logger instance for output messages
- * @returns Object containing arrays of prover addresses
- */
-function readCrossChainProverAddresses(
-  cwd: string,
-  environment: 'production' | 'staging',
-  logger: Logger,
-): { hyperSolanaProvers: string[]; polymerTronProvers: string[] } {
-  try {
-    const configPath = path.join(cwd, 'deploys', '3_x_x-mainnet.json')
-
-    if (!fs.existsSync(configPath)) {
-      logger.log(`Cross-chain config file not found: ${configPath}`)
-      return { hyperSolanaProvers: [], polymerTronProvers: [] }
-    }
-
-    const configData: CrossChainProverData = JSON.parse(
-      fs.readFileSync(configPath, 'utf-8'),
-    )
-
-    const hyperSolanaProvers: string[] = []
-    const polymerTronProvers: string[] = []
-
-    // Extract Solana HyperProver addresses
-    if (configData.solana?.[environment]?.hyperProver) {
-      const address = configData.solana[environment].hyperProver.trim()
-      if (address && address !== '') {
-        hyperSolanaProvers.push(address)
-      }
-    }
-
-    // Extract Tron PolymerProver addresses
-    if (configData.tron?.[environment]?.polymerProver) {
-      const address = configData.tron[environment].polymerProver.trim()
-      if (address && address !== '') {
-        polymerTronProvers.push(address)
-      }
-    }
-
-    logger.log(
-      `Found ${hyperSolanaProvers.length} Solana HyperProver addresses`,
-    )
-    logger.log(
-      `Found ${polymerTronProvers.length} Tron PolymerProver addresses`,
-    )
-
-    return { hyperSolanaProvers, polymerTronProvers }
-  } catch (error) {
-    logger.error(
-      `Error reading cross-chain prover addresses: ${(error as Error).message}`,
-    )
-    return { hyperSolanaProvers: [], polymerTronProvers: [] }
-  }
-}
-
-/**
  * Deploys Eco Routes contracts to multiple chains with deterministic addressing.
  *
  * @param context - The semantic release context containing version info and logger
@@ -179,6 +117,7 @@ export async function deployRoutesContracts(
         { value: rootSalt, environment: 'production' },
         { value: stagingRootSalt, environment: 'staging' },
       ],
+      nextRelease!.version,
       logger,
       cwd,
     )
@@ -296,6 +235,7 @@ function processContractsForJson(
  * a combined deployment results file for verification purposes.
  *
  * @param salts - Array of salt objects containing the hex value and environment name
+ * @param version - Semantic version string to determine cross-chain config file
  * @param logger - Logger instance for output messages
  * @param cwd - Current working directory
  * @returns Promise resolving to the deployment result with contracts array and success status
@@ -303,6 +243,7 @@ function processContractsForJson(
  */
 async function deployContracts(
   salts: { value: Hex; environment: 'production' | 'staging' }[],
+  version: string,
   logger: Logger,
   cwd: string,
 ) {
@@ -376,7 +317,7 @@ async function deployContracts(
       )
 
       const { hyperSolanaProvers, polymerTronProvers } =
-        readCrossChainProverAddresses(cwd, environment, logger)
+        readCrossChainProverAddresses(cwd, version, environment, logger)
 
       // Run the deployment script
       // Create a properly merged environment by spreading process.env first
@@ -413,6 +354,73 @@ async function deployContracts(
   } catch (error) {
     logger.error(`Deployment process failed: ${(error as Error).message}`)
     return { contracts: [], success: false }
+  }
+}
+
+/**
+ * Reads cross-chain prover addresses from the deployment configuration file.
+ * This function extracts Solana HyperProver and Tron PolymerProver addresses
+ * from the version-specific mainnet configuration JSON to pass to the deployment script.
+ *
+ * @param cwd - Current working directory to locate the config file
+ * @param version - Semantic version string to determine config file name
+ * @param environment - Environment to read addresses for ('production' or 'staging')
+ * @param logger - Logger instance for output messages
+ * @returns Object containing arrays of prover addresses
+ */
+function readCrossChainProverAddresses(
+  cwd: string,
+  version: string,
+  environment: 'production' | 'staging',
+  logger: Logger,
+): { hyperSolanaProvers: string[]; polymerTronProvers: string[] } {
+  try {
+    // Use the same base version pattern as salt generation
+    const baseVersion = getBaseVersion(version, logger)
+    const configFileName = `${baseVersion.replace('.', '_')}_x-mainnet.json`
+    const configPath = path.join(cwd, 'deploys', configFileName)
+
+    if (!fs.existsSync(configPath)) {
+      logger.log(`Cross-chain config file not found: ${configPath}`)
+      return { hyperSolanaProvers: [], polymerTronProvers: [] }
+    }
+
+    const configData: CrossChainProverData = JSON.parse(
+      fs.readFileSync(configPath, 'utf-8'),
+    )
+
+    const hyperSolanaProvers: string[] = []
+    const polymerTronProvers: string[] = []
+
+    // Extract Solana HyperProver addresses
+    if (configData.solana?.[environment]?.hyperProver) {
+      const address = configData.solana[environment].hyperProver.trim()
+      if (address && address !== '') {
+        hyperSolanaProvers.push(address)
+      }
+    }
+
+    // Extract Tron PolymerProver addresses
+    if (configData.tron?.[environment]?.polymerProver) {
+      const address = configData.tron[environment].polymerProver.trim()
+      if (address && address !== '') {
+        polymerTronProvers.push(address)
+      }
+    }
+
+    logger.log(
+      `Found ${hyperSolanaProvers.length} Solana HyperProver addresses`,
+    )
+    logger.log(
+      `Found ${polymerTronProvers.length} Tron PolymerProver addresses`,
+    )
+
+    return { hyperSolanaProvers, polymerTronProvers }
+  } catch (error) {
+    logger.error(
+      `Error reading cross-chain prover addresses: ${(error as Error).message}`,
+    )
+    return { hyperSolanaProvers: [], polymerTronProvers: [] }
   }
 }
 
