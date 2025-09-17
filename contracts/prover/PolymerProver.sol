@@ -41,7 +41,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
     // State variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
-    uint256 public immutable MAX_LOG_DATA_SIZE;
+    uint256 public MAX_LOG_DATA_SIZE;
 
     /**
      * @notice Initializes the PolymerProver contract
