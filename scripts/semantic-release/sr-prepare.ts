@@ -31,8 +31,9 @@ import dotenv from 'dotenv'
 import { Logger } from './helpers'
 import { promisify } from 'util'
 import { exec } from 'child_process'
-import { verifyContracts } from './verify-contracts'
 import { deploySingletonFactory } from './sr-singleton-factory'
+import { version as versionPackage } from './sr-version'
+import { verifyContracts } from './verify-contracts'
 
 dotenv.config()
 
@@ -81,6 +82,8 @@ export async function prepare(
   pluginConfig: SemanticPluginConfig,
   context: SemanticContext,
 ): Promise<void> {
+  await versionPackage(pluginConfig, context) // Ensure version is set before prepare
+
   const { nextRelease, logger, cwd } = context
 
   if (!nextRelease) {

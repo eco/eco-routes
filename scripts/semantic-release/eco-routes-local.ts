@@ -26,15 +26,14 @@
 import { prepare, SemanticContext, SemanticPluginConfig } from './sr-prepare'
 import { publish } from './sr-publish'
 import { verifyConditions } from './sr-verify-conditions'
-import { version } from './sr-version'
 
 async function main() {
   // Create plugin config and context
   const pluginConfig: SemanticPluginConfig = {}
   const context: SemanticContext = {
     nextRelease: {
-      version: '3.0.0',
-      gitTag: 'v3.0.0',
+      version: '2.8.15',
+      gitTag: 'v2.8.15',
       notes: 'Forcing publish',
       type: 'patch',
       channel: 'beta',
@@ -51,22 +50,18 @@ async function main() {
   try {
     // 1. First verify conditions
     console.log('--- Starting verifyConditions phase ---')
-    // await verifyConditions(pluginConfig, context)
+    await verifyConditions(pluginConfig, context)
 
-    // 2. Run version update phase
-    console.log('\n--- Starting version phase ---')
-    await version(pluginConfig, context)
-
-    // 3. Then run prepare phase (build the solidity files, deploy contracts, verify contracts)
+    // 2. Then run prepare phase (build the solidity files, deploy contracts, verify contracts)
     console.log('\n--- Starting prepare phase ---')
     await prepare(pluginConfig, context)
 
-    // 4. Finally run publish phase (publish to npm)
+    // 3. Finally run publish phase (publish to npm)
     console.log('\n--- Starting publish phase ---')
-    // const result = await publish(pluginConfig, context)
+    const result = await publish(pluginConfig, context)
 
     console.log('\n✅ Semantic release simulation completed successfully')
-    // return result
+    return result
   } catch (error) {
     console.error('\n❌ Semantic release simulation failed:')
     console.error((error as Error).message)
