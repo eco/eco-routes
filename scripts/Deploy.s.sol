@@ -44,6 +44,7 @@ contract Deploy is Script {
         address mailbox;
         //polymerprover
         address polymerL2ProverV2;
+        
         address router;
         string deployFilePath;
         address deployer;
@@ -51,7 +52,7 @@ contract Deploy is Script {
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
         bytes32 polymerProverSalt;
-         //contracts to deploy to evm
+        //contracts to deploy to evm
         address portal;
         address hyperProver;
         address polymerProver;
@@ -62,17 +63,14 @@ contract Deploy is Script {
         address hyperProver2470Address;
         //hyperprover tron provers
         address[] hyperSolanaProvers;
-
         //polymerprover args for other evms
         address polymerProverCreateXAddress;
         address polymerProver2470Address;
         //polymer tron provers
         address[] polymerTronProvers;
-
         //prover contracts arguments
         bytes hyperProverConstructorArgs;
         bytes polymerProverConstructorArgs;
-        
     }
 
     function run() external {
@@ -101,6 +99,7 @@ contract Deploy is Script {
             address(0)
         );
         bool hasMailbox = ctx.mailbox != address(0);
+        bool hasPolymerL2ProverV2 = ctx.polymerL2ProverV2 != address(0);
         ctx.polymerTronProvers = vm.envOr(
             "POLYMER_TRON_PROVERS",
             new address[](0)
@@ -124,7 +123,7 @@ contract Deploy is Script {
         }
 
         // Deploy PolymerProver
-        if (polymerL2ProverV2) {
+        if (hasPolymerL2ProverV2) {
             console.log("Deploying PolymerProver with Create3...");
             deployPolymerProver(ctx);
         }
@@ -143,32 +142,36 @@ contract Deploy is Script {
 
     // Separate function to handle writing deployment data to file
     function writeDeploymentData(DeploymentContext memory ctx) internal {
-        uint num = 2;
-        bool hasMailbox = ctx.mailbox != address(0);
+        uint num = 1;
+        bool hasHyperProver = ctx.mailbox != address(0);
+        bool hasPolymerProver = ctx.polymerL2ProverV2 != address(0);
         bool hasMetaProver = ctx.metaProver != address(0);
-        num = hasMailbox ? num + 1 : num;
+        num = hasHyperProver ? num + 1 : num;
+        num = hasPolymerProver ? num + 1 : num;
         num = hasMetaProver ? num + 1 : num;
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
         contracts[count++] = VerificationData({
-            contractAddress: ctx.intentSource,
-            contractPath: "contracts/IntentSource.sol:IntentSource",
+            contractAddress: ctx.portal,
+            contractPath: "contracts/Portal.sol:Portal",
             constructorArgs: new bytes(0),
             chainId: block.chainid
         });
 
-        contracts[count++] = VerificationData({
-            contractAddress: ctx.inbox,
-            contractPath: "contracts/Inbox.sol:Inbox",
-            constructorArgs: ctx.inboxConstructorArgs,
-            chainId: block.chainid
-        });
-
-        if (hasMailbox) {
+        if (hasHyperProver) {
             contracts[count++] = VerificationData({
                 contractAddress: ctx.hyperProver,
                 contractPath: "contracts/prover/HyperProver.sol:HyperProver",
                 constructorArgs: ctx.hyperProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+
+        if (hasPolymerProver) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.polymerProver,
+                contractPath: "contracts/prover/PolymerProver.sol:PolymerProver",
+                constructorArgs: ctx.polymerProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -204,15 +207,26 @@ contract Deploy is Script {
             "Hyperprover 2470 address: ",
             vm.toString(ctx.hyperProver2470Address)
         );
+        console.log(
+            "Hyperprover Solana: ",
+            vm.toString(ctx.hyperSolanaProvers)
+        );
 
         // Initialize provers array properly with inbox address
-        address[] memory provers = new address[](2);
+        uint evmProvers = 2;
+        uint totalProvers = evmProvers + ctx.hyperSolanaProvers.length;
+        address[] memory provers = new address[](totalProvers);
         provers[0] = ctx.hyperProver2470Address;
         provers[1] = ctx.hyperProverCreateXAddress;
 
+        // Add Solana provers to the array
+        for (uint i = 0; i < ctx.hyperSolanaProvers.length; i++) {
+            provers[evmProvers + i] = ctx.hyperSolanaProvers[i];
+        }
+
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
-            ctx.inbox,
+            ctx.portal,
             provers
         );
 
