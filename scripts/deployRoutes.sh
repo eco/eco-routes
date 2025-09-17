@@ -20,9 +20,10 @@
 # - RESULTS_FILE: Path to write deployment results
 # - CHAIN_DATA_URL: URL to chain configuration JSON
 # - APPEND_RESULTS: If "true", append to existing results file
-# - CROSS_VM_PROVERS: Optional comma-separated list of cross-VM prover addresses (bytes32)
-# - TRON_POLYMER_PROVER: Optional Tron Polymer Prover address to include as cross-VM prover
-# - ENABLE_TRON_INTEGRATION: If "true", includes Tron addresses in cross-VM provers
+# - HYPERPROVER_SALT: Salt for HyperProver contract
+# - HYPERPROVER_CREATEX_ADDRESS: CreateX address for HyperProver contract
+# - HYPERPROVER_2470_ADDRESS: 2470 address for HyperProver contract
+
 
 # Load environment variables from .env, prioritizing existing env vars
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +40,7 @@ if [ -z "$RESULTS_FILE" ]; then
     exit 1
 fi
 
-# Ensure CHAIN_DATA_URL is set
+# Ensure CHAIN_DATA_URL is set,
 if [ -z "$CHAIN_DATA_URL" ]; then
     echo "❌ Error: CHAIN_DATA_URL is not set in .env!"
     exit 1
@@ -73,22 +74,6 @@ fi
 PUBLIC_ADDRESS=$(cast wallet address --private-key "$PRIVATE_KEY")
 echo "Wallet Public Address: $PUBLIC_ADDRESS"
 echo "Using SALT: $SALT"
-
-# Handle Tron integration if enabled
-if [ "$ENABLE_TRON_INTEGRATION" = "true" ] && [ -n "$TRON_POLYMER_PROVER" ]; then
-    echo "🔗 Tron integration enabled"
-    echo "📍 Tron Polymer Prover: $TRON_POLYMER_PROVER"
-
-    # Pass Tron address as-is, conversion to hex will happen in EVM deployment
-    if [ -n "$CROSS_VM_PROVERS" ]; then
-        CROSS_VM_PROVERS="$CROSS_VM_PROVERS,$TRON_POLYMER_PROVER"
-    else
-        CROSS_VM_PROVERS="$TRON_POLYMER_PROVER"
-    fi
-
-    echo "🌐 Enhanced Cross-VM Provers with Tron: $CROSS_VM_PROVERS"
-fi
-
 # Process each chain from the JSON data
 echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     CHAIN_ID=$(echo "$entry" | jq -r '.key')
@@ -96,8 +81,9 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     RPC_URL=$(echo "$value" | jq -r '.url')
     MAILBOX_CONTRACT=$(echo "$value" | jq -r '.mailbox')
-    ROUTER_CONTRACT=$(echo "$value" | jq -r '.router')
+    META_PROVER=$(echo "$value" | jq -r '.metaProver // false')
     GAS_MULTIPLIER=$(echo "$value" | jq -r '.gasMultiplier // ""')
+    LEGACY_TX=$(echo "$value" | jq -r '.legacy // false')
 
     if [[ "$RPC_URL" == "null" || -z "$RPC_URL" ]]; then
         echo "⚠️  Warning: Missing required data for Chain ID $CHAIN_ID. Skipping..."
@@ -115,23 +101,29 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     echo "🔄 Deploying contracts for Chain ID: $CHAIN_ID"
     echo "📬 Mailbox Contract: $MAILBOX_CONTRACT"
-    echo "📬 Router Contract: $ROUTER_CONTRACT"
+    echo "📬 SALT: $SALT"
+    echo "📬 SALT: $HYPERPROVER_SALT"
+    echo "📬 Meta Prover: $META_PROVER"
+    echo "📬 HyperProver CreateX Address: $HYPERPROVER_CREATEX_ADDRESS"
+    echo "📬 HyperProver 2470 Address: $HYPERPROVER_2470_ADDRESS"
+    
+    # Check if legacy transactions should be used
+    if [[ "$LEGACY_TX" == "true" ]]; then
+        echo "🔧 Using legacy transaction mode for Chain ID: $CHAIN_ID"
+    fi
 
     # Construct Foundry command
-    if [ -n "$CROSS_VM_PROVERS" ]; then
-        echo "🌐 Cross-VM Provers: $CROSS_VM_PROVERS"
-        FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" CROSS_VM_PROVERS=\"$CROSS_VM_PROVERS\" forge script scripts/Deploy.s.sol \
-                --rpc-url \"$RPC_URL\" \
-                --slow \
-                --broadcast \
-                --private-key \"$PRIVATE_KEY\""
-    else
-        echo "🔗 EVM-only deployment (no cross-VM provers)"
-        FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" ROUTER_CONTRACT=\"$ROUTER_CONTRACT\" SALT=\"$SALT\" DEPLOY_FILE=\"$RESULTS_FILE\" forge script scripts/Deploy.s.sol \
-                --rpc-url \"$RPC_URL\" \
-                --slow \
-                --broadcast \
-                --private-key \"$PRIVATE_KEY\""
+    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" forge script scripts/Deploy.s.sol \
+            --rpc-url \"$RPC_URL\" \
+            --slow \
+            --broadcast \
+            --private-key \"$PRIVATE_KEY\""
+            # --verify \
+            # --verifier blockscout"
+    
+    # Add --legacy flag if needed
+    if [[ "$LEGACY_TX" == "true" ]]; then
+        FOUNDRY_CMD+=" --legacy"
     fi
 
     # Only add --gas-estimate-multiplier if GAS_MULTIPLIER is defined and not empty
@@ -140,8 +132,14 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
         FOUNDRY_CMD+=" --gas-estimate-multiplier \"$GAS_MULTIPLIER\""
     fi
 
-    # Run the command
+    # Run the command and capture exit code
     eval $FOUNDRY_CMD
+    DEPLOY_EXIT_CODE=$?
+
+    if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+        echo "❌ Deployment on Chain ID: $CHAIN_ID failed with exit code $DEPLOY_EXIT_CODE"
+        continue  # Skip to next chain instead of exiting entirely
+    fi
 
     echo "✅ Deployment on Chain ID: $CHAIN_ID completed!"
 done

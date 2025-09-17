@@ -11,7 +11,7 @@ import { ENV_VARS } from '../semantic-release/constants'
 export async function determineSalts(
   version: string,
   logger: Logger,
-): Promise<{ rootSalt: Hex; preprodRootSalt: Hex }> {
+): Promise<{ rootSalt: Hex; stagingRootSalt: Hex }> {
   // Extract version components
   const versionBase = getBaseVersion(version, logger)
   const optionalSalt = process.env[ENV_VARS.SALT_OPTIONAL] || ''
@@ -20,12 +20,12 @@ export async function determineSalts(
     `major/minor version (${versionBase}) with optional salt (${optionalSalt}), calculating salt`,
   )
   const rootSalt = keccak256(toHex(versionBase + optionalSalt))
-  const preprodRootSalt = keccak256(toHex(`${versionBase}-preprod`))
+  const stagingRootSalt = keccak256(toHex(`${versionBase}-staging`))
 
   logger.log(`Using salt for production: ${rootSalt}`)
-  logger.log(`Using salt for pre-production: ${preprodRootSalt}`)
+  logger.log(`Using salt for staging: ${stagingRootSalt}`)
 
-  return { rootSalt, preprodRootSalt }
+  return { rootSalt, stagingRootSalt }
 }
 
 /**

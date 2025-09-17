@@ -40,6 +40,29 @@ import { createCreateXSalt, createXCreate3Address } from '../contracts'
 
 dotenv.config()
 
+interface CrossChainProverData {
+  tron: {
+    production: {
+      portal: string
+      polymerProver: string
+    }
+    staging: {
+      portal: string
+      polymerProver: string
+    }
+  }
+  solana: {
+    production: {
+      portal: string
+      hyperProver: string
+    }
+    staging: {
+      portal: string
+      hyperProver: string
+    }
+  }
+}
+
 interface Contract {
   address: string
   name: string
@@ -54,6 +77,68 @@ interface DeploymentRecord {
   ContractAddress: string
   ContractPath: string
   ContractArguments: string
+}
+
+/**
+ * Reads cross-chain prover addresses from the deployment configuration file.
+ * This function extracts Solana HyperProver and Tron PolymerProver addresses
+ * from the mainnet configuration JSON to pass to the deployment script.
+ *
+ * @param cwd - Current working directory to locate the config file
+ * @param environment - Environment to read addresses for ('production' or 'staging')
+ * @param logger - Logger instance for output messages
+ * @returns Object containing arrays of prover addresses
+ */
+function readCrossChainProverAddresses(
+  cwd: string,
+  environment: 'production' | 'staging',
+  logger: Logger,
+): { hyperSolanaProvers: string[]; polymerTronProvers: string[] } {
+  try {
+    const configPath = path.join(cwd, 'deploys', '3_x_x-mainnet.json')
+
+    if (!fs.existsSync(configPath)) {
+      logger.log(`Cross-chain config file not found: ${configPath}`)
+      return { hyperSolanaProvers: [], polymerTronProvers: [] }
+    }
+
+    const configData: CrossChainProverData = JSON.parse(
+      fs.readFileSync(configPath, 'utf-8'),
+    )
+
+    const hyperSolanaProvers: string[] = []
+    const polymerTronProvers: string[] = []
+
+    // Extract Solana HyperProver addresses
+    if (configData.solana?.[environment]?.hyperProver) {
+      const address = configData.solana[environment].hyperProver.trim()
+      if (address && address !== '') {
+        hyperSolanaProvers.push(address)
+      }
+    }
+
+    // Extract Tron PolymerProver addresses
+    if (configData.tron?.[environment]?.polymerProver) {
+      const address = configData.tron[environment].polymerProver.trim()
+      if (address && address !== '') {
+        polymerTronProvers.push(address)
+      }
+    }
+
+    logger.log(
+      `Found ${hyperSolanaProvers.length} Solana HyperProver addresses`,
+    )
+    logger.log(
+      `Found ${polymerTronProvers.length} Tron PolymerProver addresses`,
+    )
+
+    return { hyperSolanaProvers, polymerTronProvers }
+  } catch (error) {
+    logger.error(
+      `Error reading cross-chain prover addresses: ${(error as Error).message}`,
+    )
+    return { hyperSolanaProvers: [], polymerTronProvers: [] }
+  }
 }
 
 /**
@@ -83,7 +168,7 @@ export async function deployRoutesContracts(
     logger.log(`Created build directory: ${buildDir}`)
 
     // Determine salts based on version
-    const { rootSalt, preprodRootSalt } = await determineSalts(
+    const { rootSalt, stagingRootSalt } = await determineSalts(
       nextRelease!.version,
       logger,
     )
@@ -91,8 +176,8 @@ export async function deployRoutesContracts(
     logger.log('Deploying contracts...')
     const { contracts, success } = await deployContracts(
       [
-        { value: rootSalt, environment: 'default' },
-        { value: preprodRootSalt, environment: 'pre' },
+        { value: rootSalt, environment: 'production' },
+        { value: stagingRootSalt, environment: 'staging' },
       ],
       logger,
       cwd,
@@ -174,7 +259,7 @@ function processContractsForJson(
   const groupedContracts: Record<string, Contract[]> = {}
 
   for (const contract of contracts) {
-    const key = `${contract.chainId}${contract.environment === 'default' ? '' : `-${contract.environment}`}`
+    const key = `${contract.chainId}${contract.environment === 'production' ? '' : `-${contract.environment}`}`
     if (!groupedContracts[key]) {
       groupedContracts[key] = []
     }
@@ -217,7 +302,7 @@ function processContractsForJson(
  * @throws Error if deployment process fails for any reason
  */
 async function deployContracts(
-  salts: { value: Hex; environment: string }[],
+  salts: { value: Hex; environment: 'production' | 'staging' }[],
   logger: Logger,
   cwd: string,
 ) {
@@ -267,12 +352,31 @@ async function deployContracts(
         hyperProverSalt,
       )
 
+      const polymerProverCreateXAddress = await createXCreate3Address(
+        deployer,
+        polymerProverSalt,
+      )
+
+      const polymerProver2470Address = await create2470Create3Address(
+        deployer,
+        polymerProverSalt,
+      )
+
       logger.log(
         `Generated HyperProver CreateX address: ${hyperProverCreateXAddress}`,
       )
       logger.log(
         `Generated HyperProver erc2470 address: ${hyperProver2470Address}`,
       )
+      logger.log(
+        `Generated PolymerProver CreateX address: ${polymerProverCreateXAddress}`,
+      )
+      logger.log(
+        `Generated PolymerProver erc2470 address: ${polymerProver2470Address}`,
+      )
+
+      const { hyperSolanaProvers, polymerTronProvers } =
+        readCrossChainProverAddresses(cwd, environment, logger)
 
       // Run the deployment script
       // Create a properly merged environment by spreading process.env first
@@ -286,6 +390,11 @@ async function deployContracts(
           [ENV_VARS.POLYMER_PROVER_SALT]: polymerProverSalt, // Then override with our custom value
           [ENV_VARS.HYPERPROVER_CREATEX_ADDRESS]: hyperProverCreateXAddress,
           [ENV_VARS.HYPERPROVER_2470_ADDRESS]: hyperProver2470Address,
+          [ENV_VARS.POLYMER_PROVER_CREATEX_ADDRESS]:
+            polymerProverCreateXAddress,
+          [ENV_VARS.POLYMER_PROVER_2470_ADDRESS]: polymerProver2470Address,
+          [ENV_VARS.HYPER_SOLANA_PROVERS]: hyperSolanaProvers.join(','),
+          [ENV_VARS.POLYMER_TRON_PROVERS]: polymerTronProvers.join(','),
         },
         cwd,
       )
