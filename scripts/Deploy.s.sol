@@ -112,6 +112,75 @@ contract Deploy is Script {
             deployHyperProver(ctx);
         }
 
+        // Deploy IntentSource - using a code block to manage variable lifetimes
+        {
+            bool deployed;
+            (ctx.intentSource, deployed) = deployWithCreate3(
+                type(IntentSource).creationCode,
+                ctx.deployer,
+                ctx.intentSourceSalt
+            );
+            console.log("IntentSource :", ctx.intentSource);
+        }
+
+        // Deploy Inbox - using a code block to manage variable lifetimes
+        {
+            // Initialize solvers array properly with a defined length
+            address[] memory solvers = new address[](0);
+            uint96 minBatcherReward = 0;
+            ctx.inboxConstructorArgs = abi.encode(
+                ctx.deployer,
+                true,
+                minBatcherReward,
+                solvers
+            );
+
+            bytes memory inboxBytecode = abi.encodePacked(
+                type(Inbox).creationCode,
+                ctx.inboxConstructorArgs
+            );
+
+            bool wasInboxDeployed;
+            (ctx.inbox, wasInboxDeployed) = deployWithCreate3(
+                inboxBytecode,
+                ctx.deployer,
+                ctx.inboxSalt
+            );
+
+            console.log("Inbox :", ctx.inbox);
+        }
+
+        // Deploy HyperProver - using a code block to manage variable lifetimes
+        {
+            address hyperProverPreviewAddr = create3Deployer.deployedAddress(
+                new bytes(0), // Bytecode isn't used to determine the deployed address
+                ctx.deployer,
+                ctx.hyperProverSalt
+            );
+
+            // Initialize provers array properly with inbox address
+            address[] memory provers = new address[](1);
+            provers[0] = hyperProverPreviewAddr;
+
+            ctx.hyperProverConstructorArgs = abi.encode(
+                ctx.mailbox,
+                ctx.inbox,
+                provers
+            );
+
+            bytes memory hyperProverBytecode = abi.encodePacked(
+                type(HyperProver).creationCode,
+                ctx.hyperProverConstructorArgs
+            );
+
+            bool deployed;
+            (ctx.hyperProver, deployed) = deployWithCreate3(
+                hyperProverBytecode,
+                ctx.deployer,
+                ctx.hyperProverSalt
+            );
+
+            console.log("HyperProver :", ctx.hyperProver);
         // Deploy MetaProver
         if (hasRouter) {
             deployMetaProver(ctx);
