@@ -10,6 +10,7 @@ import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 import {ICreateX} from "../contracts/tools/ICreateX.sol";
 
 // Protocol
+import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
@@ -43,7 +44,6 @@ contract Deploy is Script {
         address mailbox;
         //polymerprover
         address polymerL2ProverV2;
-        
         address router;
         string deployFilePath;
         address deployer;
@@ -76,6 +76,11 @@ contract Deploy is Script {
         // Initialize the deployment context struct with environment variables
         DeploymentContext memory ctx;
         ctx.salt = vm.envBytes32("SALT");
+        // Salts must be unique to protocol for createx deploys
+        ctx.hyperProverSalt = vm.envBytes32("HYPER_PROVER_SALT");
+        ctx.polymerProverSalt = vm.envBytes32("POLYMER_PROVER_SALT");
+        // Compute salts for each contract
+        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.polymerL2ProverV2 = vm.envOr("POLYMER_L2PROVER_V2", address(0));
         bool metaProver = vm.envOr("META_PROVER", false);
@@ -103,10 +108,7 @@ contract Deploy is Script {
             "POLYMER_TRON_PROVERS",
             new address[](0)
         );
-        // Compute salts for each contract
-        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
-        ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
-        ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
+
         vm.startBroadcast();
 
         // Deploy deployer if it hasn't been deployed
@@ -197,19 +199,78 @@ contract Deploy is Script {
         console.log("Portal :", ctx.portal);
     }
 
-    function deployProverContract(
-        bytes memory creationCode,
-        bytes memory constructorArgs,
-        DeploymentContext memory ctx,
+    function deployWithCreate3(
+        bytes memory bytecode,
+        bytes32 salt,
+        address createXAddress,
+        address factory2470Address,
         string memory contractName
     ) internal returns (address deployedAddress) {
-        bytes memory bytecode = abi.encodePacked(creationCode, constructorArgs);
+        address expectedAddress;
+        if (useCreateXForChainID()) {
+            expectedAddress = createXAddress;
+        } else {
+            expectedAddress = factory2470Address;
+        }
 
-        bool deployed;
-        (deployedAddress, deployed) = deployWithCreate3(bytecode, ctx);
+        bool deployed = isDeployed(expectedAddress);
+
+        if (!deployed) {
+            if (useCreateXForChainID()) {
+                deployedAddress = createXContract.deployCreate3(salt, bytecode);
+            } else {
+                deployedAddress = create3Deployer.deploy(bytecode, salt);
+            }
+
+            require(
+                deployedAddress == expectedAddress,
+                string.concat(
+                    "Expected address does not match deployed address. Expected: ",
+                    vm.toString(expectedAddress),
+                    " Got: ",
+                    vm.toString(deployedAddress)
+                )
+            );
+            require(
+                isDeployed(deployedAddress),
+                "Contract did not get deployed"
+            );
+        } else {
+            deployedAddress = expectedAddress;
+            console.log(
+                string.concat(contractName, " already deployed at:"),
+                deployedAddress
+            );
+        }
 
         console.log(string.concat(contractName, " :"), deployedAddress);
         return deployedAddress;
+    }
+
+    function deployHyperProverWithCreate3(
+        bytes memory bytecode,
+        DeploymentContext memory ctx
+    ) internal returns (address deployedAddress) {
+        return deployWithCreate3(
+            bytecode,
+            ctx.hyperProverSalt,
+            ctx.hyperProverCreateXAddress,
+            ctx.hyperProver2470Address,
+            "HyperProver"
+        );
+    }
+
+    function deployPolymerProverWithCreate3(
+        bytes memory bytecode,
+        DeploymentContext memory ctx
+    ) internal returns (address deployedAddress) {
+        return deployWithCreate3(
+            bytecode,
+            ctx.polymerProverSalt,
+            ctx.polymerProverCreateXAddress,
+            ctx.polymerProver2470Address,
+            "PolymerProver"
+        );
     }
 
     function buildProversArray(
@@ -226,6 +287,16 @@ contract Deploy is Script {
         for (uint i = 0; i < additionalProvers.length; i++) {
             provers[evmProvers + i] = additionalProvers[i];
         }
+    }
+
+    function convertAddressesToBytes32(
+        address[] memory addresses
+    ) internal pure returns (bytes32[] memory) {
+        bytes32[] memory converted = new bytes32[](addresses.length);
+        for (uint i = 0; i < addresses.length; i++) {
+            converted[i] = bytes32(uint256(uint160(addresses[i])));
+        }
+        return converted;
     }
 
     function deployHyperProver(DeploymentContext memory ctx) internal {
@@ -248,17 +319,22 @@ contract Deploy is Script {
             ctx.hyperSolanaProvers
         );
 
+        bytes32[] memory proverBytes32 = convertAddressesToBytes32(provers);
+
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
             ctx.portal,
-            provers
+            proverBytes32
         );
 
-        ctx.hyperProver = deployProverContract(
+        bytes memory hyperProverBytecode = abi.encodePacked(
             type(HyperProver).creationCode,
-            ctx.hyperProverConstructorArgs,
-            ctx,
-            "HyperProver"
+            ctx.hyperProverConstructorArgs
+        );
+
+        ctx.hyperProver = deployHyperProverWithCreate3(
+            hyperProverBytecode,
+            ctx
         );
     }
 
@@ -282,17 +358,22 @@ contract Deploy is Script {
             ctx.polymerTronProvers
         );
 
+        bytes32[] memory proverBytes32 = convertAddressesToBytes32(provers);
+
         ctx.polymerProverConstructorArgs = abi.encode(
             ctx.portal,
             ctx.polymerL2ProverV2,
-            provers
+            proverBytes32
         );
 
-        ctx.polymerProver = deployProverContract(
+        bytes memory polymerProverBytecode = abi.encodePacked(
             type(PolymerProver).creationCode,
-            ctx.polymerProverConstructorArgs,
-            ctx,
-            "PolymerProver"
+            ctx.polymerProverConstructorArgs
+        );
+
+        ctx.polymerProver = deployPolymerProverWithCreate3(
+            polymerProverBytecode,
+            ctx
         );
     }
 
@@ -433,18 +514,15 @@ contract Deploy is Script {
         bytes memory bytecode,
         DeploymentContext memory ctx
     ) internal returns (address deployAddress, bool deployed) {
+        // This function is currently hardcoded for HyperProver - needs refactoring for PolymerProver
         bytes32 salt = ctx.hyperProverSalt;
-        address sender = ctx.deployer; // Assuming ctx.sender should be ctx.deployer
         address expectedAddress;
         if (useCreateXForChainID()) {
-            // Use CreateX for World Chain (480)
             expectedAddress = ctx.hyperProverCreateXAddress;
         } else {
-            // Use Create3Deployer for other chains
             expectedAddress = ctx.hyperProver2470Address;
         }
 
-        // Check if already deployed
         deployed = isDeployed(expectedAddress);
 
         if (!deployed) {
@@ -454,7 +532,6 @@ contract Deploy is Script {
                 deployAddress = create3Deployer.deploy(bytecode, salt);
             }
 
-            // Validate deployment
             require(
                 deployAddress == expectedAddress,
                 string.concat(
@@ -466,12 +543,14 @@ contract Deploy is Script {
             );
             require(isDeployed(deployAddress), "Contract did not get deployed");
         } else {
+            deployAddress = expectedAddress;
             console.log(
                 "Contract already deployed create3 at address:",
                 deployAddress
             );
-            deployAddress = expectedAddress; // Use the expected address if already deployed
         }
+
+        return (deployAddress, deployed);
     }
 
     function writeDeployFile(

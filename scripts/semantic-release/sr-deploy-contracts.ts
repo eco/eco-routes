@@ -21,7 +21,7 @@ import fs from 'fs'
 // eslint-disable-next-line node/no-missing-import
 import { parse as parseCSV } from 'csv-parse/sync'
 import { determineSalts } from '../utils/extract-salt'
-import { getAddress, Hex, hexToBytes, keccak256 } from 'viem'
+import { getAddress, Hex, hexToBytes, keccak256, toHex } from 'viem'
 import { SemanticContext } from './sr-prepare'
 import {
   PATHS,
@@ -250,7 +250,12 @@ async function deployContracts(
       const hyperProverSalt = createCreateXSalt(
         deployer,
         0,
-        hexToBytes(keccak256(salt)),
+        hexToBytes(keccak256(toHex(salt + 'HyperProver'))) as Uint8Array,
+      )
+      const polymerProverSalt = createCreateXSalt(
+        deployer,
+        0,
+        hexToBytes(keccak256(toHex(salt + 'PolymerProver'))) as Uint8Array,
       )
       const hyperProverCreateXAddress = await createXCreate3Address(
         deployer,
@@ -277,7 +282,8 @@ async function deployContracts(
         {
           ...process.env, // Spread existing env first
           [ENV_VARS.SALT]: salt, // Then override with our custom value
-          [ENV_VARS.HYPERPROVER_SALT]: hyperProverSalt, // Then override with our custom value
+          [ENV_VARS.HYPER_PROVER_SALT]: hyperProverSalt, // Then override with our custom value
+          [ENV_VARS.POLYMER_PROVER_SALT]: polymerProverSalt, // Then override with our custom value
           [ENV_VARS.HYPERPROVER_CREATEX_ADDRESS]: hyperProverCreateXAddress,
           [ENV_VARS.HYPERPROVER_2470_ADDRESS]: hyperProver2470Address,
         },

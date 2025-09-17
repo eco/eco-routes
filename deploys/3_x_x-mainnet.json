@@ -1,0 +1,22 @@
+{
+  "tron": {
+    "production": {
+      "portal": "TLWEMdEZKbtW4wibbzJdDhzxuc1mKsomfk",
+      "polymerProver": "TY4WstRqmNqHWRCfmCoZdPhdEJ3LQEopYQ"
+    },
+    "staging": {
+      "portal": "",
+      "polymerProver": ""
+    }
+  },
+  "solana": {
+    "production": {
+      "portal": "0x65cbce824f4b3a8beb4f9dd87eab57c8cc24eee9bbb886ee4d3206cdb9628ad7",
+      "hyperProver": "0xa3f83922f3081c229a9f7ff240f29f34a3548e8c7f05b6202d0d7df3de781788"
+    },
+    "staging": {
+      "portal": "",
+      "hyperProver": ""
+    }
+  }
+}
