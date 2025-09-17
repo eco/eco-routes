@@ -48,14 +48,14 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      * @param _portal Address of the Portal contract
      * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
      * @param _maxLogDataSize Maximum allowed size for encodedProofs in IntentFulfilledFromSource event data
-     * @param _proverIds Array of whitelisted prover (address | chainID)s as bytes32
+     * @param _proverAddresses Array of whitelisted prover addresses as bytes32
      */
     constructor(
         address _portal,
         address _crossL2ProverV2,
         uint256 _maxLogDataSize,
-        bytes32[] memory _proverIds
-    ) BaseProver(_portal) Whitelist(_proverIds) {
+        bytes32[] memory _proverAddresses
+    ) BaseProver(_portal) Whitelist(_proverAddresses) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
         if (_maxLogDataSize == 0 || _maxLogDataSize > MAX_LOG_DATA_SIZE_GUARD) {
             revert InvalidMaxLogDataSize();
@@ -88,8 +88,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             bytes memory data
         ) = CROSS_L2_PROVER_V2.validateEvent(proof);
 
-        bytes32 fullContractIdentifier = emittingContract.toBytes32() | (bytes32(uint256(destinationChainId)) << 160);
-        if (!isWhitelisted(fullContractIdentifier)) {
+        if (!isWhitelisted(emittingContract.toBytes32())) {
             revert InvalidEmittingContract(emittingContract);
         }
 
