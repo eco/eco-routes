@@ -44,7 +44,6 @@ contract Deploy is Script {
     // Define a struct to consolidate deployment data and avoid stack too deep errors
     struct DeploymentContext {
         bytes32 salt;
-        address existingPortal;
         address mailbox;
         address router;
         address layerZeroEndpoint;
@@ -59,8 +58,6 @@ contract Deploy is Script {
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
-        bytes32 layerZeroProverSalt;
-        bytes32 polymerProverSalt;
         address portal;
         address hyperProver;
         address metaProver;
@@ -137,17 +134,6 @@ contract Deploy is Script {
 
         if (hasRouter) {
             ctx.metaProverSalt = getContractSalt(ctx.salt, "META_PROVER");
-        }
-
-        if (hasLayerZero) {
-            ctx.layerZeroProverSalt = getContractSalt(
-                ctx.salt,
-                "LAYERZERO_PROVER"
-            );
-        }
-
-        if (hasPolymer) {
-            ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
         }
 
         vm.startBroadcast();

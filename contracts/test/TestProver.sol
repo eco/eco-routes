@@ -29,7 +29,9 @@ contract TestProver is BaseProver {
 
     constructor(address _portal) BaseProver(_portal) {}
 
-    function version() external pure returns (string memory) { return "3.0"; }
+    function version() external pure returns (string memory) {
+        return "3.0";
+    }
 
     /**
      * @notice Helper to manually add proven intents for testing

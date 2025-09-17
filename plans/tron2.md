@@ -1,6 +1,7 @@
 # Plan: Refactor Deploy.s.sol and Implement Chain-Based Address Prediction
 
 ## Objective
+
 1. Split Deploy.s.sol into modular components with separate address prediction utilities
 2. Implement a method to fetch all chains from CHAIN_DATA_URL and predict unique Polymer Prover addresses
 3. Use these predicted addresses as constructor arguments for Tron Polymer Prover deployment
@@ -8,7 +9,9 @@
 ## Implementation Steps
 
 ### 1. Create AddressPrediction.sol Library
+
 **File**: `scripts/AddressPrediction.sol`
+
 - Extract all address prediction methods from Deploy.s.sol
 - Make them pure/view functions that don't require Script context
 - Include:
@@ -19,7 +22,9 @@
   - Chain ID constants (TRON, World Chain, Plasma)
 
 ### 2. Create PredictAddresses.s.sol Script
+
 **File**: `scripts/PredictAddresses.s.sol`
+
 - Standalone script focused on address prediction
 - Import AddressPrediction library
 - Implement `predictPolymerProverForChain(uint256 chainId, bytes32 salt, address deployer)`
@@ -30,13 +35,16 @@
   - Returns array of unique addresses (deduplicates)
 
 ### 3. Refactor Deploy.s.sol
+
 - Import AddressPrediction library
 - Replace inline prediction functions with library calls
 - Maintain backward compatibility
 - Keep deployment logic unchanged
 
 ### 4. Create TypeScript Chain Data Fetcher
+
 **File**: `scripts/utils/fetchChainData.ts`
+
 - Fetch and parse chain data from CHAIN_DATA_URL
 - Return structured chain information including:
   - Chain IDs
@@ -44,6 +52,7 @@
   - Whether Polymer Prover should be deployed
 
 ### 5. Update sr-deploy-tron.ts
+
 - Replace hardcoded target chains with dynamic chain fetching
 - Use new PredictAddresses.s.sol script to get predictions
 - Parse forge script output properly to extract addresses
@@ -52,232 +61,271 @@
 ## Detailed File Changes
 
 ### scripts/AddressPrediction.sol
+
 ```solidity
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 library AddressPrediction {
-    // Chain constants
-    uint256 constant TRON_MAINNET_CHAIN_ID = 728126428;
-    uint256 constant TRON_SHASTA_CHAIN_ID = 2494104990;
-    uint256 constant TRON_NILE_CHAIN_ID = 3448148188;
-    uint256 constant WORLD_CHAIN_ID = 480;
-    uint256 constant PLASMA_CHAIN_ID = 9745;
+  // Chain constants
+  uint256 constant TRON_MAINNET_CHAIN_ID = 728126428;
+  uint256 constant TRON_SHASTA_CHAIN_ID = 2494104990;
+  uint256 constant TRON_NILE_CHAIN_ID = 3448148188;
+  uint256 constant WORLD_CHAIN_ID = 480;
+  uint256 constant PLASMA_CHAIN_ID = 9745;
 
-    // Factory addresses
-    address constant CREATE2_FACTORY = 0xce0042B868300000d44A59004Da54A005ffdcf9f;
-    address constant CREATE3_DEPLOYER = 0xC6BAd1EbAF366288dA6FB5689119eDd695a66814;
-    address constant CREATEX_CONTRACT = 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
+  // Factory addresses
+  address constant CREATE2_FACTORY = 0xce0042B868300000d44A59004Da54A005ffdcf9f;
+  address constant CREATE3_DEPLOYER =
+    0xC6BAd1EbAF366288dA6FB5689119eDd695a66814;
+  address constant CREATEX_CONTRACT =
+    0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
 
-    function getContractSalt(bytes32 rootSalt, string memory contractName)
-        internal pure returns (bytes32) {
-        return keccak256(abi.encode(rootSalt, keccak256(abi.encodePacked(contractName))));
+  function getContractSalt(
+    bytes32 rootSalt,
+    string memory contractName
+  ) internal pure returns (bytes32) {
+    return
+      keccak256(
+        abi.encode(rootSalt, keccak256(abi.encodePacked(contractName)))
+      );
+  }
+
+  function useCreateXForChainID(uint256 chainId) internal pure returns (bool) {
+    return chainId == WORLD_CHAIN_ID || chainId == PLASMA_CHAIN_ID;
+  }
+
+  function predictCreate3Address(
+    uint256 chainId,
+    bytes32 salt,
+    address deployer
+  ) internal pure returns (address) {
+    if (useCreateXForChainID(chainId)) {
+      return computeCreateXCreate3Address(salt, deployer);
+    } else {
+      return computeCreate3DeployerAddress(salt, deployer);
     }
+  }
 
-    function useCreateXForChainID(uint256 chainId) internal pure returns (bool) {
-        return chainId == WORLD_CHAIN_ID || chainId == PLASMA_CHAIN_ID;
-    }
+  function computeCreateXCreate3Address(
+    bytes32 salt,
+    address deployer
+  ) internal pure returns (address) {
+    // CreateX uses a different CREATE3 implementation
+    // This needs to match CreateX's computeCreate3Address logic
+    bytes32 guardedSalt = keccak256(abi.encode(deployer, salt));
+    bytes memory proxyBytecode = getCreate3ProxyBytecode();
 
-    function predictCreate3Address(
-        uint256 chainId,
-        bytes32 salt,
-        address deployer
-    ) internal pure returns (address) {
-        if (useCreateXForChainID(chainId)) {
-            return computeCreateXCreate3Address(salt, deployer);
-        } else {
-            return computeCreate3DeployerAddress(salt, deployer);
-        }
-    }
-
-    function computeCreateXCreate3Address(
-        bytes32 salt,
-        address deployer
-    ) internal pure returns (address) {
-        // CreateX uses a different CREATE3 implementation
-        // This needs to match CreateX's computeCreate3Address logic
-        bytes32 guardedSalt = keccak256(abi.encode(deployer, salt));
-        bytes memory proxyBytecode = getCreate3ProxyBytecode();
-
-        return address(uint160(uint256(keccak256(
-            abi.encodePacked(
+    return
+      address(
+        uint160(
+          uint256(
+            keccak256(
+              abi.encodePacked(
                 bytes1(0xff),
                 CREATEX_CONTRACT,
                 guardedSalt,
                 keccak256(proxyBytecode)
+              )
             )
-        ))));
-    }
+          )
+        )
+      );
+  }
 
-    function computeCreate3DeployerAddress(
-        bytes32 salt,
-        address deployer
-    ) internal pure returns (address) {
-        // Standard Create3Deployer prediction
-        bytes32 outerSalt = keccak256(abi.encodePacked(deployer, salt));
+  function computeCreate3DeployerAddress(
+    bytes32 salt,
+    address deployer
+  ) internal pure returns (address) {
+    // Standard Create3Deployer prediction
+    bytes32 outerSalt = keccak256(abi.encodePacked(deployer, salt));
 
-        // First, compute the proxy address
-        address proxy = address(uint160(uint256(keccak256(
+    // First, compute the proxy address
+    address proxy = address(
+      uint160(
+        uint256(
+          keccak256(
             abi.encodePacked(
-                bytes1(0xff),
-                CREATE3_DEPLOYER,
-                outerSalt,
-                keccak256(getCreate3ProxyBytecode())
+              bytes1(0xff),
+              CREATE3_DEPLOYER,
+              outerSalt,
+              keccak256(getCreate3ProxyBytecode())
             )
-        ))));
+          )
+        )
+      )
+    );
 
-        // Then compute the final address (deployed via proxy with CREATE2 and salt 0)
-        return address(uint160(uint256(keccak256(
-            abi.encodePacked(
-                bytes1(0xd6),
-                bytes1(0x94),
-                proxy,
-                bytes1(0x01)
+    // Then compute the final address (deployed via proxy with CREATE2 and salt 0)
+    return
+      address(
+        uint160(
+          uint256(
+            keccak256(
+              abi.encodePacked(bytes1(0xd6), bytes1(0x94), proxy, bytes1(0x01))
             )
-        ))));
-    }
+          )
+        )
+      );
+  }
 
-    function predictCreate2Address(
-        bytes memory bytecode,
-        bytes32 salt,
-        address factory
-    ) internal pure returns (address) {
-        return address(uint160(uint256(keccak256(
-            abi.encodePacked(
-                bytes1(0xff),
-                factory,
-                salt,
-                keccak256(bytecode)
+  function predictCreate2Address(
+    bytes memory bytecode,
+    bytes32 salt,
+    address factory
+  ) internal pure returns (address) {
+    return
+      address(
+        uint160(
+          uint256(
+            keccak256(
+              abi.encodePacked(bytes1(0xff), factory, salt, keccak256(bytecode))
             )
-        ))));
-    }
+          )
+        )
+      );
+  }
 
-    function predictCreate2AddressWithPrefix(
-        bytes memory bytecode,
-        bytes32 salt,
-        address factory,
-        bytes1 prefix
-    ) internal pure returns (address) {
-        return address(uint160(uint256(keccak256(
-            abi.encodePacked(
-                prefix,
-                factory,
-                salt,
-                keccak256(bytecode)
+  function predictCreate2AddressWithPrefix(
+    bytes memory bytecode,
+    bytes32 salt,
+    address factory,
+    bytes1 prefix
+  ) internal pure returns (address) {
+    return
+      address(
+        uint160(
+          uint256(
+            keccak256(
+              abi.encodePacked(prefix, factory, salt, keccak256(bytecode))
             )
-        ))));
-    }
+          )
+        )
+      );
+  }
 
-    function getCreate3ProxyBytecode() private pure returns (bytes memory) {
-        // This is the standard CREATE3 proxy bytecode
-        return hex"67363d3d37363d34f03d5260086018f3";
-    }
+  function getCreate3ProxyBytecode() private pure returns (bytes memory) {
+    // This is the standard CREATE3 proxy bytecode
+    return hex"67363d3d37363d34f03d5260086018f3";
+  }
 }
 ```
 
 ### scripts/PredictAddresses.s.sol
+
 ```solidity
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Script} from "forge-std/Script.sol";
-import {console} from "forge-std/console.sol";
-import {AddressPrediction} from "./AddressPrediction.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/console.sol";
+import { AddressPrediction } from "./AddressPrediction.sol";
 
 contract PredictAddresses is Script {
-    using AddressPrediction for *;
+  using AddressPrediction for *;
 
-    struct ChainConfig {
-        uint256 chainId;
-        string rpcUrl;
-        address polymerCrossL2ProverV2;
-    }
+  struct ChainConfig {
+    uint256 chainId;
+    string rpcUrl;
+    address polymerCrossL2ProverV2;
+  }
 
-    function predictPolymerProverForChain(
-        uint256 chainId,
-        bytes32 salt,
-        address deployer
-    ) public pure returns (address) {
-        bytes32 polymerSalt = AddressPrediction.getContractSalt(salt, "POLYMER_PROVER");
-        return AddressPrediction.predictCreate3Address(chainId, polymerSalt, deployer);
-    }
+  function predictPolymerProverForChain(
+    uint256 chainId,
+    bytes32 salt,
+    address deployer
+  ) public pure returns (address) {
+    bytes32 polymerSalt = AddressPrediction.getContractSalt(
+      salt,
+      "POLYMER_PROVER"
+    );
+    return
+      AddressPrediction.predictCreate3Address(chainId, polymerSalt, deployer);
+  }
 
-    function predictPolymerProverForAllChains() external {
-        bytes32 salt = vm.envBytes32("SALT");
-        address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
+  function predictPolymerProverForAllChains() external {
+    bytes32 salt = vm.envBytes32("SALT");
+    address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
 
-        // For demonstration, using a hardcoded list of chain IDs
-        // In production, this would be fetched from CHAIN_DATA_URL
-        uint256[] memory chainIds = getTargetChainIds();
+    // For demonstration, using a hardcoded list of chain IDs
+    // In production, this would be fetched from CHAIN_DATA_URL
+    uint256[] memory chainIds = getTargetChainIds();
 
-        address[] memory predictions = new address[](chainIds.length);
-        uint256 uniqueCount = 0;
+    address[] memory predictions = new address[](chainIds.length);
+    uint256 uniqueCount = 0;
 
-        console.log("=== Predicting Polymer Prover Addresses ===");
-        console.log("Salt:", vm.toString(salt));
-        console.log("Deployer:", deployer);
-        console.log("");
+    console.log("=== Predicting Polymer Prover Addresses ===");
+    console.log("Salt:", vm.toString(salt));
+    console.log("Deployer:", deployer);
+    console.log("");
 
-        for (uint256 i = 0; i < chainIds.length; i++) {
-            address predicted = predictPolymerProverForChain(chainIds[i], salt, deployer);
+    for (uint256 i = 0; i < chainIds.length; i++) {
+      address predicted = predictPolymerProverForChain(
+        chainIds[i],
+        salt,
+        deployer
+      );
 
-            // Check if unique
-            bool isUnique = true;
-            for (uint256 j = 0; j < uniqueCount; j++) {
-                if (predictions[j] == predicted) {
-                    isUnique = false;
-                    break;
-                }
-            }
-
-            if (isUnique) {
-                predictions[uniqueCount++] = predicted;
-                console.log("Chain", chainIds[i], "Polymer Prover:", predicted);
-            }
+      // Check if unique
+      bool isUnique = true;
+      for (uint256 j = 0; j < uniqueCount; j++) {
+        if (predictions[j] == predicted) {
+          isUnique = false;
+          break;
         }
+      }
 
-        console.log("");
-        console.log("=== Unique Addresses ===");
-        for (uint256 i = 0; i < uniqueCount; i++) {
-            console.log("UNIQUE_ADDRESS:", predictions[i]);
-        }
+      if (isUnique) {
+        predictions[uniqueCount++] = predicted;
+        console.log("Chain", chainIds[i], "Polymer Prover:", predicted);
+      }
     }
 
-    function getTargetChainIds() internal view returns (uint256[] memory) {
-        // Fetch chain IDs from environment variable
-        // These should be the chains with crossL2proverV2 field from CHAIN_DATA_URL
-        string memory chainIdsStr = vm.envString("TARGET_CHAIN_IDS");
-
-        require(bytes(chainIdsStr).length > 0, "TARGET_CHAIN_IDS not set");
-
-        // Parse comma-separated chain IDs
-        return parseChainIds(chainIdsStr);
+    console.log("");
+    console.log("=== Unique Addresses ===");
+    for (uint256 i = 0; i < uniqueCount; i++) {
+      console.log("UNIQUE_ADDRESS:", predictions[i]);
     }
+  }
 
-    function parseChainIds(string memory chainIdsStr) internal pure returns (uint256[] memory) {
-        // Simple parser for comma-separated chain IDs
-        // In production, use a more robust parser
-        uint256[] memory result = new uint256[](20); // Max 20 chains
-        uint256 count = 0;
+  function getTargetChainIds() internal view returns (uint256[] memory) {
+    // Fetch chain IDs from environment variable
+    // These should be the chains with crossL2proverV2 field from CHAIN_DATA_URL
+    string memory chainIdsStr = vm.envString("TARGET_CHAIN_IDS");
 
-        // This is a simplified implementation
-        // Real implementation would parse the string properly
+    require(bytes(chainIdsStr).length > 0, "TARGET_CHAIN_IDS not set");
 
-        return result;
-    }
+    // Parse comma-separated chain IDs
+    return parseChainIds(chainIdsStr);
+  }
+
+  function parseChainIds(
+    string memory chainIdsStr
+  ) internal pure returns (uint256[] memory) {
+    // Simple parser for comma-separated chain IDs
+    // In production, use a more robust parser
+    uint256[] memory result = new uint256[](20); // Max 20 chains
+    uint256 count = 0;
+
+    // This is a simplified implementation
+    // Real implementation would parse the string properly
+
+    return result;
+  }
 }
 ```
 
 ### scripts/utils/fetchChainData.ts
+
 ```typescript
-import axios from 'axios'
-import { Logger } from '../semantic-release/helpers'
+import axios from "axios"
+import { Logger } from "../semantic-release/helpers"
 
 interface ChainConfig {
   url: string
   mailbox?: string
   router?: string
-  crossL2proverV2?: string  // Changed from polymerCrossL2ProverV2
+  crossL2proverV2?: string // Changed from polymerCrossL2ProverV2
   metaProver?: boolean
   legacy?: boolean
   gasMultiplier?: string
@@ -292,7 +340,7 @@ interface ChainData {
 
 export async function fetchChainData(
   chainDataUrl: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<ChainData[]> {
   try {
     logger.log(`Fetching chain data from: ${chainDataUrl}`)
@@ -307,13 +355,15 @@ export async function fetchChainData(
           chainId: parseInt(chainId),
           rpcUrl: config.url,
           hasPolymerProver: true,
-          crossL2proverV2: config.crossL2proverV2
+          crossL2proverV2: config.crossL2proverV2,
         })
       }
     }
 
-    logger.log(`Found ${chains.length} chains with Polymer Prover configuration (crossL2proverV2 field)`)
-    logger.log(`Chains: ${chains.map(c => c.chainId).join(', ')}`)
+    logger.log(
+      `Found ${chains.length} chains with Polymer Prover configuration (crossL2proverV2 field)`,
+    )
+    logger.log(`Chains: ${chains.map((c) => c.chainId).join(", ")}`)
     return chains
   } catch (error) {
     logger.error(`Failed to fetch chain data: ${(error as Error).message}`)
@@ -323,17 +373,18 @@ export async function fetchChainData(
 
 export async function getTargetChainIds(
   chainDataUrl: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<number[]> {
   const chains = await fetchChainData(chainDataUrl, logger)
-  return chains.map(c => c.chainId)
+  return chains.map((c) => c.chainId)
 }
 ```
 
 ### Updated predictEVMPolymerAddresses in sr-deploy-tron.ts
+
 ```typescript
-import { fetchChainData, getTargetChainIds } from '../utils/fetchChainData'
-import { spawn } from 'child_process'
+import { fetchChainData, getTargetChainIds } from "../utils/fetchChainData"
+import { spawn } from "child_process"
 
 async function predictEVMPolymerAddresses(
   rootSalt: Hex,
@@ -341,11 +392,11 @@ async function predictEVMPolymerAddresses(
   cwd: string,
 ): Promise<string[]> {
   try {
-    logger.log('🔮 Predicting EVM Polymer Prover addresses from chain data...')
+    logger.log("🔮 Predicting EVM Polymer Prover addresses from chain data...")
 
     const chainDataUrl = process.env.CHAIN_DATA_URL
     if (!chainDataUrl) {
-      logger.log('⚠️  CHAIN_DATA_URL not set, skipping EVM address prediction')
+      logger.log("⚠️  CHAIN_DATA_URL not set, skipping EVM address prediction")
       return []
     }
 
@@ -353,44 +404,54 @@ async function predictEVMPolymerAddresses(
     const chainIds = await getTargetChainIds(chainDataUrl, logger)
 
     if (chainIds.length === 0) {
-      logger.log('⚠️  No chains with crossL2proverV2 found in chain data')
+      logger.log("⚠️  No chains with crossL2proverV2 found in chain data")
       return []
     }
 
-    const chainIdsStr = chainIds.join(',')
-    logger.log(`📊 Found ${chainIds.length} chains with crossL2proverV2: ${chainIdsStr}`)
+    const chainIdsStr = chainIds.join(",")
+    logger.log(
+      `📊 Found ${chainIds.length} chains with crossL2proverV2: ${chainIdsStr}`,
+    )
 
     // Execute forge script to get all unique predictions
-    const forgeProcess = spawn('forge', [
-      'script',
-      'scripts/PredictAddresses.s.sol:PredictAddresses',
-      '--sig', 'predictPolymerProverForAllChains()',
-      '--fork-url', 'http://localhost:8545', // Dummy RPC for pure functions
-    ], {
-      env: {
-        ...process.env,
-        SALT: rootSalt,
-        PRIVATE_KEY: process.env.PRIVATE_KEY,
-        TARGET_CHAIN_IDS: chainIdsStr,
+    const forgeProcess = spawn(
+      "forge",
+      [
+        "script",
+        "scripts/PredictAddresses.s.sol:PredictAddresses",
+        "--sig",
+        "predictPolymerProverForAllChains()",
+        "--fork-url",
+        "http://localhost:8545", // Dummy RPC for pure functions
+      ],
+      {
+        env: {
+          ...process.env,
+          SALT: rootSalt,
+          PRIVATE_KEY: process.env.PRIVATE_KEY,
+          TARGET_CHAIN_IDS: chainIdsStr,
+        },
+        cwd,
       },
-      cwd,
-    })
+    )
 
-    let output = ''
-    let errorOutput = ''
+    let output = ""
+    let errorOutput = ""
 
-    forgeProcess.stdout.on('data', (data) => {
+    forgeProcess.stdout.on("data", (data) => {
       output += data.toString()
     })
 
-    forgeProcess.stderr.on('data', (data) => {
+    forgeProcess.stderr.on("data", (data) => {
       errorOutput += data.toString()
     })
 
     await new Promise<void>((resolve, reject) => {
-      forgeProcess.on('close', (code) => {
+      forgeProcess.on("close", (code) => {
         if (code !== 0) {
-          reject(new Error(`Forge script failed with code ${code}: ${errorOutput}`))
+          reject(
+            new Error(`Forge script failed with code ${code}: ${errorOutput}`),
+          )
         } else {
           resolve()
         }
@@ -398,11 +459,15 @@ async function predictEVMPolymerAddresses(
     })
 
     // Parse output to extract unique addresses
-    const addressMatches = output.matchAll(/UNIQUE_ADDRESS: (0x[a-fA-F0-9]{40})/g)
-    const uniqueAddresses = [...addressMatches].map(m => m[1])
+    const addressMatches = output.matchAll(
+      /UNIQUE_ADDRESS: (0x[a-fA-F0-9]{40})/g,
+    )
+    const uniqueAddresses = [...addressMatches].map((m) => m[1])
 
-    logger.log(`✅ Found ${uniqueAddresses.length} unique Polymer Prover addresses:`)
-    uniqueAddresses.forEach(addr => logger.log(`  - ${addr}`))
+    logger.log(
+      `✅ Found ${uniqueAddresses.length} unique Polymer Prover addresses:`,
+    )
+    uniqueAddresses.forEach((addr) => logger.log(`  - ${addr}`))
 
     return uniqueAddresses
   } catch (error) {
@@ -424,14 +489,17 @@ async function predictEVMPolymerAddresses(
 ## Testing Strategy
 
 1. **Unit Tests**:
+
    - Test AddressPrediction library with known inputs/outputs
    - Verify address calculations match expected values
 
 2. **Integration Tests**:
+
    - Test PredictAddresses script with sample chain data
    - Verify unique address detection works correctly
 
 3. **End-to-End Tests**:
+
    - Deploy to test networks (Tron Shasta + EVM testnets)
    - Verify Tron Polymer Prover has correct EVM addresses
    - Test cross-chain communication

@@ -116,8 +116,8 @@ async function createIntent(
   // Create the complete intent
   const intent: Intent = {
     destination: destination.chainId,
-    route: route,
-    reward: reward,
+    route,
+    reward,
   }
 
   // Calculate intent hash

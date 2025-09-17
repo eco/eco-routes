@@ -26,10 +26,18 @@ contract PredictAddresses is Script {
         address deployer
     ) public pure returns (address) {
         // Generate contract-specific salt for Polymer Prover
-        bytes32 polymerSalt = AddressPrediction.getContractSalt(salt, "POLYMER_PROVER");
+        bytes32 polymerSalt = AddressPrediction.getContractSalt(
+            salt,
+            "POLYMER_PROVER"
+        );
 
         // Predict the CREATE3 address for this chain
-        return AddressPrediction.predictCreate3Address(chainId, polymerSalt, deployer);
+        return
+            AddressPrediction.predictCreate3Address(
+                chainId,
+                polymerSalt,
+                deployer
+            );
     }
 
     /**
@@ -37,7 +45,10 @@ contract PredictAddresses is Script {
      * @dev Reads TARGET_CHAIN_IDS from environment and predicts for each chain
      * @return Array of unique predicted addresses
      */
-    function predictPolymerProverForAllChains() external returns (address[] memory) {
+    function predictPolymerProverForAllChains()
+        external
+        returns (address[] memory)
+    {
         bytes32 salt = vm.envBytes32("SALT");
         address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
 
@@ -57,7 +68,11 @@ contract PredictAddresses is Script {
         // Predict address for each chain
         for (uint256 i = 0; i < chainIds.length; i++) {
             uint256 chainId = chainIds[i];
-            address predicted = predictPolymerProverForChain(chainId, salt, deployer);
+            address predicted = predictPolymerProverForChain(
+                chainId,
+                salt,
+                deployer
+            );
 
             console.log("Chain", chainId, "Predicted:", predicted);
 
@@ -66,7 +81,10 @@ contract PredictAddresses is Script {
             for (uint256 j = 0; j < uniqueCount; j++) {
                 if (predictions[j] == predicted) {
                     isUnique = false;
-                    console.log("  -> Duplicate of chain", getChainIdForAddress(chainIds, predictions, j));
+                    console.log(
+                        "  -> Duplicate of chain",
+                        getChainIdForAddress(chainIds, predictions, j)
+                    );
                     break;
                 }
             }
@@ -100,7 +118,11 @@ contract PredictAddresses is Script {
         console.log("");
         console.log("=== Chain Mapping ===");
         for (uint256 i = 0; i < chainIds.length; i++) {
-            address predicted = predictPolymerProverForChain(chainIds[i], salt, deployer);
+            address predicted = predictPolymerProverForChain(
+                chainIds[i],
+                salt,
+                deployer
+            );
             console.log("CHAIN_MAPPING:", chainIds[i], predicted);
         }
 
@@ -128,7 +150,9 @@ contract PredictAddresses is Script {
      * @param chainIdsStr Comma-separated string of chain IDs
      * @return Array of parsed chain IDs
      */
-    function parseChainIds(string memory chainIdsStr) internal pure returns (uint256[] memory) {
+    function parseChainIds(
+        string memory chainIdsStr
+    ) internal pure returns (uint256[] memory) {
         bytes memory chainIdsBytes = bytes(chainIdsStr);
 
         // Count commas to determine array size
@@ -192,12 +216,22 @@ contract PredictAddresses is Script {
      * @param contractName The contract name (e.g., "POLYMER_PROVER")
      * @return The predicted address
      */
-    function predictSingleAddress(uint256 chainId, string memory contractName) external view returns (address) {
+    function predictSingleAddress(
+        uint256 chainId,
+        string memory contractName
+    ) external view returns (address) {
         bytes32 salt = vm.envBytes32("SALT");
         address deployer = vm.addr(vm.envUint("PRIVATE_KEY"));
 
-        bytes32 contractSalt = AddressPrediction.getContractSalt(salt, contractName);
-        address predicted = AddressPrediction.predictCreate3Address(chainId, contractSalt, deployer);
+        bytes32 contractSalt = AddressPrediction.getContractSalt(
+            salt,
+            contractName
+        );
+        address predicted = AddressPrediction.predictCreate3Address(
+            chainId,
+            contractSalt,
+            deployer
+        );
 
         console.log("=== Single Address Prediction ===");
         console.log("Chain ID:", chainId);
@@ -205,7 +239,10 @@ contract PredictAddresses is Script {
         console.log("Salt:", vm.toString(salt));
         console.log("Contract Salt:", vm.toString(contractSalt));
         console.log("Deployer:", deployer);
-        console.log("Uses CreateX:", AddressPrediction.useCreateXForChainID(chainId));
+        console.log(
+            "Uses CreateX:",
+            AddressPrediction.useCreateXForChainID(chainId)
+        );
         console.log("Predicted Address:", predicted);
 
         return predicted;

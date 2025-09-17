@@ -5,7 +5,7 @@ interface ChainConfig {
   url: string
   mailbox?: string
   router?: string
-  crossL2proverV2?: string  // This is the key field we're looking for
+  crossL2proverV2?: string // This is the key field we're looking for
   metaProver?: boolean
   legacy?: boolean
   gasMultiplier?: string
@@ -26,7 +26,7 @@ interface ChainData {
  */
 export async function fetchChainData(
   chainDataUrl: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<ChainData[]> {
   try {
     logger.log(`📡 Fetching chain data from: ${chainDataUrl}`)
@@ -41,13 +41,15 @@ export async function fetchChainData(
           chainId: parseInt(chainId),
           rpcUrl: config.url,
           hasPolymerProver: true,
-          crossL2proverV2: config.crossL2proverV2
+          crossL2proverV2: config.crossL2proverV2,
         })
       }
     }
 
-    logger.log(`✅ Found ${chains.length} chains with Polymer Prover configuration (crossL2proverV2 field)`)
-    logger.log(`📊 Chain IDs: ${chains.map(c => c.chainId).join(', ')}`)
+    logger.log(
+      `✅ Found ${chains.length} chains with Polymer Prover configuration (crossL2proverV2 field)`,
+    )
+    logger.log(`📊 Chain IDs: ${chains.map((c) => c.chainId).join(', ')}`)
     return chains
   } catch (error) {
     logger.error(`❌ Failed to fetch chain data: ${(error as Error).message}`)
@@ -63,10 +65,10 @@ export async function fetchChainData(
  */
 export async function getTargetChainIds(
   chainDataUrl: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<number[]> {
   const chains = await fetchChainData(chainDataUrl, logger)
-  return chains.map(c => c.chainId)
+  return chains.map((c) => c.chainId)
 }
 
 /**
@@ -77,7 +79,7 @@ export async function getTargetChainIds(
  */
 export async function validateChainDataUrl(
   chainDataUrl: string,
-  logger: Logger
+  logger: Logger,
 ): Promise<boolean> {
   try {
     const response = await axios.get(chainDataUrl)
@@ -90,8 +92,8 @@ export async function validateChainDataUrl(
     }
 
     // Check if at least one chain has the required structure
-    const hasValidChain = Object.values(data).some((config: any) =>
-      config && typeof config === 'object' && config.url
+    const hasValidChain = Object.values(data).some(
+      (config: any) => config && typeof config === 'object' && config.url,
     )
 
     if (!hasValidChain) {
@@ -102,7 +104,9 @@ export async function validateChainDataUrl(
     logger.log('✅ Chain data URL is valid and accessible')
     return true
   } catch (error) {
-    logger.error(`❌ Chain data URL validation failed: ${(error as Error).message}`)
+    logger.error(
+      `❌ Chain data URL validation failed: ${(error as Error).message}`,
+    )
     return false
   }
 }
