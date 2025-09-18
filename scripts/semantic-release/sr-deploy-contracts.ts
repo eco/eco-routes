@@ -196,14 +196,6 @@ function addCrossChainAddresses(
   logger: Logger,
 ): void {
   try {
-    // Read cross-chain addresses using existing function
-    const { hyperSolanaProvers, polymerTronProvers } =
-      readCrossChainProverAddresses(cwd, version, 'production', logger)
-    const {
-      hyperSolanaProvers: hyperSolanaStagingProvers,
-      polymerTronProvers: polymerTronStagingProvers,
-    } = readCrossChainProverAddresses(cwd, version, 'staging', logger)
-
     // Get the full cross-chain data
     const baseVersion = getBaseVersion(version, logger)
     const configFileName = `${baseVersion.replace('.', '_')}_x-mainnet.json`

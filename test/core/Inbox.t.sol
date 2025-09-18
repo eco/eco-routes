@@ -44,7 +44,7 @@ contract InboxTest is BaseTest {
 
     function testPortalBasicProperties() public view {
         // Test version from ISemver interface via portal
-        assertEq(portal.version(), "2.6");
+        assertEq(portal.version(), "3.0");
     }
 
     function testPortalCanReceiveIntents() public {

@@ -426,9 +426,9 @@ class TronDeployer {
       console.log('Starting TRON deployment process...')
 
       const hasExistingPortal = !!this.deploymentContext.existingPortal
-      const hasExistingPolymerProver =
-        !!this.deploymentContext.existingPolymerProver
-      const hasLayerZero = !!this.deploymentContext.layerZeroEndpoint
+      // const hasExistingPolymerProver =
+      //   !!this.deploymentContext.existingPolymerProver
+      // const hasLayerZero = !!this.deploymentContext.layerZeroEndpoint
       const hasPolymerCrossL2 = !!this.deploymentContext.polymerCrossL2ProverV2
       const polymerProverDeployed =
         !!this.deploymentContext.existingPolymerProver

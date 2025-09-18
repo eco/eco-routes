@@ -46,22 +46,22 @@ export const RouteAbi = [
   {
     components: [
       { internalType: 'address', name: 'token', type: 'address' },
-      { internalType: 'uint256', name: 'amount', type: 'uint256' }
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
     ],
     internalType: 'struct TokenAmount[]',
     name: 'tokens',
-    type: 'tuple[]'
+    type: 'tuple[]',
   },
   {
     components: [
       { internalType: 'address', name: 'target', type: 'address' },
       { internalType: 'bytes', name: 'data', type: 'bytes' },
-      { internalType: 'uint256', name: 'value', type: 'uint256' }
+      { internalType: 'uint256', name: 'value', type: 'uint256' },
     ],
     internalType: 'struct Call[]',
     name: 'calls',
-    type: 'tuple[]'
-  }
+    type: 'tuple[]',
+  },
 ] as const
 
 /**
@@ -75,12 +75,12 @@ export const RewardAbi = [
   {
     components: [
       { internalType: 'address', name: 'token', type: 'address' },
-      { internalType: 'uint256', name: 'amount', type: 'uint256' }
+      { internalType: 'uint256', name: 'amount', type: 'uint256' },
     ],
     internalType: 'struct TokenAmount[]',
     name: 'tokens',
-    type: 'tuple[]'
-  }
+    type: 'tuple[]',
+  },
 ] as const
 
 /**
@@ -92,14 +92,14 @@ export const IntentAbi = [
     components: RouteAbi,
     internalType: 'struct Route',
     name: 'route',
-    type: 'tuple'
+    type: 'tuple',
   },
   {
     components: RewardAbi,
     internalType: 'struct Reward',
     name: 'reward',
-    type: 'tuple'
-  }
+    type: 'tuple',
+  },
 ] as const
 
 // Type aliases for the ABI structures
@@ -131,7 +131,11 @@ export type RouteType = {
   portal: `0x${string}`
   nativeAmount: bigint
   tokens: readonly { token: `0x${string}`; amount: bigint }[]
-  calls: readonly { target: `0x${string}`; data: `0x${string}`; value: bigint }[]
+  calls: readonly {
+    target: `0x${string}`
+    data: `0x${string}`
+    value: bigint
+  }[]
 }
 
 /**

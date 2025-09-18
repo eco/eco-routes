@@ -54,9 +54,9 @@ describe('extract-salt', () => {
 
       // Assert
       expect(result).toHaveProperty('rootSalt')
-      expect(result).toHaveProperty('preprodRootSalt')
+      expect(result).toHaveProperty('stagingRootSalt')
       expect(result.rootSalt).toBe('keccak256(toHex(2.0))')
-      expect(result.preprodRootSalt).toBe('keccak256(toHex(2.0-preprod))')
+      expect(result.stagingRootSalt).toBe('keccak256(toHex(2.0-staging))')
     })
 
     it('should log appropriate messages during salt calculation', async () => {

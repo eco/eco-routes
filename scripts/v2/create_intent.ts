@@ -1,3 +1,4 @@
+// eslint-disable-next-line node/no-missing-import
 import { ethers } from 'hardhat'
 import { parseEther, parseUnits } from 'ethers'
 import {
@@ -7,7 +8,6 @@ import {
   hashIntent,
   encodeRoute,
 } from '../../utils/intent'
-import { parseAbi } from 'viem'
 
 /**
  * Creates an intent against the Portal contract for cross-chain token transfers

@@ -75,7 +75,7 @@ jest.mock('../sr-deploy-contracts', () => {
         }
 
         // Determine salts based on version
-        const { rootSalt, preprodRootSalt } = await determineSalts(
+        const { rootSalt, stagingRootSalt } = await determineSalts(
           nextRelease!.version,
           logger,
         )
@@ -84,7 +84,7 @@ jest.mock('../sr-deploy-contracts', () => {
         await mockDeployToEnv(
           [
             { salt: rootSalt, environment: 'production' },
-            { salt: preprodRootSalt, environment: 'preprod' },
+            { salt: stagingRootSalt, environment: 'preprod' },
           ],
           logger,
           cwd,

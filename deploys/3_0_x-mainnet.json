@@ -2,7 +2,7 @@
   "tron": {
     "production": {
       "portal": "0x000000000000000000000000a17fa8126b6a12feb2fe9c19f618fe04d7329074",
-      "polymerProver": "0x000000000000000000000000F253c4FcAe2968c51D8EcD14E4C1716FdF85cEBa"
+      "polymerProver": "0x000000000000000000000000c9c5c59a95da7570b0ce8de6d092b10cf095fbdf"
     },
     "staging": {
       "portal": "",

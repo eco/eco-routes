@@ -52,17 +52,12 @@ describe('Semantic Release Version Function', () => {
     pluginConfig = {}
   })
 
-  it('should update versions in Solidity files and package.json', async () => {
+  it('should update package.json version (Solidity versions are manually managed)', async () => {
     // Act: Execute the version function
     await version(pluginConfig, context)
 
-    // Assert: Verify updateSolidityVersions was called correctly
-    expect(updaterModule.updateSolidityVersions).toHaveBeenCalledTimes(1)
-    expect(updaterModule.updateSolidityVersions).toHaveBeenCalledWith(
-      testPath,
-      testVersion,
-      context.logger,
-    )
+    // Assert: Verify updateSolidityVersions was NOT called (manual management)
+    expect(updaterModule.updateSolidityVersions).not.toHaveBeenCalled()
 
     // Assert: Verify updatePackageJsonVersion was called correctly
     expect(updaterModule.updatePackageJsonVersion).toHaveBeenCalledTimes(1)
@@ -75,9 +70,6 @@ describe('Semantic Release Version Function', () => {
     // Assert: Verify logger messages
     expect(context.logger.log).toHaveBeenCalledWith(
       `Updating version information to ${testVersion}`,
-    )
-    expect(context.logger.log).toHaveBeenCalledWith(
-      `Updated version in ${updatedFilesCount} Solidity files`,
     )
     expect(context.logger.log).toHaveBeenCalledWith(
       `✅ Version information updated successfully to ${testVersion}`,
@@ -105,25 +97,9 @@ describe('Semantic Release Version Function', () => {
     )
   })
 
-  it('should throw error when Solidity version update fails', async () => {
-    // Arrange: Mock updateSolidityVersions to throw an error
-    const errorMessage = 'Failed to update Solidity versions'
-    ;(updaterModule.updateSolidityVersions as jest.Mock).mockImplementationOnce(
-      () => {
-        throw new Error(errorMessage)
-      },
-    )
-
-    // Act & Assert: Execute version function and expect it to throw
-    await expect(version(pluginConfig, context)).rejects.toThrow(errorMessage)
-
-    // Assert: Verify error was logged
-    expect(context.logger.error).toHaveBeenCalledWith(
-      `❌ Failed to update version information: ${errorMessage}`,
-    )
-
-    // Assert: Verify updatePackageJsonVersion was not called after error
-    expect(updaterModule.updatePackageJsonVersion).not.toHaveBeenCalled()
+  it.skip('should throw error when Solidity version update fails (SKIPPED - Solidity versions manually managed)', async () => {
+    // This test is skipped because Solidity versions are now manually managed
+    // in contracts/libs/Semver.sol and not updated automatically
   })
 
   it('should throw error when package.json update fails', async () => {
@@ -143,7 +119,7 @@ describe('Semantic Release Version Function', () => {
       `❌ Failed to update version information: ${errorMessage}`,
     )
 
-    // Assert: Verify updateSolidityVersions was called before error
-    expect(updaterModule.updateSolidityVersions).toHaveBeenCalled()
+    // Assert: Verify updateSolidityVersions was NOT called (manual management)
+    expect(updaterModule.updateSolidityVersions).not.toHaveBeenCalled()
   })
 })

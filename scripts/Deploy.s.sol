@@ -586,13 +586,20 @@ contract Deploy is Script {
     ) internal view {
         // Validate required environment variables
         require(ctx.salt != bytes32(0), "SALT must be provided");
-        require(bytes(ctx.deployFilePath).length > 0, "DEPLOY_FILE must be provided");
+        require(
+            bytes(ctx.deployFilePath).length > 0,
+            "DEPLOY_FILE must be provided"
+        );
 
         // Validate HyperProver deployment context
         if (hasMailbox) {
-            require(ctx.hyperProverSalt != bytes32(0), "HYPER_PROVER_SALT required for HyperProver deployment");
             require(
-                ctx.hyperProverCreateXAddress != address(0) || ctx.hyperProver2470Address != address(0),
+                ctx.hyperProverSalt != bytes32(0),
+                "HYPER_PROVER_SALT required for HyperProver deployment"
+            );
+            require(
+                ctx.hyperProverCreateXAddress != address(0) ||
+                    ctx.hyperProver2470Address != address(0),
                 "Either HYPERPROVER_CREATEX_ADDRESS or HYPERPROVER_2470_ADDRESS must be provided"
             );
             console.log("HyperProver validation passed");
@@ -600,9 +607,13 @@ contract Deploy is Script {
 
         // Validate PolymerProver deployment context
         if (hasPolymerL2ProverV2) {
-            require(ctx.polymerProverSalt != bytes32(0), "POLYMER_PROVER_SALT required for PolymerProver deployment");
             require(
-                ctx.polymerProverCreateXAddress != address(0) || ctx.polymerProver2470Address != address(0),
+                ctx.polymerProverSalt != bytes32(0),
+                "POLYMER_PROVER_SALT required for PolymerProver deployment"
+            );
+            require(
+                ctx.polymerProverCreateXAddress != address(0) ||
+                    ctx.polymerProver2470Address != address(0),
                 "Either POLYMER_PROVER_CREATEX_ADDRESS or POLYMER_PROVER_2470_ADDRESS must be provided"
             );
             console.log("PolymerProver validation passed");
@@ -610,24 +621,41 @@ contract Deploy is Script {
 
         // Log prover array sizes for debugging
         if (ctx.hyperSolanaProvers.length > 0) {
-            console.log("Found", ctx.hyperSolanaProvers.length, "Solana HyperProver addresses");
+            console.log(
+                "Found",
+                ctx.hyperSolanaProvers.length,
+                "Solana HyperProver addresses"
+            );
         }
         if (ctx.polymerTronProvers.length > 0) {
-            console.log("Found", ctx.polymerTronProvers.length, "Tron PolymerProver addresses");
+            console.log(
+                "Found",
+                ctx.polymerTronProvers.length,
+                "Tron PolymerProver addresses"
+            );
         }
 
         // Warn about large arrays that might cause gas issues
         if (ctx.hyperSolanaProvers.length > 10) {
-            console.log("WARNING: Large number of Solana provers may cause gas issues:", ctx.hyperSolanaProvers.length);
+            console.log(
+                "WARNING: Large number of Solana provers may cause gas issues:",
+                ctx.hyperSolanaProvers.length
+            );
         }
         if (ctx.polymerTronProvers.length > 10) {
-            console.log("WARNING: Large number of Tron provers may cause gas issues:", ctx.polymerTronProvers.length);
+            console.log(
+                "WARNING: Large number of Tron provers may cause gas issues:",
+                ctx.polymerTronProvers.length
+            );
         }
 
         console.log("Deployment context validation completed");
     }
 
-    function logBytes32Array(string memory label, bytes32[] memory array) internal view {
+    function logBytes32Array(
+        string memory label,
+        bytes32[] memory array
+    ) internal view {
         console.log(label, "count:", array.length);
         for (uint i = 0; i < array.length && i < 5; i++) {
             console.log("  [", i, "]:", vm.toString(array[i]));
