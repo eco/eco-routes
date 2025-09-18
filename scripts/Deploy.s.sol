@@ -322,10 +322,7 @@ contract Deploy is Script {
             "Hyperprover 2470 address: ",
             vm.toString(ctx.hyperProver2470Address)
         );
-        console.log(
-            "Hyperprover Solana: ",
-            vm.toString(ctx.hyperSolanaProvers)
-        );
+        logBytes32Array("Hyperprover Solana provers", ctx.hyperSolanaProvers);
 
         bytes32[] memory proverBytes32 = buildProversArray(
             ctx.hyperProverCreateXAddress,
@@ -359,10 +356,7 @@ contract Deploy is Script {
             "PolymerProver 2470 address: ",
             vm.toString(ctx.polymerProver2470Address)
         );
-        console.log(
-            "PolymerProver Tron: ",
-            vm.toString(ctx.polymerTronProvers)
-        );
+        logBytes32Array("PolymerProver Tron provers", ctx.polymerTronProvers);
 
         bytes32[] memory proverBytes32 = buildProversArray(
             ctx.polymerProverCreateXAddress,
@@ -631,5 +625,15 @@ contract Deploy is Script {
         }
 
         console.log("Deployment context validation completed");
+    }
+
+    function logBytes32Array(string memory label, bytes32[] memory array) internal view {
+        console.log(label, "count:", array.length);
+        for (uint i = 0; i < array.length && i < 5; i++) {
+            console.log("  [", i, "]:", vm.toString(array[i]));
+        }
+        if (array.length > 5) {
+            console.log("  ... and", array.length - 5, "more");
+        }
     }
 }
