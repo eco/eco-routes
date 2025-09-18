@@ -1,0 +1,12 @@
+{
+  "10": {
+    "Portal": "0xD4f2ad625198349Cd3aEd7D3B49278FeB0D118F6",
+    "HyperProver": "0x47BeF841D07c21515a4eBb229F6450076f58e6fF",
+    "PolymerProver": "0xc3821BeEc776c1c2c02AFD9E101f92c3A7a339B3"
+  },
+  "10-staging": {
+    "Portal": "0xcC8A4Cc313C100692Be7f778744Eb511d12BB344",
+    "HyperProver": "0xB93e8A42BE826932ce0dB9d22b3551752f44743A",
+    "PolymerProver": "0xf877C31b79947289aeE8845b335269B99501f520"
+  }
+}
