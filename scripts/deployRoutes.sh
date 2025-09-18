@@ -81,6 +81,7 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     RPC_URL=$(echo "$value" | jq -r '.url')
     MAILBOX_CONTRACT=$(echo "$value" | jq -r '.mailbox')
+    POLYMER_CROSS_L2_PROVER_CONTRACT=$(echo "$value" | jq -r '.crossL2proverV2')
     META_PROVER=$(echo "$value" | jq -r '.metaProver // false')
     GAS_MULTIPLIER=$(echo "$value" | jq -r '.gasMultiplier // ""')
     LEGACY_TX=$(echo "$value" | jq -r '.legacy // false')
@@ -104,6 +105,7 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     echo "📬 SALT: $SALT"
     echo "📬 SALT: $HYPERPROVER_SALT"
     echo "📬 Meta Prover: $META_PROVER"
+    echo "📬 Polymer L2 Prover V2: $POLYMER_CROSS_L2_PROVER_CONTRACT"
     echo "📬 HyperProver CreateX Address: $HYPERPROVER_CREATEX_ADDRESS"
     echo "📬 HyperProver 2470 Address: $HYPERPROVER_2470_ADDRESS"
     
@@ -113,11 +115,24 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     fi
 
     # Construct Foundry command
-    FOUNDRY_CMD="MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" DEPLOY_FILE=\"$RESULTS_FILE\" META_PROVER=\"$META_PROVER\" SALT=\"$SALT\" HYPERPROVER_SALT=\"$HYPERPROVER_SALT\" HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" forge script scripts/Deploy.s.sol \
-            --rpc-url \"$RPC_URL\" \
-            --slow \
-            --broadcast \
-            --private-key \"$PRIVATE_KEY\""
+    FOUNDRY_CMD="SALT=\"$SALT\" \
+                 HYPER_PROVER_SALT=\"$HYPER_PROVER_SALT\" \
+                 POLYMER_PROVER_SALT=\"$POLYMER_PROVER_SALT\" \
+                 MAILBOX_CONTRACT=\"$MAILBOX_CONTRACT\" \
+                 POLYMER_CROSS_L2_PROVER_CONTRACT=\"$POLYMER_CROSS_L2_PROVER_CONTRACT\" \
+                 META_PROVER=\"$META_PROVER\" \
+                 DEPLOY_FILE=\"$RESULTS_FILE\" \
+                 HYPERPROVER_CREATEX_ADDRESS=\"$HYPERPROVER_CREATEX_ADDRESS\" \
+                 HYPERPROVER_2470_ADDRESS=\"$HYPERPROVER_2470_ADDRESS\" \
+                 POLYMER_PROVER_CREATEX_ADDRESS=\"$POLYMER_PROVER_CREATEX_ADDRESS\" \
+                 POLYMER_PROVER_2470_ADDRESS=\"$POLYMER_PROVER_2470_ADDRESS\" \
+                 HYPER_SOLANA_PROVERS=\"$HYPER_SOLANA_PROVERS\" \
+                 POLYMER_TRON_PROVERS=\"$POLYMER_TRON_PROVERS\" \
+            forge script scripts/Deploy.s.sol \
+                --rpc-url \"$RPC_URL\" \
+                --slow \
+                --broadcast \
+                --private-key \"$PRIVATE_KEY\""
             # --verify \
             # --verifier blockscout"
     

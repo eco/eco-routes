@@ -61,12 +61,12 @@ contract Deploy is Script {
         address hyperProverCreateXAddress;
         address hyperProver2470Address;
         //hyperprover tron provers
-        address[] hyperSolanaProvers;
+        bytes32[] hyperSolanaProvers;
         //polymerprover args for other evms
         address polymerProverCreateXAddress;
         address polymerProver2470Address;
         //polymer tron provers
-        address[] polymerTronProvers;
+        bytes32[] polymerTronProvers;
         //prover contracts arguments
         bytes hyperProverConstructorArgs;
         bytes polymerProverConstructorArgs;
@@ -82,7 +82,10 @@ contract Deploy is Script {
         // Compute salts for each contract
         ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
-        ctx.polymerL2ProverV2 = vm.envOr("POLYMER_L2PROVER_V2", address(0));
+        ctx.polymerL2ProverV2 = vm.envOr(
+            "POLYMER_CROSS_L2_PROVER_CONTRACT",
+            address(0)
+        );
         bool metaProver = vm.envOr("META_PROVER", false);
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -95,18 +98,22 @@ contract Deploy is Script {
             address(0)
         );
         ctx.polymerProverCreateXAddress = vm.envOr(
-            "POLYMERPROVER_CREATEX_ADDRESS",
+            "POLYMER_PROVER_CREATEX_ADDRESS",
             address(0)
         );
         ctx.polymerProver2470Address = vm.envOr(
-            "POLYMERPROVER_2470_ADDRESS",
+            "POLYMER_PROVER_2470_ADDRESS",
             address(0)
         );
         bool hasMailbox = ctx.mailbox != address(0);
         bool hasPolymerL2ProverV2 = ctx.polymerL2ProverV2 != address(0);
+        ctx.hyperSolanaProvers = vm.envOr(
+            "HYPER_SOLANA_PROVERS",
+            new bytes32[](0)
+        );
         ctx.polymerTronProvers = vm.envOr(
             "POLYMER_TRON_PROVERS",
-            new address[](0)
+            new bytes32[](0)
         );
 
         vm.startBroadcast();
@@ -251,38 +258,40 @@ contract Deploy is Script {
         bytes memory bytecode,
         DeploymentContext memory ctx
     ) internal returns (address deployedAddress) {
-        return deployWithCreate3(
-            bytecode,
-            ctx.hyperProverSalt,
-            ctx.hyperProverCreateXAddress,
-            ctx.hyperProver2470Address,
-            "HyperProver"
-        );
+        return
+            deployWithCreate3(
+                bytecode,
+                ctx.hyperProverSalt,
+                ctx.hyperProverCreateXAddress,
+                ctx.hyperProver2470Address,
+                "HyperProver"
+            );
     }
 
     function deployPolymerProverWithCreate3(
         bytes memory bytecode,
         DeploymentContext memory ctx
     ) internal returns (address deployedAddress) {
-        return deployWithCreate3(
-            bytecode,
-            ctx.polymerProverSalt,
-            ctx.polymerProverCreateXAddress,
-            ctx.polymerProver2470Address,
-            "PolymerProver"
-        );
+        return
+            deployWithCreate3(
+                bytecode,
+                ctx.polymerProverSalt,
+                ctx.polymerProverCreateXAddress,
+                ctx.polymerProver2470Address,
+                "PolymerProver"
+            );
     }
 
     function buildProversArray(
         address createXAddress,
         address factory2470Address,
-        address[] memory additionalProvers
-    ) internal pure returns (address[] memory provers) {
+        bytes32[] memory additionalProvers
+    ) internal pure returns (bytes32[] memory provers) {
         uint evmProvers = 2;
         uint totalProvers = evmProvers + additionalProvers.length;
-        provers = new address[](totalProvers);
-        provers[0] = factory2470Address;
-        provers[1] = createXAddress;
+        provers = new bytes32[](totalProvers);
+        provers[0] = bytes32(uint256(uint160(factory2470Address)));
+        provers[1] = bytes32(uint256(uint160(createXAddress)));
 
         for (uint i = 0; i < additionalProvers.length; i++) {
             provers[evmProvers + i] = additionalProvers[i];
@@ -313,13 +322,11 @@ contract Deploy is Script {
             vm.toString(ctx.hyperSolanaProvers)
         );
 
-        address[] memory provers = buildProversArray(
+        bytes32[] memory proverBytes32 = buildProversArray(
             ctx.hyperProverCreateXAddress,
             ctx.hyperProver2470Address,
             ctx.hyperSolanaProvers
         );
-
-        bytes32[] memory proverBytes32 = convertAddressesToBytes32(provers);
 
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
@@ -352,13 +359,11 @@ contract Deploy is Script {
             vm.toString(ctx.polymerTronProvers)
         );
 
-        address[] memory provers = buildProversArray(
+        bytes32[] memory proverBytes32 = buildProversArray(
             ctx.polymerProverCreateXAddress,
             ctx.polymerProver2470Address,
             ctx.polymerTronProvers
         );
-
-        bytes32[] memory proverBytes32 = convertAddressesToBytes32(provers);
 
         ctx.polymerProverConstructorArgs = abi.encode(
             ctx.portal,
