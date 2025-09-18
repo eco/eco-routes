@@ -33,33 +33,6 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-release to generate changelogs
           token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
-      # Set up AWS credentials using OIDC for secure authentication
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # Fetch secrets from AWS Secrets Manager as a JSON string
-      # The secret will be available as an environment variable: VERIFICATION_KEYS
-      - name: Get secrets from AWS Secrets Manager
-        id: fetch-secrets
-        uses: aws-actions/aws-secretsmanager-get-secrets@v1
-        with:
-          secret-ids: |
-            VERIFICATION_KEYS, ${{ secrets.AWS_SECRET_NAME }}
-          parse-json-secrets: false # Keep as raw JSON string
-
-      # Verify that secrets were loaded successfully
-      - name: Verify secrets were loaded
-        id: check-secrets
-        run: |
-          # Check if the secret was loaded properly
-          if [ -z "$VERIFICATION_KEYS" ]; then
-            echo "Error: VERIFICATION_KEYS environment variable is empty"
-            exit 1
-          fi
-          echo "AWS Secrets loaded successfully"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
@@ -118,6 +91,6 @@ jobs:
           CHAIN_DATA_URL: ${{ secrets.CHAIN_DATA_URL }}
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
-          VERIFICATION_KEY: ${{ env.VERIFICATION_KEY }}
+          VERIFICATION_KEY: ${{ secrets.VERIFICATION_KEY }}
         run: |
           npx semantic-release --debug
