@@ -102,11 +102,11 @@ export async function prepare(
   const packageName = packageJson.name
 
   // 1. Build the hardhat and forge files
-  // await buildProject()
+  await buildProject()
 
   // 2. Deploy EIP-2470 factory if it doesn't exist
   logger.log(`Deploying EIP-2470 factory if it doesn't exist:`)
-  // await deploySingletonFactory(context)
+  await deploySingletonFactory(context)
 
   // 3. Deploy contracts & Verify contracts
   logger.log(`Deploying contracts for package: ${packageName}`)
@@ -120,7 +120,7 @@ export async function prepare(
 
   // 5. Build the distribution package
   logger.log(`Building main package`)
-  // await buildPackage(context)
+  await buildPackage(context)
   logger.log(`Main package built for version ${nextRelease.version}`)
 }
 

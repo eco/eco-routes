@@ -32,8 +32,8 @@ async function main() {
   const pluginConfig: SemanticPluginConfig = {}
   const context: SemanticContext = {
     nextRelease: {
-      version: '2.8.15',
-      gitTag: 'v2.8.15',
+      version: '3.0.0',
+      gitTag: 'v3.0.0',
       notes: 'Forcing publish',
       type: 'patch',
       channel: 'beta',

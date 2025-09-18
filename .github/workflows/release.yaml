@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - beta
+      - alpha
   repository_dispatch:
     types: [manual-release-trigger]
 
@@ -32,7 +33,6 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-release to generate changelogs
           token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
-          ref: beta # Explicitly checkout the beta branch
       # Set up AWS credentials using OIDC for secure authentication
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -99,11 +99,11 @@ jobs:
         with:
           cmd: tsc
 
-      # Ensure we're on beta branch and that Git knows about it
+      # Ensure we're on the correct branch and that Git knows about it
       - name: Verify current branch
         run: |
-          git checkout beta
           echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "GitHub ref: ${{ github.ref }}"
 
       # Run semantic-release with access to the AWS secrets
       - name: Run Semantic Release
@@ -119,7 +119,5 @@ jobs:
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
           VERIFICATION_KEYS: ${{ env.VERIFICATION_KEYS }}
-          # Explicitly tell semantic-release which branch we're on
-          GITHUB_REF: refs/heads/beta
         run: |
           npx semantic-release --debug
