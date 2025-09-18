@@ -7,7 +7,7 @@
     {
       "name": "alpha",
       "channel": "alpha",
-      "prerelease": "alpha"
+      "prerelease": true
     }
   ],
   "repositoryUrl": "https://github.com/eco/eco-routes.git",
