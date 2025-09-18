@@ -1,3 +1,5 @@
+# [3.0.0-alpha.1](https://github.com/eco/eco-routes/compare/v2.9.0-alpha.1...v3.0.0-alpha.1) (2025-09-18)
+
 # [2.9.0-alpha.1](https://github.com/eco/eco-routes/compare/v2.8.12...v2.9.0-alpha.1) (2025-09-18)
 
 
