@@ -5,8 +5,8 @@
       "polymerProver": "0x000000000000000000000000c9c5c59a95da7570b0ce8de6d092b10cf095fbdf"
     },
     "staging": {
-      "portal": "",
-      "polymerProver": ""
+      "portal": "0x00000000000000000000000046f23720516b75fd632D891C9f246D8Dc9000C60",
+      "polymerProver": "0x000000000000000000000000475F4E954c755Af51Cb2523962D325Fb6a3F480E"
     }
   },
   "solana": {
@@ -15,8 +15,8 @@
       "hyperProver": "0xa3f83922f3081c229a9f7ff240f29f34a3548e8c7f05b6202d0d7df3de781788"
     },
     "staging": {
-      "portal": "",
-      "hyperProver": ""
+      "portal": "0xaeef5642eafe4dc050f1628cb1cde6a2e8fb5a9433ac4cab0acd8b056e15b894",
+      "hyperProver": "0x92c194cd8137280b86994145bcf11a4d66f9f989cac031793e8ad71170a503ac"
     }
   }
 }
