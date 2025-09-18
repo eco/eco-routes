@@ -16,14 +16,12 @@
 
 import {
   Abi,
-  ContractFunctionArgs,
   decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
   Hex,
   keccak256,
 } from 'viem'
-import { extractAbiStruct } from './utils'
 import { PortalAbi } from '../abi'
 
 /**
@@ -34,88 +32,131 @@ export type ExtractAbiFunctions<abi extends Abi> = Extract<
   { type: 'function' }
 >
 
-/**
- * The getIntentHash function from the Portal ABI
- */
-type GetIntentHashFunction = Extract<
-  ExtractAbiFunctions<typeof PortalAbi>,
-  { name: 'getIntentHash' }
->['inputs'][number]
-
-type GetIntentHashFunctionComponents = Extract<
-  ExtractAbiFunctions<typeof PortalAbi>,
-  { name: 'getIntentHash' }
->['inputs'][number]['components'][number]
+// Define the ABI structures directly based on the Portal contract
+// This avoids complex type extraction that can fail with TypeScript
 
 /**
- * The Route struct abi
+ * Route struct ABI definition
  */
-type Route = Extract<
-  GetIntentHashFunctionComponents,
-  { name: 'route' }
->['components']
+export const RouteAbi = [
+  { internalType: 'bytes32', name: 'salt', type: 'bytes32' },
+  { internalType: 'uint64', name: 'deadline', type: 'uint64' },
+  { internalType: 'address', name: 'portal', type: 'address' },
+  { internalType: 'uint256', name: 'nativeAmount', type: 'uint256' },
+  {
+    components: [
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' }
+    ],
+    internalType: 'struct TokenAmount[]',
+    name: 'tokens',
+    type: 'tuple[]'
+  },
+  {
+    components: [
+      { internalType: 'address', name: 'target', type: 'address' },
+      { internalType: 'bytes', name: 'data', type: 'bytes' },
+      { internalType: 'uint256', name: 'value', type: 'uint256' }
+    ],
+    internalType: 'struct Call[]',
+    name: 'calls',
+    type: 'tuple[]'
+  }
+] as const
 
 /**
- * The Reward struct abi
+ * Reward struct ABI definition
  */
-type Reward = Extract<
-  GetIntentHashFunctionComponents,
-  { name: 'reward' }
->['components']
+export const RewardAbi = [
+  { internalType: 'uint64', name: 'deadline', type: 'uint64' },
+  { internalType: 'address', name: 'creator', type: 'address' },
+  { internalType: 'address', name: 'prover', type: 'address' },
+  { internalType: 'uint256', name: 'nativeAmount', type: 'uint256' },
+  {
+    components: [
+      { internalType: 'address', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amount', type: 'uint256' }
+    ],
+    internalType: 'struct TokenAmount[]',
+    name: 'tokens',
+    type: 'tuple[]'
+  }
+] as const
 
 /**
- * The Intent struct abi
+ * Intent struct ABI definition
  */
-type Intent = Extract<GetIntentHashFunction, { name: 'intent' }>['components']
+export const IntentAbi = [
+  { internalType: 'uint64', name: 'destination', type: 'uint64' },
+  {
+    components: RouteAbi,
+    internalType: 'struct Route',
+    name: 'route',
+    type: 'tuple'
+  },
+  {
+    components: RewardAbi,
+    internalType: 'struct Reward',
+    name: 'reward',
+    type: 'tuple'
+  }
+] as const
+
+// Type aliases for the ABI structures
+type Route = typeof RouteAbi
+type Reward = typeof RewardAbi
+type Intent = typeof IntentAbi
 
 /**
- * The Route struct object in the Portal ABI
+ * The Route struct object - use our defined RouteAbi
  */
-const RouteStruct = extractAbiStruct<typeof PortalAbi, Route>(
-  PortalAbi,
-  'route',
-)
+const RouteStruct = RouteAbi
 
 /**
- * The Reward struct object in the Portal ABI
+ * The Reward struct object - use our defined RewardAbi
  */
-const RewardStruct = extractAbiStruct<typeof PortalAbi, Reward>(
-  PortalAbi,
-  'reward',
-)
+const RewardStruct = RewardAbi
 
 /**
- * The Intent struct object in the Portal ABI
+ * The Intent struct object - use our defined IntentAbi
  */
-const IntentStruct = extractAbiStruct<typeof PortalAbi, Intent>(
-  PortalAbi,
-  'intent',
-)
+const IntentStruct = IntentAbi
 
 /**
- * Define the type for the Intent struct in the Portal
+ * Define the type for the Route struct based on the RouteAbi
  */
-export type IntentType = ContractFunctionArgs<
-  typeof PortalAbi,
-  'pure',
-  'getIntentHash'
->[number]
+export type RouteType = {
+  salt: `0x${string}`
+  deadline: bigint
+  portal: `0x${string}`
+  nativeAmount: bigint
+  tokens: readonly { token: `0x${string}`; amount: bigint }[]
+  calls: readonly { target: `0x${string}`; data: `0x${string}`; value: bigint }[]
+}
 
 /**
- * Define the type for the Route struct in Portal
+ * Define the type for the Reward struct based on the RewardAbi
  */
-export type EvmRouteType = IntentType['route']
+export type RewardType = {
+  deadline: bigint
+  creator: `0x${string}`
+  prover: `0x${string}`
+  nativeAmount: bigint
+  tokens: readonly { token: `0x${string}`; amount: bigint }[]
+}
 
 /**
- * Define the type for the Reward struct in Portal
+ * Define the type for the Intent struct based on the IntentAbi
  */
-export type EvmRewardType = IntentType['reward']
+export type IntentType = {
+  destination: bigint
+  route: RouteType
+  reward: RewardType
+}
 
-/**
- * Define the multichaintype for the Route struct in Portal
- */
-export type RouteType = EvmRouteType
-export type RewardType = EvmRewardType
+// Legacy aliases for backwards compatibility
+export type EvmRouteType = RouteType
+export type EvmRewardType = RewardType
 
 /**
  * Encodes the route parameters into ABI-encoded bytes according to the contract structure.
@@ -222,7 +263,10 @@ export function decodeReward(reward: Hex): RewardType {
  * });
  */
 export function encodeIntent(intent: IntentType) {
-  return encodePacked(IntentStruct, [intent.route, intent.reward])
+  return encodeAbiParameters(
+    [{ type: 'tuple', components: IntentStruct }],
+    [intent],
+  )
 }
 
 /**

@@ -97,6 +97,17 @@ export const PACKAGE = {
 }
 
 /**
+ * Chain IDs for cross-chain protocol deployments
+ * Used to include cross-chain addresses in the deployment JSON
+ */
+export const CHAIN_IDS = {
+  // Tron mainnet chain ID
+  TRON_MAINNET: 728126428,
+  // Solana mainnet chain ID
+  SOLANA_MAINNET: 101,
+}
+
+/**
  * Threshold values and limits for various operations
  * Used to warn about potential performance or security issues
  */

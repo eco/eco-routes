@@ -26,6 +26,7 @@ import { SemanticContext } from './sr-prepare'
 import {
   PATHS,
   ENV_VARS,
+  CHAIN_IDS,
   getDeploymentResultsPath,
   getDeployedAddressesJsonPath,
   getBuildDirPath,
@@ -126,7 +127,11 @@ export async function deployRoutesContracts(
     }
 
     // Deploy the generated deploymentAddresses
-    await generateDeploymentAddressesJSON(contracts, context)
+    await generateDeploymentAddressesJSON(
+      contracts,
+      nextRelease!.version,
+      context,
+    )
   } catch (error) {
     logger.error('❌ Contract deployment failed')
     logger.error((error as Error).message)
@@ -150,13 +155,14 @@ export async function deployRoutesContracts(
  */
 async function generateDeploymentAddressesJSON(
   contracts: Contract[],
+  version: string,
   context: SemanticContext,
 ): Promise<void> {
   const { logger, cwd } = context
   logger.log('Creating the deployAddresses.json...')
 
   try {
-    const contractsJson = processContractsForJson(contracts)
+    const contractsJson = processContractsForJson(contracts, version, context)
 
     // Save to deployed addresses JSON
     const deployedAddressesPath = getDeployedAddressesJsonPath(cwd)
@@ -170,6 +176,155 @@ async function generateDeploymentAddressesJSON(
   } catch (error) {
     logger.error(`Deployment process failed: ${(error as Error).message}`)
     throw error
+  }
+}
+
+/**
+ * Adds cross-chain addresses from deploy files to the grouped contracts structure.
+ * This function reads the version-specific deploy JSON file and adds Tron and Solana
+ * addresses to the contract groupings for both production and staging environments.
+ *
+ * @param groupedContracts - Existing grouped contracts structure to modify
+ * @param cwd - Current working directory to locate deploy files
+ * @param version - Semantic version string to determine config file name
+ * @param logger - Logger instance for output messages
+ */
+function addCrossChainAddresses(
+  groupedContracts: Record<string, Contract[]>,
+  cwd: string,
+  version: string,
+  logger: Logger,
+): void {
+  try {
+    // Read cross-chain addresses using existing function
+    const { hyperSolanaProvers, polymerTronProvers } =
+      readCrossChainProverAddresses(cwd, version, 'production', logger)
+    const {
+      hyperSolanaProvers: hyperSolanaStagingProvers,
+      polymerTronProvers: polymerTronStagingProvers,
+    } = readCrossChainProverAddresses(cwd, version, 'staging', logger)
+
+    // Get the full cross-chain data
+    const baseVersion = getBaseVersion(version, logger)
+    const configFileName = `${baseVersion.replace('.', '_')}_x-mainnet.json`
+    const configPath = path.join(cwd, 'deploys', configFileName)
+
+    if (!fs.existsSync(configPath)) {
+      logger.log(`Cross-chain config file not found: ${configPath}`)
+      return
+    }
+
+    const configData: CrossChainProverData = JSON.parse(
+      fs.readFileSync(configPath, 'utf-8'),
+    )
+
+    // Add Tron addresses for production environment
+    if (
+      configData.tron?.production?.portal &&
+      configData.tron?.production?.polymerProver
+    ) {
+      const tronProdKey = `${CHAIN_IDS.TRON_MAINNET}`
+      if (!groupedContracts[tronProdKey]) {
+        groupedContracts[tronProdKey] = []
+      }
+      groupedContracts[tronProdKey].push(
+        {
+          name: 'Portal',
+          address: configData.tron.production.portal,
+          chainId: CHAIN_IDS.TRON_MAINNET,
+          environment: 'production',
+        },
+        {
+          name: 'PolymerProver',
+          address: configData.tron.production.polymerProver,
+          chainId: CHAIN_IDS.TRON_MAINNET,
+          environment: 'production',
+        },
+      )
+    }
+
+    // Add Tron addresses for staging environment
+    if (
+      configData.tron?.staging?.portal &&
+      configData.tron?.staging?.polymerProver
+    ) {
+      const tronStagingKey = `${CHAIN_IDS.TRON_MAINNET}-staging`
+      if (!groupedContracts[tronStagingKey]) {
+        groupedContracts[tronStagingKey] = []
+      }
+      groupedContracts[tronStagingKey].push(
+        {
+          name: 'Portal',
+          address: configData.tron.staging.portal,
+          chainId: CHAIN_IDS.TRON_MAINNET,
+          environment: 'staging',
+        },
+        {
+          name: 'PolymerProver',
+          address: configData.tron.staging.polymerProver,
+          chainId: CHAIN_IDS.TRON_MAINNET,
+          environment: 'staging',
+        },
+      )
+    }
+
+    // Add Solana addresses for production environment
+    if (
+      configData.solana?.production?.portal &&
+      configData.solana?.production?.hyperProver
+    ) {
+      const solanaProdKey = `${CHAIN_IDS.SOLANA_MAINNET}`
+      if (!groupedContracts[solanaProdKey]) {
+        groupedContracts[solanaProdKey] = []
+      }
+      groupedContracts[solanaProdKey].push(
+        {
+          name: 'Portal',
+          address: configData.solana.production.portal,
+          chainId: CHAIN_IDS.SOLANA_MAINNET,
+          environment: 'production',
+        },
+        {
+          name: 'HyperProver',
+          address: configData.solana.production.hyperProver,
+          chainId: CHAIN_IDS.SOLANA_MAINNET,
+          environment: 'production',
+        },
+      )
+    }
+
+    // Add Solana addresses for staging environment
+    if (
+      configData.solana?.staging?.portal &&
+      configData.solana?.staging?.hyperProver
+    ) {
+      const solanaStagingKey = `${CHAIN_IDS.SOLANA_MAINNET}-staging`
+      if (!groupedContracts[solanaStagingKey]) {
+        groupedContracts[solanaStagingKey] = []
+      }
+      groupedContracts[solanaStagingKey].push(
+        {
+          name: 'Portal',
+          address: configData.solana.staging.portal,
+          chainId: CHAIN_IDS.SOLANA_MAINNET,
+          environment: 'staging',
+        },
+        {
+          name: 'HyperProver',
+          address: configData.solana.staging.hyperProver,
+          chainId: CHAIN_IDS.SOLANA_MAINNET,
+          environment: 'staging',
+        },
+      )
+    }
+
+    logger.log(
+      `Added cross-chain addresses for Tron (${CHAIN_IDS.TRON_MAINNET}) and Solana (${CHAIN_IDS.SOLANA_MAINNET})`,
+    )
+  } catch (error) {
+    logger.error(
+      `Error adding cross-chain addresses: ${(error as Error).message}`,
+    )
   }
 }
 
@@ -193,7 +348,11 @@ async function generateDeploymentAddressesJSON(
  */
 function processContractsForJson(
   contracts: Contract[],
+  version: string,
+  context: SemanticContext,
 ): Record<string, Record<string, string>> {
+  const { logger, cwd } = context
+
   // Group by chain ID and environment
   const groupedContracts: Record<string, Contract[]> = {}
 
@@ -205,6 +364,9 @@ function processContractsForJson(
     groupedContracts[key].push(contract)
   }
 
+  // Add cross-chain addresses from deploy files
+  addCrossChainAddresses(groupedContracts, cwd, version, logger)
+
   // Convert to desired format
   return Object.fromEntries(
     Object.entries(groupedContracts).map(([key, contracts]) => {
@@ -215,7 +377,15 @@ function processContractsForJson(
       for (let i = 0; i < names.length; i++) {
         // Only add addresses that exist and are not empty strings
         if (addresses[i] && addresses[i].trim() !== '') {
-          contractMap[names[i]] = getAddress(addresses[i])
+          // Check if this is a cross-chain address (32 bytes) or standard EVM address (20 bytes)
+          const address = addresses[i]
+          const isCrossChainAddress =
+            address.length === 66 && address.startsWith('0x') // 32 bytes = 64 hex chars + 0x prefix
+
+          // Apply EIP-55 checksum only to standard EVM addresses
+          contractMap[names[i]] = isCrossChainAddress
+            ? address
+            : getAddress(address)
         }
       }
 

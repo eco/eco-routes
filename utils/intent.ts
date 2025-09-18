@@ -35,7 +35,7 @@ export type Intent = {
   reward: Reward
 }
 
-const RouteStruct = [
+export const RouteStruct = [
   { name: 'salt', type: 'bytes32' },
   { name: 'deadline', type: 'uint64' },
   { name: 'portal', type: 'address' },
@@ -59,7 +59,7 @@ const RouteStruct = [
   },
 ]
 
-const RewardStruct = [
+export const RewardStruct = [
   { name: 'deadline', type: 'uint64' },
   { name: 'creator', type: 'address' },
   { name: 'prover', type: 'address' },
@@ -74,7 +74,7 @@ const RewardStruct = [
   },
 ]
 
-const IntentStruct = [
+export const IntentStruct = [
   {
     name: 'destination',
     type: 'uint64',
