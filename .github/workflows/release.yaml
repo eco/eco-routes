@@ -118,6 +118,6 @@ jobs:
           CHAIN_DATA_URL: ${{ secrets.CHAIN_DATA_URL }}
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
-          VERIFICATION_KEYS: ${{ env.VERIFICATION_KEYS }}
+          VERIFICATION_KEY: ${{ env.VERIFICATION_KEY }}
         run: |
           npx semantic-release --debug
