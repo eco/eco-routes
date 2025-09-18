@@ -10,7 +10,7 @@
       "prerelease": "alpha"
     }
   ],
-  "repositoryUrl": "git@github.com:eco/eco-routes.git",
+  "repositoryUrl": "https://github.com/eco/eco-routes.git",
   "plugins": [
     [
       "@semantic-release/commit-analyzer",
