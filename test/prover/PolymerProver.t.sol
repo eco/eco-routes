@@ -94,14 +94,15 @@ contract PolymerProverTest is BaseTest {
         // Create mock destination prover address
         destinationProver = makeAddr("destinationProver");
 
-        // Create whitelist array for constructor
+        // Create whitelist array for constructor (address only)
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(destinationProver)));
 
-        // Deploy PolymerProver with portal, crossL2ProverV2, and whitelist
+        // Deploy PolymerProver with portal, crossL2ProverV2, maxLogDataSize, and whitelist
         polymerProver = new PolymerProver(
             address(portal),
             address(crossL2ProverV2),
+            32 * 1024, // maxLogDataSize
             provers
         );
 
@@ -654,7 +655,7 @@ contract PolymerProverTest is BaseTest {
     }
 
     function testWhitelistFunctionality() public {
-        // Test that our destination prover is whitelisted
+        // Test that our destination prover is whitelisted (address only)
         assertTrue(
             polymerProver.isWhitelisted(
                 bytes32(uint256(uint160(destinationProver)))
@@ -677,6 +678,7 @@ contract PolymerProverTest is BaseTest {
         PolymerProver newProver = new PolymerProver(
             address(portal),
             address(crossL2ProverV2),
+            32 * 1024, // maxLogDataSize
             emptyProvers
         );
 

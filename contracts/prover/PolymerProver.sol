@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {BaseProver} from "./BaseProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
-import {IProver} from "../interfaces/IProver.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {Whitelist} from "../libs/Whitelist.sol";
 
@@ -22,7 +21,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     bytes32 public constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(uint64,bytes)");
     uint256 public constant EXPECTED_TOPIC_LENGTH = 64; // 2 topics * 32 bytes each
-    uint256 public constant MAX_LOG_DATA_SIZE = 32 * 1024;
+    uint256 public constant MAX_LOG_DATA_SIZE_GUARD = 32 * 1024;
 
     // Events
     event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
@@ -36,24 +35,32 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     error ZeroAddress();
     error SizeMismatch();
     error MaxDataSizeExceeded();
+    error InvalidMaxLogDataSize();
     error EmptyProofData();
     error OnlyPortal();
 
     // State variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
+    uint256 public MAX_LOG_DATA_SIZE;
 
     /**
      * @notice Initializes the PolymerProver contract
      * @param _portal Address of the Portal contract
      * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
-     * @param _provers Array of whitelisted prover addresses as bytes32
+     * @param _maxLogDataSize Maximum allowed size for encodedProofs in IntentFulfilledFromSource event data
+     * @param _proverAddresses Array of whitelisted prover addresses as bytes32
      */
     constructor(
         address _portal,
         address _crossL2ProverV2,
-        bytes32[] memory _provers
-    ) BaseProver(_portal) Whitelist(_provers) {
+        uint256 _maxLogDataSize,
+        bytes32[] memory _proverAddresses
+    ) BaseProver(_portal) Whitelist(_proverAddresses) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
+        if (_maxLogDataSize == 0 || _maxLogDataSize > MAX_LOG_DATA_SIZE_GUARD) {
+            revert InvalidMaxLogDataSize();
+        }
+        MAX_LOG_DATA_SIZE = _maxLogDataSize;
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
     }
 
@@ -101,7 +108,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         }
 
         bytes32 eventSignature;
-        bytes32 sourceChainIdBytes32;
+        uint64 eventSourceChainId;
         uint64 proofDataChainId;
 
         assembly {
@@ -109,16 +116,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             let dataPtr := add(decodedData, 32)
 
             eventSignature := mload(topicsPtr)
-            sourceChainIdBytes32 := mload(add(topicsPtr, 32))
+            eventSourceChainId := mload(add(topicsPtr, 32))
             proofDataChainId := shr(192, mload(dataPtr)) // Extract first 8 bytes (64 bits) from the 32-byte word
         }
 
         if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
-        uint256 sourceChainIdUint256 = uint256(sourceChainIdBytes32);
-        if (sourceChainIdUint256 > type(uint64).max) {
-            revert InvalidSourceChain();
-        }
-        uint64 eventSourceChainId = uint64(sourceChainIdUint256);
         if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
 
         // Verify the chain ID from proof data matches the destination chain from validateEvent
@@ -137,6 +139,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
                 intentHash := mload(add(dataPtr, offset))
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
+
+            if (claimantBytes >> 160 != 0) continue;
 
             address claimant = claimantBytes.toAddress();
             processIntent(intentHash, claimant, destinationChainId);
@@ -194,12 +198,6 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         bytes calldata /* unused */
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
-
-        if (encodedProofs.length == 0) return;
-
-        if ((encodedProofs.length - 8) % 64 != 0) {
-            revert ArrayLengthMismatch();
-        }
         if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
             revert MaxDataSizeExceeded();
         }
