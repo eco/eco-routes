@@ -1,3 +1,11 @@
+# [3.0.0-alpha.6](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.5...v3.0.0-alpha.6) (2025-09-18)
+
+
+### Bug Fixes
+
+* deploy 3.0.0-alpha.6 with extra chains ([daf6251](https://github.com/eco/eco-routes/commit/daf6251ad446a257f150464350120fcebbca9539))
+* release extra chains ([8819cc0](https://github.com/eco/eco-routes/commit/8819cc013196f0db3eb3273004638f28b284fa4c))
+
 # [3.0.0-alpha.5](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.4...v3.0.0-alpha.5) (2025-09-18)
 
 
