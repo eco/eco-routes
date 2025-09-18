@@ -20,7 +20,7 @@
 # - RESULTS_FILE: Path to write deployment results
 # - CHAIN_DATA_URL: URL to chain configuration JSON
 # - APPEND_RESULTS: If "true", append to existing results file
-# - HYPERPROVER_SALT: Salt for HyperProver contract
+# - HYPER_PROVER_SALT: Salt for HyperProver contract
 # - HYPERPROVER_CREATEX_ADDRESS: CreateX address for HyperProver contract
 # - HYPERPROVER_2470_ADDRESS: 2470 address for HyperProver contract
 
@@ -103,7 +103,7 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
     echo "🔄 Deploying contracts for Chain ID: $CHAIN_ID"
     echo "📬 Mailbox Contract: $MAILBOX_CONTRACT"
     echo "📬 SALT: $SALT"
-    echo "📬 SALT: $HYPERPROVER_SALT"
+    echo "📬 HYPER_PROVER_SALT: $HYPER_PROVER_SALT"
     echo "📬 Meta Prover: $META_PROVER"
     echo "📬 Polymer L2 Prover V2: $POLYMER_CROSS_L2_PROVER_CONTRACT"
     echo "📬 HyperProver CreateX Address: $HYPERPROVER_CREATEX_ADDRESS"
