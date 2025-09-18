@@ -1,3 +1,10 @@
+# [3.0.0-alpha.2](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.1...v3.0.0-alpha.2) (2025-09-18)
+
+
+### Bug Fixes
+
+* minor test reversion ([99e521f](https://github.com/eco/eco-routes/commit/99e521ffc3a1eb27595f0a0cb70a249f440edf12))
+
 # [3.0.0-alpha.1](https://github.com/eco/eco-routes/compare/v2.9.0-alpha.1...v3.0.0-alpha.1) (2025-09-18)
 
 # [2.9.0-alpha.1](https://github.com/eco/eco-routes/compare/v2.8.12...v2.9.0-alpha.1) (2025-09-18)
