@@ -1,3 +1,10 @@
+# [3.0.0-alpha.5](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.4...v3.0.0-alpha.5) (2025-09-18)
+
+
+### Bug Fixes
+
+* update the staging tron and solana ([1a1c69c](https://github.com/eco/eco-routes/commit/1a1c69cd3c423085b7afd71446500379bfe2c7e6))
+
 # [3.0.0-alpha.4](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.3...v3.0.0-alpha.4) (2025-09-18)
 
 
