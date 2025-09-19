@@ -1,3 +1,10 @@
+# [3.0.0-alpha.7](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.6...v3.0.0-alpha.7) (2025-09-19)
+
+
+### Bug Fixes
+
+* fix solana chain id ([98c37ac](https://github.com/eco/eco-routes/commit/98c37acd524bb07af1a8b5b84dfc2cc1c8f1ebf1))
+
 # [3.0.0-alpha.6](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.5...v3.0.0-alpha.6) (2025-09-18)
 
 
