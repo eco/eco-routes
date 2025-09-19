@@ -607,7 +607,10 @@ export async function setPublishingPackage(
               'deployAddresses.csv',
               'deployBytecode.json',
             ],
-            dependencies: { viem: projectPackageJson.dependencies.viem },
+            dependencies: {
+              viem: projectPackageJson.dependencies.viem,
+              tronweb: projectPackageJson.dependencies.tronweb,
+            },
           }
 
     // Modify package.json for TypeScript build
