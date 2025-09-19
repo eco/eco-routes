@@ -1,3 +1,10 @@
+# [3.0.0-alpha.8](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.7...v3.0.0-alpha.8) (2025-09-19)
+
+
+### Bug Fixes
+
+* add tronweb to the deps ([9dd049c](https://github.com/eco/eco-routes/commit/9dd049c587898e2009f8c9dee8340e0819acb59d))
+
 # [3.0.0-alpha.7](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.6...v3.0.0-alpha.7) (2025-09-19)
 
 
