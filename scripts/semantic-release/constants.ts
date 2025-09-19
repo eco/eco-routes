@@ -104,7 +104,7 @@ export const CHAIN_IDS = {
   // Tron mainnet chain ID
   TRON_MAINNET: 728126428,
   // Solana mainnet chain ID
-  SOLANA_MAINNET: 101,
+  SOLANA_MAINNET: 1399811149,
 }
 
 /**
