@@ -125,7 +125,7 @@ contract Deploy is Script {
             (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
         // Compute salts for each contract
         if (needsPortal) {
-            ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
+            ctx.portalSalt = ctx.salt;
         }
         if (hasMailbox) {
             ctx.hyperProverSalt = getContractSalt(ctx.salt, "HYPER_PROVER");
