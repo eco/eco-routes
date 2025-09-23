@@ -1,3 +1,12 @@
+# [3.0.0-alpha.9](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.8...v3.0.0-alpha.9) (2025-09-23)
+
+
+### Bug Fixes
+
+* **deploy:** direct portal salt assignment ([b4f73ca](https://github.com/eco/eco-routes/commit/b4f73ca539fed0e381b96976bddbb2272eb7a414))
+* increase optimizer runs and update EVM version to Paris in foundry.toml ([297602b](https://github.com/eco/eco-routes/commit/297602b738a23cc9549534690a2f3f0e6a2d90e0))
+* **prover:** Eco - Polymer Prover II - Spearbit audit fixes ([#340](https://github.com/eco/eco-routes/issues/340)) ([754d7c4](https://github.com/eco/eco-routes/commit/754d7c49b310aa6ce94e2d8e977f1b32ab51938a))
+
 # [3.0.0-alpha.8](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.7...v3.0.0-alpha.8) (2025-09-19)
 
 
