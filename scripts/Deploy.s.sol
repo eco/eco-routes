@@ -79,8 +79,8 @@ contract Deploy is Script {
         // Salts must be unique to protocol for createx deploys
         ctx.hyperProverSalt = vm.envBytes32("HYPER_PROVER_SALT");
         ctx.polymerProverSalt = vm.envBytes32("POLYMER_PROVER_SALT");
-        // Compute salts for each contract
-        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
+        // Portal salt needs to be exact for vanity address reasons
+        ctx.portalSalt = ctx.salt;
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.polymerL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_CONTRACT",
@@ -130,22 +130,22 @@ contract Deploy is Script {
         deployPortal(ctx);
 
         // Deploy HyperProver
-        if (hasMailbox) {
-            console.log("Deploying HyperProver with Create3...");
-            deployHyperProver(ctx);
-        }
+        // if (hasMailbox) {
+        //     console.log("Deploying HyperProver with Create3...");
+        //     deployHyperProver(ctx);
+        // }
 
-        // Deploy PolymerProver
-        if (hasPolymerL2ProverV2) {
-            console.log("Deploying PolymerProver with Create3...");
-            deployPolymerProver(ctx);
-        }
+        // // Deploy PolymerProver
+        // if (hasPolymerL2ProverV2) {
+        //     console.log("Deploying PolymerProver with Create3...");
+        //     deployPolymerProver(ctx);
+        // }
 
-        // Deploy MetaProver or use hardcoded address
-        if (metaProver) {
-            ctx.metaProver = 0x3d529eFAEDb3B999A404c1B8543441aE616cB914;
-            console.log("MetaProver (hardcoded) :", ctx.metaProver);
-        }
+        // // Deploy MetaProver or use hardcoded address
+        // if (metaProver) {
+        //     ctx.metaProver = 0x3d529eFAEDb3B999A404c1B8543441aE616cB914;
+        //     console.log("MetaProver (hardcoded) :", ctx.metaProver);
+        // }
 
         vm.stopBroadcast();
 
