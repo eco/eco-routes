@@ -1,3 +1,10 @@
+# [3.0.0-alpha.12](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.11...v3.0.0-alpha.12) (2025-09-24)
+
+
+### Bug Fixes
+
+* fixing the submodules for release ([e91f895](https://github.com/eco/eco-routes/commit/e91f89523f899c97d67a8c17a5ca8c16acea8e93))
+
 # [3.0.0-alpha.11](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.10...v3.0.0-alpha.11) (2025-09-24)
 
 
