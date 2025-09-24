@@ -20,12 +20,21 @@ export async function determineSalts(
     `major/minor version (${versionBase}) with optional salt (${optionalSalt}), calculating salt`,
   )
   const sum = versionBase + optionalSalt
-  const rootSalt = keccak256(toHex(sum))
-  const stagingRootSalt = keccak256(toHex(`${sum}-staging`))
+  const rootSalt = (process.env.ROOT_SALT || keccak256(toHex(sum))) as Hex
+  const stagingRootSalt = (
+    process.env.ROOT_SALT // if root is overridden, use the original prod for staging
+      ? keccak256(toHex(sum))
+      : keccak256(toHex(`${sum}-staging`))
+  ) as Hex
 
   logger.log(`Using salt for production: ${rootSalt}`)
   logger.log(`Using salt for staging: ${stagingRootSalt}`)
-
+  // const { rootSalt, stagingRootSalt } = {
+  //   rootSalt:
+  //     '0x000000000000000000000000000000000000000000000001000000A7E199AFCA' as Hex,
+  //   stagingRootSalt:
+  //     '0x0000000000000000000000000000000000000000000000010000004EbDe90aBF' as Hex,
+  // }
   return { rootSalt, stagingRootSalt }
 }
 

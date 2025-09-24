@@ -37,6 +37,36 @@ export async function createXCreate2Address(
   ).result
 }
 
+/**
+ * Computes the CREATE2 address using CreateX's computeCreate2Address function.
+ * This is a pure computation that doesn't require network calls or deployment simulation.
+ *
+ * @param deployerAddress - The address that will deploy the contract
+ * @param salt - The salt for CREATE2 deployment
+ * @param initCodeHash - The keccak256 hash of the initialization code
+ * @returns Promise resolving to the computed CREATE2 address
+ */
+export async function createXComputeCreate2Address(
+  deployerAddress: Address,
+  salt: Hex,
+  initCodeHash: Hex,
+): Promise<`0x${string}`> {
+  // Create a public client for Optimism
+  const client = createPublicClient({
+    chain: optimism,
+    transport: http(),
+  })
+
+  return (
+    await client.readContract({
+      address: CREATEX_ADDRESS,
+      abi: CreateXAbi,
+      functionName: 'computeCreate2Address',
+      args: [salt, initCodeHash, deployerAddress],
+    })
+  )
+}
+
 export async function createXCreate3Address(
   deployerAddress: Address,
   salt: Hex,

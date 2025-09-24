@@ -25,19 +25,18 @@ import { getAddress, Hex, hexToBytes, keccak256, toHex } from 'viem'
 import { SemanticContext } from './sr-prepare'
 import {
   PATHS,
-  ENV_VARS,
   CHAIN_IDS,
   getDeploymentResultsPath,
   getDeployedAddressesJsonPath,
   getBuildDirPath,
+  ENV_VARS,
 } from './constants'
 import dotenv from 'dotenv'
 import { Logger } from './helpers'
 import { validateEnvVariables } from '../utils/envUtils'
 import { executeProcess } from '../utils/processUtils'
 import { getDeployerAddress } from '../utils/address'
-import { create2470Create3Address } from '../contracts/erc2470'
-import { createCreateXSalt, createXCreate3Address } from '../contracts'
+import { create2470Create3Address, createCreateXSalt, createXCreate3Address } from '../contracts'
 
 dotenv.config()
 
@@ -434,17 +433,33 @@ async function deployContracts(
       // Generate HyperProver CreateX address using the salt and deployer
       // Use the new getHyperProverSalt function to match Solidity implementation
       const deployer = getDeployerAddress()
+
+      // override for production provers getting redeployed
+      let proverSaltSuffix = ''
+      switch (environment) {
+        case 'production':
+          proverSaltSuffix = process.env.PROVER_SALT_SUFFIX_PROD || ''
+          break
+        case 'staging':
+          proverSaltSuffix = process.env.PROVER_SALT_SUFFIX_STAGING || ''
+          break
+      }
       // Do secondary keccak256 force a redeploy for version 2.8.* for the hyper prover
       const hyperProverSalt = createCreateXSalt(
         deployer,
         0,
-        hexToBytes(keccak256(toHex(salt + 'HyperProver'))) as Uint8Array,
+        hexToBytes(
+          keccak256(toHex(salt + 'HyperProver' + proverSaltSuffix)),
+        ) as Uint8Array,
       )
       const polymerProverSalt = createCreateXSalt(
         deployer,
         0,
-        hexToBytes(keccak256(toHex(salt + 'PolymerProver'))) as Uint8Array,
+        hexToBytes(
+          keccak256(toHex(salt + 'PolymerProver' + proverSaltSuffix)),
+        ) as Uint8Array,
       )
+
       const hyperProverCreateXAddress = await createXCreate3Address(
         deployer,
         hyperProverSalt,

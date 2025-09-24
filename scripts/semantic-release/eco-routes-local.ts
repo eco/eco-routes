@@ -50,7 +50,7 @@ async function main() {
   try {
     // 1. First verify conditions
     console.log('--- Starting verifyConditions phase ---')
-    await verifyConditions(pluginConfig, context)
+    // await verifyConditions(pluginConfig, context)
 
     // 2. Then run prepare phase (build the solidity files, deploy contracts, verify contracts)
     console.log('\n--- Starting prepare phase ---')
@@ -58,10 +58,10 @@ async function main() {
 
     // 3. Finally run publish phase (publish to npm)
     console.log('\n--- Starting publish phase ---')
-    const result = await publish(pluginConfig, context)
+    // const result = await publish(pluginConfig, context)
 
     console.log('\n✅ Semantic release simulation completed successfully')
-    return result
+    // return result
   } catch (error) {
     console.error('\n❌ Semantic release simulation failed:')
     console.error((error as Error).message)
