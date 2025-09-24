@@ -33,6 +33,7 @@ jobs:
         with:
           fetch-depth: 0 # Needed for semantic-release to generate changelogs
           token: ${{ secrets.GITHUB_TOKEN }} # Use token with push permissions
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4.1.0
