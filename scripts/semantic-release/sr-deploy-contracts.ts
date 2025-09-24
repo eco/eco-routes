@@ -37,6 +37,7 @@ import { executeProcess } from '../utils/processUtils'
 import { getDeployerAddress } from '../utils/address'
 import { create2470Create3Address } from '../contracts/erc2470'
 import { createCreateXSalt, createXCreate3Address } from '../contracts'
+import svmStaticAddresses from './svm-static-addresses.json'
 
 dotenv.config()
 
@@ -132,7 +133,10 @@ async function generateDeploymentAddressesJSON(
   logger.log('Creating the deployAddresses.json...')
 
   try {
-    const contractsJson = processContractsForJson(contracts)
+    const contractsJson = {
+      ...processContractsForJson(contracts),
+      ...svmStaticAddresses,
+    }
 
     // Save to deployed addresses JSON
     const deployedAddressesPath = getDeployedAddressesJsonPath(cwd)
