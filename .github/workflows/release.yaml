@@ -91,6 +91,7 @@ jobs:
           CHAIN_DATA_URL: ${{ secrets.CHAIN_DATA_URL }}
           BYTECODE_PATH: ${{ secrets.BYTECODE_PATH }}
           RESULTS_FILE: ${{ secrets.RESULTS_FILE }}
+          REDEPLOY_CREATE3_PROVERS_SUFFIX: ${{ secrets.REDEPLOY_CREATE3_PROVERS_SUFFIX }}
           VERIFICATION_KEY: ${{ secrets.VERIFICATION_KEY }}
         run: |
           npx semantic-release --debug

@@ -188,6 +188,9 @@ NPM_TOKEN=<NPM token with publish access>
 VERIFICATION_KEYS=<JSON string of API keys>
 # or
 VERIFICATION_KEYS_FILE=<Path to verification keys file>
+
+# Optional: Custom suffix for prover salt generation (defaults to '2')
+REDEPLOY_CREATE3_PROVERS_SUFFIX=<Suffix for prover salt generation>
 ```
 
 In GitHub Actions, these are stored as secrets and passed to the workflow.

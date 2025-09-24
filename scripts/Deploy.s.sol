@@ -79,8 +79,7 @@ contract Deploy is Script {
         // Salts must be unique to protocol for createx deploys
         ctx.hyperProverSalt = vm.envBytes32("HYPER_PROVER_SALT");
         ctx.polymerProverSalt = vm.envBytes32("POLYMER_PROVER_SALT");
-        // Portal salt needs to be exact for vanity address reasons
-        ctx.portalSalt = ctx.salt;
+        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.polymerL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_CONTRACT",
@@ -130,22 +129,22 @@ contract Deploy is Script {
         deployPortal(ctx);
 
         // Deploy HyperProver
-        // if (hasMailbox) {
-        //     console.log("Deploying HyperProver with Create3...");
-        //     deployHyperProver(ctx);
-        // }
+        if (hasMailbox) {
+            console.log("Deploying HyperProver with Create3...");
+            deployHyperProver(ctx);
+        }
 
-        // // Deploy PolymerProver
-        // if (hasPolymerL2ProverV2) {
-        //     console.log("Deploying PolymerProver with Create3...");
-        //     deployPolymerProver(ctx);
-        // }
+        // Deploy PolymerProver
+        if (hasPolymerL2ProverV2) {
+            console.log("Deploying PolymerProver with Create3...");
+            deployPolymerProver(ctx);
+        }
 
-        // // Deploy MetaProver or use hardcoded address
-        // if (metaProver) {
-        //     ctx.metaProver = 0x3d529eFAEDb3B999A404c1B8543441aE616cB914;
-        //     console.log("MetaProver (hardcoded) :", ctx.metaProver);
-        // }
+        // Deploy MetaProver or use hardcoded address
+        if (metaProver) {
+            ctx.metaProver = 0x3d529eFAEDb3B999A404c1B8543441aE616cB914;
+            console.log("MetaProver (hardcoded) :", ctx.metaProver);
+        }
 
         vm.stopBroadcast();
 
@@ -367,6 +366,7 @@ contract Deploy is Script {
         ctx.polymerProverConstructorArgs = abi.encode(
             ctx.portal,
             ctx.polymerL2ProverV2,
+            32 * 1024, // MAX_LOG_DATA_SIZE - using the guard value from PolymerProver
             proverBytes32
         );
 
@@ -512,49 +512,6 @@ contract Deploy is Script {
                 address(create3Deployer)
             );
         }
-    }
-
-    function deployWithCreate3(
-        bytes memory bytecode,
-        DeploymentContext memory ctx
-    ) internal returns (address deployAddress, bool deployed) {
-        // This function is currently hardcoded for HyperProver - needs refactoring for PolymerProver
-        bytes32 salt = ctx.hyperProverSalt;
-        address expectedAddress;
-        if (useCreateXForChainID()) {
-            expectedAddress = ctx.hyperProverCreateXAddress;
-        } else {
-            expectedAddress = ctx.hyperProver2470Address;
-        }
-
-        deployed = isDeployed(expectedAddress);
-
-        if (!deployed) {
-            if (useCreateXForChainID()) {
-                deployAddress = createXContract.deployCreate3(salt, bytecode);
-            } else {
-                deployAddress = create3Deployer.deploy(bytecode, salt);
-            }
-
-            require(
-                deployAddress == expectedAddress,
-                string.concat(
-                    "Expected address does not match the deployed address, create3. Expected: ",
-                    vm.toString(expectedAddress),
-                    " Got: ",
-                    vm.toString(deployAddress)
-                )
-            );
-            require(isDeployed(deployAddress), "Contract did not get deployed");
-        } else {
-            deployAddress = expectedAddress;
-            console.log(
-                "Contract already deployed create3 at address:",
-                deployAddress
-            );
-        }
-
-        return (deployAddress, deployed);
     }
 
     function writeDeployFile(

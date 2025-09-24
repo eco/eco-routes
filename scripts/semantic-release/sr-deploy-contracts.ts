@@ -434,16 +434,22 @@ async function deployContracts(
       // Generate HyperProver CreateX address using the salt and deployer
       // Use the new getHyperProverSalt function to match Solidity implementation
       const deployer = getDeployerAddress()
-      // Do secondary keccak256 force a redeploy for version 2.8.* for the hyper prover
+      const redeployCreate3Provers =
+        process.env[ENV_VARS.REDEPLOY_CREATE3_PROVERS_SUFFIX] || ''
+      logger.log(`Using prover deployment suffix: ${redeployCreate3Provers}`)
       const hyperProverSalt = createCreateXSalt(
         deployer,
         0,
-        hexToBytes(keccak256(toHex(salt + 'HyperProver'))) as Uint8Array,
+        hexToBytes(
+          keccak256(toHex(salt + 'HyperProver' + redeployCreate3Provers)),
+        ) as Uint8Array,
       )
       const polymerProverSalt = createCreateXSalt(
         deployer,
         0,
-        hexToBytes(keccak256(toHex(salt + 'PolymerProver'))) as Uint8Array,
+        hexToBytes(
+          keccak256(toHex(salt + 'PolymerProver' + redeployCreate3Provers)),
+        ) as Uint8Array,
       )
       const hyperProverCreateXAddress = await createXCreate3Address(
         deployer,
