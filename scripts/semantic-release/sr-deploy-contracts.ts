@@ -510,11 +510,7 @@ async function deployContracts(
       logger.log(`Deployment process exited with code ${exitCode}`)
       contracts = [
         ...contracts,
-        ...parseDeploymentResults(
-          getDeploymentResultsPath(cwd),
-          environment,
-          logger,
-        ),
+        ...parseDeploymentResults(resultsPath, environment, logger),
       ]
     }
 

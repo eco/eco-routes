@@ -518,6 +518,9 @@ contract Deploy is Script {
         string memory filePath,
         VerificationData[] memory contracts
     ) internal {
+        // Create header for CSV file
+        vm.writeLine(filePath, "ChainID,ContractAddress,ContractPath,ContractArguments");
+
         for (uint256 i = 0; i < contracts.length; i++) {
             vm.writeLine(
                 filePath,
