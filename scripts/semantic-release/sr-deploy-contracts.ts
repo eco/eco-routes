@@ -375,9 +375,15 @@ function processContractsForJson(
             address.length === 66 && address.startsWith('0x') // 32 bytes = 64 hex chars + 0x prefix
 
           // Apply EIP-55 checksum only to standard EVM addresses
-          contractMap[names[i]] = isCrossChainAddress
-            ? address
-            : getAddress(address)
+          try {
+            contractMap[names[i]] = isCrossChainAddress
+              ? address
+              : getAddress(address)
+          } catch (error: any) {
+            logger.error(
+              `Error processing contract ${names[i]} for ${address}: ${error.message}`,
+            )
+          }
         }
       }
 
