@@ -61,8 +61,6 @@ if [ -z "$APPEND_RESULTS" ] || [ "$APPEND_RESULTS" != "true" ]; then
         rm "$RESULTS_FILE"
         touch "$RESULTS_FILE"
     fi
-    # Create header for CSV file
-    echo "ChainID,ContractAddress,ContractPath,ContractArguments" > $RESULTS_FILE
 else
     echo "📝 Appending to existing results file: $RESULTS_FILE"
     # Create the file if it doesn't exist yet
