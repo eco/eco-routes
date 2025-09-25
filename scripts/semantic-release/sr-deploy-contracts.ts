@@ -383,6 +383,7 @@ function processContractsForJson(
             logger.error(
               `Error processing contract ${names[i]} for ${address}: ${error.message}`,
             )
+            contractMap[names[i]] = address // Fallback to original address on error
           }
         }
       }
