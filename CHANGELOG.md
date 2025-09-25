@@ -1,3 +1,13 @@
+# [3.0.0-alpha.13](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.12...v3.0.0-alpha.13) (2025-09-25)
+
+
+### Bug Fixes
+
+* add fallback ([0cc3c7d](https://github.com/eco/eco-routes/commit/0cc3c7dce9a9d172a351feb7c2f025b2ab68aba3))
+* add the csv header to the out files ([0d68a7d](https://github.com/eco/eco-routes/commit/0d68a7d5d7c3ffa6a301e0a9b137517a1113405e))
+* catch any address throws ([e23197d](https://github.com/eco/eco-routes/commit/e23197d03add6201b41cd3318ef6dd429fdf16ec))
+* clean up ([e320db7](https://github.com/eco/eco-routes/commit/e320db729f9f5db4f44ee4edd02feb02c2ee4d4a))
+
 # [3.0.0-alpha.12](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.11...v3.0.0-alpha.12) (2025-09-24)
 
 
