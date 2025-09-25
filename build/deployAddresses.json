@@ -153,16 +153,10 @@
     "Portal": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "HyperProver": "0x12426b774332262f19812b563016f779d0f5397cc8976aecea06a6b68a2e7dc7"
   },
-  "NaN": {
-    "undefined": "ContractAddress"
-  },
   "1-staging": {
     "Portal": "0xe0F1B8C31ba2A3d10A1b38237e812aCAc1E733A0",
     "HyperProver": "0xe471A90630948E898ee0D72a5E2Da527089c8c06",
     "PolymerProver": "0x118EbaBdf5f57f23465a7914332F70Dde4a5CCfB"
-  },
-  "NaN-staging": {
-    "undefined": "ContractAddress"
   },
   "10-staging": {
     "Portal": "0xe0F1B8C31ba2A3d10A1b38237e812aCAc1E733A0",
@@ -234,6 +228,11 @@
   "5330-staging": {
     "Portal": "0xe0F1B8C31ba2A3d10A1b38237e812aCAc1E733A0",
     "HyperProver": "0xe471A90630948E898ee0D72a5E2Da527089c8c06"
+  },
+  "8333-staging": {
+    "Portal": "0xe0F1B8C31ba2A3d10A1b38237e812aCAc1E733A0",
+    "HyperProver": "0xe471A90630948E898ee0D72a5E2Da527089c8c06",
+    "MetaProver": "0x3d529eFAEDb3B999A404c1B8543441aE616cB914"
   },
   "8453-staging": {
     "Portal": "0xe0F1B8C31ba2A3d10A1b38237e812aCAc1E733A0",
