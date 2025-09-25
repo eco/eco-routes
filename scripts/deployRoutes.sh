@@ -156,3 +156,13 @@ echo "$DEPLOY_JSON" | jq -c 'to_entries[]' | while IFS= read -r entry; do
 
     echo "✅ Deployment on Chain ID: $CHAIN_ID completed!"
 done
+
+# Add CSV headers to the results file after all deployments complete
+if [ -f "$RESULTS_FILE" ] && [ -s "$RESULTS_FILE" ]; then
+    echo "📄 Adding CSV headers to results file..."
+    # Create a temporary file with header + existing content
+    temp_file=$(mktemp)
+    echo "ChainID,ContractAddress,ContractPath,ContractArguments" > "$temp_file"
+    cat "$RESULTS_FILE" >> "$temp_file"
+    mv "$temp_file" "$RESULTS_FILE"
+fi
