@@ -1,6 +1,6 @@
 # Eco Routes
 
-An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-chain transactions. This implementation supports multiple cross-chain messaging protocols including Hyperlane, LayerZero, and Metalayer.
+An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-chain transactions. This implementation supports multiple cross-chain messaging protocols including Hyperlane, LayerZero, Metalayer, and Polymer.
 
 We identify three main user profiles:
 
@@ -43,6 +43,7 @@ Specialized provers that integrate with different cross-chain messaging protocol
 - **HyperProver**: Uses Hyperlane for cross-chain message delivery
 - **LayerZeroProver**: Integrates with LayerZero protocol for cross-chain verification
 - **MetaProver**: Uses Metalayer for cross-chain proofs
+- **PolymerProver**: Uses Polymer for cross-chain proofs
 - **LocalProver**: Handles same-chain intents
 
 ### How They Work Together
@@ -79,7 +80,7 @@ sequenceDiagram
 
 - **ERC-7683 Compatibility**: Full implementation of the cross-chain order standard
 - **Multi-Chain Support**: Works with any EVM chain and supports cross-VM integration
-- **Multiple Bridge Support**: Hyperlane, LayerZero, and Metalayer integration
+- **Multiple Bridge Support**: Hyperlane, LayerZero, Metalayer, and Polymer integration
 - **Solver Incentives**: Reward-based system encourages solver participation
 - **Deterministic Addresses**: CREATE2-based deployment for consistent cross-chain addresses
 - **ERC20 Integration**: Native permit-based gasless approvals and comprehensive token support
@@ -272,6 +273,15 @@ Integrates with LayerZero protocol:
 - `prove` - Generate and send proof message via LayerZero
 - `lzReceive` - Process incoming LayerZero messages
 
+#### PolymerProver Contract
+
+Integrates with Polymer protocol:
+
+#### Key Functions:
+
+- `prove` - Emit IntentFulfilledFromSource events for Polymer to relay
+- `validate` - Validate and process proofs from Polymer's CrossL2ProverV2
+
 ### Supporting Contracts
 
 #### Vault Contract
@@ -313,6 +323,7 @@ Secure call execution system:
 - `HyperProver.t.sol` - Hyperlane integration testing
 - `LayerZeroProver.t.sol` - LayerZero integration testing
 - `MetaProver.t.sol` - Metalayer integration testing
+- `PolymerProver.t.sol` - Polymer integration testing
 
 #### Security Tests:
 
