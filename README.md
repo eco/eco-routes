@@ -1,6 +1,6 @@
 # Eco Routes
 
-An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-chain transactions. This implementation supports multiple cross-chain messaging protocols including Hyperlane, LayerZero, and Metalayer.
+An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-chain transactions. This implementation supports multiple cross-chain messaging protocols including Hyperlane, LayerZero, Metalayer, and Polymer.
 
 We identify three main user profiles:
 
@@ -27,6 +27,7 @@ A **User** wants to initiate a cross-chain transaction by creating an intent. Pu
 ### Core Components
 
 #### **Portal Contract** (`contracts/Portal.sol`)
+
 The main intent protocol that manages the complete intent lifecycle:
 
 - **Intent Creation**: Users define cross-chain operations with specific parameters
@@ -36,11 +37,13 @@ The main intent protocol that manages the complete intent lifecycle:
 - **Reward Settlement**: Distributes rewards to successful solvers
 
 #### **Multiple Prover Types**
+
 Specialized provers that integrate with different cross-chain messaging protocols:
 
 - **HyperProver**: Uses Hyperlane for cross-chain message delivery
 - **LayerZeroProver**: Integrates with LayerZero protocol for cross-chain verification
 - **MetaProver**: Uses Metalayer for cross-chain proofs
+- **PolymerProver**: Uses Polymer for cross-chain proofs
 - **LocalProver**: Handles same-chain intents
 
 ### How They Work Together
@@ -77,7 +80,7 @@ sequenceDiagram
 
 - **ERC-7683 Compatibility**: Full implementation of the cross-chain order standard
 - **Multi-Chain Support**: Works with any EVM chain and supports cross-VM integration
-- **Multiple Bridge Support**: Hyperlane, LayerZero, and Metalayer integration
+- **Multiple Bridge Support**: Hyperlane, LayerZero, Metalayer, and Polymer integration
 - **Solver Incentives**: Reward-based system encourages solver participation
 - **Deterministic Addresses**: CREATE2-based deployment for consistent cross-chain addresses
 - **ERC20 Integration**: Native permit-based gasless approvals and comprehensive token support
@@ -109,6 +112,7 @@ Users can create and fulfill intents through both our native interface and the s
 Install the required toolchain components:
 
 #### 1. Install Node.js
+
 ```bash
 # Install nvm (Node Version Manager)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
@@ -119,12 +123,14 @@ nvm use v18.20.3
 ```
 
 #### 2. Install Package Manager
+
 ```bash
 # Install Yarn v1.22.19
 npm install -g yarn@1.22.19
 ```
 
 #### 3. Install Development Tools
+
 ```bash
 # Foundry (recommended)
 curl -L https://foundry.paradigm.xyz | bash
@@ -137,17 +143,20 @@ npm install -g hardhat
 ### Project Setup
 
 #### 1. Clone and Setup
+
 ```bash
 git clone https://github.com/eco/eco-routes.git
 cd eco-routes
 ```
 
 #### 2. Install Dependencies
+
 ```bash
 yarn install
 ```
 
 #### 3. Build the Project
+
 ```bash
 yarn build
 ```
@@ -155,6 +164,7 @@ yarn build
 ## Development Commands
 
 ### Building
+
 ```bash
 # Build all contracts
 yarn build
@@ -167,6 +177,7 @@ npx hardhat compile
 ```
 
 ### Testing
+
 ```bash
 # Run all tests
 yarn test
@@ -200,6 +211,7 @@ yarn lint && yarn test
 ```
 
 ### Development Workflow
+
 ```bash
 # Start local development environment
 # (Configure your local chain setup as needed)
@@ -216,6 +228,7 @@ forge test --rpc-url localhost
 ### Portal Contract
 
 #### Key Functions:
+
 - `publish` - Create and emit intent on source chain
 - `fund` - Fund an intent with reward tokens via deterministic vault
 - `fulfill` - Execute intent operations and mark as fulfilled
@@ -224,6 +237,7 @@ forge test --rpc-url localhost
 - `withdraw` - Withdraw rewards after successful proof validation
 
 #### Key Components:
+
 - **IntentSource**: Manages intent creation, funding, and reward settlement on source chains
 - **Inbox**: Handles intent fulfillment on destination chains
 - **Vault**: Escrows reward tokens with deterministic addresses via CREATE2
@@ -242,30 +256,46 @@ forge test --rpc-url localhost
 ### Prover Contracts
 
 #### HyperProver Contract
+
 Uses Hyperlane protocol for cross-chain message delivery:
 
 #### Key Functions:
+
 - `prove` - Generate and send proof message via Hyperlane
 - `handle` - Process incoming Hyperlane messages and create proof records
 
 #### LayerZeroProver Contract
+
 Integrates with LayerZero protocol:
 
 #### Key Functions:
+
 - `prove` - Generate and send proof message via LayerZero
 - `lzReceive` - Process incoming LayerZero messages
 
+#### PolymerProver Contract
+
+Integrates with Polymer protocol:
+
+#### Key Functions:
+
+- `prove` - Emit IntentFulfilledFromSource events for Polymer to relay
+- `validate` - Validate and process proofs from Polymer's CrossL2ProverV2
 
 ### Supporting Contracts
 
 #### Vault Contract
+
 Deterministic reward escrow system:
+
 - Accepts native and ERC20 token deposits
 - Releases rewards to proven solvers
 - Handles refunds for expired intents
 
 #### Executor Contract
+
 Secure call execution system:
+
 - Only Portal can execute calls
 - Prevents dangerous calls to EOAs
 - Batch execution with comprehensive error handling
@@ -281,6 +311,7 @@ Secure call execution system:
 ### Test Categories
 
 #### Core Contract Tests:
+
 - `Portal.t.sol` - Main portal functionality
 - `Vault.t.sol` - Reward escrow and settlement
 - `Executor.t.sol` - Secure call execution
@@ -288,30 +319,34 @@ Secure call execution system:
 - `IntentSource.t.sol` - Intent creation and funding
 
 #### Prover Tests:
+
 - `HyperProver.t.sol` - Hyperlane integration testing
 - `LayerZeroProver.t.sol` - LayerZero integration testing
 - `MetaProver.t.sol` - Metalayer integration testing
+- `PolymerProver.t.sol` - Polymer integration testing
 
 #### Security Tests:
+
 - `TokenSecurity.t.sol` - Token handling security
 - Various attack vector simulations
 
 ### Test Patterns
+
 ```solidity
 contract PortalTest is BaseTest {
-    function test_intentFulfillment() public {
-        // Setup intent and accounts
-        Intent memory intent = createTestIntent();
+  function test_intentFulfillment() public {
+    // Setup intent and accounts
+    Intent memory intent = createTestIntent();
 
-        // Fund intent
-        portal.fund(intent, fundingAmount);
+    // Fund intent
+    portal.fund(intent, fundingAmount);
 
-        // Execute fulfillment
-        portal.fulfill(intent, solver);
+    // Execute fulfillment
+    portal.fulfill(intent, solver);
 
-        // Verify success
-        assertTrue(portal.isFulfilled(intentHash));
-    }
+    // Verify success
+    assertTrue(portal.isFulfilled(intentHash));
+  }
 }
 ```
 
@@ -333,18 +368,21 @@ forge test --match-test test_fulfill
 ### Deployment Commands
 
 #### Local Development:
+
 ```bash
 # Deploy all contracts locally
 forge script script/Deploy.s.sol --broadcast --rpc-url localhost
 ```
 
 #### Testnet Deployment:
+
 ```bash
 # Deploy to specific testnet
 forge script script/Deploy.s.sol --broadcast --rpc-url $TESTNET_RPC_URL --verify
 ```
 
 #### Mainnet Deployment:
+
 ```bash
 # Deploy to mainnet
 forge script script/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
@@ -421,6 +459,7 @@ Follow existing patterns in `test/`:
 ## Support
 
 For questions or issues:
+
 1. Check existing GitHub issues
 2. Review test files for usage examples
 3. Examine the contract documentation for technical details

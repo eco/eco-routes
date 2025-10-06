@@ -400,7 +400,8 @@ describe('Inbox Test', (): void => {
             addressToBytes32(dstAddr.address),
             { value: insufficientAmount },
           ),
-      ).to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
+      )
+        .to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
         .withArgs(insufficientAmount, ethAmount)
 
       // Should also revert with zero native amount when expecting ETH
@@ -413,7 +414,8 @@ describe('Inbox Test', (): void => {
             rewardHash,
             addressToBytes32(dstAddr.address),
           ),
-      ).to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
+      )
+        .to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
         .withArgs(0, ethAmount)
     })
 
