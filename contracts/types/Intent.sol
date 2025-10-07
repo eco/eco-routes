@@ -48,6 +48,9 @@ struct Route {
 /**
  * @notice Defines the reward and validation parameters for cross-chain execution
  * @dev Specifies who can execute the intent and what rewards they receive
+ * @dev IMPORTANT: If nativeAmount > 0, the creator MUST be able to receive native tokens (e.g., not a non-payable contract).
+ *      Otherwise, refunds will fail and funds may become stuck. If the creator cannot receive native tokens,
+ *      set nativeAmount to 0 and only use ERC20 token rewards.
  * @param deadline Timestamp after which the intent can no longer be executed
  * @param creator Address that created the intent and has authority to modify/cancel
  * @param prover Address of the prover contract that must approve execution
