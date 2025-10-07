@@ -876,6 +876,59 @@ contract VaultTest is Test {
         // Griefed ETH remains in vault (not part of reward)
         assertEq(address(vault).balance, 0.01 ether);
     }
+
+    function test_recover_success_nativeETH() public {
+        TokenAmount[] memory tokens = new TokenAmount[](0);
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0, // No native reward expected
+            tokens: tokens
+        });
+
+        // Send native ETH to vault by mistake
+        vm.deal(address(vault), 0.5 ether);
+
+        uint256 creatorInitialBalance = creator.balance;
+
+        // Recover native ETH using address(0)
+        vm.prank(portal);
+        vault.recover(creator, address(0));
+
+        assertEq(address(vault).balance, 0);
+        assertEq(creator.balance, creatorInitialBalance + 0.5 ether);
+    }
+
+    function test_recover_nativeETH_revertsIfRecipientCannotReceive() public {
+        NonPayableContract contractCreator = new NonPayableContract();
+
+        TokenAmount[] memory tokens = new TokenAmount[](0);
+        Reward memory reward = Reward({
+            creator: address(contractCreator),
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0,
+            tokens: tokens
+        });
+
+        // Send native ETH to vault by mistake
+        vm.deal(address(vault), 0.5 ether);
+
+        // Recovery should fail because recipient cannot receive ETH
+        vm.prank(portal);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IVault.NativeTransferFailed.selector,
+                address(contractCreator),
+                0.5 ether
+            )
+        );
+        vault.recover(address(contractCreator), address(0));
+
+        // ETH remains in vault
+        assertEq(address(vault).balance, 0.5 ether);
+    }
 }
 
 // Mock contract that cannot receive ETH
