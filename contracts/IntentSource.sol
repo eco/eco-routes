@@ -825,7 +825,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address token
     ) internal pure {
         if (token == address(0)) {
-            revert InvalidRecoverToken(token);
+            // Native token recovery is allowed, but only if native amount is zero
+            if (reward.nativeAmount > 0) {
+                revert InvalidRecoverToken(token);
+            }
+            return;
         }
 
         uint256 rewardsLength = reward.tokens.length;

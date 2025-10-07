@@ -833,4 +833,52 @@ contract VaultTest is Test {
         );
         vault.recover(creator, address(recoverToken));
     }
+
+    function test_refund_griefing_contractCreatorCannotReceiveETH() public {
+        // Create a contract creator that cannot receive ETH
+        NonPayableContract contractCreator = new NonPayableContract();
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: address(contractCreator),
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0, // No native reward - creator doesn't expect ETH
+            tokens: tokens
+        });
+
+        // Fund the vault with ERC20 tokens
+        token.mint(address(vault), 1000);
+
+        // Griefing attack: attacker sends small amount of ETH to vault
+        address attacker = makeAddr("attacker");
+        vm.deal(attacker, 1 ether);
+        vm.prank(attacker);
+        payable(address(vault)).transfer(0.01 ether);
+
+        // Verify vault has griefed ETH
+        assertEq(address(vault).balance, 0.01 ether);
+
+        // Advance time past deadline
+        vm.warp(block.timestamp + 2000);
+
+        // After fix: refund should succeed because it only refunds reward.nativeAmount (0)
+        // The griefed ETH stays in vault and doesn't block the refund
+        vm.prank(portal);
+        vault.refund(reward);
+
+        // Verify ERC20 tokens were successfully refunded
+        assertEq(token.balanceOf(address(contractCreator)), 1000);
+        assertEq(token.balanceOf(address(vault)), 0);
+
+        // Griefed ETH remains in vault (not part of reward)
+        assertEq(address(vault).balance, 0.01 ether);
+    }
+}
+
+// Mock contract that cannot receive ETH
+contract NonPayableContract {
+    // No receive() or fallback() function, so it cannot accept ETH
 }

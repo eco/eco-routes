@@ -122,14 +122,15 @@ contract Vault is IVault {
             }
         }
 
-        uint256 nativeAmount = address(this).balance;
+        uint256 nativeAmount = reward.nativeAmount;
+
         if (nativeAmount == 0) {
             return;
         }
 
-        (bool success, ) = refundee.call{value: nativeAmount}("");
+        (bool success, ) = refundee.call{value: address(this).balance}("");
         if (!success) {
-            revert NativeTransferFailed(refundee, nativeAmount);
+            revert NativeTransferFailed(refundee, address(this).balance);
         }
     }
 
@@ -139,14 +140,20 @@ contract Vault is IVault {
      * @param token Address of the token to recover (must not be a reward token)
      */
     function recover(address refundee, address token) external onlyPortal {
-        IERC20 tokenContract = IERC20(token);
-        uint256 balance = tokenContract.balanceOf(address(this));
+        if (token == address(0)) {
+            (bool success, ) = refundee.call{value: address(this).balance}("");
+            if (!success) {
+                revert NativeTransferFailed(refundee, address(this).balance);
+            }
+        } else {    
+            IERC20 tokenContract = IERC20(token);
+            uint256 balance = tokenContract.balanceOf(address(this));
 
-        if (balance == 0) {
-            revert ZeroRecoverTokenBalance(token);
+            if (balance == 0) {
+                revert ZeroRecoverTokenBalance(token);
+            }
+            tokenContract.safeTransfer(refundee, balance);
         }
-
-        tokenContract.safeTransfer(refundee, balance);
     }
 
     /**

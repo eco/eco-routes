@@ -1239,8 +1239,12 @@ contract IntentSourceTest is BaseTest {
         intentSource.publish(intent);
     }
 
-    function testRecoverTokenRejectsZeroAddress() public {
-        _publishAndFund(intent, false);
+    function testRecoverTokenRejectsZeroAddressWhenNativeReward() public {
+        // This test verifies that recovering native ETH is rejected when reward.nativeAmount > 0
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
 
         vm.expectRevert(
             abi.encodeWithSelector(
