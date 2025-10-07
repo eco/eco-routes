@@ -123,7 +123,7 @@ contract Vault is IVault {
                 token.safeTransfer(refundee, amount);
             }
         }
-        
+
         if (reward.nativeAmount == 0) {
             return;
         } else {
@@ -147,7 +147,7 @@ contract Vault is IVault {
             if (!success) {
                 revert NativeTransferFailed(refundee, address(this).balance);
             }
-        } else {    
+        } else {
             IERC20 tokenContract = IERC20(token);
             uint256 balance = tokenContract.balanceOf(address(this));
 
