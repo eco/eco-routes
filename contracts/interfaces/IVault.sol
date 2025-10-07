@@ -20,6 +20,9 @@ interface IVault {
     /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
 
+    /// @notice Emitted when native token transfer fails during refund
+    event NativeRefundFailed(address indexed to, uint256 amount);
+
     /**
      * @notice Funds the vault with reward tokens and native currency
      * @param reward The reward structure containing tokens and amounts
@@ -42,6 +45,7 @@ interface IVault {
 
     /**
      * @notice Refunds rewards back to the original creator
+     * @dev If native transfer fails, NativeRefundFailed event is emitted and native tokens remain in vault
      * @param reward The reward structure to refund
      */
     function refund(Reward calldata reward) external;

@@ -107,6 +107,8 @@ contract Vault is IVault {
 
     /**
      * @notice Refunds all vault contents back to the reward creator
+     * @dev ERC20 tokens are always refunded. If native transfer fails (e.g., creator cannot receive native tokens),
+     *      the NativeRefundFailed event is emitted and native tokens remain in the vault
      * @param reward The reward structure containing creator address and deadline
      */
     function refund(Reward calldata reward) external onlyPortal {
@@ -129,7 +131,7 @@ contract Vault is IVault {
 
         (bool success, ) = refundee.call{value: nativeAmount}("");
         if (!success) {
-            revert NativeTransferFailed(refundee, nativeAmount);
+            emit NativeRefundFailed(refundee, nativeAmount);
         }
     }
 

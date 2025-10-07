@@ -67,6 +67,10 @@ contract MockPermit is IPermit {
     }
 }
 
+contract RejectNativeTransfers {
+    // This contract has no receive or fallback function, so it rejects native transfers
+}
+
 contract VaultTest is Test {
     using Clones for address;
 
@@ -832,5 +836,103 @@ contract VaultTest is Test {
             )
         );
         vault.recover(creator, address(recoverToken));
+    }
+
+    function test_refund_success_tokensTransferred_whenNativeTransferFails()
+        public
+    {
+        RejectNativeTransfers rejectContract = new RejectNativeTransfers();
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: address(rejectContract),
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 1 ether,
+            tokens: tokens
+        });
+
+        token.mint(address(vault), 1000);
+        vm.deal(address(vault), 1 ether);
+
+        vm.prank(portal);
+        vm.expectEmit(true, true, true, true);
+        emit IVault.NativeRefundFailed(address(rejectContract), 1 ether);
+        vault.refund(reward);
+
+        // ERC20 tokens should be successfully transferred
+        assertEq(token.balanceOf(address(rejectContract)), 1000);
+        assertEq(token.balanceOf(address(vault)), 0);
+
+        // Native tokens should remain in vault since transfer failed
+        assertEq(address(vault).balance, 1 ether);
+        assertEq(address(rejectContract).balance, 0);
+    }
+
+    function test_refund_success_multipleTokensTransferred_whenNativeTransferFails()
+        public
+    {
+        RejectNativeTransfers rejectContract = new RejectNativeTransfers();
+        IERC20 token2 = new TestERC20("Test Token 2", "TEST2");
+
+        TokenAmount[] memory tokens = new TokenAmount[](2);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+        tokens[1] = TokenAmount({token: address(token2), amount: 500});
+
+        Reward memory reward = Reward({
+            creator: address(rejectContract),
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 2 ether,
+            tokens: tokens
+        });
+
+        token.mint(address(vault), 1000);
+        TestERC20(address(token2)).mint(address(vault), 500);
+        vm.deal(address(vault), 2 ether);
+
+        vm.prank(portal);
+        vm.expectEmit(true, true, true, true);
+        emit IVault.NativeRefundFailed(address(rejectContract), 2 ether);
+        vault.refund(reward);
+
+        // All ERC20 tokens should be successfully transferred
+        assertEq(token.balanceOf(address(rejectContract)), 1000);
+        assertEq(token2.balanceOf(address(rejectContract)), 500);
+        assertEq(token.balanceOf(address(vault)), 0);
+        assertEq(token2.balanceOf(address(vault)), 0);
+
+        // Native tokens should remain in vault since transfer failed
+        assertEq(address(vault).balance, 2 ether);
+        assertEq(address(rejectContract).balance, 0);
+    }
+
+    function test_refund_onlyNativeTransferFails_whenCreatorRejectsNative()
+        public
+    {
+        RejectNativeTransfers rejectContract = new RejectNativeTransfers();
+
+        TokenAmount[] memory tokens = new TokenAmount[](0);
+
+        Reward memory reward = Reward({
+            creator: address(rejectContract),
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0.5 ether,
+            tokens: tokens
+        });
+
+        vm.deal(address(vault), 0.5 ether);
+
+        vm.prank(portal);
+        vm.expectEmit(true, true, true, true);
+        emit IVault.NativeRefundFailed(address(rejectContract), 0.5 ether);
+        vault.refund(reward);
+
+        // Native tokens should remain in vault
+        assertEq(address(vault).balance, 0.5 ether);
+        assertEq(address(rejectContract).balance, 0);
     }
 }
