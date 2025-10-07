@@ -1197,6 +1197,282 @@ contract IntentSourceTest is BaseTest {
         );
     }
 
+    // RefundTo Tests
+    function testRefundToSuccessAfterDeadline() public {
+        _publishAndFund(intent, false);
+
+        address refundee = makeAddr("refundee");
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(refundee);
+        uint256 initialBalanceB = tokenB.balanceOf(refundee);
+
+        assertTrue(intentSource.isIntentFunded(intent));
+
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(refundee), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(refundee), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
+    function testRefundToWithNativeTokens() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
+
+        address refundee = makeAddr("refundee");
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(refundee);
+        uint256 initialBalanceB = tokenB.balanceOf(refundee);
+        uint256 initialBalanceNative = refundee.balance;
+
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+
+        assertEq(tokenA.balanceOf(refundee), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(refundee), initialBalanceB + MINT_AMOUNT * 2);
+        assertEq(refundee.balance, initialBalanceNative + REWARD_NATIVE_ETH);
+    }
+
+    function testRefundToRevertsWhenNotCreator() public {
+        _publishAndFund(intent, false);
+
+        address refundee = makeAddr("refundee");
+        _timeTravel(expiry + 1);
+
+        vm.prank(otherPerson);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.NotCreatorCaller.selector,
+                otherPerson
+            )
+        );
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+    }
+
+    function testRefundToRevertsBeforeDeadline() public {
+        _publishAndFund(intent, false);
+
+        address refundee = makeAddr("refundee");
+
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                reward.deadline
+            )
+        );
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+    }
+
+    function testRefundToEmitsCorrectEvent() public {
+        _publishAndFund(intent, false);
+
+        address refundee = makeAddr("refundee");
+        _timeTravel(expiry + 1);
+
+        bytes32 intentHash = _hashIntent(intent);
+
+        _expectEmit();
+        emit IIntentSource.IntentRefunded(intentHash, refundee);
+
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+    }
+
+    function testRefundToRevertsWhenIntentNotClaimed() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+
+        address refundee = makeAddr("refundee");
+
+        // Mock a valid proof but don't withdraw
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
+            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+        );
+
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentNotClaimed.selector,
+                intentHash
+            )
+        );
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+    }
+
+    function testRefundToAllowsAfterWithdrawal() public {
+        _publishAndFund(intent, false);
+
+        bytes32 intentHash = _hashIntent(intent);
+        _addProof(intentHash, CHAIN_ID, claimant);
+
+        vm.prank(otherPerson);
+        intentSource.withdraw(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        address refundee = makeAddr("refundee");
+
+        _expectEmit();
+        emit IIntentSource.IntentRefunded(intentHash, refundee);
+
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+    }
+
+    function testRefundCanBeCalledMultipleTimesToRecoverAdditionalFunds() public {
+        _publishAndFund(intent, false);
+        _timeTravel(expiry + 1);
+
+        address vaultAddress = intentSource.intentVaultAddress(intent);
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        // First refund - gets original funds
+        vm.prank(creator);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+        assertEq(tokenA.balanceOf(vaultAddress), 0);
+        assertEq(tokenB.balanceOf(vaultAddress), 0);
+
+        // Someone accidentally sends more tokens to the vault
+        vm.prank(otherPerson);
+        tokenA.mint(otherPerson, MINT_AMOUNT);
+        vm.prank(otherPerson);
+        tokenA.transfer(vaultAddress, MINT_AMOUNT);
+
+        vm.prank(otherPerson);
+        tokenB.mint(otherPerson, MINT_AMOUNT);
+        vm.prank(otherPerson);
+        tokenB.transfer(vaultAddress, MINT_AMOUNT);
+
+        assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(vaultAddress), MINT_AMOUNT);
+
+        // Second refund - recovers the additional funds
+        vm.prank(creator);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT * 2);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 3);
+        assertEq(tokenA.balanceOf(vaultAddress), 0);
+        assertEq(tokenB.balanceOf(vaultAddress), 0);
+    }
+
+    function testRefundToCanBeCalledMultipleTimesToRecoverAdditionalFunds() public {
+        _publishAndFund(intent, false);
+        _timeTravel(expiry + 1);
+
+        address vaultAddress = intentSource.intentVaultAddress(intent);
+        address refundee = makeAddr("refundee");
+        uint256 initialBalanceA = tokenA.balanceOf(refundee);
+        uint256 initialBalanceB = tokenB.balanceOf(refundee);
+
+        // First refundTo - gets original funds
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee
+        );
+
+        assertEq(tokenA.balanceOf(refundee), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(refundee), initialBalanceB + MINT_AMOUNT * 2);
+        assertEq(tokenA.balanceOf(vaultAddress), 0);
+        assertEq(tokenB.balanceOf(vaultAddress), 0);
+
+        // Someone accidentally sends more tokens to the vault
+        vm.prank(otherPerson);
+        tokenA.mint(otherPerson, MINT_AMOUNT);
+        vm.prank(otherPerson);
+        tokenA.transfer(vaultAddress, MINT_AMOUNT);
+
+        vm.prank(otherPerson);
+        tokenB.mint(otherPerson, MINT_AMOUNT);
+        vm.prank(otherPerson);
+        tokenB.transfer(vaultAddress, MINT_AMOUNT);
+
+        assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(vaultAddress), MINT_AMOUNT);
+
+        // Second refundTo - recovers the additional funds to different address
+        address refundee2 = makeAddr("refundee2");
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            refundee2
+        );
+
+        // Original refundee unchanged
+        assertEq(tokenA.balanceOf(refundee), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(refundee), initialBalanceB + MINT_AMOUNT * 2);
+
+        // New refundee gets the additional funds
+        assertEq(tokenA.balanceOf(refundee2), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(refundee2), MINT_AMOUNT);
+        assertEq(tokenA.balanceOf(vaultAddress), 0);
+        assertEq(tokenB.balanceOf(vaultAddress), 0);
+    }
+
     function testPublishRejectsWithdrawnIntent() public {
         _publishAndFund(intent, false);
         bytes32 intentHash = _hashIntent(intent);

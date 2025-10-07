@@ -608,7 +608,7 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
     }
 
     function test_refund_success_nativeAndTokens_afterDeadline() public {
@@ -631,7 +631,7 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -660,7 +660,7 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
 
         assertEq(token.balanceOf(address(vault)), 0);
         assertEq(token2.balanceOf(address(vault)), 0);
@@ -683,7 +683,7 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
 
         assertEq(token.balanceOf(address(vault)), 0);
         assertEq(token.balanceOf(creator), 0);
@@ -714,7 +714,7 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -743,7 +743,7 @@ contract VaultTest is Test {
         uint256 creatorInitialBalance = creator.balance;
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
 
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
@@ -770,7 +770,7 @@ contract VaultTest is Test {
                 unauthorized
             )
         );
-        vault.refund(reward);
+        vault.refund(reward, creator);
     }
 
     function test_refund_refund_twice() public {
@@ -786,10 +786,10 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
 
         vm.prank(portal);
-        vault.refund(reward);
+        vault.refund(reward, creator);
     }
 
     function test_recover_success_differentToken() public {

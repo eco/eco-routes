@@ -106,12 +106,11 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Refunds all vault contents back to the reward creator
-     * @param reward The reward structure containing creator address and deadline
+     * @notice Refunds all vault contents to a specified address
+     * @param reward The reward structure containing token information
+     * @param refundee Address to receive the refunded rewards
      */
-    function refund(Reward calldata reward) external onlyPortal {
-        address refundee = reward.creator;
-
+    function refund(Reward calldata reward, address refundee) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);

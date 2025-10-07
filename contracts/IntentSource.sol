@@ -501,13 +501,33 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             reward
         );
 
-        _validateRefund(intentHash, destination, reward);
-        rewardStatuses[intentHash] = Status.Refunded;
+        _refund(intentHash, destination, reward, reward.creator);
+    }
 
-        IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.refund(reward);
+    /**
+     * @notice Refunds rewards to a specified address (only callable by reward creator)
+     * @param destination Destination chain ID for the intent
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward structure of the intent
+     * @param refundee Address to receive the refunded rewards
+     */
+    function refundTo(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward,
+        address refundee
+    ) external {
+        if (msg.sender != reward.creator) {
+            revert NotCreatorCaller(msg.sender);
+        }
 
-        emit IntentRefunded(intentHash, reward.creator);
+        (bytes32 intentHash, , ) = getIntentHash(
+            destination,
+            routeHash,
+            reward
+        );
+
+        _refund(intentHash, destination, reward, refundee);
     }
 
     /**
@@ -834,6 +854,28 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
                 revert InvalidRecoverToken(token);
             }
         }
+    }
+
+    /**
+     * @notice Internal function to refund rewards to a specified address
+     * @param intentHash Hash of the intent to refund
+     * @param destination Destination chain ID for the intent
+     * @param reward Reward structure of the intent
+     * @param refundee Address to receive the refunded rewards
+     */
+    function _refund(
+        bytes32 intentHash,
+        uint64 destination,
+        Reward calldata reward,
+        address refundee
+    ) internal {
+        _validateRefund(intentHash, destination, reward);
+        rewardStatuses[intentHash] = Status.Refunded;
+
+        IVault vault = IVault(_getOrDeployVault(intentHash));
+        vault.refund(reward, refundee);
+
+        emit IntentRefunded(intentHash, refundee);
     }
 
     /**

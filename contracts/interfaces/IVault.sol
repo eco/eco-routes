@@ -41,10 +41,11 @@ interface IVault {
     function withdraw(Reward calldata reward, address claimant) external;
 
     /**
-     * @notice Refunds rewards back to the original creator
+     * @notice Refunds rewards to a specified address
      * @param reward The reward structure to refund
+     * @param refundee Address to receive the refunded rewards
      */
-    function refund(Reward calldata reward) external;
+    function refund(Reward calldata reward, address refundee) external;
 
     /**
      * @notice Recovers tokens that are not part of the reward to the creator
