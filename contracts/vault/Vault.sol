@@ -107,6 +107,8 @@ contract Vault is IVault {
 
     /**
      * @notice Refunds all vault contents back to the reward creator
+     * @dev Native tokens are only refunded if reward.nativeAmount > 0, preventing griefing attacks
+     *      on non-payable contract creators. All vault balance is sent when refunding native tokens.
      * @param reward The reward structure containing creator address and deadline
      */
     function refund(Reward calldata reward) external onlyPortal {
@@ -135,8 +137,9 @@ contract Vault is IVault {
 
     /**
      * @notice Recovers tokens that are not part of the reward to the creator
+     * @dev Pass address(0) to recover native ETH that was sent by mistake
      * @param refundee Address to receive the recovered tokens
-     * @param token Address of the token to recover (must not be a reward token)
+     * @param token Address of the token to recover (must not be a reward token), or address(0) for native ETH
      */
     function recover(address refundee, address token) external onlyPortal {
         if (token == address(0)) {

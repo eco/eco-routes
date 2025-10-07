@@ -512,11 +512,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Recover tokens that were sent to the intent vault by mistake
-     * @dev Must not be among the intent's rewards
+     * @dev Must not be among the intent's rewards. Native ETH can be recovered using address(0)
+     *      only if reward.nativeAmount == 0 (i.e., native tokens are not part of the reward).
      * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
-     * @param token Token address for handling incorrect vault transfers
+     * @param token Token address for handling incorrect vault transfers, or address(0) for native ETH
      */
     function recoverToken(
         uint64 destination,
