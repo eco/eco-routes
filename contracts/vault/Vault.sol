@@ -121,16 +121,15 @@ contract Vault is IVault {
                 token.safeTransfer(refundee, amount);
             }
         }
-
-        uint256 nativeAmount = reward.nativeAmount;
-
-        if (nativeAmount == 0) {
+        
+        if (reward.nativeAmount == 0) {
             return;
-        }
-
-        (bool success, ) = refundee.call{value: address(this).balance}("");
-        if (!success) {
-            revert NativeTransferFailed(refundee, address(this).balance);
+        } else {
+            uint256 nativeAmount = address(this).balance;
+            (bool success, ) = refundee.call{value: nativeAmount}("");
+            if (!success) {
+                revert NativeTransferFailed(refundee, nativeAmount);
+            }
         }
     }
 
