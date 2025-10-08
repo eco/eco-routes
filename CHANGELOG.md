@@ -1,3 +1,10 @@
+# [3.0.0-alpha.14](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.13...v3.0.0-alpha.14) (2025-09-25)
+
+
+### Bug Fixes
+
+* fixing the deploy for chain ids in csv file ([158e814](https://github.com/eco/eco-routes/commit/158e8146a4bf8571a71c4fe28c15d6cf6bb4318b))
+
 # [3.0.0-alpha.13](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.12...v3.0.0-alpha.13) (2025-09-25)
 
 
