@@ -1,238 +1,467 @@
-<div id="top"></div>
-<h1>Eco Routes</h1>
+# Eco Routes
 
-</div>
-
-- [Abstract](#Abstract)
-- [Components](#Components)
-- [Usage](#usage)
-  - [Installation](#installation)
-  - [Testing](#testing)
-  - [Deployment](#deployment)
-  - [End-to-End Testing](#end-to-end-testing)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
-
-## Abstract
-
-An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-L2 transactions.
-
-- [Intent Publishing](#intent-publishing)
-- [Intent Funding](#intent-funding)
-- [Intent Fulfillment](#intent-fulfillment)
-- [Intent Proving](#intent-proving)
-- [Reward Settlement](#intent-reward-settlement)
+An intents-driven, permissionless, trust-neutral protocol for facilitating the creation, incentivized execution, and proof of cross-chain transactions. This implementation supports multiple cross-chain messaging protocols including Hyperlane, LayerZero, Metalayer, and Polymer.
 
 We identify three main user profiles:
 
-- `Users`: Individuals who want to transact across different L2s.
-- `Solvers`: Individuals interested in performing transactions on behalf of others for a fee.
-- `Provers`: Individuals interested in proving on the source chain that an intent was fulfilled on the destination chain.
+- **Users**: Individuals who want to transact across different chains
+- **Solvers**: Individuals interested in performing transactions on behalf of others for a fee
+- **Provers**: Individuals interested in proving on the source chain that an intent was fulfilled on the destination chain
 
-### How it works
+## Table of Contents
 
-A `User` wants to initiate a cross-chain transaction by creating an intent. Put simply, an intent represents a `User`'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, the resources a `Solver` would need to perform those calls, and the rewards the `User` would be willing to pay a `Solver` to execute this call on their behalf, along with other metadata. A `User` can publish this directly on our system or otherwise disseminate that information to a `Solver`. A `User` also must fund this intent - escrow the reward tokens corresponding to the intent. A `Solver`, upon seeing this intent and determining based on the inputs and outputs that it is profitable and ensuring that the `User` has funded the intent, marshalls the required resources and fulfills the intent transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A `Prover` - perhaps the `Solver` themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent is marked as proven,the `Solver` can withdraw their reward.
+- [Architecture Overview](#architecture-overview)
+- [Setup & Installation](#setup--installation)
+- [Development Commands](#development-commands)
+- [Contracts](#contracts)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
 
-We also implement ERC-7683 and enable the creation and fulfillment of intents in our system via that interface.
+## Architecture Overview
 
-## Components
+### How it Works
 
-Within the following sections, the terms 'source chain' and 'destination chain' will be relative to any given intent. Each supported chain will have its own `Portal` and a set of `Prover`s.
+A **User** wants to initiate a cross-chain transaction by creating an intent. Put simply, an intent represents a **User**'s end goals on the destination chain. It contains the calls they'd want to make, those calls' corresponding addresses, the resources a **Solver** would need to perform those calls, and the rewards the **User** would be willing to pay a **Solver** to execute this call on their behalf, along with other metadata. A **User** can publish this directly on our system or otherwise disseminate that information to a **Solver**. A **User** also must fund this intent - escrow the reward tokens corresponding to the intent. A **Solver**, upon seeing this intent and determining based on the inputs and outputs that it is profitable and ensuring that the **User** has funded the intent, marshalls the required resources and fulfills the intent transaction on the destination chain that corresponds to the user's intent, storing the fulfilled intent's hash on the destination chain. A **Prover** - perhaps the **Solver** themselves or a service they subscribe to - sees this fulfillment transaction and performs a proof that the hash of the fulfilled transaction on the destination chain matches that of the intent on the source chain. After the intent is marked as proven, the **Solver** can withdraw their reward.
 
-### Cross-Chain Support
+### Core Components
 
-Eco Routes now supports both EVM chains and non-EVM chains like Solana through a dual-type system:
+#### **Portal Contract** (`contracts/Portal.sol`)
 
-1. **EVM Chains**: Use the `Intent.sol` types with Ethereum's native `address` format
-2. **Future**: Support for non-EVM chains will be added with `bytes32` identifiers for cross-chain compatibility
+The main intent protocol that manages the complete intent lifecycle:
 
-The protocol provides seamless conversion between these formats through the `IntentConverter` utility.
-For detailed information about cross-chain implementation, see [CROSS_CHAIN.md](./CROSS_CHAIN.md).
+- **Intent Creation**: Users define cross-chain operations with specific parameters
+- **Intent Funding**: Users escrow reward tokens in deterministic vaults to incentivize solver execution
+- **Intent Fulfillment**: Solvers execute the requested operations and provide proof
+- **Proof Validation**: Validates fulfillment proofs from destination chains via multiple prover types
+- **Reward Settlement**: Distributes rewards to successful solvers
 
-### Intent Publishing
+#### **Multiple Prover Types**
 
-The `Portal` contract provides functionality for publishing intents. Intents can be published in this way on any chain, regardless of where the input and output tokens live. An intent need not be published via the `Portal` at all - a user can disseminate intent information directly to solvers if they so choose.
+Specialized provers that integrate with different cross-chain messaging protocols:
 
-### Intent Funding
+- **HyperProver**: Uses Hyperlane for cross-chain message delivery
+- **LayerZeroProver**: Integrates with LayerZero protocol for cross-chain verification
+- **MetaProver**: Uses Metalayer for cross-chain proofs
+- **PolymerProver**: Uses Polymer for cross-chain proofs
+- **LocalProver**: Handles same-chain intents
 
-A funded intent effectively has its reward tokens stored in a `Vault`. An intent can be funded on the `Portal` contract during publishing, after the fact via permit2 signatures, or a user may directly transfer tokens to the `Vault`.
+### How They Work Together
 
-### Intent Fulfillment
+```mermaid
+sequenceDiagram
+    participant User
+    participant SourcePortal as Portal (Source Chain)
+    participant DestPortal as Portal (Destination Chain)
+    participant Solver
+    participant DestProver as Prover (Destination Chain)
+    participant Bridge as Cross-Chain Bridge
+    participant SourceProver as Prover (Source Chain)
 
-Intent fulfillment happens on the `Portal`, which lives on the destination chain. Solvers approve the `Portal` to pull the required tokens and then call upon the `Portal` to fulfill the intent. Fulfillment may also trigger some proving-related post-processing, for example relaying a message indicating fulfillment back to the source chain.
+    User->>SourcePortal: Publish Intent
+    User->>SourcePortal: Fund Intent
+    Solver->>DestPortal: Fulfill Intent
+    Solver->>DestPortal: Prove Intent
+    DestPortal->>DestProver: Send Proof Message
+    DestProver->>Bridge: Send Proof Message
+    Bridge->>SourceProver: Deliver Proof Message
+    SourceProver->>SourceProver: Handle & Create Proof Record
+    Solver->>SourcePortal: Withdraw Rewards
+    SourcePortal->>SourceProver: Verify Proof
+    SourcePortal->>Solver: Release Rewards
+```
 
-### Intent Proving
+1. **Intent Lifecycle**: Portal manages the full intent creation, funding, and fulfillment process
+2. **Cross-Chain Messaging**: Multiple prover types handle different bridge protocols for proof delivery
+3. **Security**: Each bridge's security module validates cross-chain messages
+4. **Vault System**: Deterministic vault creation for reward escrow and settlement
 
-Intent proving lives on `Prover` contracts, which are on the source chain. `Prover`s are effectively the source chain's oracle for whether an intent was fulfilled on the destination chain. A User chooses ahead of time which `Prover` their intent will query for fulfillment status. There are currently three types of provers: StorageProvers (`Prover.sol`), which use storage proofs to verify the fulfillment of an intent, HyperProvers(`HyperProver.sol`), which utilize a <a href="https://hyperlane.xyz/" target="_blank">Hyperlane</a> bridge in verifying intent fulfillment, and LayerZeroProvers(`LayerZeroProver.sol`), which utilize a <a href="https://layerzero.network/" target="_blank">LayerZero</a> bridge for cross-chain verification.
+### Key Features
 
-### Intent Reward Settlement
+- **ERC-7683 Compatibility**: Full implementation of the cross-chain order standard
+- **Multi-Chain Support**: Works with any EVM chain and supports cross-VM integration
+- **Multiple Bridge Support**: Hyperlane, LayerZero, Metalayer, and Polymer integration
+- **Solver Incentives**: Reward-based system encourages solver participation
+- **Deterministic Addresses**: CREATE2-based deployment for consistent cross-chain addresses
+- **ERC20 Integration**: Native permit-based gasless approvals and comprehensive token support
+- **Security**: Multi-layered validation through Portal and bridge-specific security modules
 
-Intent reward settlement occurs on the `Portal` on the destination chain. The withdrawal flow checks that an intent has been fulfilled on the `Prover` and then transfers reward tokens to the address provided by the solver. In the event that an intent was not fulfilled before the deadline, the user can trigger a refund of their reward tokens through the same flow. Other edge cases like overfunding an intent are also handled by the `Portal`.
+### ERC-7683 Integration
 
-### ERC-7683
+Eco Routes implements [ERC-7683](https://eips.ethereum.org/EIPS/eip-7683), the standard for cross-chain order protocols. This enables seamless interoperability with other ERC-7683 compatible systems and provides a standardized interface for cross-chain intent creation and fulfillment.
 
-Eco's implementation of ERC-7683 allows users to create and fulfill intents on Eco's ecosystem through ERC-7683's rails. `EcoERC7683OriginSettler` is the entrypoint to our system, while `EcoERC7683DestinationSettler` is where they are fulfilled. While `EcoERC7683OriginSettler` is a separate contract, `EcoERC7683DestinationSettler` is an abstract contract inherited by Eco's `Portal`.
+#### ERC-7683 Components
 
-## Contract Addresses
+**EcoERC7683OriginSettler**: The entry point to our system that implements the ERC-7683 standard for intent creation and funding on source chains.
 
-| **Mainnet Chains** | Portal                                     | StorageProver                              | HyperProver                                |
-| :----------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- |
-| Optimism           | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xAfD3029f582455ed0f06F22AcD916B27bc9b3a55 |
-| Base               | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xc8E7060Cd790A030164aCbE2Bd125A6c06C06f69 |
-| Mantle             | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | 0xE00c8FD8b50Fed6b652A5cC66c1d0C090fde037f | 0xaf034DD5eaeBB49Dc476402C6650e85Cc22a0f1a |
-| Arbitrum           | 0xa6B316239015DFceAC5bc9c19092A9B6f59ed905 | WIP                                        | 0xB1017F865c6306319C65266158979278F7f50118 |
+**EcoERC7683DestinationSettler**: An abstract contract inherited by our Portal that handles ERC-7683 compatible intent fulfillment on destination chains.
 
-| **Testnet Chains** | Portal                                     | StorageProver                              | HyperProver                                |
-| :----------------- | :----------------------------------------- | :----------------------------------------- | :----------------------------------------- |
-| OptimismSepolia    | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | 0x39cBD6e1C0E6a30dF33428a54Ac3940cF33B23D6 |
-| BaseSepolia        | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | 0x39cBD6e1C0E6a30dF33428a54Ac3940cF33B23D6 |
-| MantleSepolia      | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | 0xDcbe9977821a2565a153b5c3622a999F7BeDcdD9 | WIP                                        |
-| ArbitrumSepolia    | 0x734a3d5a8D691d9b911674E682De5f06517c79ec | WIP                                        | 0x6D6556B3a199cbbdcFE4E7Ba3FA6330D066A31a9 |
+#### Benefits of ERC-7683 Compatibility
 
-## Future Work
+- **Standardized Interface**: Compatible with any ERC-7683 tooling and infrastructure
+- **Ecosystem Interoperability**: Works seamlessly with other intent-based protocols
+- **Developer Experience**: Familiar patterns for developers already using ERC-7683
+- **Future-Proof**: Built on an evolving standard for cross-chain transactions
 
-Fully-operational end-to-end tests are currently under development. We are also working on services for streamlining and batching prover and solver functionalities. Additionally, we intend to build out support for additional chains.
+Users can create and fulfill intents through both our native interface and the standardized ERC-7683 interface, providing maximum flexibility and compatibility.
 
-## Usage
-
-To get a local copy up and running follow these simple steps.
+## Setup & Installation
 
 ### Prerequisites
 
-Running this project locally requires the following:
+Install the required toolchain components:
 
-- [NodeJS v18.20.3](https://nodejs.org/en/blog/release/v18.20.3) - using nvm (instructions below)
-- [Yarn v1.22.19](https://www.npmjs.com/package/yarn/v/1.22.19)
-
-It is recommended to use `nvm` to install Node. This is a Node version manager so your computer can easily handle multiple versions of Node:
-
-1. Install `nvm` using the following command in your terminal:
-
-```sh
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
-```
-
-2. If you're not on an M1 Mac, skip to step 3. For Node < v15, `nvm` will need to be run in a Rosetta terminal since those versions are not supported by the M1 chip for installation. To do that, in the terminal simply run either:
-
-If running bash:
-
-```sh
-arch -x86_64 bash
-```
-
-If running zsh:
-
-```sh
-arch -x86_64 zsh
-```
-
-More information about this can be found in [this thread](https://github.com/nvm-sh/nvm/issues/2350).
-
-3. Install our Node version using the following command:
-
-```sh
-nvm install v18.20.3
-```
-
-4. Once the installation is complete you can use it by running:
+#### 1. Install Node.js
 
 ```bash
+# Install nvm (Node Version Manager)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+
+# Install and use Node.js v18.20.3
+nvm install v18.20.3
 nvm use v18.20.3
 ```
 
-You should see it as the active Node version by running:
+#### 2. Install Package Manager
 
 ```bash
-nvm ls
+# Install Yarn v1.22.19
+npm install -g yarn@1.22.19
 ```
 
-### Installation
-
-1. Clone the repo
+#### 3. Install Development Tools
 
 ```bash
- git clone git@github.com:the-eco-foundation/eco-routes.git
+# Foundry (recommended)
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+
+# Alternative: Hardhat is also supported
+npm install -g hardhat
 ```
 
-2. Install and build using yarn
+### Project Setup
+
+#### 1. Clone and Setup
 
 ```bash
- yarn install
+git clone https://github.com/eco/eco-routes.git
+cd eco-routes
 ```
 
+#### 2. Install Dependencies
+
 ```bash
- yarn build
+yarn install
 ```
 
-### Lint
+#### 3. Build the Project
 
 ```bash
-yarn lint
+yarn build
+```
+
+## Development Commands
+
+### Building
+
+```bash
+# Build all contracts
+yarn build
+
+# Build with Foundry
+forge build
+
+# Build with Hardhat
+npx hardhat compile
 ```
 
 ### Testing
 
 ```bash
-# tests
-$ yarn  test
+# Run all tests
+yarn test
 
-# test coverage
-$ yarn coverage
+# Run Foundry tests
+forge test
+
+# Run with coverage
+yarn coverage
+
+# Run specific test file
+forge test --match-contract PortalTest
+
+# Run with test output
+forge test -vvv
 ```
 
-### Deployment
+### Code Quality
 
-Deploy using the deployment scripts in the `scripts` directory. The deployment system supports both EVM-only and cross-VM deployments (Solana, Cosmos, Sui, etc.).
-
-For production releases, use the semantic release system:
+Run these commands to ensure your code meets standards:
 
 ```bash
-yarn semantic:pub  # Local testing
-# Or trigger via GitHub Actions for production
+# Format code
+yarn format
+
+# Run linting
+yarn lint
+
+# Run all quality checks
+yarn lint && yarn test
 ```
 
-For direct deployment, use the shell scripts:
+### Development Workflow
 
 ```bash
-# Standard EVM deployment
+# Start local development environment
+# (Configure your local chain setup as needed)
+
+# Deploy contracts locally
+forge script script/Deploy.s.sol --broadcast --rpc-url localhost
+
+# Run tests against deployed contracts
+forge test --rpc-url localhost
+```
+
+## Contracts
+
+### Portal Contract
+
+#### Key Functions:
+
+- `publish` - Create and emit intent on source chain
+- `fund` - Fund an intent with reward tokens via deterministic vault
+- `fulfill` - Execute intent operations and mark as fulfilled
+- `prove` - Submit proof of fulfillment from destination chain
+- `refund` - Refund intent if not fulfilled within timeout
+- `withdraw` - Withdraw rewards after successful proof validation
+
+#### Key Components:
+
+- **IntentSource**: Manages intent creation, funding, and reward settlement on source chains
+- **Inbox**: Handles intent fulfillment on destination chains
+- **Vault**: Escrows reward tokens with deterministic addresses via CREATE2
+- **Executor**: Secure batch execution of intent calls with comprehensive safety checks
+
+#### Intent Lifecycle Details:
+
+**Intent Publishing**: Intents can be published on any chain, regardless of where input and output tokens live. An intent need not be published via the Portal at all - users can disseminate intent information directly to solvers if they choose.
+
+**Intent Funding**: A funded intent has its reward tokens stored in a deterministic Vault created via CREATE2. Intents can be funded during publishing, after the fact via permit2 signatures, or by directly transferring tokens to the Vault.
+
+**Intent Fulfillment**: Fulfillment happens on the destination chain Portal. Solvers approve the Portal to pull required tokens and call fulfill. Fulfillment may trigger proving-related post-processing, such as relaying a message back to the source chain.
+
+**Intent Reward Settlement**: Settlement occurs on the source chain. The withdrawal flow checks that an intent has been proven and transfers reward tokens to the solver. If an intent was not fulfilled before the deadline, users can trigger a refund. Edge cases like overfunding are handled gracefully.
+
+### Prover Contracts
+
+#### HyperProver Contract
+
+Uses Hyperlane protocol for cross-chain message delivery:
+
+#### Key Functions:
+
+- `prove` - Generate and send proof message via Hyperlane
+- `handle` - Process incoming Hyperlane messages and create proof records
+
+#### LayerZeroProver Contract
+
+Integrates with LayerZero protocol:
+
+#### Key Functions:
+
+- `prove` - Generate and send proof message via LayerZero
+- `lzReceive` - Process incoming LayerZero messages
+
+#### PolymerProver Contract
+
+Integrates with Polymer protocol:
+
+#### Key Functions:
+
+- `prove` - Emit IntentFulfilledFromSource events for Polymer to relay
+- `validate` - Validate and process proofs from Polymer's CrossL2ProverV2
+
+### Supporting Contracts
+
+#### Vault Contract
+
+Deterministic reward escrow system:
+
+- Accepts native and ERC20 token deposits
+- Releases rewards to proven solvers
+- Handles refunds for expired intents
+
+#### Executor Contract
+
+Secure call execution system:
+
+- Only Portal can execute calls
+- Prevents dangerous calls to EOAs
+- Batch execution with comprehensive error handling
+
+## Testing
+
+### Test Structure
+
+- **Unit Tests**: Located in `test/` directory organized by contract
+- **Integration Tests**: End-to-end workflow testing across multiple contracts
+- **Security Tests**: Attack vector and edge case testing
+
+### Test Categories
+
+#### Core Contract Tests:
+
+- `Portal.t.sol` - Main portal functionality
+- `Vault.t.sol` - Reward escrow and settlement
+- `Executor.t.sol` - Secure call execution
+- `Inbox.t.sol` - Intent fulfillment workflows
+- `IntentSource.t.sol` - Intent creation and funding
+
+#### Prover Tests:
+
+- `HyperProver.t.sol` - Hyperlane integration testing
+- `LayerZeroProver.t.sol` - LayerZero integration testing
+- `MetaProver.t.sol` - Metalayer integration testing
+- `PolymerProver.t.sol` - Polymer integration testing
+
+#### Security Tests:
+
+- `TokenSecurity.t.sol` - Token handling security
+- Various attack vector simulations
+
+### Test Patterns
+
+```solidity
+contract PortalTest is BaseTest {
+  function test_intentFulfillment() public {
+    // Setup intent and accounts
+    Intent memory intent = createTestIntent();
+
+    // Fund intent
+    portal.fund(intent, fundingAmount);
+
+    // Execute fulfillment
+    portal.fulfill(intent, solver);
+
+    // Verify success
+    assertTrue(portal.isFulfilled(intentHash));
+  }
+}
+```
+
+### Running Specific Tests
+
+```bash
+# Run portal-specific tests
+forge test --match-contract Portal
+
+# Run prover tests
+forge test --match-contract HyperProver
+
+# Run with specific pattern
+forge test --match-test test_fulfill
+```
+
+## Deployment
+
+### Deployment Commands
+
+#### Local Development:
+
+```bash
+# Deploy all contracts locally
+forge script script/Deploy.s.sol --broadcast --rpc-url localhost
+```
+
+#### Testnet Deployment:
+
+```bash
+# Deploy to specific testnet
+forge script script/Deploy.s.sol --broadcast --rpc-url $TESTNET_RPC_URL --verify
+```
+
+#### Mainnet Deployment:
+
+```bash
+# Deploy to mainnet
+forge script script/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
+
+# Or use deployment script
 ./scripts/deployRoutes.sh
+```
 
-# Cross-VM deployment with Solana support
+### Cross-VM Support
+
+For cross-VM deployments (e.g., integrating with Solana):
+
+```bash
+# Deploy with cross-VM prover support
 CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" ./scripts/deployRoutes.sh
 
-# Multiple cross-VM chains (Solana + Cosmos)
+# Multiple cross-VM chains
 CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
 ```
 
-See `.env.example` and `scripts/README.md` for comprehensive deployment documentation.
+### Environment Configuration
 
-### End-To-End Testing
+Create `.env` file based on `.env.example`:
 
-This section is under development. While the tests are not yet operational, the scripts are available in the `scripts` directory
+```bash
+# RPC endpoints
+MAINNET_RPC_URL=
+TESTNET_RPC_URL=
+
+# Private keys
+DEPLOYER_PRIVATE_KEY=
+
+# Etherscan API keys for verification
+ETHERSCAN_API_KEY=
+```
 
 ## Contributing
 
-1. Fork the Project
-2. Create your Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### Code Standards
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+1. **Formatting**: Use `yarn format`
+2. **Linting**: Pass `yarn lint` without warnings
+3. **Testing**: All tests must pass
+4. **Documentation**: Document public APIs and complex logic
+5. **Security**: Follow best practices and include security tests
 
-<!-- LICENSE -->
+### Pull Request Checklist
 
-## License
+- [ ] Code formatted (`yarn format`)
+- [ ] Linting passed (`yarn lint`)
+- [ ] All tests passing (`yarn test`)
+- [ ] Coverage maintained or improved
+- [ ] Documentation updated for API changes
+- [ ] Security implications considered
 
-[MIT License](./LICENSE)
+### Adding New Tests
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+Follow existing patterns in `test/`:
 
-<!-- CONTACT -->
+1. Create test files with descriptive names
+2. Use `BaseTest` for common test infrastructure
+3. Test both success and failure cases
+4. Include security and edge case testing
 
-## Contact
+### Feature Development
 
-Project Link: [https://github.com/eco/eco-routes](https://github.com/eco/eco-routes)
+1. **Contracts**: Add new contracts in appropriate directories
+2. **Cross-Chain Integration**: Follow established prover patterns
+3. **Testing**: Add comprehensive unit and integration tests
+4. **Documentation**: Update README and inline documentation
 
-<p align="right">(<a href="#top">back to top</a>)</p>
+---
+
+## Support
+
+For questions or issues:
+
+1. Check existing GitHub issues
+2. Review test files for usage examples
+3. Examine the contract documentation for technical details
+
+This project implements a production-ready cross-chain intent protocol with comprehensive testing, multi-bridge support, and security-conscious design patterns. The modular architecture allows for easy extension with new bridge protocols while maintaining security and efficiency.
