@@ -110,7 +110,10 @@ contract Vault is IVault {
      * @param reward The reward structure containing token information
      * @param refundee Address to receive the refunded rewards
      */
-    function refund(Reward calldata reward, address refundee) external onlyPortal {
+    function refund(
+        Reward calldata reward,
+        address refundee
+    ) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
