@@ -79,7 +79,7 @@ contract Deploy is Script {
         // Salts must be unique to protocol for createx deploys
         ctx.hyperProverSalt = vm.envBytes32("HYPER_PROVER_SALT");
         ctx.polymerProverSalt = vm.envBytes32("POLYMER_PROVER_SALT");
-        ctx.portalSalt = getContractSalt(ctx.salt, "PORTAL");
+        ctx.portalSalt = ctx.salt;
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.polymerL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_CONTRACT",

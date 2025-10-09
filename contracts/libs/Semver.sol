@@ -15,6 +15,6 @@ abstract contract Semver is ISemver {
      * @return Current version string in semantic format
      */
     function version() external pure returns (string memory) {
-        return "3.0";
+        return "3.2";
     }
 }
