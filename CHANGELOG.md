@@ -1,3 +1,198 @@
+# [3.3.0-alpha.1](https://github.com/eco/eco-routes/compare/v3.2.0...v3.3.0-alpha.1) (2025-10-09)
+
+
+### Bug Fixes
+
+* deploy new v3 with minor fixes ([5b2d64e](https://github.com/eco/eco-routes/commit/5b2d64e340b56bad2e195031d64049ec5e5b3f38))
+* update version ([63dd08d](https://github.com/eco/eco-routes/commit/63dd08d1505bf401a1a3981e916fea7f9b5eb1d0))
+
+
+### Features
+
+* add refundTo method to allow refund to arbitrary address ([ae6390e](https://github.com/eco/eco-routes/commit/ae6390e09177aa2c2b9a96b2a07bc9ab870b9d33))
+* add Universal Intent Source for Cross-Chain Compatibility ([#237](https://github.com/eco/eco-routes/issues/237)) ([452f4ba](https://github.com/eco/eco-routes/commit/452f4ba2572dd144acbb36991718cd771a2bd95f)), closes [#287](https://github.com/eco/eco-routes/issues/287) [#299](https://github.com/eco/eco-routes/issues/299) [#300](https://github.com/eco/eco-routes/issues/300) [#298](https://github.com/eco/eco-routes/issues/298) [#302](https://github.com/eco/eco-routes/issues/302) [#303](https://github.com/eco/eco-routes/issues/303) [#304](https://github.com/eco/eco-routes/issues/304) [#311](https://github.com/eco/eco-routes/issues/311) [#306](https://github.com/eco/eco-routes/issues/306) [#307](https://github.com/eco/eco-routes/issues/307) [#308](https://github.com/eco/eco-routes/issues/308) [#313](https://github.com/eco/eco-routes/issues/313) [#305](https://github.com/eco/eco-routes/issues/305) [#314](https://github.com/eco/eco-routes/issues/314) [#312](https://github.com/eco/eco-routes/issues/312)
+
+
+### BREAKING CHANGES
+
+* API changes require destination parameter for withdrawRewards, refund, fund, fundFor, batchWithdraw. Events now emit bytes32 instead of address types.
+
+* refactor: merge BaseSource into EvmSource and update inheritance hierarchy
+
+- Moved all BaseSource functionality into EvmSource
+- Made UniversalSource inherit from EvmSource instead of BaseSource
+- Deleted BaseSource.sol and IBaseSource.sol files
+- Updated IntentSource to only inherit from UniversalSource
+- Added error and event declarations to IIntentSource and IUniversalIntentSource interfaces
+- Updated test imports to use interface types instead of concrete types
+- All tests passing (160 forge tests, 128 npm tests)
+
+* feat: refactor intent source contracts for improved cross-chain functionality and code organization
+
+* feat: enhance decoding of OnchainCrosschainOrderData and GaslessCrosschainOrderData for improved clarity and structure
+
+* refactor: migrate from separate IntentSource/Inbox to unified Portal contract
+
+- Make IntentSource, UniversalSource, and Inbox abstract contracts
+- Update Portal to inherit from both Inbox and UniversalSource
+- Consolidate deployment to single Portal contract
+- Update all tests to use Portal instead of separate contracts
+- Update deployment scripts and configuration files
+- Update documentation and contract addresses
+- Maintain backward compatibility through interface segregation
+
+This architectural change simplifies the contract system by providing a single
+entry point for all intent operations while maintaining the same functionality.
+
+* refactor: rename intent-related events for consistency and clarity
+
+* feat: update intent funding functions to return vault address and enhance event signaling
+
+* refactor: rename _localProver to _prover throughout codebase
+
+- Updated all function parameters from _localProver to _prover
+- Updated variable names from localProver to prover
+- Updated interface definitions (IInbox.sol)
+- Updated contract implementations (Inbox.sol, Eco7683DestinationSettler.sol)
+- Updated test contracts (TestDestinationSettler.sol, TestDestinationSettlerComplete.sol)
+- Updated documentation and comments
+- Preserved underscore prefix convention (_localProver -> _prover)
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* feat: enable all skipped tests and fix test suite
+
+- Enable all 13 previously skipped TypeScript tests
+- Fix failing tests by adding proper intent setup and fulfillment
+- Update AddressConverter to validate Ethereum addresses (top 12 bytes must be zero)
+- Fix test infrastructure issues including gas limit extraction and balance forwarding
+- Remove untracked debug test files
+- Update tests to handle new validation requirements
+
+All 304 tests now passing (144 TypeScript + 160 Solidity)
+
+* refactor: remove underscore prefixes from function parameters
+
+Remove underscore prefixes from all function parameters in production contracts
+to follow consistent naming conventions. Internal function names retain
+underscores as per convention.
+
+Changes include:
+- BaseProver: challengeIntentProof parameter
+- HyperProver: all constructor, function, and error parameters
+- LocalProver: constructor and function parameters
+- MetaProver: all parameters including errors
+- MessageBridgeProver: all parameters
+- IMessageBridgeProver: interface parameters, errors, and events
+- Fix unused variable warnings in UniversalSource tests
+
+* chore: remove development artifacts and unused code
+
+- Remove development documentation (EXAMPLE_TYPE_MISMATCH.md, FAILING_TESTS_ANALYSIS.md)
+- Remove one-time migration script (update-test-signatures.js)
+- Remove test output file
+- Delete unused TypeScript struct definitions that don't match current Solidity
+- Clean up unused imports in interfaces
+- Fix variable naming convention (EOA -> eoa)
+- Add comment to suppress empty interface warning for IPortal
+
+* fix: resolve all linting warnings and compilation errors
+
+* Restore proof challenge logic in withdraw function
+
+- Add automatic challenge when proof destination chain doesn't match intent destination
+- Modify challengeIntentProof signature to accept individual parameters
+- Add IntentProofChallenged event
+- Update LocalProver challengeIntentProof to be no-op instead of reverting
+- Fix tests to use correct chain IDs for same-chain testing
+
+* feat: add LayerZero prover implementation
+
+  - Add LayerZeroProver contract extending MessageBridgeProver
+  - Implement ILayerZeroReceiver interface for cross-chain messaging
+  - Add LayerZero V2 endpoint and receiver interfaces
+  - Add comprehensive test coverage (Solidity and TypeScript)
+  - Update deployment scripts to support LayerZero configuration
+  - Add LAYERZERO_ENDPOINT to environment variables
+  - Update documentation to include LayerZero support
+  - Update build configuration for LayerZeroProver artifacts
+
+* feat: add universal intent sources with route as bytes encoding for cross-chain compatibility
+
+Key features:
+- Route as bytes encoding enables intent support for any blockchain type (EVM, Solana, etc.)
+- Add proof challenge logic to UniversalSource.withdraw() to validate destination chain
+- Simplify _fundIntentFor functions in both IntentSource and UniversalSource
+- Update challengeIntentProof interface to use bytes32 rewardHash instead of Reward struct
+- Fix TestProver.addProvenIntent to take destination chain parameter instead of using block.chainid
+- Update all test files to use new 3-parameter addProvenIntent signature
+- Remove problematic _revertFunding function and complex balance tracking logic
+- Ensure consistent proof validation across EVM and Universal intent sources
+
+* fix: resolve linting warnings and clean up unused imports
+
+- Remove unused imports from interfaces and prover contracts
+- Fix empty block warnings in LocalProver with proper solhint disable comments
+- Add solhint disable for LayerZero send result check
+- Update MockLayerZeroEndpoint with proper imports and error handling
+- Clean up test contract solhint warnings
+
+* feat: add LayerZero challenge tests for comprehensive proof validation
+
+- Added testChallengeIntentProofWithWrongChain() for testing challenge mechanism with mismatched destination chains
+- Added testChallengeIntentProofWithCorrectChain() for testing no-op behavior with valid proofs
+- Added testChallengeIntentProofLayerZeroSpecific() for LayerZero-specific edge cases
+- All tests validate LayerZero prover security and challenge functionality
+- Ensures proof integrity across cross-chain intent validation
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* feat: enhance Inbox.spec.ts with additional test coverage for ETH transfers and ERC165 support
+
+- Add support for TestUSDT contract with ERC165 interface
+- Add test for ETH transfer to EOA addresses
+- Add test for contract calls with ERC165 support
+- Improve test coverage for edge cases with different token types
+- Ensure comprehensive validation of intent fulfillment scenarios
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* fix: resolve compilation errors in ERC7683 integration and test files
+
+- Fix Eco7683OriginSettler constructor call with correct 3 parameters
+- Replace abstract Eco7683DestinationSettler with concrete TestDestinationSettlerComplete
+- Fix OrderData struct constructor with all 5 required fields
+- Remove invalid openDeadline references from OnchainCrossChainOrder
+- Fix type conversions between legacy Intent and Universal types
+- Fix prover test method calls to use available test implementations
+- Comment out non-existent methods in security tests
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+* feat: implement challenge intent proof tests for cross-chain validation and API compatibility
+
+* refactor(IntentSource): deleted UniversalIntent and source
+
+* refactor: clean up code formatting and remove unnecessary whitespace in test files
+
+* refactor: restructure ERC7683 contracts and implement universal intent format
+
+- Reorganize ERC7683 contracts into dedicated directory structure
+- Convert OriginSettler to abstract base class with universal intent support
+- Implement vault proxy pattern for cross-chain deposits
+- Remove deprecated EcoERC7683 types in favor of integrated ERC7683 types
+- Update IntentSource to extend OriginSettler for ERC7683 compatibility
+- Add TRON CREATE2 prefix support for multi-chain compatibility
+- Enhance test coverage for ERC7683 integration
+
 # [3.0.0-alpha.14](https://github.com/eco/eco-routes/compare/v3.0.0-alpha.13...v3.0.0-alpha.14) (2025-09-25)
 
 
