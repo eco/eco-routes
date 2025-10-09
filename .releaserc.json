@@ -6,8 +6,7 @@
     },
     {
       "name": "alpha",
-      "channel": "alpha",
-      "prerelease": true
+      "channel": "alpha"
     }
   ],
   "repositoryUrl": "https://github.com/eco/eco-routes.git",
