@@ -1,3 +1,11 @@
+## [3.2.4](https://github.com/eco/eco-routes/compare/v3.2.3...v3.2.4) (2025-10-09)
+
+
+### Bug Fixes
+
+* Change EVM Version and Optimizer config ([#346](https://github.com/eco/eco-routes/issues/346)) ([24f9ee2](https://github.com/eco/eco-routes/commit/24f9ee2b789a8b177bd34fea892c2e2561fdcf85))
+* deploy 3.2.x for lifi ([8f856c1](https://github.com/eco/eco-routes/commit/8f856c16aa4028ed467f7b86cb0bd21a8e72c91f))
+
 # [3.3.0-alpha.1](https://github.com/eco/eco-routes/compare/v3.2.0...v3.3.0-alpha.1) (2025-10-09)
 
 

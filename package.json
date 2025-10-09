@@ -1,6 +1,6 @@
 {
   "name": "@eco-foundation/routes",
-  "version": "3.2.3",
+  "version": "3.2.4",
   "description": "The Eco Routes Protocol is a decentralized intent based system that allows users to submit their intent to the network and have it fulfilled by a solver on the destination rollup of their choise.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
