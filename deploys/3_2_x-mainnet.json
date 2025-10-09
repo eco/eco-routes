@@ -12,11 +12,11 @@
   "solana": {
     "production": {
       "portal": "0xaeef5642eafe4dc050f1628cb1cde6a2e8fb5a9433ac4cab0acd8b056e15b894",
-      "hyperProver": "0x92c194cd8137280b86994145bcf11a4d66f9f989cac031793e8ad71170a503ac"
+      "hyperProver": "0xa412dbc15610ba57a3e42b4c0bde6e24336c98298f1364735983908650331193"
     },
     "staging": {
       "portal": "0x6c22d520dc158178121b21545e0933f7185bc741f1cd00db6119fe0783cc8712",
-      "hyperProver": "0xa3f83922f3081c229a9f7ff240f29f34a3548e8c7f05b6202d0d7df3de781788"
+      "hyperProver": "0xf1375d934a244e4360e6d7f49a7530d9b646c3343a8b7f8f745279cc3e52abf3"
     }
   }
 }
