@@ -66,11 +66,10 @@ class TronDeployer {
   }
 
   private parseProvers(proversString?: string): string[] {
-    if (!proversString) return []
-    return proversString
+    return proversString ? proversString
       .split(',')
       .map((p) => p.trim())
-      .filter((p) => p.length > 0)
+      .filter((p) => p.length > 0) : []
   }
 
   async init(): Promise<void> {
