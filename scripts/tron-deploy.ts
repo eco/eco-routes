@@ -395,8 +395,7 @@ class TronDeployer {
 
 // Main execution
 async function main(): Promise<void> {
-  const deployer = new TronDeployer()
-  await deployer.run()
+  return new TronDeployer().run()
 }
 
 if (require.main === module) {
