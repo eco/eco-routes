@@ -49,16 +49,16 @@ class TronDeployer {
     })
 
     this.deploymentContext = {
-      existingPortal: process.env.PORTAL_CONTRACT,
-      layerZeroEndpoint: process.env.LAYERZERO_ENDPOINT,
-      layerZeroDelegate: process.env.LAYERZERO_DELEGATE,
-      polymerCrossL2ProverV2: process.env.POLYMER_CROSS_L2_PROVER_V2,
+      existingPortal: process.env.TRON_PORTAL_CONTRACT,
+      layerZeroEndpoint: process.env.TRON_LAYERZERO_ENDPOINT,
+      layerZeroDelegate: process.env.TRON_LAYERZERO_DELEGATE,
+      polymerCrossL2ProverV2: process.env.TRON_POLYMER_CROSS_L2_PROVER_V2,
       deployFilePath: process.env.DEPLOY_FILE || 'out/deploy.csv',
       layerZeroCrossVmProvers: this.parseProvers(
-        process.env.LAYERZERO_CROSS_VM_PROVERS,
+        process.env.TRON_LAYERZERO_CROSS_VM_PROVERS,
       ),
       polymerCrossVmProvers: this.parseProvers(
-        process.env.POLYMER_CROSS_VM_PROVERS,
+        process.env.TRON_POLYMER_CROSS_VM_PROVERS,
       ),
       deployer: '',
       contracts: {},
@@ -120,35 +120,24 @@ class TronDeployer {
   }
 
   private loadContract(contractName: string): ContractArtifact {
-    let artifactPath: string
-
-    // Special path handling for prover contracts
-    if (contractName.includes('Prover')) {
-      artifactPath = path.join(
-        __dirname,
-        '..',
-        'artifacts',
-        'contracts',
-        'prover',
-        `${contractName}.sol`,
-        `${contractName}.json`,
-      )
-    } else {
-      artifactPath = path.join(
-        __dirname,
-        '..',
-        'artifacts',
-        'contracts',
-        `${contractName}.sol`,
-        `${contractName}.json`,
-      )
-    }
+    const artifactPath = path.join(
+      __dirname,
+      '..',
+      'out',
+      `${contractName}.sol`,
+      `${contractName}.json`,
+    )
 
     if (!fs.existsSync(artifactPath)) {
       throw new Error(`Contract artifact not found: ${artifactPath}`)
     }
 
     const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'))
+
+    // Extract bytecode object if needed
+    if (artifact.bytecode && typeof artifact.bytecode === 'object') {
+      artifact.bytecode = artifact.bytecode.object
+    }
 
     // Helper function to check if a parameter has complex types that TronWeb can't handle
     const hasComplexTypes = (inputs: any[]): boolean => {
@@ -193,19 +182,50 @@ class TronDeployer {
     contractName: string,
   ): Promise<string> {
     console.log(`Deploying ${contractName}...`)
+    console.log(`ABI items: ${contractArtifact.abi.length}`)
+    console.log(`Bytecode length: ${contractArtifact.bytecode.length}`)
+    console.log(`Constructor args: ${JSON.stringify(constructorArgs)}`)
 
     try {
-      const contract = await this.tronWeb.contract().new({
+      // Use transaction builder directly to avoid ABI issues
+      const tx = await this.tronWeb.transactionBuilder.createSmartContract({
         abi: contractArtifact.abi,
         bytecode: contractArtifact.bytecode,
-        feeLimit: 1000000000, // 1000 TRX
+        feeLimit: 5000000000, // 5000 TRX
         callValue: 0,
         userFeePercentage: 100,
         parameters: constructorArgs,
       })
 
+      const signedTx = await this.tronWeb.trx.sign(tx)
+      const broadcast = await this.tronWeb.trx.sendRawTransaction(signedTx)
+
+      if (!broadcast.result) {
+        throw new Error(`Broadcast failed: ${JSON.stringify(broadcast)}`)
+      }
+
+      console.log(`Transaction ID: ${broadcast.txid}`)
+
+      // Wait for confirmation
+      let receipt: any = null
+      for (let i = 0; i < 30; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+        try {
+          receipt = await this.tronWeb.trx.getTransactionInfo(broadcast.txid)
+          if (receipt && receipt.id) {
+            break
+          }
+        } catch (e) {
+          // Transaction not yet confirmed
+        }
+      }
+
+      if (!receipt || !receipt.contract_address) {
+        throw new Error('Contract deployment failed or timed out')
+      }
+
       const deployedAddress = this.tronWeb.address.fromHex(
-        contract.address as string,
+        receipt.contract_address,
       )
       console.log(`${contractName} deployed at: ${deployedAddress}`)
 
@@ -259,10 +279,14 @@ class TronDeployer {
   private async deployPolymerProver(): Promise<string> {
     const polymerContract = this.loadContract('PolymerProver')
 
+    // Default max log data size (128 KB)
+    const maxLogDataSize = 131072
+
     // Constructor args
     const constructorArgs = [
       this.deploymentContext.contracts.portal!,
       this.deploymentContext.polymerCrossL2ProverV2!,
+      maxLogDataSize,
       this.deploymentContext.polymerCrossVmProvers,
     ]
 
@@ -346,14 +370,12 @@ class TronDeployer {
       console.log('Starting TRON deployment process...')
 
       const hasExistingPortal = !!this.deploymentContext.existingPortal
-      const hasLayerZero = !!this.deploymentContext.layerZeroEndpoint
-      const hasPolymer = !!this.deploymentContext.polymerCrossL2ProverV2
-      const needsPortal = !hasExistingPortal && (hasLayerZero || hasPolymer)
+      const hasPolymerConfig = !!this.deploymentContext.polymerCrossL2ProverV2
 
-      // Deploy Portal
-      if (needsPortal) {
+      // Deploy Portal if not existing
+      if (!hasExistingPortal) {
         await this.deployPortal()
-      } else if (hasExistingPortal) {
+      } else {
         this.deploymentContext.contracts.portal =
           this.deploymentContext.existingPortal
         console.log(
@@ -362,13 +384,11 @@ class TronDeployer {
         )
       }
 
-      // Deploy provers based on configuration
-      if (hasLayerZero) {
-        await this.deployLayerZeroProver()
-      }
-
-      if (hasPolymer) {
+      // Deploy PolymerProver if configuration exists
+      if (hasPolymerConfig) {
         await this.deployPolymerProver()
+      } else {
+        console.log('Skipping PolymerProver (no configuration provided)')
       }
 
       await this.writeDeploymentResults()
