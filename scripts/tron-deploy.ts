@@ -107,15 +107,17 @@ class TronDeployer {
     ) {
       // Heuristic for mainnet
       return 'mainnet'
-    } else if (
+    }
+    
+    if (
       nodeInfo.configNodeInfo?.p2pVersion?.includes('shasta') ||
       nodeInfo.beginSyncNum < 1000000
     ) {
       // Heuristic for testnet
       return 'shasta'
-    } else {
-      return 'nile'
     }
+
+    return 'nile'
   }
 
   private loadContract(contractName: string): ContractArtifact {
