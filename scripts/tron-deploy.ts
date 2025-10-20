@@ -325,29 +325,20 @@ class TronDeployer {
       console.log('Could not detect network, using Nile chain ID')
     }
 
-    for (const [contractType, address] of Object.entries(
-      this.deploymentContext.contracts,
-    )) {
-      if (address) {
-        let contractPath: string
+    const results = Object.entries(this.deploymentContext.contracts)
+      .filter(([, address]) => Boolean(address))
+      .map(([contractType, address]) => {
         switch (contractType) {
           case 'portal':
-            contractPath = 'contracts/Portal.sol:Portal'
-            break
+            return `${chainId},${address},contracts/Portal.sol:Portal,0x`
           case 'layerZeroProver':
-            contractPath =
-              'contracts/prover/LayerZeroProver.sol:LayerZeroProver'
-            break
+            return `${chainId},${address},contracts/prover/LayerZeroProver.sol:LayerZeroProver,0x`
           case 'polymerProver':
-            contractPath = 'contracts/prover/PolymerProver.sol:PolymerProver'
-            break
+            return `${chainId},${address},contracts/prover/PolymerProver.sol:PolymerProver,0x`
           default:
-            continue
+            return `${chainId},${address},,0x`
         }
-
-        results.push(`${chainId},${address},${contractPath},0x`)
-      }
-    }
+      })
 
     // Ensure output directory exists
     const outputDir = path.dirname(this.deploymentContext.deployFilePath)
