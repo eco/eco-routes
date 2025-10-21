@@ -1,3 +1,10 @@
+## [3.2.6](https://github.com/eco/eco-routes/compare/v3.2.5...v3.2.6) (2025-10-21)
+
+
+### Bug Fixes
+
+* trigger deployment for 3.2.6 ([297a517](https://github.com/eco/eco-routes/commit/297a5177e83feead021768aca6cde36f8af3053c))
+
 ## [3.2.4](https://github.com/eco/eco-routes/compare/v3.2.3...v3.2.4) (2025-10-09)
 
 
