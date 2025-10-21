@@ -579,7 +579,6 @@ contract InboxTest is BaseTest {
         bytes32 intentHash = keccak256(
             abi.encodePacked(intent.destination, routeHash, rewardHash)
         );
-        
         vm.prank(solver);
         portal.fulfill(
             intentHash,
@@ -608,7 +607,6 @@ contract InboxTest is BaseTest {
 
         // Verify portal has not retained native funds sent during prove
         assertEq(address(portal).balance, portalInitialBalance);
-        
         // Verify the prover received the funds and handled refund correctly
         // The solver should have been refunded by the prover's prove method
         assertEq(solver.balance, 0); // All funds were sent to prover initially

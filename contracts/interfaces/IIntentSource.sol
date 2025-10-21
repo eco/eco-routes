@@ -62,6 +62,9 @@ interface IIntentSource {
     /// @notice Thrown when claimant address is address zero
     error InvalidClaimant();
 
+    /// @notice Thrown when caller is not the reward creator
+    error NotCreatorCaller(address caller);
+
     /**
      * @notice Signals the creation of a new cross-chain intent
      * @param intentHash Unique identifier of the intent
@@ -363,6 +366,20 @@ interface IIntentSource {
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
+    ) external;
+
+    /**
+     * @notice Returns rewards to a specified address (only callable by reward creator)
+     * @param destination Destination chain ID for the intent
+     * @param routeHash The hash of the intent's route component
+     * @param reward The reward specification
+     * @param refundee Address to receive the refunded rewards
+     */
+    function refundTo(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward,
+        address refundee
     ) external;
 
     /**
