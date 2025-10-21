@@ -66,10 +66,12 @@ class TronDeployer {
   }
 
   private parseProvers(proversString?: string): string[] {
-    return proversString ? proversString
-      .split(',')
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0) : []
+    return proversString
+      ? proversString
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0)
+      : []
   }
 
   async init(): Promise<void> {
@@ -108,7 +110,7 @@ class TronDeployer {
       // Heuristic for mainnet
       return 'mainnet'
     }
-    
+
     if (
       nodeInfo.configNodeInfo?.p2pVersion?.includes('shasta') ||
       nodeInfo.beginSyncNum < 1000000
@@ -301,8 +303,6 @@ class TronDeployer {
   }
 
   private async writeDeploymentResults(): Promise<void> {
-    const results: string[] = []
-
     // Get network info and map to chain ID
     let chainId = TRON_SHASTA_CHAIN_ID // Default
     try {
