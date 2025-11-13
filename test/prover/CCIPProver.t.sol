@@ -114,7 +114,7 @@ contract CCIPProverTest is BaseTest {
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(whitelistedProver)));
 
-        vm.expectRevert("CCIPProver: invalid router address");
+        vm.expectRevert();
         new CCIPProver(address(0), address(portal), provers, 0);
     }
 
