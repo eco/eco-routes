@@ -4,3 +4,4 @@ forge-std/=lib/forge-std/src/
 @hyperlane-xyz/core/=node_modules/@hyperlane-xyz/core/
 @eth-optimism/contracts-bedrock/=node_modules/@eth-optimism/contracts-bedrock/
 @metalayer/contracts/=node_modules/@metalayer/contracts/
+@chainlink/contracts-ccip/=node_modules/@chainlink/contracts-ccip/
