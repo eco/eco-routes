@@ -4,9 +4,15 @@ pragma solidity ^0.8.20;
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
 import {Semver} from "../libs/Semver.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
-import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
-import {IAny2EVMMessageReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
-import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
+import {
+    IRouterClient
+} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IRouterClient.sol";
+import {
+    IAny2EVMMessageReceiver
+} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
+import {
+    Client
+} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 
 /**
  * @title CCIPProver
@@ -55,7 +61,9 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      * @dev Only callable by the CCIP Router. Implements IAny2EVMMessageReceiver
      * @param message The CCIP message containing sender, data, and metadata
      */
-    function ccipReceive(Client.Any2EVMMessage calldata message) external only(ROUTER) {
+    function ccipReceive(
+        Client.Any2EVMMessage calldata message
+    ) external only(ROUTER) {
         // Decode sender from bytes to address, then convert to bytes32
         address senderAddress = abi.decode(message.sender, (address));
         bytes32 sender = senderAddress.toBytes32();
@@ -127,10 +135,15 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      * @param data The encoded data containing source chain prover and gas configuration
      * @return unpacked The unpacked data struct
      */
-    function _unpackData(bytes calldata data) internal pure returns (UnpackedData memory unpacked) {
+    function _unpackData(
+        bytes calldata data
+    ) internal pure returns (UnpackedData memory unpacked) {
         // Decode: (sourceChainProver, gasLimit, allowOutOfOrderExecution)
-        (unpacked.sourceChainProver, unpacked.gasLimit, unpacked.allowOutOfOrderExecution) =
-            abi.decode(data, (bytes32, uint256, bool));
+        (
+            unpacked.sourceChainProver,
+            unpacked.gasLimit,
+            unpacked.allowOutOfOrderExecution
+        ) = abi.decode(data, (bytes32, uint256, bool));
     }
 
     /**
@@ -158,7 +171,10 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
             tokenAmounts: new Client.EVMTokenAmount[](0), // No token transfers
             feeToken: address(0), // Pay fees in native token
             extraArgs: Client._argsToBytes(
-                Client.EVMExtraArgsV2({gasLimit: gasLimit, allowOutOfOrderExecution: allowOutOfOrderExecution})
+                Client.EVMExtraArgsV2({
+                    gasLimit: gasLimit,
+                    allowOutOfOrderExecution: allowOutOfOrderExecution
+                })
             )
         });
     }
