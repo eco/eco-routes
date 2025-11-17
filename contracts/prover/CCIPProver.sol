@@ -57,6 +57,20 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     }
 
     /**
+     * @notice Checks if this contract supports a given interface
+     * @dev Overrides to include IAny2EVMMessageReceiver for CCIP compatibility
+     * @param interfaceId Interface identifier to check
+     * @return True if the interface is supported
+     */
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override returns (bool) {
+        return
+            interfaceId == type(IAny2EVMMessageReceiver).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
+    /**
      * @notice Receives cross-chain messages from CCIP
      * @dev Only callable by the CCIP Router. Implements IAny2EVMMessageReceiver
      * @param message The CCIP message containing sender, data, and metadata

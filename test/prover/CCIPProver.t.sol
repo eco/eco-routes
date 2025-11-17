@@ -122,6 +122,10 @@ contract CCIPProverTest is BaseTest {
         assertTrue(ccipProver.supportsInterface(type(IProver).interfaceId));
     }
 
+    function testImplementsIAny2EVMMessageReceiverInterface() public view {
+        assertTrue(ccipProver.supportsInterface(type(IAny2EVMMessageReceiver).interfaceId));
+    }
+
     function testVersioning() public view {
         assertEq(ccipProver.version(), "2.6");
     }
