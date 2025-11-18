@@ -156,7 +156,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
             unpacked.sourceChainProver,
             unpacked.gasLimit,
             unpacked.allowOutOfOrderExecution
-        ) = abi.decode(data, (bytes32, uint256, bool));
+        ) = abi.decode(data, (address, uint256, bool));
     }
 
     /**
@@ -169,17 +169,14 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      * @return ccipMessage The formatted CCIP message
      */
     function _formatCCIPMessage(
-        bytes32 sourceChainProver,
+        address sourceChainProver,
         bytes calldata encodedProofs,
         uint256 gasLimit,
         bool allowOutOfOrderExecution
     ) internal pure returns (Client.EVM2AnyMessage memory ccipMessage) {
-        // Convert bytes32 prover address back to address and encode as bytes
-        address receiverAddress = sourceChainProver.toAddress();
-
         // Construct the CCIP message
         ccipMessage = Client.EVM2AnyMessage({
-            receiver: abi.encode(receiverAddress),
+            receiver: abi.encode(sourceChainProver),
             data: encodedProofs,
             tokenAmounts: new Client.EVMTokenAmount[](0), // No token transfers
             feeToken: address(0), // Pay fees in native token
