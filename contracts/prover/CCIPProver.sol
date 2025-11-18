@@ -34,7 +34,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /// @param gasLimit The gas limit for execution on the destination chain
     /// @param allowOutOfOrderExecution Whether to allow out-of-order execution (CCIP feature)
     struct UnpackedData {
-        bytes32 sourceChainProver;
+        address sourceChainProver;
         uint256 gasLimit;
         bool allowOutOfOrderExecution;
     }
