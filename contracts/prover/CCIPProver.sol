@@ -79,11 +79,10 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         Client.Any2EVMMessage calldata message
     ) external only(ROUTER) {
         // Decode sender from bytes to address, then convert to bytes32
-        address senderAddress = abi.decode(message.sender, (address));
-        bytes32 sender = senderAddress.toBytes32();
+        address sender = abi.decode(message.sender, (address));
 
         // Handle the cross-chain message using base contract functionality
-        _handleCrossChainMessage(sender, message.data);
+        _handleCrossChainMessage(sender.toBytes32(), message.data);
     }
 
     /**
