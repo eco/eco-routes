@@ -82,10 +82,10 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes[] calldata /* operationsData */
     ) external payable only(address(ROUTER)) {
         // Verify origin and sender are valid
-        if (origin == 0) revert ZeroDomainID();
+        if (origin == 0) revert MessageOriginChainDomainIDCannotBeZero();
 
         // Validate sender is not zero
-        if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
+        if (sender == bytes32(0)) revert MessageSenderCannotBeZeroAddress();
 
         _handleCrossChainMessage(sender, message);
     }

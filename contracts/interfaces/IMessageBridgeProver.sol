@@ -39,14 +39,17 @@ interface IMessageBridgeProver is IProver {
     error RouterCannotBeZeroAddress();
 
     /**
-     * @notice Domain ID cannot be zero
+     * @notice Message origin chain domain ID cannot be zero
+     * @dev DomainID is the generic term Eco uses across all MessageBridgeProver implementations.
+     *      Different protocols use different terminology for this identifier.
+     *      Refer to each protocol's documentation for their specific naming conventions.
      */
-    error ZeroDomainID();
+    error MessageOriginChainDomainIDCannotBeZero();
 
     /**
-     * @notice Sender address cannot be zero
+     * @notice Message sender address cannot be zero
      */
-    error SenderCannotBeZeroAddress();
+    error MessageSenderCannotBeZeroAddress();
 
     /**
      * @notice message is invalid

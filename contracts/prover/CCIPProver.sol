@@ -78,8 +78,16 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     function ccipReceive(
         Client.Any2EVMMessage calldata message
     ) external only(ROUTER) {
+        // Verify source chain selector is not zero
+        if (message.sourceChainSelector == 0) {
+            revert MessageOriginChainDomainIDCannotBeZero();
+        }
+
         // Decode sender from bytes to address, then convert to bytes32
         address sender = abi.decode(message.sender, (address));
+
+        // Verify sender address is not zero
+        if (sender == address(0)) revert MessageSenderCannotBeZeroAddress();
 
         // Handle the cross-chain message using base contract functionality
         _handleCrossChainMessage(sender.toBytes32(), message.data);

@@ -74,10 +74,10 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         bytes calldata messageBody
     ) public payable only(MAILBOX) {
         // Verify origin and sender are valid
-        if (origin == 0) revert ZeroDomainID();
+        if (origin == 0) revert MessageOriginChainDomainIDCannotBeZero();
 
         // Validate sender is not zero
-        if (sender == bytes32(0)) revert SenderCannotBeZeroAddress();
+        if (sender == bytes32(0)) revert MessageSenderCannotBeZeroAddress();
 
         _handleCrossChainMessage(sender, messageBody);
     }
