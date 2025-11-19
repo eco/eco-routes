@@ -17,16 +17,36 @@ contract DeployCCIPProver is Script {
 
     function run() external {
         // Load environment variables
-        address ccipRouter = vm.envAddress("CCIP_ROUTER");
         address portal = vm.envAddress("PORTAL_CONTRACT");
         bytes32 salt = vm.envBytes32("SALT");
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+
+        // Determine CCIP Router based on chain ID
+        uint256 chainId = block.chainid;
+        address ccipRouter;
+
+        if (chainId == 10) {
+            // Optimism
+            ccipRouter = 0x3206695CaE29952f4b0c22a169725a865bc8Ce0f;
+        } else if (chainId == 8453) {
+            // Base
+            ccipRouter = 0x881e3A65B4d4a04dD529061dd0071cf975F58bCD;
+        } else if (chainId == 1) {
+            // Ethereum
+            ccipRouter = 0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D;
+        } else if (chainId == 2020) {
+            // Ronin
+            ccipRouter = 0x46527571D5D1B68eE7Eb60B18A32e6C60DcEAf99;
+        } else {
+            revert("Unsupported chain ID");
+        }
 
         // Configuration
         address create3Deployer = 0xC6BAd1EbAF366288dA6FB5689119eDd695a66814;
         uint256 minGasLimit = 200000;
 
         console.log("=== CCIPProver Deployment Configuration ===");
+        console.log("Chain ID:", chainId);
         console.log("CCIP Router:", ccipRouter);
         console.log("Portal:", portal);
         console.log("CREATE3 Deployer:", create3Deployer);
