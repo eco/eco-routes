@@ -32,11 +32,9 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /// @notice Struct to reduce stack depth when unpacking calldata
     /// @param sourceChainProver The address of the prover on the source chain (as bytes32)
     /// @param gasLimit The gas limit for execution on the destination chain
-    /// @param allowOutOfOrderExecution Whether to allow out-of-order execution (CCIP feature)
     struct UnpackedData {
         address sourceChainProver;
         uint256 gasLimit;
-        bool allowOutOfOrderExecution;
     }
 
     /**
@@ -88,6 +86,9 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /**
      * @notice Dispatches a cross-chain message via CCIP
      * @dev Internal function called by the base contract's prove() function
+     * @dev CCIP has a maximum data payload size and a message execution gas limit.
+     *      At time of writing, these are 30KB and 3,000,000 gas respectively.
+     *      Please check CCIP's documentation for the most up-to-date values.
      * @param domainID The destination chain selector (CCIP uses this as destinationChainSelector)
      * @param encodedProofs The encoded proof data to send
      * @param data Additional data containing source chain prover and gas configuration
@@ -106,8 +107,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         Client.EVM2AnyMessage memory ccipMessage = _formatCCIPMessage(
             unpacked.sourceChainProver,
             encodedProofs,
-            unpacked.gasLimit,
-            unpacked.allowOutOfOrderExecution
+            unpacked.gasLimit
         );
 
         // Send the message via CCIP Router
@@ -134,8 +134,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         Client.EVM2AnyMessage memory ccipMessage = _formatCCIPMessage(
             unpacked.sourceChainProver,
             encodedProofs,
-            unpacked.gasLimit,
-            unpacked.allowOutOfOrderExecution
+            unpacked.gasLimit
         );
 
         // Query the fee from CCIP Router
@@ -152,12 +151,11 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     function _unpackData(
         bytes calldata data
     ) internal view returns (UnpackedData memory unpacked) {
-        // Decode: (sourceChainProver, gasLimit, allowOutOfOrderExecution)
+        // Decode: (sourceChainProver, gasLimit)
         (
             unpacked.sourceChainProver,
-            unpacked.gasLimit,
-            unpacked.allowOutOfOrderExecution
-        ) = abi.decode(data, (address, uint256, bool));
+            unpacked.gasLimit
+        ) = abi.decode(data, (address, uint256));
 
         // Enforce minimum gas limit to prevent underfunded transactions
         if (unpacked.gasLimit < MIN_GAS_LIMIT) {
@@ -168,17 +166,16 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /**
      * @notice Formats a CCIP message for sending
      * @dev Internal helper to construct the EVM2AnyMessage struct
+     * @dev Out-of-order execution is always enabled for optimal performance
      * @param sourceChainProver The prover address on the source chain
      * @param encodedProofs The proof data payload
      * @param gasLimit The gas limit for execution
-     * @param allowOutOfOrderExecution Whether to allow out-of-order execution
      * @return ccipMessage The formatted CCIP message
      */
     function _formatCCIPMessage(
         address sourceChainProver,
         bytes calldata encodedProofs,
-        uint256 gasLimit,
-        bool allowOutOfOrderExecution
+        uint256 gasLimit
     ) internal pure returns (Client.EVM2AnyMessage memory ccipMessage) {
         // Construct the CCIP message
         ccipMessage = Client.EVM2AnyMessage({
@@ -189,7 +186,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
             extraArgs: Client._argsToBytes(
                 Client.EVMExtraArgsV2({
                     gasLimit: gasLimit,
-                    allowOutOfOrderExecution: allowOutOfOrderExecution
+                    allowOutOfOrderExecution: true // Always allow out-of-order execution
                 })
             )
         });
