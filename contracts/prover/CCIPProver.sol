@@ -32,11 +32,9 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /// @notice Struct to reduce stack depth when unpacking calldata
     /// @param sourceChainProver The address of the prover on the source chain (as bytes32)
     /// @param gasLimit The gas limit for execution on the destination chain
-    /// @param allowOutOfOrderExecution Whether to allow out-of-order execution (CCIP feature)
     struct UnpackedData {
         address sourceChainProver;
         uint256 gasLimit;
-        bool allowOutOfOrderExecution;
     }
 
     /**
@@ -109,8 +107,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         Client.EVM2AnyMessage memory ccipMessage = _formatCCIPMessage(
             unpacked.sourceChainProver,
             encodedProofs,
-            unpacked.gasLimit,
-            unpacked.allowOutOfOrderExecution
+            unpacked.gasLimit
         );
 
         // Send the message via CCIP Router
@@ -137,8 +134,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         Client.EVM2AnyMessage memory ccipMessage = _formatCCIPMessage(
             unpacked.sourceChainProver,
             encodedProofs,
-            unpacked.gasLimit,
-            unpacked.allowOutOfOrderExecution
+            unpacked.gasLimit
         );
 
         // Query the fee from CCIP Router
@@ -154,28 +150,26 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     function _unpackData(
         bytes calldata data
     ) internal pure returns (UnpackedData memory unpacked) {
-        // Decode: (sourceChainProver, gasLimit, allowOutOfOrderExecution)
+        // Decode: (sourceChainProver, gasLimit)
         (
             unpacked.sourceChainProver,
-            unpacked.gasLimit,
-            unpacked.allowOutOfOrderExecution
-        ) = abi.decode(data, (address, uint256, bool));
+            unpacked.gasLimit
+        ) = abi.decode(data, (address, uint256));
     }
 
     /**
      * @notice Formats a CCIP message for sending
      * @dev Internal helper to construct the EVM2AnyMessage struct
+     * @dev Out-of-order execution is always enabled for optimal performance
      * @param sourceChainProver The prover address on the source chain
      * @param encodedProofs The proof data payload
      * @param gasLimit The gas limit for execution
-     * @param allowOutOfOrderExecution Whether to allow out-of-order execution
      * @return ccipMessage The formatted CCIP message
      */
     function _formatCCIPMessage(
         address sourceChainProver,
         bytes calldata encodedProofs,
-        uint256 gasLimit,
-        bool allowOutOfOrderExecution
+        uint256 gasLimit
     ) internal pure returns (Client.EVM2AnyMessage memory ccipMessage) {
         // Construct the CCIP message
         ccipMessage = Client.EVM2AnyMessage({
@@ -186,7 +180,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
             extraArgs: Client._argsToBytes(
                 Client.EVMExtraArgsV2({
                     gasLimit: gasLimit,
-                    allowOutOfOrderExecution: allowOutOfOrderExecution
+                    allowOutOfOrderExecution: true // Always allow out-of-order execution
                 })
             )
         });
