@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {CCIPProver} from "../../contracts/prover/CCIPProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestCCIPRouter} from "../../contracts/test/TestCCIPRouter.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
@@ -370,6 +371,34 @@ contract CCIPProverTest is BaseTest {
         });
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        vm.prank(address(router));
+        ccipProver.ccipReceive(message);
+    }
+
+    function testCcipReceiveRevertsOnZeroSourceChainSelector() public {
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: bytes32(uint256(1)),
+            sourceChainSelector: uint64(0), // Zero source chain selector
+            sender: abi.encode(whitelistedProver),
+            data: abi.encode(new bytes32[](1), new bytes32[](1)),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        vm.expectRevert(IMessageBridgeProver.MessageOriginChainDomainIDCannotBeZero.selector);
+        vm.prank(address(router));
+        ccipProver.ccipReceive(message);
+    }
+
+    function testCcipReceiveRevertsOnZeroSender() public {
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: bytes32(uint256(1)),
+            sourceChainSelector: uint64(1),
+            sender: abi.encode(address(0)), // Zero sender address
+            data: abi.encode(new bytes32[](1), new bytes32[](1)),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        vm.expectRevert(IMessageBridgeProver.MessageSenderCannotBeZeroAddress.selector);
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
     }
