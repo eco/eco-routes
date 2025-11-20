@@ -144,17 +144,23 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /**
      * @notice Unpacks the encoded data into structured format
      * @dev Internal helper to avoid stack too deep errors
+     * @dev Enforces minimum gas limit to prevent underfunded transactions
      * @param data The encoded data containing source chain prover and gas configuration
-     * @return unpacked The unpacked data struct
+     * @return unpacked The unpacked data struct with validated gas limit
      */
     function _unpackData(
         bytes calldata data
-    ) internal pure returns (UnpackedData memory unpacked) {
+    ) internal view returns (UnpackedData memory unpacked) {
         // Decode: (sourceChainProver, gasLimit)
         (
             unpacked.sourceChainProver,
             unpacked.gasLimit
         ) = abi.decode(data, (address, uint256));
+
+        // Enforce minimum gas limit to prevent underfunded transactions
+        if (unpacked.gasLimit < MIN_GAS_LIMIT) {
+            unpacked.gasLimit = MIN_GAS_LIMIT;
+        }
     }
 
     /**
