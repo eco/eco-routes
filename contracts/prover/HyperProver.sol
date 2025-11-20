@@ -57,7 +57,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         address portal,
         bytes32[] memory provers
     ) MessageBridgeProver(portal, provers, 0) {
-        if (mailbox == address(0)) revert MailboxCannotBeZeroAddress();
+        if (mailbox == address(0)) revert MessengerContractCannotBeZeroAddress();
         MAILBOX = mailbox;
     }
 

@@ -61,7 +61,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         bytes32[] memory provers,
         uint256 minGasLimit
     ) MessageBridgeProver(portal, provers, minGasLimit) {
-        if (router == address(0)) revert RouterCannotBeZeroAddress();
+        if (router == address(0)) revert MessengerContractCannotBeZeroAddress();
 
         ROUTER = IMetalayerRouterExt(router);
     }
