@@ -88,6 +88,9 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     /**
      * @notice Dispatches a cross-chain message via CCIP
      * @dev Internal function called by the base contract's prove() function
+     * @dev CCIP has a maximum data payload size and a message execution gas limit.
+     *      At time of writing, these are 30KB and 3,000,000 gas respectively.
+     *      Please check CCIP's documentation for the most up-to-date values.
      * @param domainID The destination chain selector (CCIP uses this as destinationChainSelector)
      * @param encodedProofs The encoded proof data to send
      * @param data Additional data containing source chain prover and gas configuration
