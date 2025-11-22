@@ -136,7 +136,7 @@ abstract contract BaseProver is IProver, ERC165 {
      */
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override returns (bool) {
+    ) public view virtual override returns (bool) {
         return
             interfaceId == type(IProver).interfaceId ||
             super.supportsInterface(interfaceId);

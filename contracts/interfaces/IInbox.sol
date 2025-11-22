@@ -106,6 +106,8 @@ interface IInbox {
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
      *      - LayerZero: Uses endpoint IDs that map to chains differently
      *      - Metalayer: Uses domain IDs specific to their routing system
+     *      - Polymer: Uses chainIDs
+     *      - CCIP: Uses chain selectors that are totally separate from chainIDs
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */
@@ -132,6 +134,8 @@ interface IInbox {
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
      *      - LayerZero: Uses endpoint IDs that map to chains differently
      *      - Metalayer: Uses domain IDs specific to their routing system
+     *      - Polymer: Uses chainIDs
+     *      - CCIP: Uses chain selectors that are totally separate from chainIDs
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */

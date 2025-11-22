@@ -29,24 +29,26 @@ interface IMessageBridgeProver is IProver {
     error UnauthorizedIncomingProof(bytes32 sender);
 
     /**
-     * @notice Mailbox address cannot be zero
+     * @notice Messenger contract address cannot be zero
+     * @dev MessengerContract is a general term for the message-passing contract that handles
+     *      cross-chain communication, used to consolidate errors. Specific implementations'
+     *      terminology will reflect that of the protocol and as such may not match up with what is
+     *      used in Eco's interface contract.
      */
-    error MailboxCannotBeZeroAddress();
+    error MessengerContractCannotBeZeroAddress();
 
     /**
-     * @notice Router address cannot be zero
+     * @notice Message origin chain domain ID cannot be zero
+     * @dev DomainID is a general term for the chain identifier used by cross-chain messaging protocols,
+     *      used to consolidate errors. Specific implementations' terminology will reflect that of the
+     *      protocol and as such may not match up with what is used in Eco's interface contract.
      */
-    error RouterCannotBeZeroAddress();
+    error MessageOriginChainDomainIDCannotBeZero();
 
     /**
-     * @notice Domain ID cannot be zero
+     * @notice Message sender address cannot be zero
      */
-    error ZeroDomainID();
-
-    /**
-     * @notice Sender address cannot be zero
-     */
-    error SenderCannotBeZeroAddress();
+    error MessageSenderCannotBeZeroAddress();
 
     /**
      * @notice message is invalid
