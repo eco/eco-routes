@@ -10,24 +10,26 @@ flowchart TD
 
     %% Single Intent Path
     IntentType -->|Single intent<br/>can be fulfilled locally| Publish1[User calls Portal.publishAndFund<br/>- creator: User<br/>- prover: LocalProver<br/>- funds deposited to OriginalVault]
-    Publish1 --> SimpleFlash[Solver calls LocalProver.flashFulfill<br/>- intentHash, route, rewardHash, claimant]
-    SimpleFlash --> Withdraw1[LocalProver withdraws from OriginalVault]
-    Withdraw1 --> Fulfill1[LocalProver calls Portal.fulfill<br/>- executes route calls]
+    Publish1 --> SimpleFlash[Solver calls LocalProver.flashFulfill<br/>- intentHash, route, reward, claimant]
+    SimpleFlash --> StoreClaimant1[LocalProver stores actual claimant<br/>in _actualClaimants mapping]
+    StoreClaimant1 --> Withdraw1[LocalProver withdraws from OriginalVault<br/>- provenIntents returns LocalProver as claimant<br/>- funds sent to LocalProver]
+    Withdraw1 --> Fulfill1[LocalProver calls Portal.fulfill<br/>- claimant = LocalProver address<br/>- executes route calls<br/>- Portal stores LocalProver in claimants mapping]
     Fulfill1 --> FulfillSuccess1{Fulfill Success?}
-    FulfillSuccess1 -->|Yes| PaySolver1[LocalProver pays remaining balance<br/>to claimant immediately]
+    FulfillSuccess1 -->|Yes| PaySolver1[LocalProver pays remaining balance<br/>to actual claimant immediately<br/>from LocalProver's balance]
     PaySolver1 --> Done1([✅ Done - Solver has fee])
-    FulfillSuccess1 -->|No - Revert| Revert1([❌ Transaction reverts<br/>Funds stay in OriginalVault])
+    FulfillSuccess1 -->|No - Revert| Revert1([❌ Transaction reverts<br/>Funds stay in OriginalVault<br/>_actualClaimants entry cleared on revert])
 
     %% Secondary Intent Path
     IntentType -->|Requires cross-chain<br/>or external action| Publish2[User calls Portal.publishAndFund<br/>- creator: User<br/>- prover: LocalProver<br/>- funds deposited to OriginalVault]
     Publish2 --> CreateSecondary[Solver creates secondary Intent struct<br/>- creator: **LocalProver**<br/>- prover: CrossChainProver<br/>- destination: different chain]
     CreateSecondary --> PublishSecondary[Solver calls Portal.publishAndFund<br/>for secondary intent<br/>- funds SecondaryVault with their own money]
-    PublishSecondary --> FlashWithSecondary[Solver calls LocalProver.flashFulfill<br/>- intentHash, route, rewardHash, claimant]
-    FlashWithSecondary --> Withdraw2[LocalProver withdraws from OriginalVault]
-    Withdraw2 --> Fulfill2[LocalProver calls Portal.fulfill<br/>- executes route calls]
+    PublishSecondary --> FlashWithSecondary[Solver calls LocalProver.flashFulfill<br/>- intentHash, route, reward, claimant]
+    FlashWithSecondary --> StoreClaimant2[LocalProver stores actual claimant<br/>in _actualClaimants mapping]
+    StoreClaimant2 --> Withdraw2[LocalProver withdraws from OriginalVault<br/>- provenIntents returns LocalProver as claimant<br/>- funds sent to LocalProver]
+    Withdraw2 --> Fulfill2[LocalProver calls Portal.fulfill<br/>- claimant = LocalProver address<br/>- executes route calls<br/>- Portal stores LocalProver in claimants mapping]
     Fulfill2 --> FulfillSuccess2{Fulfill Success?}
-    FulfillSuccess2 -->|No - Revert| Revert2([❌ Transaction reverts<br/>Funds in OriginalVault<br/>Funds in SecondaryVault])
-    FulfillSuccess2 -->|Yes| PaySolver2[LocalProver pays remaining balance<br/>to claimant immediately<br/>✅ Solver has fee now!]
+    FulfillSuccess2 -->|No - Revert| Revert2([❌ Transaction reverts<br/>Funds in OriginalVault<br/>Funds in SecondaryVault<br/>_actualClaimants entry cleared on revert])
+    FulfillSuccess2 -->|Yes| PaySolver2[LocalProver pays remaining balance<br/>to actual claimant immediately<br/>from LocalProver's balance<br/>✅ Solver has fee now!]
     PaySolver2 --> SecondaryOutcome{Secondary Intent<br/>Outcome?}
 
     SecondaryOutcome -->|Proven successful| SecondarySuccess([✅ Complete Success<br/>- Solver got fee<br/>- Secondary completed<br/>- User got service])
@@ -72,23 +74,33 @@ flowchart TD
 
 ## Key Insights
 
-### 1. Solver Always Gets Paid Immediately
+### 1. LocalProver as Intermediary Claimant
+- **Problem**: Portal.withdraw requires proof before withdrawal, but flashFulfill needs to withdraw before fulfill
+- **Solution**: LocalProver acts as intermediary claimant
+  - Stores actual solver address in `_actualClaimants` mapping BEFORE withdrawal
+  - `provenIntents()` returns LocalProver as claimant during flashFulfill (enables withdrawal)
+  - Calls fulfill with LocalProver as Portal claimant
+  - After fulfill, `provenIntents()` returns actual solver from mapping
+  - Pays actual solver immediately from LocalProver's balance
+
+### 2. Solver Always Gets Paid Immediately
 - In both simple and secondary intent scenarios, if `flashFulfill` succeeds, the solver receives their fee right away
 - This fee is **non-refundable** - solver did the work of fulfilling the original intent
+- Payment comes from LocalProver's balance after withdrawal and fulfill
 
-### 2. Single Intent Flow (Simple)
-- Solver calls `flashFulfill` → gets fee immediately
-- If fulfill fails, transaction reverts and funds stay in vault
+### 3. Single Intent Flow (Simple)
+- Solver calls `flashFulfill` → LocalProver stores claimant → withdraws to itself → fulfills → pays solver immediately
+- If fulfill fails, transaction reverts and funds stay in vault (storage cleared on revert)
 - User can refund after deadline if unfulfilled
 
-### 3. Secondary Intent Flow (Complex)
+### 4. Secondary Intent Flow (Complex)
 - Solver pre-funds secondary intent with `LocalProver` as creator
-- Solver calls `flashFulfill` → gets fee immediately
+- Solver calls `flashFulfill` → LocalProver stores claimant → withdraws to itself → fulfills → pays solver immediately
 - Secondary intent outcome is independent:
   - **Success**: Everyone happy
   - **Failure**: User can use `refundBoth()` for single-tx refund, solver keeps their fee
 
-### 4. Refund Scenarios
+### 5. Refund Scenarios
 - **Option A**: User calls `refundBoth()` for single-tx convenience
   - Requires secondary intent creator == LocalProver
   - LocalProver redirects secondary refund to original vault
@@ -97,8 +109,33 @@ flowchart TD
   - Less convenient but always available
   - Each vault refunds separately
 
-### 5. Critical Requirement for `refundBoth()`
+### 6. Critical Requirement for `refundBoth()`
 The secondary intent **MUST** have `reward.creator = address(LocalProver)` for single-tx refunds to work. If solver creates secondary with themselves as creator, they have to handle refunds themselves.
+
+## Technical Implementation: provenIntents() State Machine
+
+The `provenIntents()` function handles four distinct cases to enable the LocalProver intermediary pattern:
+
+### Case 1: Intent fulfilled via flashFulfill (Portal claimant is LocalProver)
+- **Trigger**: Portal.claimants[intentHash] == LocalProver address
+- **Return**: Actual solver address from `_actualClaimants` mapping
+- **Purpose**: After flashFulfill completes, external queries should see the real solver as claimant
+
+### Case 2: Intent fulfilled via normal Portal.fulfill (not flashFulfill)
+- **Trigger**: Portal.claimants[intentHash] != 0 and != LocalProver
+- **Return**: Address from Portal.claimants mapping directly
+- **Purpose**: Support normal fulfill flow without LocalProver intermediation
+
+### Case 3: flashFulfill in progress (withdrawal phase)
+- **Trigger**: Portal.claimants[intentHash] == 0 but `_actualClaimants[intentHash]` != 0
+- **Return**: LocalProver's address
+- **Purpose**: Enable Portal.withdraw to succeed by returning a valid claimant (LocalProver itself)
+- **Critical**: This allows withdrawal BEFORE fulfill by satisfying Portal's proof requirement
+
+### Case 4: Intent not fulfilled at all
+- **Trigger**: Both Portal.claimants and `_actualClaimants` are empty
+- **Return**: address(0)
+- **Purpose**: Standard unfulfilled intent response
 
 ## Scenarios Summary
 

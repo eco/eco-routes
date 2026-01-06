@@ -464,7 +464,7 @@ contract LocalProverTest is Test {
         // Just warp past secondary deadline
         vm.warp(secondaryIntent.reward.deadline + 1);
 
-        uint256 vaultBalanceBefore = originalVault.balance;
+        uint256 creatorBalanceBefore = creator.balance;
 
         // User calls refundBoth
         (bytes32 computedOriginalHash, , ) = portal.getIntentHash(originalIntent);
@@ -476,8 +476,8 @@ contract LocalProverTest is Test {
 
         localProver.refundBoth(originalIntent, secondaryIntent);
 
-        // Verify: vault received refunds
-        assertGt(originalVault.balance, vaultBalanceBefore);
+        // Verify: creator received both refunds (vault forwards immediately)
+        assertEq(creator.balance, creatorBalanceBefore + REWARD_AMOUNT + (REWARD_AMOUNT / 2));
     }
 
     function test_refundBoth_IsPermissionless() public {

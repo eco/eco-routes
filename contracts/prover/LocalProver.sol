@@ -31,6 +31,12 @@ contract LocalProver is ILocalProver, Semver {
 
     uint64 private immutable _CHAIN_ID;
 
+    /**
+     * @notice Maps intent hashes to their actual claimant addresses
+     * @dev Used when LocalProver is the Portal claimant to track the real solver
+     */
+    mapping(bytes32 => address) private _actualClaimants;
+
     constructor(address portal) {
         _PORTAL = IPortal(portal);
 
@@ -43,22 +49,46 @@ contract LocalProver is ILocalProver, Semver {
 
     /**
      * @notice Fetches a ProofData from the Portal's claimants mapping
-     * @dev For same-chain intents, proofs are created immediately upon fulfillment
+     * @dev For same-chain intents, proofs are created immediately upon fulfillment.
+     *      During flashFulfill, returns LocalProver as claimant to enable withdrawal.
+     *      After fulfill, returns actual solver from _actualClaimants mapping.
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
     function provenIntents(
         bytes32 intentHash
     ) public view returns (ProofData memory) {
-        // Read from Portal's claimants mapping
+        // Check Portal's claimants mapping first
         // Note: Must cast to Inbox to access public claimants mapping
-        bytes32 claimant = Inbox(address(_PORTAL)).claimants(intentHash);
+        bytes32 portalClaimant = Inbox(address(_PORTAL)).claimants(intentHash);
 
-        if (claimant == bytes32(0)) {
-            return ProofData(address(0), 0);
+        // Case 1: Intent fulfilled via flashFulfill (Portal claimant is LocalProver)
+        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(this))));
+        if (portalClaimant == localProverAsBytes32) {
+            // Return actual solver if we have one stored
+            address storedClaimant = _actualClaimants[intentHash];
+            if (storedClaimant != address(0)) {
+                return ProofData(storedClaimant, _CHAIN_ID);
+            }
+            // Otherwise return LocalProver (shouldn't happen but handle gracefully)
+            return ProofData(address(this), _CHAIN_ID);
         }
 
-        return ProofData(claimant.toAddress(), _CHAIN_ID);
+        // Case 2: Intent fulfilled via normal Portal.fulfill (not flashFulfill)
+        if (portalClaimant != bytes32(0)) {
+            return ProofData(portalClaimant.toAddress(), _CHAIN_ID);
+        }
+
+        // Case 3: Intent not yet fulfilled, but flashFulfill in progress
+        // Check if we have an actual claimant stored (means flashFulfill called)
+        address actualClaimant = _actualClaimants[intentHash];
+        if (actualClaimant != address(0)) {
+            // Return LocalProver so withdrawal succeeds (funds come to LocalProver)
+            return ProofData(address(this), _CHAIN_ID);
+        }
+
+        // Case 4: Intent not fulfilled at all
+        return ProofData(address(0), 0);
     }
 
     function getProofType() external pure returns (string memory) {
@@ -122,7 +152,12 @@ contract LocalProver is ILocalProver, Semver {
         );
         if (computedIntentHash != intentHash) revert InvalidIntentHash();
 
-        // EFFECTS - Record initial balance before withdrawal
+        // EFFECTS - Store actual claimant before fulfill
+        // This allows withdrawal to succeed (LocalProver becomes Portal claimant)
+        // while tracking the real solver address
+        _actualClaimants[intentHash] = claimant.toAddress();
+
+        // Record initial balance before withdrawal
         uint256 balanceBefore = address(this).balance;
 
         // INTERACTIONS - Withdraw to LocalProver
@@ -134,12 +169,14 @@ contract LocalProver is ILocalProver, Semver {
         // Determine native amount for fulfill (use msg.value if provided, else use withdrawn)
         uint256 fulfillNativeAmount = msg.value > 0 ? msg.value : withdrawnNative;
 
-        // Call fulfill with claimant
+        // Call fulfill with LocalProver as Portal claimant
+        // This enables withdrawal before fulfill (Portal checks claimants mapping)
+        bytes32 localProverAsClaimant = bytes32(uint256(uint160(address(this))));
         results = _PORTAL.fulfill{value: fulfillNativeAmount}(
             intentHash,
             route,
             rewardHash,
-            claimant
+            localProverAsClaimant
         );
 
         // EFFECTS - Transfer remaining funds to claimant
