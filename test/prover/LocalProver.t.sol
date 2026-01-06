@@ -7,6 +7,7 @@ import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {ILocalProver} from "../../contracts/interfaces/ILocalProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 
@@ -29,19 +30,13 @@ contract LocalProverTest is Test {
     event FlashFulfilled(
         bytes32 indexed intentHash,
         bytes32 indexed claimant,
-        bytes32 indexed secondaryIntentHash
+        uint256 nativeFee
     );
 
-    event EscrowReleased(
-        bytes32 indexed intentHash,
-        address indexed claimant,
-        uint256 nativeAmount
-    );
-
-    event EscrowRefunded(
-        bytes32 indexed intentHash,
-        address indexed originalVault,
-        uint256 nativeAmount
+    event BothRefunded(
+        bytes32 indexed originalIntentHash,
+        bytes32 indexed secondaryIntentHash,
+        address indexed originalVault
     );
 
     function setUp() public {
@@ -64,8 +59,8 @@ contract LocalProverTest is Test {
         vm.deal(user, INITIAL_BALANCE);
 
         // Mint tokens
-        token.mint(creator, TOKEN_AMOUNT);
-        token.mint(solver, TOKEN_AMOUNT);
+        token.mint(creator, TOKEN_AMOUNT * 10);
+        token.mint(solver, TOKEN_AMOUNT * 10);
     }
 
     function _createIntent(
@@ -74,7 +69,7 @@ contract LocalProverTest is Test {
         uint256 tokenReward
     ) internal view returns (Intent memory) {
         TokenAmount[] memory routeTokens = new TokenAmount[](0);
-        Call[] memory calls = new Call[](0);  // Empty calls array for testing
+        Call[] memory calls = new Call[](0);
 
         Route memory route = Route({
             salt: bytes32(uint256(1)),
@@ -85,8 +80,13 @@ contract LocalProverTest is Test {
             calls: calls
         });
 
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: address(token), amount: tokenReward});
+        TokenAmount[] memory rewardTokens;
+        if (tokenReward > 0) {
+            rewardTokens = new TokenAmount[](1);
+            rewardTokens[0] = TokenAmount({token: address(token), amount: tokenReward});
+        } else {
+            rewardTokens = new TokenAmount[](0);
+        }
 
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
@@ -118,43 +118,18 @@ contract LocalProverTest is Test {
         vm.stopPrank();
     }
 
-    // ============ provenIntents Tests ============
+    // ============ A. Core IProver Interface Tests ============
 
-    function test_provenIntents_ReturnsLocalProverForFlashFulfilled() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
+    // A1. provenIntents()
+    function test_provenIntents_ReturnsClaimantFromPortalForFulfilledIntent() public {
+        // Test: Returns claimant from Portal for fulfilled intent
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        bytes32 secondaryIntentHash = keccak256("secondary");
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-
-        // Create escrow via flashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            intentHash,
-            _intent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
-        );
-
-        // Should return LocalProver as claimant (for withdrawal purposes)
-        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(localProver));
-        assertEq(proof.destination, CHAIN_ID);
-    }
-
-    function test_provenIntents_ReturnsPortalClaimantForNormalIntent() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        // Fulfill normally (not flash-fulfill)
+        // Fulfill via Portal directly (normal path)
         vm.startPrank(solver);
-        vm.deal(solver, _intent.reward.nativeAmount);
-        token.mint(solver, TOKEN_AMOUNT);
-        token.approve(address(portal), TOKEN_AMOUNT);
-
-        portal.fulfill{value: 0}(
+        vm.deal(solver, REWARD_AMOUNT);
+        portal.fulfill{value: REWARD_AMOUNT}(
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -168,467 +143,434 @@ contract LocalProverTest is Test {
         assertEq(proof.destination, CHAIN_ID);
     }
 
-    function test_provenIntents_ReturnsZeroForNonExistentIntent() public {
-        bytes32 nonExistentHash = keccak256("nonexistent");
+    function test_provenIntents_ReturnsZeroForUnfulfilledIntent() public {
+        // Test: Returns zero address for unfulfilled intent
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        IProver.ProofData memory proof = localProver.provenIntents(nonExistentHash);
+        // Don't fulfill it
+        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
         assertEq(proof.claimant, address(0));
         assertEq(proof.destination, 0);
     }
 
-    // ============ flashFulfill Tests ============
-
-    function test_flashFulfill_Success() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
+    function test_provenIntents_ReturnsClaimantForFlashFulfilledIntent() public {
+        // Test: Returns claimant from Portal for flashFulfilled intent
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        bytes32 secondaryIntentHash = keccak256("secondary");
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-        uint64 secondaryDeadline = uint64(block.timestamp + 3000);
-
-        // Fund LocalProver with execution funds
-        vm.deal(address(localProver), _intent.reward.nativeAmount);
-
-        vm.startPrank(solver);
-        vm.expectEmit(true, true, true, false);
-        emit FlashFulfilled(intentHash, claimantBytes, secondaryIntentHash);
-
-        localProver.flashFulfill(
-            intentHash,
-            _intent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            secondaryDeadline
-        );
-        vm.stopPrank();
-
-        // Verify escrow created by checking individual fields
-        // Note: Can't directly destructure struct with dynamic array
-        LocalProver.EscrowData memory escrow = _getEscrowData(intentHash);
-
-        assertEq(escrow.claimant, solver);
-        assertEq(escrow.secondaryIntentHash, secondaryIntentHash);
-        assertEq(escrow.secondaryProver, address(secondaryProver));
-        assertEq(escrow.secondaryDeadline, secondaryDeadline);
-        assertFalse(escrow.released);
-        assertGt(escrow.nativeAmount, 0); // Should have some native tokens from reward
-    }
-
-    function test_flashFulfill_RevertsIfInvalidSecondaryHash() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        vm.startPrank(solver);
-        vm.expectRevert("Invalid secondary intent hash");
-        localProver.flashFulfill(
-            intentHash,
-            _intent,
-            bytes32(uint256(uint160(solver))),
-            bytes32(0), // Invalid
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
-        );
-        vm.stopPrank();
-    }
-
-    function test_flashFulfill_RevertsIfInvalidSecondaryProver() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        vm.startPrank(solver);
-        vm.expectRevert("Invalid secondary prover");
-        localProver.flashFulfill(
-            intentHash,
-            _intent,
-            bytes32(uint256(uint160(solver))),
-            keccak256("secondary"),
-            address(0), // Invalid
-            uint64(block.timestamp + 1000)
-        );
-        vm.stopPrank();
-    }
-
-    function test_flashFulfill_RevertsIfAlreadyFlashFulfilled() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        bytes32 secondaryIntentHash = keccak256("secondary");
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-
-        vm.startPrank(solver);
-
-        // First flashFulfill
-        localProver.flashFulfill(
-            intentHash,
-            _intent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
-        );
-
-        // Second flashFulfill should revert
-        vm.expectRevert("Already flash-fulfilled");
-        localProver.flashFulfill(
-            intentHash,
-            _intent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
-        );
-        vm.stopPrank();
-    }
-
-    // ============ releaseEscrow Tests ============
-
-    function test_releaseEscrow_Success() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        bytes32 secondaryIntentHash = keccak256("secondary");
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
         // FlashFulfill
         vm.prank(solver);
         localProver.flashFulfill(
             intentHash,
-            _intent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
+            _intent.route,
+            _intent.reward,
+            claimantBytes
         );
 
-        // Simulate secondary intent proven
-        vm.startPrank(address(secondaryProver));
-        bytes32[] memory hashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
-        hashes[0] = secondaryIntentHash;
-        claimants[0] = claimantBytes;
+        // Should return solver (NOT LocalProver)
+        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertEq(proof.claimant, solver);
+        assertEq(proof.destination, CHAIN_ID);
+    }
 
-        bytes memory encodedProofs = _encodeProofs(hashes, claimants);
-        secondaryProver.prove(solver, SECONDARY_CHAIN_ID, encodedProofs, "");
-        vm.stopPrank();
+    // A2. prove()
+    function test_prove_IsNoOp() public {
+        // Test: prove() is a no-op (doesn't revert)
+        localProver.prove{value: 0}(
+            address(0),
+            0,
+            "",
+            ""
+        );
+        // Should not revert
+    }
 
+    // A3. challengeIntentProof()
+    function test_challengeIntentProof_IsNoOp() public {
+        // Test: challengeIntentProof() is a no-op (doesn't revert)
+        localProver.challengeIntentProof(0, bytes32(0), bytes32(0));
+        // Should not revert
+    }
+
+    // A4. getProofType()
+    function test_getProofType_ReturnsSameChain() public {
+        // Test: Returns "Same chain"
+        assertEq(localProver.getProofType(), "Same chain");
+    }
+
+    // ============ B. flashFulfill() Tests ============
+
+    // B1. Happy Path - Native Only
+    function test_flashFulfill_SucceedsWithNativeOnly() public {
+        // Test: flashFulfill succeeds with native tokens only
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
         uint256 solverBalanceBefore = solver.balance;
 
-        // Release escrow (permissionless)
-        vm.prank(user);
-        vm.expectEmit(true, true, false, false);
-        emit EscrowReleased(intentHash, solver, 0);
-        localProver.releaseEscrow(intentHash);
+        vm.prank(solver);
+        vm.expectEmit(true, true, false, true);
+        emit FlashFulfilled(intentHash, claimantBytes, REWARD_AMOUNT);
 
-        // Verify funds transferred
-        assertGt(solver.balance, solverBalanceBefore);
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            claimantBytes
+        );
 
-        // Verify escrow marked as released
-        LocalProver.EscrowData memory escrow = _getEscrowData(intentHash);
-        assertTrue(escrow.released);
+        // Verify: claimant receives funds
+        assertEq(solver.balance, solverBalanceBefore + REWARD_AMOUNT);
+        // Verify: LocalProver has zero balance after
+        assertEq(address(localProver).balance, 0);
     }
 
-    function test_releaseEscrow_RevertsIfNoEscrow() public {
-        bytes32 nonExistentHash = keccak256("nonexistent");
-
-        vm.expectRevert("No escrow found");
-        localProver.releaseEscrow(nonExistentHash);
-    }
-
-    function test_releaseEscrow_RevertsIfAlreadyReleased() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
+    function test_flashFulfill_WithMsgValueUsesMsgValueForFulfill() public {
+        // Test: flashFulfill with msg.value uses msg.value for fulfill
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        bytes32 secondaryIntentHash = keccak256("secondary");
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
+        uint256 msgValue = 1 ether;
+
+        vm.prank(solver);
+        localProver.flashFulfill{value: msgValue}(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            claimantBytes
+        );
+
+        // Solver should receive withdrawn amount (since msg.value was used for fulfill)
+        assertGt(solver.balance, INITIAL_BALANCE - msgValue);
+    }
+
+    // B4. Validation - Reverts
+    function test_flashFulfill_RevertsIfClaimantIsZero() public {
+        // Test: Reverts if claimant is zero
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        vm.prank(solver);
+        vm.expectRevert(ILocalProver.InvalidClaimant.selector);
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            bytes32(0)
+        );
+    }
+
+    function test_flashFulfill_RevertsIfIntentHashDoesntMatch() public {
+        // Test: Reverts if intent hash doesn't match
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(_intent);
+
+        bytes32 wrongIntentHash = keccak256("wrong");
+
+        vm.prank(solver);
+        vm.expectRevert(ILocalProver.InvalidIntentHash.selector);
+        localProver.flashFulfill(
+            wrongIntentHash,
+            _intent.route,
+            _intent.reward,
+            bytes32(uint256(uint160(solver)))
+        );
+    }
+
+    function test_flashFulfill_RevertsIfIntentAlreadyFulfilled() public {
+        // Test: Reverts if intent already fulfilled
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Fulfill via Portal first
+        vm.startPrank(solver);
+        vm.deal(solver, REWARD_AMOUNT);
+        portal.fulfill{value: REWARD_AMOUNT}(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            bytes32(uint256(uint160(solver)))
+        );
+
+        // Try flashFulfill
+        vm.expectRevert();
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            bytes32(uint256(uint160(solver)))
+        );
+        vm.stopPrank();
+    }
+
+    function test_flashFulfill_RevertsIfIntentExpired() public {
+        // Test: Reverts if intent expired
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Warp past deadline
+        vm.warp(_intent.route.deadline + 1);
+
+        vm.prank(solver);
+        vm.expectRevert();
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            bytes32(uint256(uint160(solver)))
+        );
+    }
+
+    // B5. Edge Cases
+    function test_flashFulfill_WorksWhenNoExcessFundsRemain() public {
+        // Test: flashFulfill works when no excess funds remain
+        // Create intent where reward exactly covers execution (use route.nativeAmount)
+        TokenAmount[] memory routeTokens = new TokenAmount[](0);
+        Call[] memory calls = new Call[](0);
+
+        Route memory route = Route({
+            salt: bytes32(uint256(1)),
+            deadline: uint64(block.timestamp + 1000),
+            portal: address(portal),
+            nativeAmount: REWARD_AMOUNT, // Route requires all the native
+            tokens: routeTokens,
+            calls: calls
+        });
+
+        TokenAmount[] memory rewardTokens = new TokenAmount[](0);
+        Reward memory reward = Reward({
+            deadline: uint64(block.timestamp + 2000),
+            creator: creator,
+            prover: address(localProver),
+            nativeAmount: REWARD_AMOUNT,
+            tokens: rewardTokens
+        });
+
+        Intent memory _intent = Intent({destination: CHAIN_ID, route: route, reward: reward});
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
-        // FlashFulfill
         vm.prank(solver);
+        vm.expectEmit(true, true, false, true);
+        emit FlashFulfilled(intentHash, claimantBytes, 0);
+
         localProver.flashFulfill(
             intentHash,
-            _intent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
+            _intent.route,
+            _intent.reward,
+            claimantBytes
         );
 
-        // Prove secondary
-        vm.startPrank(address(secondaryProver));
-        bytes32[] memory hashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
-        hashes[0] = secondaryIntentHash;
-        claimants[0] = claimantBytes;
-        bytes memory encodedProofs = _encodeProofs(hashes, claimants);
-        secondaryProver.prove(solver, SECONDARY_CHAIN_ID, encodedProofs, "");
+        // Fee should be zero
+        assertEq(address(localProver).balance, 0);
+    }
+
+    function test_flashFulfill_CanBeCalledTwiceOnDifferentIntents() public {
+        // Test: flashFulfill can be called twice on different intents
+        Intent memory intent1 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory intent2 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+
+        // Make them different
+        intent1.route.salt = bytes32(uint256(1));
+        intent2.route.salt = bytes32(uint256(2));
+
+        (bytes32 intentHash1, ) = _publishAndFundIntent(intent1);
+        (bytes32 intentHash2, ) = _publishAndFundIntent(intent2);
+
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
+
+        // First flashFulfill
+        vm.prank(solver);
+        localProver.flashFulfill(
+            intentHash1,
+            intent1.route,
+            intent1.reward,
+            claimantBytes
+        );
+
+        // Second flashFulfill
+        vm.prank(solver);
+        localProver.flashFulfill(
+            intentHash2,
+            intent2.route,
+            intent2.reward,
+            claimantBytes
+        );
+
+        // Both should succeed
+    }
+
+    function test_flashFulfill_WorksAlongsideNormalPortalFulfill() public {
+        // Test: flashFulfill works alongside normal Portal.fulfill
+        Intent memory intent1 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory intent2 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+
+        intent1.route.salt = bytes32(uint256(1));
+        intent2.route.salt = bytes32(uint256(2));
+
+        (bytes32 intentHash1, ) = _publishAndFundIntent(intent1);
+        (bytes32 intentHash2, ) = _publishAndFundIntent(intent2);
+
+        // Solver A uses normal Portal.fulfill
+        vm.startPrank(solver);
+        vm.deal(solver, REWARD_AMOUNT * 2);
+        portal.fulfill{value: REWARD_AMOUNT}(
+            intentHash1,
+            intent1.route,
+            keccak256(abi.encode(intent1.reward)),
+            bytes32(uint256(uint160(solver)))
+        );
         vm.stopPrank();
 
-        // Release once
-        localProver.releaseEscrow(intentHash);
-
-        // Try to release again
-        vm.expectRevert("Already released");
-        localProver.releaseEscrow(intentHash);
-    }
-
-    function test_releaseEscrow_RevertsIfSecondaryNotProven() public {
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        bytes32 secondaryIntentHash = keccak256("secondary");
-
-        // FlashFulfill
-        vm.prank(solver);
+        // Solver B uses flashFulfill
+        address solver2 = makeAddr("solver2");
+        vm.prank(solver2);
         localProver.flashFulfill(
-            intentHash,
-            _intent,
-            bytes32(uint256(uint160(solver))),
-            secondaryIntentHash,
-            address(secondaryProver),
-            uint64(block.timestamp + 1000)
+            intentHash2,
+            intent2.route,
+            intent2.reward,
+            bytes32(uint256(uint160(solver2)))
         );
 
-        // Try to release without proving secondary
-        vm.expectRevert("Secondary intent not proven");
-        localProver.releaseEscrow(intentHash);
+        // Both should succeed independently
     }
 
-    // ============ refundEscrow Tests ============
+    // ============ C. refundBoth() Tests ============
 
-    function test_refundEscrow_Success() public {
-        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
+    // C1. Happy Path
+    function test_refundBoth_SucceedsWhenSecondaryExpiredAndUnproven() public {
+        // Test: refundBoth succeeds when secondary expired and unproven
+        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
 
-        // Create secondary intent (crosschain, using TestProver)
-        // Note: Creator must be LocalProver so it can refund later
-        Intent memory secondaryIntent = _createIntent(
-            address(secondaryProver),
-            REWARD_AMOUNT / 2,
-            TOKEN_AMOUNT / 2
-        );
-        // Manually set creator to LocalProver
+        // Create secondary intent with LocalProver as creator
+        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
         secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-        (bytes32 secondaryIntentHash, , ) = portal.getIntentHash(secondaryIntent);
-        uint64 secondaryDeadline = secondaryIntent.reward.deadline;
-
-        // Pre-fund LocalProver with tokens for secondary intent
-        // (In reality, this would come from the original flashFulfill's withdraw)
-        token.mint(address(localProver), secondaryIntent.reward.tokens[0].amount);
-
-        // Publish and fund secondary intent with LocalProver as creator
+        // Publish secondary intent (LocalProver would do this normally, we'll simulate)
         vm.startPrank(address(localProver));
-        token.approve(address(portal), secondaryIntent.reward.tokens[0].amount);
-        vm.deal(address(localProver), secondaryIntent.reward.nativeAmount);
+        vm.deal(address(localProver), REWARD_AMOUNT);
         portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(secondaryIntent, false);
         vm.stopPrank();
 
-        // FlashFulfill original intent
-        vm.prank(solver);
-        localProver.flashFulfill(
-            originalIntentHash,
-            originalIntent,
-            bytes32(uint256(uint160(solver))),
-            secondaryIntentHash,
-            address(secondaryProver),
-            secondaryDeadline
-        );
-
-        // Fast forward past secondary intent's reward deadline (not just escrow deadline)
+        // FlashFulfill original (solver does this, but we'll skip for this test)
+        // Just warp past secondary deadline
         vm.warp(secondaryIntent.reward.deadline + 1);
 
-        // Get original vault balance before refund
         uint256 vaultBalanceBefore = originalVault.balance;
 
-        // Refund escrow (permissionless)
+        // User calls refundBoth
+        (bytes32 computedOriginalHash, , ) = portal.getIntentHash(originalIntent);
+        (bytes32 computedSecondaryHash, , ) = portal.getIntentHash(secondaryIntent);
+
         vm.prank(user);
-        localProver.refundEscrow(originalIntentHash, originalIntent, secondaryIntent);
+        vm.expectEmit(true, true, true, false);
+        emit BothRefunded(computedOriginalHash, computedSecondaryHash, originalVault);
 
-        // Verify funds transferred to original vault
+        localProver.refundBoth(originalIntent, secondaryIntent);
+
+        // Verify: vault received refunds
         assertGt(originalVault.balance, vaultBalanceBefore);
-
-        // Verify escrow marked as released
-        LocalProver.EscrowData memory escrow = _getEscrowData(originalIntentHash);
-        assertTrue(escrow.released);
     }
 
-    function test_refundEscrow_RevertsIfNoEscrow() public {
-        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        bytes32 nonExistentHash = keccak256("nonexistent");
+    function test_refundBoth_IsPermissionless() public {
+        // Test: refundBoth is permissionless (anyone can call)
+        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(originalIntent);
 
-        vm.expectRevert("No escrow found");
-        localProver.refundEscrow(nonExistentHash, originalIntent, secondaryIntent);
-    }
+        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
+        secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-    function test_refundEscrow_RevertsIfAlreadyReleased() public {
-        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 originalIntentHash, ) = _publishAndFundIntent(originalIntent);
-
-        bytes32 secondaryIntentHash = keccak256("secondary");
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-        uint64 secondaryDeadline = uint64(block.timestamp + 1000);
-
-        // FlashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            originalIntentHash,
-            originalIntent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            secondaryDeadline
-        );
-
-        // Prove secondary intent
-        vm.startPrank(address(secondaryProver));
-        bytes32[] memory hashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
-        hashes[0] = secondaryIntentHash;
-        claimants[0] = claimantBytes;
-        bytes memory encodedProofs = _encodeProofs(hashes, claimants);
-        secondaryProver.prove(solver, SECONDARY_CHAIN_ID, encodedProofs, "");
+        vm.startPrank(address(localProver));
+        vm.deal(address(localProver), REWARD_AMOUNT);
+        portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(secondaryIntent, false);
         vm.stopPrank();
 
-        // Release escrow once
-        localProver.releaseEscrow(originalIntentHash);
+        vm.warp(secondaryIntent.reward.deadline + 1);
 
-        // Try to refund after release
-        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        vm.expectRevert("Already released");
-        localProver.refundEscrow(originalIntentHash, originalIntent, secondaryIntent);
+        // Random address calls refundBoth
+        address randomCaller = makeAddr("random");
+        vm.prank(randomCaller);
+        localProver.refundBoth(originalIntent, secondaryIntent);
+
+        // Should succeed
     }
 
-    function test_refundEscrow_RevertsIfSecondaryNotExpired() public {
-        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 originalIntentHash, ) = _publishAndFundIntent(originalIntent);
+    // C2. Validation - Reverts
+    function test_refundBoth_RevertsIfSecondaryCreatorIsNotLocalProver() public {
+        // Test: Reverts if secondary creator is not LocalProver
+        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(originalIntent);
 
-        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 secondaryIntentHash, , ) = portal.getIntentHash(secondaryIntent);
-        uint64 secondaryDeadline = uint64(block.timestamp + 1000);
+        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
+        // Creator is NOT LocalProver (it's creator by default)
+        secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-        // FlashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            originalIntentHash,
-            originalIntent,
-            bytes32(uint256(uint160(solver))),
-            secondaryIntentHash,
-            address(secondaryProver),
-            secondaryDeadline
-        );
+        vm.prank(user);
+        vm.expectRevert(ILocalProver.InvalidSecondaryCreator.selector);
+        localProver.refundBoth(originalIntent, secondaryIntent);
+    }
 
-        // Try to refund before deadline (should fail)
+    function test_refundBoth_RevertsIfSecondaryNotExpired() public {
+        // Test: Reverts if secondary not expired
+        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(originalIntent);
+
+        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
+        secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.destination = SECONDARY_CHAIN_ID;
+
+        // Don't warp time - secondary not expired
+
+        vm.prank(user);
         vm.expectRevert("Secondary intent not expired");
-        localProver.refundEscrow(originalIntentHash, originalIntent, secondaryIntent);
+        localProver.refundBoth(originalIntent, secondaryIntent);
     }
 
-    function test_refundEscrow_SuccessEvenIfSecondaryAlreadyRefunded() public {
-        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
+    function test_refundBoth_RevertsIfSecondaryAlreadyProven() public {
+        // Test: Reverts if secondary already proven
+        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(originalIntent);
 
-        // Create secondary intent
-        Intent memory secondaryIntent = _createIntent(
-            address(secondaryProver),
-            REWARD_AMOUNT / 2,
-            TOKEN_AMOUNT / 2
-        );
+        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
         secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-        (bytes32 secondaryIntentHash, , ) = portal.getIntentHash(secondaryIntent);
-        uint64 secondaryDeadline = secondaryIntent.reward.deadline;
-
-        // Pre-fund and publish secondary intent
-        token.mint(address(localProver), secondaryIntent.reward.tokens[0].amount);
         vm.startPrank(address(localProver));
-        token.approve(address(portal), secondaryIntent.reward.tokens[0].amount);
-        vm.deal(address(localProver), secondaryIntent.reward.nativeAmount);
-        portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(secondaryIntent, false);
+        vm.deal(address(localProver), REWARD_AMOUNT);
+        (bytes32 secondaryHash, ) = portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(
+            secondaryIntent,
+            false
+        );
         vm.stopPrank();
 
-        // FlashFulfill original intent
-        vm.prank(solver);
-        localProver.flashFulfill(
-            originalIntentHash,
-            originalIntent,
-            bytes32(uint256(uint160(solver))),
-            secondaryIntentHash,
-            address(secondaryProver),
-            secondaryDeadline
-        );
-
-        // Fast forward past deadline
-        vm.warp(secondaryIntent.reward.deadline + 1);
-
-        // Someone refunds the secondary vault SEPARATELY first
-        vm.prank(user);
-        portal.refund(
-            secondaryIntent.destination,
-            keccak256(abi.encode(secondaryIntent.route)),
-            secondaryIntent.reward
-        );
-
-        // Verify LocalProver received the refund
-        assertGt(address(localProver).balance, 0);
-
-        // Now call refundEscrow - should still work even though secondary already refunded
-        uint256 vaultBalanceBefore = originalVault.balance;
-        vm.prank(user);
-        localProver.refundEscrow(originalIntentHash, originalIntent, secondaryIntent);
-
-        // Verify funds transferred to original vault (only the original escrow, not the separately refunded amount)
-        assertGt(originalVault.balance, vaultBalanceBefore);
-
-        // Verify escrow marked as released
-        LocalProver.EscrowData memory escrow = _getEscrowData(originalIntentHash);
-        assertTrue(escrow.released);
-    }
-
-    function test_refundEscrow_RevertsIfSecondaryAlreadyProven() public {
-        Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 originalIntentHash, ) = _publishAndFundIntent(originalIntent);
-
-        Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT, TOKEN_AMOUNT);
-        (bytes32 secondaryIntentHash, , ) = portal.getIntentHash(secondaryIntent);
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-        uint64 secondaryDeadline = uint64(block.timestamp + 1000);
-
-        // FlashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            originalIntentHash,
-            originalIntent,
-            claimantBytes,
-            secondaryIntentHash,
-            address(secondaryProver),
-            secondaryDeadline
-        );
-
-        // Prove secondary intent
+        // Prove the secondary intent
         vm.startPrank(address(secondaryProver));
         bytes32[] memory hashes = new bytes32[](1);
         bytes32[] memory claimants = new bytes32[](1);
-        hashes[0] = secondaryIntentHash;
-        claimants[0] = claimantBytes;
+        hashes[0] = secondaryHash;
+        claimants[0] = bytes32(uint256(uint160(solver)));
         bytes memory encodedProofs = _encodeProofs(hashes, claimants);
         secondaryProver.prove(solver, SECONDARY_CHAIN_ID, encodedProofs, "");
         vm.stopPrank();
 
-        // Fast forward past secondary deadline
-        vm.warp(secondaryDeadline + 1);
+        vm.warp(secondaryIntent.reward.deadline + 1);
 
-        // Try to refund after secondary is proven (should fail)
+        // Try to refund
+        vm.prank(user);
         vm.expectRevert("Secondary intent already proven");
-        localProver.refundEscrow(originalIntentHash, originalIntent, secondaryIntent);
+        localProver.refundBoth(originalIntent, secondaryIntent);
     }
 
     // ============ Helper Functions ============
-
-    function _getEscrowData(
-        bytes32 intentHash
-    ) internal view returns (LocalProver.EscrowData memory) {
-        return localProver.getEscrow(intentHash);
-    }
 
     function _encodeProofs(
         bytes32[] memory intentHashes,
