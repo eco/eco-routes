@@ -226,14 +226,14 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
         // Verify secondary intent expired
         if (block.timestamp <= secondaryIntent.reward.deadline) {
-            revert("Secondary intent not expired");
+            revert SecondaryIntentNotExpired();
         }
 
         // Verify secondary intent not proven
         (bytes32 secondaryHash, bytes32 secondaryRouteHash, ) = _PORTAL.getIntentHash(secondaryIntent);
         ProofData memory proof = IProver(secondaryIntent.reward.prover).provenIntents(secondaryHash);
         if (proof.claimant != address(0)) {
-            revert("Secondary intent already proven");
+            revert SecondaryIntentAlreadyProven();
         }
 
         // INTERACTIONS

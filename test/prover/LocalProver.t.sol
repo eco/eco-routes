@@ -531,7 +531,7 @@ contract LocalProverTest is Test {
         // Don't warp time - secondary not expired
 
         vm.prank(user);
-        vm.expectRevert("Secondary intent not expired");
+        vm.expectRevert(ILocalProver.SecondaryIntentNotExpired.selector);
         localProver.refundBoth(originalIntent, secondaryIntent);
     }
 
@@ -566,7 +566,7 @@ contract LocalProverTest is Test {
 
         // Try to refund
         vm.prank(user);
-        vm.expectRevert("Secondary intent already proven");
+        vm.expectRevert(ILocalProver.SecondaryIntentAlreadyProven.selector);
         localProver.refundBoth(originalIntent, secondaryIntent);
     }
 
