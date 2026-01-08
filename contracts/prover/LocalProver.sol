@@ -99,7 +99,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
     /**
      * @notice Initiates proving of intents on the same chain
-     * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment
+     * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment.
+     *      WARNING: This function is payable for compatibility but does not use ETH. Any ETH sent to this
+     *      function will remain in the contract and be distributed to the next flashFulfill caller as part
+     *      of their reward. Do not send ETH to this function.
      */
     function prove(
         address /* sender */,
@@ -132,6 +135,12 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      * @dev Withdraws funds from vault, executes fulfill, transfers excess to claimant.
      *      Uses checks-effects-interactions pattern for security.
      *      Protected against reentrancy attacks via nonReentrant modifier.
+     *
+     *      WARNING: This function is permissionless and subject to front-running. Any solver can call this
+     *      function for any intent and specify themselves as the claimant. Solvers should use private
+     *      transaction pools (e.g., Flashbots) or coordinate off-chain with intent creators to mitigate
+     *      front-running risks. This is standard MEV behavior in intent-based systems.
+     *
      * @param intentHash Hash of the intent to flash-fulfill
      * @param route Route information for the intent
      * @param reward Reward details for the intent
