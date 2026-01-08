@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Inbox} from "../Inbox.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IProver} from "../interfaces/IProver.sol";
@@ -17,8 +18,9 @@ import {Intent, Route, Reward, TokenAmount} from "../types/Intent.sol";
  * @notice Prover implementation for same-chain intent fulfillment with flash-fulfill capability
  * @dev Handles proving of intents that are fulfilled on the same chain where they were created.
  *      Flash-fulfill withdraws from vault, executes fulfill, and immediately pays solver.
+ *      Uses ReentrancyGuard to prevent cross-intent reentrancy attacks.
  */
-contract LocalProver is ILocalProver, Semver {
+contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     using SafeCast for uint256;
     using AddressConverter for bytes32;
     using SafeERC20 for IERC20;
@@ -129,6 +131,7 @@ contract LocalProver is ILocalProver, Semver {
      * @notice Atomically fulfills an intent and pays claimant with remaining funds
      * @dev Withdraws funds from vault, executes fulfill, transfers excess to claimant.
      *      Uses checks-effects-interactions pattern for security.
+     *      Protected against reentrancy attacks via nonReentrant modifier.
      * @param intentHash Hash of the intent to flash-fulfill
      * @param route Route information for the intent
      * @param reward Reward details for the intent
@@ -140,7 +143,7 @@ contract LocalProver is ILocalProver, Semver {
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant
-    ) external payable returns (bytes[] memory results) {
+    ) external payable nonReentrant returns (bytes[] memory results) {
         // CHECKS
         if (claimant == bytes32(0)) revert InvalidClaimant();
 
@@ -198,13 +201,14 @@ contract LocalProver is ILocalProver, Semver {
      * @notice Refunds both original and secondary intents in a single transaction
      * @dev Permissionless - anyone can trigger if conditions are met.
      *      Secondary intent must have LocalProver as creator for this to work.
+     *      Protected against reentrancy attacks via nonReentrant modifier.
      * @param originalIntent Complete original intent struct
      * @param secondaryIntent Complete secondary intent struct
      */
     function refundBoth(
         Intent calldata originalIntent,
         Intent calldata secondaryIntent
-    ) external {
+    ) external nonReentrant {
         // CHECKS
         // Verify secondary intent creator is LocalProver
         if (secondaryIntent.reward.creator != address(this)) {
