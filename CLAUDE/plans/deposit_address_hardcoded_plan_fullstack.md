@@ -48,7 +48,7 @@ A Node.js/Python service that acts as the automation layer:
 5. **Event Indexer** (optional): Historical data for analytics
 
 **Database**:
-- PostgreSQL storing: deposit addresses, balances, intents, statuses
+- MongoDB storing: deposit addresses, balances, intents, statuses
 - Tracks: which addresses are deployed, last balance, intent lifecycle
 
 **Workflow**:
@@ -104,7 +104,7 @@ Backend tracks completion
 
 ### Backend Services (1 service with 5 modules)
 - Orchestrator service in Node.js/Python
-- PostgreSQL database
+- MongoDB
 - Monitoring/alerting integration
 
 ### Tests (3 test suites)
@@ -176,22 +176,22 @@ function createIntent(uint256 amount) external nonReentrant returns (bytes32 int
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Backend Stack                           │
+│                      Backend Stack                          │
 ├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌───────────────┐  ┌────────────────┐  ┌───────────────┐  │
-│  │   RPC Node    │  │   Database     │  │   Monitoring  │  │
-│  │   Provider    │  │   (PostgreSQL) │  │   /Alerts     │  │
-│  └───────┬───────┘  └────────┬───────┘  └───────────────┘  │
-│          │                   │                               │
-│  ┌───────┴───────────────────┴───────────────────────┐     │
-│  │          Orchestrator Service (Node.js/Python)     │     │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐ │     │
-│  │  │   Balance    │  │   Contract   │  │  Intent  │ │     │
-│  │  │   Monitor    │  │   Deployer   │  │  Creator │ │     │
-│  │  └──────────────┘  └──────────────┘  └──────────┘ │     │
-│  └─────────────────────────────────────────────────────┘     │
-│                                                               │
+│                                                             │
+│  ┌───────────────┐  ┌────────────────┐  ┌───────────────┐   │
+│  │   RPC Node    │  │   Database     │  │   Monitoring  │   │
+│  │   Provider    │  │   (MongoDB)    │  │   /Alerts     │   │
+│  └───────┬───────┘  └────────┬───────┘  └───────────────┘   │
+│          │                   │                              │
+│  ┌───────┴───────────────────┴───────────────────────┐      │
+│  │          Orchestrator Service (Node.js/Python)    │      │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐ │      │
+│  │  │   Balance    │  │   Contract   │  │  Intent  │ │      │
+│  │  │   Monitor    │  │   Deployer   │  │  Creator │ │      │
+│  │  └──────────────┘  └──────────────┘  └──────────┘ │      │
+│  └───────────────────────────────────────────────────┘      │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -276,6 +276,14 @@ CREATE TABLE intents (
 - Provide API for frontend/dashboard
 - Backup data source
 
+### Service 6: Deposit Address API
+
+**Purpose**: REST endpoint to get EVM address for Solana address
+
+**Implementation**:
+- Generate EVM address for the passed Solana Address
+- Store EVM address --> Solana address mapping in database
+
 ### Orchestrator Workflow
 
 ```
@@ -312,7 +320,7 @@ CREATE TABLE intents (
 ```typescript
 // .env
 RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
-DATABASE_URL=postgresql://user:pass@localhost:5432/deposit_orchestrator
+DATABASE_URL=mongodb://user:pass@localhost:5432/deposit_orchestrator
 FACTORY_ADDRESS=0x...
 SOURCE_TOKEN_ADDRESS=0x...
 POLL_INTERVAL_SECONDS=60
