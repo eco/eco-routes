@@ -219,8 +219,11 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         Intent calldata secondaryIntent
     ) external nonReentrant {
         // CHECKS
-        // Verify secondary intent creator is LocalProver
-        if (secondaryIntent.reward.creator != address(this)) {
+        // Compute original vault address
+        address originalVault = _PORTAL.intentVaultAddress(originalIntent);
+
+        // Verify secondary intent creator is original vault (validates linkage)
+        if (secondaryIntent.reward.creator != originalVault) {
             revert InvalidSecondaryCreator();
         }
 
@@ -237,15 +240,11 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         }
 
         // INTERACTIONS
-        // Compute original vault address
-        address originalVault = _PORTAL.intentVaultAddress(originalIntent);
-
-        // Refund secondary to original vault
-        _PORTAL.refundTo(
+        // Refund secondary to original vault (automatic via creator field)
+        _PORTAL.refund(
             secondaryIntent.destination,
             secondaryRouteHash,
-            secondaryIntent.reward,
-            originalVault
+            secondaryIntent.reward
         );
 
         // Refund original (goes to creator/vault)

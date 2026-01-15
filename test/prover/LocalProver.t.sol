@@ -449,14 +449,14 @@ contract LocalProverTest is Test {
         Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
 
-        // Create secondary intent with LocalProver as creator
+        // Create secondary intent with original vault as creator (links to original)
         Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
-        secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.reward.creator = originalVault;
         secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-        // Publish secondary intent (LocalProver would do this normally, we'll simulate)
-        vm.startPrank(address(localProver));
-        vm.deal(address(localProver), REWARD_AMOUNT);
+        // Publish secondary intent (solver does this)
+        vm.startPrank(solver);
+        vm.deal(solver, REWARD_AMOUNT);
         portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(secondaryIntent, false);
         vm.stopPrank();
 
@@ -483,14 +483,14 @@ contract LocalProverTest is Test {
     function test_refundBoth_IsPermissionless() public {
         // Test: refundBoth is permissionless (anyone can call)
         Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        _publishAndFundIntent(originalIntent);
+        (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
 
         Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
-        secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.reward.creator = originalVault;
         secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-        vm.startPrank(address(localProver));
-        vm.deal(address(localProver), REWARD_AMOUNT);
+        vm.startPrank(solver);
+        vm.deal(solver, REWARD_AMOUNT);
         portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(secondaryIntent, false);
         vm.stopPrank();
 
@@ -522,10 +522,10 @@ contract LocalProverTest is Test {
     function test_refundBoth_RevertsIfSecondaryNotExpired() public {
         // Test: Reverts if secondary not expired
         Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        _publishAndFundIntent(originalIntent);
+        (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
 
         Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
-        secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.reward.creator = originalVault;
         secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
         // Don't warp time - secondary not expired
@@ -538,14 +538,14 @@ contract LocalProverTest is Test {
     function test_refundBoth_RevertsIfSecondaryAlreadyProven() public {
         // Test: Reverts if secondary already proven
         Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        _publishAndFundIntent(originalIntent);
+        (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
 
         Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
-        secondaryIntent.reward.creator = address(localProver);
+        secondaryIntent.reward.creator = originalVault;
         secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
-        vm.startPrank(address(localProver));
-        vm.deal(address(localProver), REWARD_AMOUNT);
+        vm.startPrank(solver);
+        vm.deal(solver, REWARD_AMOUNT);
         (bytes32 secondaryHash, ) = portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(
             secondaryIntent,
             false
@@ -568,6 +568,41 @@ contract LocalProverTest is Test {
         vm.prank(user);
         vm.expectRevert(ILocalProver.SecondaryIntentAlreadyProven.selector);
         localProver.refundBoth(originalIntent, secondaryIntent);
+    }
+
+    // C3. Security - Attack Prevention
+    function test_refundBoth_RevertsWithFakeOriginalIntent() public {
+        // Test: Attack scenario - attacker tries to steal secondary funds with fake original intent
+
+        // Setup: Legitimate original and secondary intents
+        Intent memory legitimateOriginal = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 legitOriginalHash, address legitOriginalVault) = _publishAndFundIntent(legitimateOriginal);
+
+        // Create secondary intent linked to legitimate original vault
+        Intent memory legitimateSecondary = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
+        legitimateSecondary.reward.creator = legitOriginalVault;  // Links to legitimate vault
+        legitimateSecondary.destination = SECONDARY_CHAIN_ID;
+
+        // Solver publishes and funds secondary intent
+        vm.deal(solver, REWARD_AMOUNT);
+        vm.prank(solver);
+        portal.publishAndFund{value: legitimateSecondary.reward.nativeAmount}(legitimateSecondary, false);
+
+        // Attacker creates fake original intent they control
+        address attacker = makeAddr("attacker");
+        Intent memory fakeOriginal = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        fakeOriginal.reward.creator = attacker;  // Attacker controls this
+
+        // Warp past secondary deadline
+        vm.warp(legitimateSecondary.reward.deadline + 1);
+
+        // Attacker tries to steal secondary funds by calling refundBoth with their fake original
+        vm.prank(attacker);
+        vm.expectRevert(ILocalProver.InvalidSecondaryCreator.selector);
+        localProver.refundBoth(fakeOriginal, legitimateSecondary);
+
+        // Attack prevented! ✅
+        // The secondary creator (legitOriginalVault) doesn't match fake original vault address
     }
 
     // ============ Helper Functions ============
