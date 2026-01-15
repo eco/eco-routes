@@ -175,7 +175,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Approve Portal to spend route tokens
         uint256 tokensLength = route.tokens.length;
         for (uint256 i = 0; i < tokensLength; ++i) {
-            IERC20(route.tokens[i].token).forceApprove(
+            IERC20(route.tokens[i].token).approve(
                 address(_PORTAL),
                 route.tokens[i].amount
             );
