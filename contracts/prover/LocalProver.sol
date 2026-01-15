@@ -178,6 +178,15 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Calculate withdrawn amount
         uint256 withdrawnNative = address(this).balance - balanceBefore;
 
+        // Approve Portal to spend route tokens
+        uint256 tokensLength = route.tokens.length;
+        for (uint256 i = 0; i < tokensLength; ++i) {
+            IERC20(route.tokens[i].token).forceApprove(
+                address(_PORTAL),
+                route.tokens[i].amount
+            );
+        }
+
         // Determine native amount for fulfill (use msg.value if provided, else use withdrawn)
         uint256 fulfillNativeAmount = msg.value > 0 ? msg.value : withdrawnNative;
 

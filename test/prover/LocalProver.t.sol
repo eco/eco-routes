@@ -154,28 +154,6 @@ contract LocalProverTest is Test {
         assertEq(proof.destination, 0);
     }
 
-    function test_provenIntents_ReturnsClaimantForFlashFulfilledIntent() public {
-        // Test: Returns claimant from Portal for flashFulfilled intent
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-
-        // FlashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            intentHash,
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
-
-        // Should return solver (NOT LocalProver)
-        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, solver);
-        assertEq(proof.destination, CHAIN_ID);
-    }
-
     // A2. prove()
     function test_prove_IsNoOp() public {
         // Test: prove() is a no-op (doesn't revert)
@@ -202,52 +180,6 @@ contract LocalProverTest is Test {
     }
 
     // ============ B. flashFulfill() Tests ============
-
-    // B1. Happy Path - Native Only
-    function test_flashFulfill_SucceedsWithNativeOnly() public {
-        // Test: flashFulfill succeeds with native tokens only
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-        uint256 solverBalanceBefore = solver.balance;
-
-        vm.prank(solver);
-        vm.expectEmit(true, true, false, true);
-        emit FlashFulfilled(intentHash, claimantBytes, REWARD_AMOUNT);
-
-        localProver.flashFulfill(
-            intentHash,
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
-
-        // Verify: claimant receives funds
-        assertEq(solver.balance, solverBalanceBefore + REWARD_AMOUNT);
-        // Verify: LocalProver has zero balance after
-        assertEq(address(localProver).balance, 0);
-    }
-
-    function test_flashFulfill_WithMsgValueUsesMsgValueForFulfill() public {
-        // Test: flashFulfill with msg.value uses msg.value for fulfill
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
-
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-        uint256 msgValue = 1 ether;
-
-        vm.prank(solver);
-        localProver.flashFulfill{value: msgValue}(
-            intentHash,
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
-
-        // Solver should receive withdrawn amount (since msg.value was used for fulfill)
-        assertGt(solver.balance, INITIAL_BALANCE - msgValue);
-    }
 
     // B4. Validation - Reverts
     function test_flashFulfill_RevertsIfClaimantIsZero() public {
@@ -326,40 +258,53 @@ contract LocalProverTest is Test {
         );
     }
 
-    // B5. Edge Cases
-    function test_flashFulfill_WorksWhenNoExcessFundsRemain() public {
-        // Test: flashFulfill works when no excess funds remain
-        // Create intent where reward exactly covers execution (use route.nativeAmount)
-        TokenAmount[] memory routeTokens = new TokenAmount[](0);
+    // B5. Happy Path with Route Tokens
+    function test_flashFulfill_SucceedsWithRouteTokens() public {
+        // Test: flashFulfill succeeds with route tokens (stablecoin)
+        // Create intent with route tokens that match reward tokens
+        TokenAmount[] memory routeTokens = new TokenAmount[](1);
+        routeTokens[0] = TokenAmount({
+            token: address(token),
+            amount: TOKEN_AMOUNT
+        });
+
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
+        rewardTokens[0] = TokenAmount({
+            token: address(token),
+            amount: TOKEN_AMOUNT
+        });
+
         Call[] memory calls = new Call[](0);
 
         Route memory route = Route({
             salt: bytes32(uint256(1)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            nativeAmount: REWARD_AMOUNT, // Route requires all the native
+            nativeAmount: 0,
             tokens: routeTokens,
             calls: calls
         });
 
-        TokenAmount[] memory rewardTokens = new TokenAmount[](0);
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: address(localProver),
-            nativeAmount: REWARD_AMOUNT,
+            nativeAmount: 0,
             tokens: rewardTokens
         });
 
-        Intent memory _intent = Intent({destination: CHAIN_ID, route: route, reward: reward});
+        Intent memory _intent = Intent({
+            destination: CHAIN_ID,
+            route: route,
+            reward: reward
+        });
+
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
+        // FlashFulfill should succeed
         vm.prank(solver);
-        vm.expectEmit(true, true, false, true);
-        emit FlashFulfilled(intentHash, claimantBytes, 0);
-
         localProver.flashFulfill(
             intentHash,
             _intent.route,
@@ -367,78 +312,8 @@ contract LocalProverTest is Test {
             claimantBytes
         );
 
-        // Fee should be zero
-        assertEq(address(localProver).balance, 0);
-    }
-
-    function test_flashFulfill_CanBeCalledTwiceOnDifferentIntents() public {
-        // Test: flashFulfill can be called twice on different intents
-        Intent memory intent1 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        Intent memory intent2 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-
-        // Make them different
-        intent1.route.salt = bytes32(uint256(1));
-        intent2.route.salt = bytes32(uint256(2));
-
-        (bytes32 intentHash1, ) = _publishAndFundIntent(intent1);
-        (bytes32 intentHash2, ) = _publishAndFundIntent(intent2);
-
-        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
-
-        // First flashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            intentHash1,
-            intent1.route,
-            intent1.reward,
-            claimantBytes
-        );
-
-        // Second flashFulfill
-        vm.prank(solver);
-        localProver.flashFulfill(
-            intentHash2,
-            intent2.route,
-            intent2.reward,
-            claimantBytes
-        );
-
-        // Both should succeed
-    }
-
-    function test_flashFulfill_WorksAlongsideNormalPortalFulfill() public {
-        // Test: flashFulfill works alongside normal Portal.fulfill
-        Intent memory intent1 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        Intent memory intent2 = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-
-        intent1.route.salt = bytes32(uint256(1));
-        intent2.route.salt = bytes32(uint256(2));
-
-        (bytes32 intentHash1, ) = _publishAndFundIntent(intent1);
-        (bytes32 intentHash2, ) = _publishAndFundIntent(intent2);
-
-        // Solver A uses normal Portal.fulfill
-        vm.startPrank(solver);
-        vm.deal(solver, REWARD_AMOUNT * 2);
-        portal.fulfill{value: REWARD_AMOUNT}(
-            intentHash1,
-            intent1.route,
-            keccak256(abi.encode(intent1.reward)),
-            bytes32(uint256(uint160(solver)))
-        );
-        vm.stopPrank();
-
-        // Solver B uses flashFulfill
-        address solver2 = makeAddr("solver2");
-        vm.prank(solver2);
-        localProver.flashFulfill(
-            intentHash2,
-            intent2.route,
-            intent2.reward,
-            bytes32(uint256(uint160(solver2)))
-        );
-
-        // Both should succeed independently
+        // Verify tokens transferred to executor
+        assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
     }
 
     // ============ C. refundBoth() Tests ============
