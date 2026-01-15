@@ -399,6 +399,76 @@ contract LocalProverTest is Test {
         assertEq(solver.balance, solverBalanceBefore + REWARD_AMOUNT);
     }
 
+    function test_flashFulfill_TransfersRewardTokensToSolver() public {
+        // Test: Solver receives ERC20 reward tokens, not just native
+        // Route uses 500 tokens for execution, reward has 1000 tokens
+        // Solver should get the 500 token remainder
+        uint256 routeTokenAmount = 500;
+        uint256 rewardTokenAmount = 1000;
+
+        TokenAmount[] memory routeTokens = new TokenAmount[](1);
+        routeTokens[0] = TokenAmount({
+            token: address(token),
+            amount: routeTokenAmount
+        });
+
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
+        rewardTokens[0] = TokenAmount({
+            token: address(token),
+            amount: rewardTokenAmount
+        });
+
+        Call[] memory calls = new Call[](0);
+
+        Route memory route = Route({
+            salt: bytes32(uint256(4)),
+            deadline: uint64(block.timestamp + 1000),
+            portal: address(portal),
+            nativeAmount: 0,
+            tokens: routeTokens,
+            calls: calls
+        });
+
+        Reward memory reward = Reward({
+            deadline: uint64(block.timestamp + 2000),
+            creator: creator,
+            prover: address(localProver),
+            nativeAmount: 0,
+            tokens: rewardTokens
+        });
+
+        Intent memory _intent = Intent({
+            destination: CHAIN_ID,
+            route: route,
+            reward: reward
+        });
+
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
+
+        // Record solver's token balance before
+        uint256 solverTokenBalanceBefore = token.balanceOf(solver);
+
+        // FlashFulfill should succeed
+        vm.prank(solver);
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            claimantBytes
+        );
+
+        // Verify route tokens (500) transferred to executor
+        assertEq(token.balanceOf(address(portal.executor())), routeTokenAmount);
+
+        // Verify reward tokens (500 remainder) transferred to solver
+        assertEq(
+            token.balanceOf(solver),
+            solverTokenBalanceBefore + (rewardTokenAmount - routeTokenAmount)
+        );
+    }
+
     // ============ C. refundBoth() Tests ============
 
     // C1. Happy Path

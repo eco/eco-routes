@@ -193,10 +193,20 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         );
 
         // EFFECTS - Transfer remaining funds to claimant
-        uint256 remainingNative = address(this).balance;
         address claimantAddress = claimant.toAddress();
 
+        // Transfer reward tokens to claimant
+        uint256 rewardTokensLength = reward.tokens.length;
+        for (uint256 i = 0; i < rewardTokensLength; ++i) {
+            IERC20 rewardToken = IERC20(reward.tokens[i].token);
+            uint256 balance = rewardToken.balanceOf(address(this));
+            if (balance > 0) {
+                rewardToken.safeTransfer(claimantAddress, balance);
+            }
+        }
+
         // Transfer remaining native
+        uint256 remainingNative = address(this).balance;
         if (remainingNative > 0) {
             (bool success, ) = claimantAddress.call{value: remainingNative}("");
             if (!success) revert NativeTransferFailed();
