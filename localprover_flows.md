@@ -15,8 +15,8 @@ flowchart TD
     StoreClaimant1 --> Withdraw1[LocalProver withdraws from OriginalVault<br/>- provenIntents returns LocalProver as claimant<br/>- funds sent to LocalProver]
     Withdraw1 --> Fulfill1[LocalProver calls Portal.fulfill<br/>- claimant = LocalProver address<br/>- executes route calls<br/>- Portal stores LocalProver in claimants mapping]
     Fulfill1 --> FulfillSuccess1{Fulfill Success?}
-    FulfillSuccess1 -->|Yes| PaySolver1[LocalProver pays remaining balance<br/>to actual claimant immediately<br/>from LocalProver's balance]
-    PaySolver1 --> Done1([✅ Done - Solver has fee])
+    FulfillSuccess1 -->|Yes| PaySolver1[LocalProver transfers to actual claimant:<br/>- All reward ERC20 tokens (minus route consumption)<br/>- All remaining native ETH]
+    PaySolver1 --> Done1([✅ Done - Solver has rewards])
     FulfillSuccess1 -->|No - Revert| Revert1([❌ Transaction reverts<br/>Funds stay in OriginalVault<br/>_actualClaimants entry cleared on revert])
 
     %% Secondary Intent Path
@@ -29,7 +29,7 @@ flowchart TD
     Withdraw2 --> Fulfill2[LocalProver calls Portal.fulfill<br/>- claimant = LocalProver address<br/>- executes route calls<br/>- Portal stores LocalProver in claimants mapping]
     Fulfill2 --> FulfillSuccess2{Fulfill Success?}
     FulfillSuccess2 -->|No - Revert| Revert2([❌ Transaction reverts<br/>Funds in OriginalVault<br/>Funds in SecondaryVault<br/>_actualClaimants entry cleared on revert])
-    FulfillSuccess2 -->|Yes| PaySolver2[LocalProver pays remaining balance<br/>to actual claimant immediately<br/>from LocalProver's balance<br/>✅ Solver has fee now!]
+    FulfillSuccess2 -->|Yes| PaySolver2[LocalProver transfers to actual claimant:<br/>- All reward ERC20 tokens (minus route consumption)<br/>- All remaining native ETH<br/>✅ Solver has rewards now!]
     PaySolver2 --> SecondaryOutcome{Secondary Intent<br/>Outcome?}
 
     SecondaryOutcome -->|Proven successful| SecondarySuccess([✅ Complete Success<br/>- Solver got fee<br/>- Secondary completed<br/>- User got service])
@@ -84,9 +84,12 @@ flowchart TD
   - Pays actual solver immediately from LocalProver's balance
 
 ### 2. Solver Always Gets Paid Immediately
-- In both simple and secondary intent scenarios, if `flashFulfill` succeeds, the solver receives their fee right away
-- This fee is **non-refundable** - solver did the work of fulfilling the original intent
-- Payment comes from LocalProver's balance after withdrawal and fulfill
+- In both simple and secondary intent scenarios, if `flashFulfill` succeeds, the solver receives their reward right away
+- Solver receives:
+  - **All ERC20 tokens** from `reward.tokens` (minus any consumed by `route.tokens` for execution)
+  - **All native ETH** from `reward.nativeAmount` (minus any consumed by `route.nativeAmount` for execution)
+- This reward is **non-refundable** - solver did the work of fulfilling the original intent
+- Payment comes from LocalProver's token and ETH balances after withdrawal and fulfill
 
 ### 3. Single Intent Flow (Simple)
 - Solver calls `flashFulfill` → LocalProver stores claimant → withdraws to itself → fulfills → pays solver immediately
@@ -140,14 +143,14 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 ## Scenarios Summary
 
 ### ✅ Success Cases
-1. **Simple fulfillment**: Solver gets fee, user gets service
-2. **Secondary success**: Solver gets fee, secondary completes, user gets full service
+1. **Simple fulfillment**: Solver gets reward (ERC20 tokens + native ETH), user gets service
+2. **Secondary success**: Solver gets reward, secondary completes, user gets full service
 3. **Single-tx refund**: Both vaults refunded to user in one transaction
 4. **Two-tx refund**: Both vaults refunded separately
 
-### ⚠️ Solver Keeps Fee Cases
-- In all scenarios where `flashFulfill` succeeds, solver keeps their fee
-- Even if secondary intent fails, solver earned the fee for fulfilling the original intent
+### ⚠️ Solver Keeps Reward Cases
+- In all scenarios where `flashFulfill` succeeds, solver keeps their reward (tokens + native)
+- Even if secondary intent fails, solver earned the reward for fulfilling the original intent
 - This is fair: solver did work and fronted capital for secondary intent
 
 ### ❌ Revert Cases
@@ -166,9 +169,11 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 
 ### For Solvers
 - Call `flashFulfill` to atomically withdraw + fulfill + get paid
-- Get fee immediately (no waiting!)
+- Get reward immediately (no waiting!):
+  - All ERC20 tokens from reward (minus route consumption)
+  - All native ETH from reward (minus route consumption)
 - If using secondary intent: create it with `reward.creator = address(LocalProver)` for better UX
-- Front capital for secondary intent from the fee received
+- Front capital for secondary intent from the reward received
 
 ### For Users (Refund Path)
 - Single transaction to get all funds back from both vaults
