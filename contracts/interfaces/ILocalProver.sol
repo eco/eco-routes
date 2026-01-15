@@ -20,6 +20,7 @@ interface ILocalProver is IProver {
     error InvalidSecondaryCreator();
     error SecondaryIntentNotExpired();
     error SecondaryIntentAlreadyProven();
+    error MissingActualClaimant();
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS

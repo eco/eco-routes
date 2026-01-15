@@ -72,8 +72,8 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             if (storedClaimant != address(0)) {
                 return ProofData(storedClaimant, _CHAIN_ID);
             }
-            // Otherwise return LocalProver (shouldn't happen but handle gracefully)
-            return ProofData(address(this), _CHAIN_ID);
+            // Revert if LocalProver is claimant but no actual claimant stored
+            revert MissingActualClaimant();
         }
 
         // Case 2: Intent fulfilled via normal Portal.fulfill (not flashFulfill)
@@ -259,7 +259,4 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         (bytes32 originalHash, , ) = _PORTAL.getIntentHash(originalIntent);
         emit BothRefunded(originalHash, secondaryHash, originalVault);
     }
-
-    // Allow contract to receive native tokens
-    receive() external payable {}
 }
