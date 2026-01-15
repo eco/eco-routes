@@ -169,14 +169,8 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // while tracking the real solver address
         _actualClaimants[intentHash] = claimant.toAddress();
 
-        // Record initial balance before withdrawal
-        uint256 balanceBefore = address(this).balance;
-
         // INTERACTIONS - Withdraw to LocalProver
         _PORTAL.withdraw(_CHAIN_ID, routeHash, reward);
-
-        // Calculate withdrawn amount
-        uint256 withdrawnNative = address(this).balance - balanceBefore;
 
         // Approve Portal to spend route tokens
         uint256 tokensLength = route.tokens.length;
@@ -187,13 +181,11 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             );
         }
 
-        // Determine native amount for fulfill (use msg.value if provided, else use withdrawn)
-        uint256 fulfillNativeAmount = msg.value > 0 ? msg.value : withdrawnNative;
-
         // Call fulfill with LocalProver as Portal claimant
+        // Use entire contract balance for fulfill (includes msg.value + any existing balance)
         // This enables withdrawal before fulfill (Portal checks claimants mapping)
         bytes32 localProverAsClaimant = bytes32(uint256(uint160(address(this))));
-        results = _PORTAL.fulfill{value: fulfillNativeAmount}(
+        results = _PORTAL.fulfill{value: address(this).balance}(
             intentHash,
             route,
             rewardHash,
