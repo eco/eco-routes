@@ -258,6 +258,26 @@ contract LocalProverTest is Test {
         );
     }
 
+    function test_flashFulfill_RevertsIfNativeTransferFails() public {
+        // Test: Reverts when claimant can't receive native tokens
+        // Deploy a contract that rejects ETH transfers
+        RejectEth rejecter = new RejectEth();
+
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        bytes32 rejecterClaimant = bytes32(uint256(uint160(address(rejecter))));
+
+        vm.prank(solver);
+        vm.expectRevert(ILocalProver.NativeTransferFailed.selector);
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            rejecterClaimant
+        );
+    }
+
     // B5. Happy Path with Route Tokens
     function test_flashFulfill_SucceedsWithRouteTokens() public {
         // Test: flashFulfill succeeds with route tokens (stablecoin)
@@ -582,4 +602,12 @@ contract LocalProverTest is Test {
 
     // Allow test contract to receive ETH
     receive() external payable {}
+}
+
+/**
+ * @notice Helper contract that rejects ETH transfers
+ * @dev Used to test native transfer failure scenarios
+ */
+contract RejectEth {
+    // No receive() or fallback() - will reject all ETH transfers
 }
