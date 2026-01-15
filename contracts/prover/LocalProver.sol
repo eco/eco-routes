@@ -236,20 +236,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             revert InvalidSecondaryCreator();
         }
 
-        // Verify secondary intent expired
-        if (block.timestamp <= secondaryIntent.reward.deadline) {
-            revert SecondaryIntentNotExpired();
-        }
-
-        // Verify secondary intent not proven
-        (bytes32 secondaryHash, bytes32 secondaryRouteHash, ) = _PORTAL.getIntentHash(secondaryIntent);
-        ProofData memory proof = IProver(secondaryIntent.reward.prover).provenIntents(secondaryHash);
-        if (proof.claimant != address(0)) {
-            revert SecondaryIntentAlreadyProven();
-        }
-
         // INTERACTIONS
         // Refund secondary to original vault (automatic via creator field)
+        // Note: Portal.refund validates expiry and proof status internally
+        (bytes32 secondaryHash, bytes32 secondaryRouteHash, ) = _PORTAL.getIntentHash(secondaryIntent);
         _PORTAL.refund(
             secondaryIntent.destination,
             secondaryRouteHash,

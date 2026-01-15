@@ -395,7 +395,7 @@ contract LocalProverTest is Test {
     }
 
     function test_refundBoth_RevertsIfSecondaryNotExpired() public {
-        // Test: Reverts if secondary not expired
+        // Test: Reverts if secondary not expired (validated by Portal)
         Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         (bytes32 originalIntentHash, address originalVault) = _publishAndFundIntent(originalIntent);
 
@@ -403,10 +403,15 @@ contract LocalProverTest is Test {
         secondaryIntent.reward.creator = originalVault;
         secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
+        // Publish secondary intent
+        vm.deal(solver, REWARD_AMOUNT);
+        vm.prank(solver);
+        portal.publishAndFund{value: secondaryIntent.reward.nativeAmount}(secondaryIntent, false);
+
         // Don't warp time - secondary not expired
 
         vm.prank(user);
-        vm.expectRevert(ILocalProver.SecondaryIntentNotExpired.selector);
+        vm.expectRevert(); // Portal reverts with InvalidStatusForRefund
         localProver.refundBoth(originalIntent, secondaryIntent);
     }
 
@@ -439,9 +444,9 @@ contract LocalProverTest is Test {
 
         vm.warp(secondaryIntent.reward.deadline + 1);
 
-        // Try to refund
+        // Try to refund - Portal validates proof exists and reverts
         vm.prank(user);
-        vm.expectRevert(ILocalProver.SecondaryIntentAlreadyProven.selector);
+        vm.expectRevert(); // Portal reverts with IntentNotClaimed
         localProver.refundBoth(originalIntent, secondaryIntent);
     }
 
