@@ -316,6 +316,69 @@ contract LocalProverTest is Test {
         assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
     }
 
+    function test_flashFulfill_SucceedsWithTokensAndNativeReward() public {
+        // Test: flashFulfill correctly transfers both tokens and remaining native to claimant
+        // Create intent with route tokens AND reward native amount
+        TokenAmount[] memory routeTokens = new TokenAmount[](1);
+        routeTokens[0] = TokenAmount({
+            token: address(token),
+            amount: TOKEN_AMOUNT
+        });
+
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
+        rewardTokens[0] = TokenAmount({
+            token: address(token),
+            amount: TOKEN_AMOUNT
+        });
+
+        Call[] memory calls = new Call[](0);
+
+        Route memory route = Route({
+            salt: bytes32(uint256(2)),
+            deadline: uint64(block.timestamp + 1000),
+            portal: address(portal),
+            nativeAmount: 0,
+            tokens: routeTokens,
+            calls: calls
+        });
+
+        Reward memory reward = Reward({
+            deadline: uint64(block.timestamp + 2000),
+            creator: creator,
+            prover: address(localProver),
+            nativeAmount: REWARD_AMOUNT,  // Native reward for solver
+            tokens: rewardTokens
+        });
+
+        Intent memory _intent = Intent({
+            destination: CHAIN_ID,
+            route: route,
+            reward: reward
+        });
+
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
+
+        // Record solver's balance before flashFulfill
+        uint256 solverBalanceBefore = solver.balance;
+
+        // FlashFulfill should succeed
+        vm.prank(solver);
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            claimantBytes
+        );
+
+        // Verify tokens transferred to executor
+        assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
+
+        // Verify native transferred to solver (claimant)
+        assertEq(solver.balance, solverBalanceBefore + REWARD_AMOUNT);
+    }
+
     // ============ C. refundBoth() Tests ============
 
     // C1. Happy Path

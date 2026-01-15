@@ -260,4 +260,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
         emit BothRefunded(originalHash, secondaryHash, originalVault);
     }
+
+    /**
+     * @notice Allows contract to receive native tokens
+     * @dev Required for vault withdrawals that include native rewards
+     */
+    receive() external payable {}
 }
