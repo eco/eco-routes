@@ -533,13 +533,13 @@ contract LocalProverTest is Test {
     }
 
     // C2. Validation - Reverts
-    function test_refundBoth_RevertsIfSecondaryCreatorIsNotLocalProver() public {
-        // Test: Reverts if secondary creator is not LocalProver
+    function test_refundBoth_RevertsIfSecondaryCreatorIsNotOriginalVault() public {
+        // Test: Reverts if secondary creator is not originalVault
         Intent memory originalIntent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
         _publishAndFundIntent(originalIntent);
 
         Intent memory secondaryIntent = _createIntent(address(secondaryProver), REWARD_AMOUNT / 2, 0);
-        // Creator is NOT LocalProver (it's creator by default)
+        // Creator is NOT originalVault (it's creator by default, which is wrong)
         secondaryIntent.destination = SECONDARY_CHAIN_ID;
 
         vm.prank(user);

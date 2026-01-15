@@ -69,9 +69,10 @@ interface ILocalProver is IProver {
 
     /**
      * @notice Refunds both original and secondary intents in a single transaction
-     * @dev Secondary intent must have LocalProver as creator for this to work
+     * @dev Secondary intent must have originalVault as creator for this to work.
+     *      The originalVault is the vault address of the original intent.
      * @param originalIntent Complete original intent struct
-     * @param secondaryIntent Complete secondary intent struct
+     * @param secondaryIntent Complete secondary intent struct (with reward.creator = originalVault)
      */
     function refundBoth(
         Intent calldata originalIntent,

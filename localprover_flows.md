@@ -21,7 +21,7 @@ flowchart TD
 
     %% Secondary Intent Path
     IntentType -->|Requires cross-chain<br/>or external action| Publish2[User calls Portal.publishAndFund<br/>- creator: User<br/>- prover: LocalProver<br/>- funds deposited to OriginalVault]
-    Publish2 --> CreateSecondary[Solver creates secondary Intent struct<br/>- creator: **LocalProver**<br/>- prover: CrossChainProver<br/>- destination: different chain]
+    Publish2 --> CreateSecondary[Solver creates secondary Intent struct<br/>- creator: **OriginalVault**<br/>- prover: CrossChainProver<br/>- destination: different chain]
     CreateSecondary --> PublishSecondary[Solver calls Portal.publishAndFund<br/>for secondary intent<br/>- funds SecondaryVault with their own money]
     PublishSecondary --> FlashWithSecondary[Solver calls LocalProver.flashFulfill<br/>- intentHash, route, reward, claimant]
     FlashWithSecondary --> StoreClaimant2[LocalProver stores actual claimant<br/>in _actualClaimants mapping]
@@ -38,7 +38,7 @@ flowchart TD
     SecondaryFailed --> RefundChoice{Who refunds?}
 
     RefundChoice -->|User wants single-tx| UserRefundBoth[User calls LocalProver.refundBoth<br/>- originalIntent<br/>- secondaryIntent]
-    UserRefundBoth --> VerifyCreator{Verify secondaryIntent<br/>creator == LocalProver?}
+    UserRefundBoth --> VerifyCreator{Verify secondaryIntent<br/>creator == OriginalVault?}
     VerifyCreator -->|No| RevertBadCreator([❌ Revert: InvalidSecondaryCreator])
     VerifyCreator -->|Yes| VerifyExpired{Verify secondary<br/>expired & unproven?}
     VerifyExpired -->|No| RevertNotExpired([❌ Revert: Not expired or already proven])
@@ -105,15 +105,15 @@ flowchart TD
 
 ### 5. Refund Scenarios
 - **Option A**: User calls `refundBoth()` for single-tx convenience
-  - Requires secondary intent creator == LocalProver
-  - LocalProver redirects secondary refund to original vault
-  - Then refunds original vault
+  - Requires secondary intent creator == OriginalVault
+  - Secondary refund goes directly to original vault (via creator field)
+  - Then refunds original vault to user
 - **Option B**: User calls `Portal.refund()` twice (still works!)
   - Less convenient but always available
   - Each vault refunds separately
 
 ### 6. Critical Requirement for `refundBoth()`
-The secondary intent **MUST** have `reward.creator = address(LocalProver)` for single-tx refunds to work. If solver creates secondary with themselves as creator, they have to handle refunds themselves.
+The secondary intent **MUST** have `reward.creator = originalVault` (the vault address of the original intent) for single-tx refunds to work. This ensures refunds flow: SecondaryVault → OriginalVault → User. If solver creates secondary with themselves as creator, they have to handle refunds themselves.
 
 ## Technical Implementation: provenIntents() State Machine
 
@@ -177,7 +177,7 @@ The state machine includes built-in protection against two potential griefing at
 
 ### ❌ Revert Cases
 1. **flashFulfill fails**: Transaction reverts, funds stay in original vault
-2. **Invalid secondary creator**: `refundBoth()` reverts if secondary creator isn't LocalProver
+2. **Invalid secondary creator**: `refundBoth()` reverts if secondary creator isn't OriginalVault
 3. **Not expired**: `refundBoth()` reverts if secondary intent hasn't expired yet
 4. **Already proven**: `refundBoth()` reverts if secondary intent already proven
 
@@ -194,7 +194,7 @@ The state machine includes built-in protection against two potential griefing at
 - Get reward immediately (no waiting!):
   - All ERC20 tokens from reward (minus route consumption)
   - All native ETH from reward (minus route consumption)
-- If using secondary intent: create it with `reward.creator = address(LocalProver)` for better UX
+- If using secondary intent: create it with `reward.creator = originalVault` (address from `Portal.intentVaultAddress(originalIntent)`) for better UX
 - Front capital for secondary intent from the reward received
 
 ### For Users (Refund Path)

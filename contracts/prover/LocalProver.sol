@@ -242,10 +242,12 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     /**
      * @notice Refunds both original and secondary intents in a single transaction
      * @dev Permissionless - anyone can trigger if conditions are met.
-     *      Secondary intent must have LocalProver as creator for this to work.
+     *      Secondary intent must have originalVault as creator for this to work.
+     *      The originalVault address is computed via Portal.intentVaultAddress(originalIntent).
+     *      This ensures refunds flow: SecondaryVault → OriginalVault → User.
      *      Protected against reentrancy attacks via nonReentrant modifier.
      * @param originalIntent Complete original intent struct
-     * @param secondaryIntent Complete secondary intent struct
+     * @param secondaryIntent Complete secondary intent struct (with reward.creator = originalVault)
      */
     function refundBoth(
         Intent calldata originalIntent,
