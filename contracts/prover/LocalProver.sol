@@ -132,9 +132,21 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
     /**
      * @notice Atomically fulfills an intent and pays claimant with remaining funds
-     * @dev Withdraws funds from vault, executes fulfill, transfers excess to claimant.
+     * @dev Withdraws reward from vault, executes fulfill, transfers remaining funds to claimant.
      *      Uses checks-effects-interactions pattern for security.
      *      Protected against reentrancy attacks via nonReentrant modifier.
+     *
+     *      Flow:
+     *      1. Withdraws reward.tokens + reward.nativeAmount from vault to LocalProver
+     *      2. Approves Portal to spend route.tokens
+     *      3. Calls fulfill which transfers route.tokens to executor for execution
+     *      4. Transfers all remaining token balances (reward.tokens - route.tokens) to claimant
+     *      5. Transfers all remaining native ETH to claimant
+     *
+     *      Claimant receives:
+     *      - All ERC20 tokens in reward.tokens (minus any consumed by route.tokens)
+     *      - All native ETH from reward.nativeAmount (minus any consumed by route.nativeAmount)
+     *      - Plus any msg.value sent by caller (typically 0)
      *
      *      WARNING: This function is permissionless and subject to front-running. Any solver can call this
      *      function for any intent and specify themselves as the claimant. Solvers should use private

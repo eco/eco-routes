@@ -27,8 +27,8 @@ interface ILocalProver is IProver {
     /**
      * @notice Emitted when an intent is flash-fulfilled
      * @param intentHash Hash of the fulfilled intent
-     * @param claimant Address receiving the fulfillment fee
-     * @param nativeFee Amount of native tokens paid to claimant
+     * @param claimant Address receiving the fulfillment reward
+     * @param nativeFee Amount of native tokens paid to claimant (ERC20 tokens also transferred but not tracked here)
      */
     event FlashFulfilled(
         bytes32 indexed intentHash,
@@ -53,11 +53,12 @@ interface ILocalProver is IProver {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Atomically withdraws, fulfills an intent, and pays claimant the fulfillment fee
+     * @notice Atomically withdraws, fulfills an intent, and pays claimant the fulfillment reward
+     * @dev Claimant receives all reward tokens and native (minus amounts consumed by route execution)
      * @param intentHash Hash of the intent to flash-fulfill
      * @param route Route information for the intent
      * @param reward Reward details for the intent
-     * @param claimant Address that receives the fulfillment fee
+     * @param claimant Address that receives the fulfillment reward (ERC20 tokens + native ETH)
      * @return results Results from the fulfill execution
      */
     function flashFulfill(
