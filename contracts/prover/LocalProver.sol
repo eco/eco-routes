@@ -54,6 +54,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      * @dev For same-chain intents, proofs are created immediately upon fulfillment.
      *      During flashFulfill, returns LocalProver as claimant to enable withdrawal.
      *      After fulfill, returns actual solver from _actualClaimants mapping.
+     *
+     *      Griefing protection: If Portal.claimants is set but _actualClaimants is not,
+     *      or if Portal.claimants contains an invalid EVM address, returns address(0)
+     *      to treat the intent as unfulfilled and allow refunds after deadline.
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
@@ -72,12 +76,18 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             if (storedClaimant != address(0)) {
                 return ProofData(storedClaimant, _CHAIN_ID);
             }
-            // Revert if LocalProver is claimant but no actual claimant stored
-            revert MissingActualClaimant();
+            // Someone called Portal.fulfill with LocalProver as claimant without going through flashFulfill
+            // This is griefing - treat intent as unfulfilled to allow refunds
+            return ProofData(address(0), 0);
         }
 
         // Case 2: Intent fulfilled via normal Portal.fulfill (not flashFulfill)
         if (portalClaimant != bytes32(0)) {
+            // Validate before converting - protects against non-EVM bytes32 griefing
+            if (!AddressConverter.isValidAddress(portalClaimant)) {
+                // Invalid EVM address - treat as unfulfilled to allow refunds
+                return ProofData(address(0), 0);
+            }
             return ProofData(portalClaimant.toAddress(), _CHAIN_ID);
         }
 

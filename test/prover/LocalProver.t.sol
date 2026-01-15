@@ -638,6 +638,181 @@ contract LocalProverTest is Test {
         // The secondary creator (legitOriginalVault) doesn't match fake original vault address
     }
 
+    // ============ D. Griefing Attack Tests ============
+
+    function test_griefing_LocalProverSentinel_AllowsRefundAfterDeadline() public {
+        // Test: Attacker calls Portal.fulfill with LocalProver as claimant (Vector 1)
+        // Should not permanently brick the intent - refund should work after deadline
+
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Attacker fulfills with LocalProver as claimant (griefing)
+        address attacker = makeAddr("attacker");
+        vm.startPrank(attacker);
+        vm.deal(attacker, REWARD_AMOUNT);
+        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(localProver))));
+        portal.fulfill{value: REWARD_AMOUNT}(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            localProverAsBytes32
+        );
+        vm.stopPrank();
+
+        // provenIntents should return address(0) (not revert)
+        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, 0);
+
+        // Honest solver cannot flashFulfill (already fulfilled)
+        vm.startPrank(solver);
+        vm.expectRevert(); // Portal reverts with IntentAlreadyFulfilled
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            bytes32(uint256(uint160(solver)))
+        );
+        vm.stopPrank();
+
+        // Warp past deadline
+        vm.warp(_intent.reward.deadline + 1);
+
+        // Refund should succeed
+        uint256 creatorBalanceBefore = creator.balance;
+        vm.prank(user);
+        portal.refund(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        // Creator should receive refund
+        assertEq(creator.balance, creatorBalanceBefore + REWARD_AMOUNT);
+    }
+
+    function test_griefing_NonEVMBytes32_AllowsRefundAfterDeadline() public {
+        // Test: Attacker calls Portal.fulfill with non-EVM bytes32 (Vector 2)
+        // E.g., a Solana address with non-zero top 12 bytes
+        // Should not permanently brick the intent - refund should work after deadline
+
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Attacker fulfills with non-EVM bytes32 (griefing)
+        // Top 12 bytes are non-zero (invalid EVM address)
+        address attacker = makeAddr("attacker");
+        vm.startPrank(attacker);
+        vm.deal(attacker, REWARD_AMOUNT);
+        bytes32 nonEVMBytes32 = bytes32(uint256(type(uint256).max)); // All 1s
+        portal.fulfill{value: REWARD_AMOUNT}(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            nonEVMBytes32
+        );
+        vm.stopPrank();
+
+        // provenIntents should return address(0) (not revert)
+        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, 0);
+
+        // Honest solver cannot flashFulfill (already fulfilled)
+        vm.startPrank(solver);
+        vm.expectRevert(); // Portal reverts with IntentAlreadyFulfilled
+        localProver.flashFulfill(
+            intentHash,
+            _intent.route,
+            _intent.reward,
+            bytes32(uint256(uint160(solver)))
+        );
+        vm.stopPrank();
+
+        // Warp past deadline
+        vm.warp(_intent.reward.deadline + 1);
+
+        // Refund should succeed
+        uint256 creatorBalanceBefore = creator.balance;
+        vm.prank(user);
+        portal.refund(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        // Creator should receive refund
+        assertEq(creator.balance, creatorBalanceBefore + REWARD_AMOUNT);
+    }
+
+    function test_griefing_LocalProverSentinel_BlocksRefundBeforeDeadline() public {
+        // Test: Even with griefing, refund should not work before deadline
+
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Attacker fulfills with LocalProver as claimant (griefing)
+        address attacker = makeAddr("attacker");
+        vm.startPrank(attacker);
+        vm.deal(attacker, REWARD_AMOUNT);
+        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(localProver))));
+        portal.fulfill{value: REWARD_AMOUNT}(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            localProverAsBytes32
+        );
+        vm.stopPrank();
+
+        // Try to refund before deadline - should fail
+        vm.prank(user);
+        vm.expectRevert(); // Portal reverts with InvalidStatusForRefund
+        portal.refund(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+    }
+
+    function test_griefing_WithTokenReward_AllowsRefundAfterDeadline() public {
+        // Test: Griefing with token rewards - refund should recover both native and tokens
+
+        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Attacker fulfills with LocalProver as claimant (griefing)
+        address attacker = makeAddr("attacker");
+        vm.startPrank(attacker);
+        vm.deal(attacker, REWARD_AMOUNT);
+        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(localProver))));
+        portal.fulfill{value: REWARD_AMOUNT}(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            localProverAsBytes32
+        );
+        vm.stopPrank();
+
+        // Warp past deadline
+        vm.warp(_intent.reward.deadline + 1);
+
+        // Refund should succeed
+        uint256 creatorNativeBalanceBefore = creator.balance;
+        uint256 creatorTokenBalanceBefore = token.balanceOf(creator);
+
+        vm.prank(user);
+        portal.refund(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        // Creator should receive both native and token refund
+        assertEq(creator.balance, creatorNativeBalanceBefore + REWARD_AMOUNT);
+        assertEq(token.balanceOf(creator), creatorTokenBalanceBefore + TOKEN_AMOUNT);
+    }
+
     // ============ Helper Functions ============
 
     function _encodeProofs(

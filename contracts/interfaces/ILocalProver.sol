@@ -18,7 +18,6 @@ interface ILocalProver is IProver {
     error InvalidIntentHash();
     error NativeTransferFailed();
     error InvalidSecondaryCreator();
-    error MissingActualClaimant();
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS

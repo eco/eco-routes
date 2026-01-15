@@ -117,7 +117,7 @@ The secondary intent **MUST** have `reward.creator = address(LocalProver)` for s
 
 ## Technical Implementation: provenIntents() State Machine
 
-The `provenIntents()` function handles four distinct cases to enable the LocalProver intermediary pattern:
+The `provenIntents()` function handles four distinct cases to enable the LocalProver intermediary pattern, with built-in griefing attack protection:
 
 ### Case 1: Intent fulfilled via flashFulfill (Portal claimant is LocalProver)
 - **Trigger**: Portal.claimants[intentHash] == LocalProver address
@@ -139,6 +139,28 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 - **Trigger**: Both Portal.claimants and `_actualClaimants` are empty
 - **Return**: address(0)
 - **Purpose**: Standard unfulfilled intent response
+
+### Griefing Attack Protection
+
+The state machine includes built-in protection against two potential griefing attacks:
+
+**Attack Vector 1: LocalProver Sentinel Griefing**
+- Attacker calls `Portal.fulfill(intentHash, ..., bytes32(address(LocalProver)))`
+- Portal sets claimants[intentHash] to LocalProver without going through flashFulfill
+- Protection: Case 1 detects missing `_actualClaimants` entry and returns `address(0)` instead of reverting
+- Result: Intent appears unfulfilled, allowing refund after deadline
+
+**Attack Vector 2: Non-EVM bytes32 Griefing**
+- Attacker calls `Portal.fulfill(intentHash, ..., nonEVMBytes32)` with invalid EVM address (top 12 bytes non-zero)
+- Portal sets claimants[intentHash] to invalid bytes32
+- Protection: Case 2 validates address before conversion, returns `address(0)` for invalid addresses
+- Result: Intent appears unfulfilled, allowing refund after deadline
+
+**Impact**: Both attack vectors result in the same safe behavior:
+- User's service is fulfilled (route executed by attacker)
+- Intent cannot be fulfilled again (Portal blocks duplicate fulfills)
+- Funds locked until deadline, then refundable to creator
+- Attacker loses money for execution costs with no benefit
 
 ## Scenarios Summary
 
