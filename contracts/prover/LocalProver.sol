@@ -237,24 +237,35 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         }
 
         // INTERACTIONS
+        // Calculate secondary intent hashes locally
+        bytes32 secondaryRouteHash = keccak256(abi.encode(secondaryIntent.route));
+        bytes32 secondaryRewardHash = keccak256(abi.encode(secondaryIntent.reward));
+        bytes32 secondaryHash = keccak256(
+            abi.encodePacked(secondaryIntent.destination, secondaryRouteHash, secondaryRewardHash)
+        );
+
         // Refund secondary to original vault (automatic via creator field)
         // Note: Portal.refund validates expiry and proof status internally
-        (bytes32 secondaryHash, bytes32 secondaryRouteHash, ) = _PORTAL.getIntentHash(secondaryIntent);
         _PORTAL.refund(
             secondaryIntent.destination,
             secondaryRouteHash,
             secondaryIntent.reward
         );
 
-        // Refund original (goes to creator/vault)
+        // Calculate original intent hashes locally
         bytes32 originalRouteHash = keccak256(abi.encode(originalIntent.route));
+        bytes32 originalRewardHash = keccak256(abi.encode(originalIntent.reward));
+        bytes32 originalHash = keccak256(
+            abi.encodePacked(originalIntent.destination, originalRouteHash, originalRewardHash)
+        );
+
+        // Refund original (goes to creator/vault)
         _PORTAL.refund(
             originalIntent.destination,
             originalRouteHash,
             originalIntent.reward
         );
 
-        (bytes32 originalHash, , ) = _PORTAL.getIntentHash(originalIntent);
         emit BothRefunded(originalHash, secondaryHash, originalVault);
     }
 }
