@@ -234,62 +234,6 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     }
 
     /**
-     * @notice Refunds both original and secondary intents in a single transaction
-     * @dev Permissionless - anyone can trigger if conditions are met.
-     *      Secondary intent must have originalVault as creator for this to work.
-     *      The originalVault address is computed via Portal.intentVaultAddress(originalIntent).
-     *      This ensures refunds flow: SecondaryVault → OriginalVault → User.
-     *      Protected against reentrancy attacks via nonReentrant modifier.
-     * @param originalIntent Complete original intent struct
-     * @param secondaryIntent Complete secondary intent struct (with reward.creator = originalVault)
-     */
-    function refundBoth(
-        Intent calldata originalIntent,
-        Intent calldata secondaryIntent
-    ) external nonReentrant {
-        // CHECKS
-        // Compute original vault address
-        address originalVault = _PORTAL.intentVaultAddress(originalIntent);
-
-        // Verify secondary intent creator is original vault (validates linkage)
-        if (secondaryIntent.reward.creator != originalVault) {
-            revert InvalidSecondaryCreator();
-        }
-
-        // INTERACTIONS
-        // Calculate secondary intent hashes locally
-        bytes32 secondaryRouteHash = keccak256(abi.encode(secondaryIntent.route));
-        bytes32 secondaryRewardHash = keccak256(abi.encode(secondaryIntent.reward));
-        bytes32 secondaryHash = keccak256(
-            abi.encodePacked(secondaryIntent.destination, secondaryRouteHash, secondaryRewardHash)
-        );
-
-        // Refund secondary to original vault (automatic via creator field)
-        // Note: Portal.refund validates expiry and proof status internally
-        _PORTAL.refund(
-            secondaryIntent.destination,
-            secondaryRouteHash,
-            secondaryIntent.reward
-        );
-
-        // Calculate original intent hashes locally
-        bytes32 originalRouteHash = keccak256(abi.encode(originalIntent.route));
-        bytes32 originalRewardHash = keccak256(abi.encode(originalIntent.reward));
-        bytes32 originalHash = keccak256(
-            abi.encodePacked(originalIntent.destination, originalRouteHash, originalRewardHash)
-        );
-
-        // Refund original (goes to creator/vault)
-        _PORTAL.refund(
-            originalIntent.destination,
-            originalRouteHash,
-            originalIntent.reward
-        );
-
-        emit BothRefunded(originalHash, secondaryHash, originalVault);
-    }
-
-    /**
      * @notice Allows contract to receive native tokens
      * @dev Required for vault withdrawals that include native rewards
      */

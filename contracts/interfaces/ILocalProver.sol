@@ -16,7 +16,6 @@ interface ILocalProver is IProver {
 
     error InvalidClaimant();
     error NativeTransferFailed();
-    error InvalidSecondaryCreator();
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -32,18 +31,6 @@ interface ILocalProver is IProver {
         bytes32 indexed intentHash,
         bytes32 indexed claimant,
         uint256 nativeFee
-    );
-
-    /**
-     * @notice Emitted when both original and secondary intents are refunded
-     * @param originalIntentHash Hash of the original intent
-     * @param secondaryIntentHash Hash of the secondary intent
-     * @param originalVault Address of the original vault receiving refunds
-     */
-    event BothRefunded(
-        bytes32 indexed originalIntentHash,
-        bytes32 indexed secondaryIntentHash,
-        address indexed originalVault
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -64,16 +51,4 @@ interface ILocalProver is IProver {
         Reward calldata reward,
         bytes32 claimant
     ) external payable returns (bytes[] memory results);
-
-    /**
-     * @notice Refunds both original and secondary intents in a single transaction
-     * @dev Secondary intent must have originalVault as creator for this to work.
-     *      The originalVault is the vault address of the original intent.
-     * @param originalIntent Complete original intent struct
-     * @param secondaryIntent Complete secondary intent struct (with reward.creator = originalVault)
-     */
-    function refundBoth(
-        Intent calldata originalIntent,
-        Intent calldata secondaryIntent
-    ) external;
 }
