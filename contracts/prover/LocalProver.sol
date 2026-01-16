@@ -34,10 +34,11 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     uint64 private immutable _CHAIN_ID;
 
     /**
-     * @notice Maps intent hashes to their actual claimant addresses
-     * @dev Used when LocalProver is the Portal claimant to track the real solver
+     * @notice Tracks which intent is currently being flash-fulfilled
+     * @dev Used to enable withdrawal during flashFulfill execution (before Portal.claimants is set)
+     *      Only one flashFulfill can execute at a time due to nonReentrant modifier
      */
-    mapping(bytes32 => address) private _actualClaimants;
+    bytes32 private _flashFulfillInProgress;
 
     constructor(address portal) {
         _PORTAL = IPortal(portal);
@@ -89,10 +90,9 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             return ProofData(portalClaimant.toAddress(), _CHAIN_ID);
         }
 
-        // Case 3: Intent not yet fulfilled, but flashFulfill in progress
-        // Check if we have an actual claimant stored (means flashFulfill called)
-        address actualClaimant = _actualClaimants[intentHash];
-        if (actualClaimant != address(0)) {
+        // Case 3: flashFulfill currently executing for this intent
+        // During flashFulfill, Portal.withdraw calls this before Portal.fulfill completes
+        if (_flashFulfillInProgress == intentHash) {
             // Return LocalProver so withdrawal succeeds (funds come to LocalProver)
             return ProofData(address(this), _CHAIN_ID);
         }
@@ -182,10 +182,9 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             abi.encodePacked(_CHAIN_ID, routeHash, rewardHash)
         );
 
-        // EFFECTS - Store actual claimant before fulfill
-        // This allows withdrawal to succeed (LocalProver becomes Portal claimant)
-        // while tracking the real solver address
-        _actualClaimants[intentHash] = claimant.toAddress();
+        // EFFECTS - Mark this intent as currently being flash-fulfilled
+        // This enables withdrawal to succeed (provenIntents returns LocalProver during Case 3)
+        _flashFulfillInProgress = intentHash;
 
         // INTERACTIONS - Withdraw to LocalProver
         _PORTAL.withdraw(_CHAIN_ID, routeHash, reward);
