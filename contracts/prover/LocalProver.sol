@@ -68,20 +68,18 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Note: Must cast to Inbox to access public claimants mapping
         bytes32 portalClaimant = Inbox(address(_PORTAL)).claimants(intentHash);
 
-        // Case 1: Intent fulfilled via flashFulfill (Portal claimant is LocalProver)
+        // Case 1: Griefing protection - LocalProver set as claimant without using flashFulfill
+        // In normal flashFulfill flow, actual solver is set as Portal claimant (not LocalProver)
+        // This case only triggers if someone maliciously calls Portal.fulfill with LocalProver as claimant
         bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(this))));
         if (portalClaimant == localProverAsBytes32) {
-            // Return actual solver if we have one stored
-            address storedClaimant = _actualClaimants[intentHash];
-            if (storedClaimant != address(0)) {
-                return ProofData(storedClaimant, _CHAIN_ID);
-            }
             // Someone called Portal.fulfill with LocalProver as claimant without going through flashFulfill
             // This is griefing - treat intent as unfulfilled to allow refunds
             return ProofData(address(0), 0);
         }
 
-        // Case 2: Intent fulfilled via normal Portal.fulfill (not flashFulfill)
+        // Case 2: Intent fulfilled (via flashFulfill or normal Portal.fulfill)
+        // Portal.claimants contains actual solver address
         if (portalClaimant != bytes32(0)) {
             // Validate before converting - protects against non-EVM bytes32 griefing
             if (!AddressConverter.isValidAddress(portalClaimant)) {
@@ -201,15 +199,14 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             );
         }
 
-        // Call fulfill with LocalProver as Portal claimant
+        // Call fulfill with actual claimant
         // Use entire contract balance for fulfill (includes msg.value + any existing balance)
-        // This enables withdrawal before fulfill (Portal checks claimants mapping)
-        bytes32 localProverAsClaimant = bytes32(uint256(uint160(address(this))));
+        // LocalProver acts as intermediary for funds but Portal records actual solver as claimant
         results = _PORTAL.fulfill{value: address(this).balance}(
             intentHash,
             route,
             rewardHash,
-            localProverAsClaimant
+            claimant
         );
 
         // EFFECTS - Transfer remaining funds to claimant
