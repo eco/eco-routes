@@ -185,32 +185,14 @@ contract LocalProverTest is Test {
     function test_flashFulfill_RevertsIfClaimantIsZero() public {
         // Test: Reverts if claimant is zero
         Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+        _publishAndFundIntent(_intent);
 
         vm.prank(solver);
         vm.expectRevert(ILocalProver.InvalidClaimant.selector);
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             bytes32(0)
-        );
-    }
-
-    function test_flashFulfill_RevertsIfIntentHashDoesntMatch() public {
-        // Test: Reverts if intent hash doesn't match
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        _publishAndFundIntent(_intent);
-
-        bytes32 wrongIntentHash = keccak256("wrong");
-
-        vm.prank(solver);
-        vm.expectRevert(ILocalProver.InvalidIntentHash.selector);
-        localProver.flashFulfill(
-            wrongIntentHash,
-            _intent.route,
-            _intent.reward,
-            bytes32(uint256(uint160(solver)))
         );
     }
 
@@ -232,7 +214,6 @@ contract LocalProverTest is Test {
         // Try flashFulfill
         vm.expectRevert();
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -243,7 +224,7 @@ contract LocalProverTest is Test {
     function test_flashFulfill_RevertsIfIntentExpired() public {
         // Test: Reverts if intent expired
         Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+        _publishAndFundIntent(_intent);
 
         // Warp past deadline
         vm.warp(_intent.route.deadline + 1);
@@ -251,7 +232,6 @@ contract LocalProverTest is Test {
         vm.prank(solver);
         vm.expectRevert();
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -264,14 +244,13 @@ contract LocalProverTest is Test {
         RejectEth rejecter = new RejectEth();
 
         Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+        _publishAndFundIntent(_intent);
 
         bytes32 rejecterClaimant = bytes32(uint256(uint160(address(rejecter))));
 
         vm.prank(solver);
         vm.expectRevert(ILocalProver.NativeTransferFailed.selector);
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             rejecterClaimant
@@ -319,14 +298,13 @@ contract LocalProverTest is Test {
             reward: reward
         });
 
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+        _publishAndFundIntent(_intent);
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
         // FlashFulfill should succeed
         vm.prank(solver);
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             claimantBytes
@@ -386,7 +364,6 @@ contract LocalProverTest is Test {
         // FlashFulfill should succeed
         vm.prank(solver);
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             claimantBytes
@@ -443,7 +420,7 @@ contract LocalProverTest is Test {
             reward: reward
         });
 
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+        _publishAndFundIntent(_intent);
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
@@ -453,7 +430,6 @@ contract LocalProverTest is Test {
         // FlashFulfill should succeed
         vm.prank(solver);
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             claimantBytes
@@ -669,7 +645,6 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.expectRevert(); // Portal reverts with IntentAlreadyFulfilled
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -723,7 +698,6 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.expectRevert(); // Portal reverts with IntentAlreadyFulfilled
         localProver.flashFulfill(
-            intentHash,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))

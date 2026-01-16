@@ -15,7 +15,6 @@ interface ILocalProver is IProver {
     //////////////////////////////////////////////////////////////*/
 
     error InvalidClaimant();
-    error InvalidIntentHash();
     error NativeTransferFailed();
     error InvalidSecondaryCreator();
 
@@ -53,15 +52,14 @@ interface ILocalProver is IProver {
 
     /**
      * @notice Atomically withdraws, fulfills an intent, and pays claimant the fulfillment reward
-     * @dev Claimant receives all reward tokens and native (minus amounts consumed by route execution)
-     * @param intentHash Hash of the intent to flash-fulfill
+     * @dev Claimant receives all reward tokens and native (minus amounts consumed by route execution).
+     *      Intent hash is computed from route and reward, no need to pass it separately.
      * @param route Route information for the intent
      * @param reward Reward details for the intent
      * @param claimant Address that receives the fulfillment reward (ERC20 tokens + native ETH)
      * @return results Results from the fulfill execution
      */
     function flashFulfill(
-        bytes32 intentHash,
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant

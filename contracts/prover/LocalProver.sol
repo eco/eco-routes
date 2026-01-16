@@ -147,11 +147,12 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      *      Protected against reentrancy attacks via nonReentrant modifier.
      *
      *      Flow:
-     *      1. Withdraws reward.tokens + reward.nativeAmount from vault to LocalProver
-     *      2. Approves Portal to spend route.tokens
-     *      3. Calls fulfill which transfers route.tokens to executor for execution
-     *      4. Transfers all remaining token balances (reward.tokens - route.tokens) to claimant
-     *      5. Transfers all remaining native ETH to claimant
+     *      1. Computes intent hash from route and reward
+     *      2. Withdraws reward.tokens + reward.nativeAmount from vault to LocalProver
+     *      3. Approves Portal to spend route.tokens
+     *      4. Calls fulfill which transfers route.tokens to executor for execution
+     *      5. Transfers all remaining token balances (reward.tokens - route.tokens) to claimant
+     *      6. Transfers all remaining native ETH to claimant
      *
      *      Claimant receives:
      *      - All ERC20 tokens in reward.tokens (minus any consumed by route.tokens)
@@ -163,14 +164,12 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      *      transaction pools (e.g., Flashbots) or coordinate off-chain with intent creators to mitigate
      *      front-running risks. This is standard MEV behavior in intent-based systems.
      *
-     * @param intentHash Hash of the intent to flash-fulfill
      * @param route Route information for the intent
      * @param reward Reward details for the intent
      * @param claimant Address of the claimant eligible for rewards (gets immediate payout)
      * @return results Results from the fulfill execution
      */
     function flashFulfill(
-        bytes32 intentHash,
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant
@@ -178,13 +177,12 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // CHECKS
         if (claimant == bytes32(0)) revert InvalidClaimant();
 
-        // Verify intent hash matches
+        // Calculate intent hash from route and reward
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 computedIntentHash = keccak256(
+        bytes32 intentHash = keccak256(
             abi.encodePacked(_CHAIN_ID, routeHash, rewardHash)
         );
-        if (computedIntentHash != intentHash) revert InvalidIntentHash();
 
         // EFFECTS - Store actual claimant before fulfill
         // This allows withdrawal to succeed (LocalProver becomes Portal claimant)
