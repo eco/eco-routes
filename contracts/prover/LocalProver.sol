@@ -174,6 +174,8 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     ) external payable nonReentrant returns (bytes[] memory results) {
         // CHECKS
         if (claimant == bytes32(0)) revert InvalidClaimant();
+        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(this))));
+        if (claimant == localProverAsBytes32) revert InvalidClaimant();
 
         // Calculate intent hash from route and reward
         bytes32 routeHash = keccak256(abi.encode(route));

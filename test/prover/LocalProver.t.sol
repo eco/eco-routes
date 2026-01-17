@@ -612,6 +612,26 @@ contract LocalProverTest is Test {
         assertEq(token.balanceOf(creator), creatorTokenBalanceBefore + TOKEN_AMOUNT);
     }
 
+    function test_flashFulfill_RevertsWithLocalProverAsClaimant() public {
+        // Test that flashFulfill reverts when claimant is set to LocalProver address
+        // This prevents fund stranding attacks where funds would be stuck in LocalProver
+
+        Intent memory intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(intent);
+
+        address attacker = makeAddr("attacker");
+        bytes32 localProverAsClaimant = bytes32(uint256(uint160(address(localProver))));
+
+        vm.startPrank(attacker);
+        vm.expectRevert(ILocalProver.InvalidClaimant.selector);
+        localProver.flashFulfill(
+            intent.route,
+            intent.reward,
+            localProverAsClaimant  // Should revert - LocalProver cannot be claimant
+        );
+        vm.stopPrank();
+    }
+
     // ============ Helper Functions ============
 
     function _encodeProofs(
