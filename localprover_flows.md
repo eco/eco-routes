@@ -107,8 +107,8 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 ### Case 1: Griefing protection - LocalProver set as claimant maliciously
 - **Trigger**: Portal.claimants[intentHash] == LocalProver address
 - **Return**: address(0) (treat as unfulfilled)
-- **Purpose**: Prevent griefing where someone calls Portal.fulfill with LocalProver as claimant
-- **Note**: In normal flashFulfill, actual solver is set as claimant (not LocalProver), so this case doesn't trigger
+- **Purpose**: Prevent griefing where someone calls Portal.fulfill directly with LocalProver as claimant
+- **Note**: flashFulfill explicitly rejects LocalProver as claimant (reverts with InvalidClaimant), so this case only triggers from direct Portal.fulfill calls
 
 ### Case 2: Intent fulfilled (via flashFulfill or normal Portal.fulfill)
 - **Trigger**: Portal.claimants[intentHash] != 0 and != LocalProver and is valid EVM address
@@ -133,9 +133,11 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 The state machine includes built-in protection against two potential griefing attacks:
 
 **Attack Vector 1: LocalProver Sentinel Griefing**
-- Attacker calls `Portal.fulfill(intentHash, ..., bytes32(address(LocalProver)))`
-- Portal sets claimants[intentHash] to LocalProver without going through flashFulfill
-- Protection: Case 1 returns `address(0)` instead of reverting (treats as unfulfilled)
+- Attacker calls `Portal.fulfill(intentHash, ..., bytes32(address(LocalProver)))` directly (bypassing LocalProver contract)
+- Portal sets claimants[intentHash] to LocalProver
+- Protection:
+  - flashFulfill: Explicitly reverts with InvalidClaimant if LocalProver is used as claimant
+  - provenIntents: Case 1 returns `address(0)` for direct Portal.fulfill calls (treats as unfulfilled)
 - Result: Intent appears unfulfilled, allowing refund after deadline
 
 **Attack Vector 2: Non-EVM bytes32 Griefing**
