@@ -632,6 +632,25 @@ contract LocalProverTest is Test {
         vm.stopPrank();
     }
 
+    function test_flashFulfill_RevertsWithWrongProver() public {
+        // Test that flashFulfill reverts when intent uses a different prover
+        // flashFulfill is LocalProver-specific and should only work with LocalProver intents
+
+        Intent memory intent = _createIntent(address(secondaryProver), REWARD_AMOUNT, 0);
+        _publishAndFundIntent(intent);
+
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
+
+        vm.startPrank(solver);
+        vm.expectRevert(ILocalProver.InvalidProver.selector);
+        localProver.flashFulfill(
+            intent.route,
+            intent.reward,
+            claimantBytes  // Should revert - intent uses secondaryProver, not localProver
+        );
+        vm.stopPrank();
+    }
+
     // ============ Helper Functions ============
 
     function _encodeProofs(
