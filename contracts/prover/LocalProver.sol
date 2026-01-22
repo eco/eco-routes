@@ -192,9 +192,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         _PORTAL.withdraw(_CHAIN_ID, routeHash, reward);
 
         // Approve Portal to spend route tokens
+        // Use safeIncreaseAllowance to handle duplicate tokens correctly
         uint256 tokensLength = route.tokens.length;
         for (uint256 i = 0; i < tokensLength; ++i) {
-            IERC20(route.tokens[i].token).approve(
+            IERC20(route.tokens[i].token).safeIncreaseAllowance(
                 address(_PORTAL),
                 route.tokens[i].amount
             );
