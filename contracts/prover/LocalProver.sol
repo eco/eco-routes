@@ -210,7 +210,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             claimant
         );
 
-        // EFFECTS - Transfer remaining funds to claimant
+        // INTERACTIONS - Transfer remaining funds to claimant
         address claimantAddress = claimant.toAddress();
 
         // Transfer reward tokens to claimant
