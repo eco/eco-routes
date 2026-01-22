@@ -232,6 +232,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
         emit FlashFulfilled(intentHash, claimant, remainingNative);
 
+        // Reset flash fulfill state to ensure clean storage at end of transaction
+        // This prevents any potential issues from stale state in storage
+        _flashFulfillInProgress = bytes32(0);
+
         return results;
     }
 
