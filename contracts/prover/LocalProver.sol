@@ -5,6 +5,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {Inbox} from "../Inbox.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IProver} from "../interfaces/IProver.sol";
@@ -226,8 +227,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Transfer remaining native
         uint256 remainingNative = address(this).balance;
         if (remainingNative > 0) {
-            (bool success, ) = claimantAddress.call{value: remainingNative}("");
-            if (!success) revert NativeTransferFailed();
+            SafeTransferLib.forceSafeTransferETH(claimantAddress, remainingNative);
         }
 
         emit FlashFulfilled(intentHash, claimant, remainingNative);

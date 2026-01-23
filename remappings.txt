@@ -5,3 +5,4 @@ forge-std/=lib/forge-std/src/
 @eth-optimism/contracts-bedrock/=node_modules/@eth-optimism/contracts-bedrock/
 @metalayer/contracts/=node_modules/@metalayer/contracts/
 @chainlink/contracts-ccip/=node_modules/@chainlink/contracts-ccip/
+solady/=lib/solady/src/

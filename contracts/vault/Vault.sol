@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 import {IVault} from "../interfaces/IVault.sol";
 import {IPermit} from "../interfaces/IPermit.sol";
@@ -95,13 +96,8 @@ contract Vault is IVault {
         }
 
         uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
-        if (nativeAmount == 0) {
-            return;
-        }
-
-        (bool success, ) = claimant.call{value: nativeAmount}("");
-        if (!success) {
-            revert NativeTransferFailed(claimant, nativeAmount);
+        if (nativeAmount > 0) {
+            SafeTransferLib.forceSafeTransferETH(claimant, nativeAmount);
         }
     }
 
@@ -122,13 +118,8 @@ contract Vault is IVault {
         }
 
         uint256 nativeAmount = address(this).balance;
-        if (nativeAmount == 0) {
-            return;
-        }
-
-        (bool success, ) = refundee.call{value: nativeAmount}("");
-        if (!success) {
-            revert NativeTransferFailed(refundee, nativeAmount);
+        if (nativeAmount > 0) {
+            SafeTransferLib.forceSafeTransferETH(refundee, nativeAmount);
         }
     }
 
