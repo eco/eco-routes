@@ -13,13 +13,6 @@ import {DepositAddress} from "./DepositAddress.sol";
 contract DepositFactory {
     using Clones for address;
 
-    // ============ Constants ============
-
-    /// @notice Chain ID for Tron mainnet
-    uint256 private constant TRON_MAINNET_CHAIN_ID = 728126428;
-    /// @notice Chain ID for Tron testnet
-    uint256 private constant TRON_TESTNET_CHAIN_ID = 2494104990;
-
     // ============ Immutable Configuration ============
 
     /// @notice Destination chain ID (e.g., 5107100 for Solana)
@@ -45,9 +38,6 @@ contract DepositFactory {
 
     /// @notice DepositAddress implementation contract
     address public immutable DEPOSIT_IMPLEMENTATION;
-
-    /// @notice CREATE2 prefix (0xff for standard chains, 0x41 for TRON)
-    bytes1 private immutable CREATE2_PREFIX;
 
     // ============ Events ============
 
@@ -109,12 +99,6 @@ contract DepositFactory {
         DESTINATION_PORTAL = _destinationPortal;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
 
-        // Set CREATE2 prefix based on chain (TRON compatibility)
-        CREATE2_PREFIX = (block.chainid == TRON_MAINNET_CHAIN_ID ||
-            block.chainid == TRON_TESTNET_CHAIN_ID)
-            ? bytes1(0x41)
-            : bytes1(0xff);
-
         // Deploy implementation contract
         DEPOSIT_IMPLEMENTATION = address(new DepositAddress());
     }
@@ -131,7 +115,7 @@ contract DepositFactory {
         bytes32 destinationAddress
     ) public view returns (address) {
         bytes32 salt = _getSalt(destinationAddress);
-        return DEPOSIT_IMPLEMENTATION.predict(salt, CREATE2_PREFIX);
+        return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
     }
 
     /**
