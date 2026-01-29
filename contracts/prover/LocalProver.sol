@@ -180,6 +180,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         if (claimant == bytes32(0)) revert InvalidClaimant();
         bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(this))));
         if (claimant == localProverAsBytes32) revert InvalidClaimant();
+        if (reward.prover != address(this)) revert InvalidProver();
 
         // Calculate intent hash from route and reward
         bytes32 routeHash = keccak256(abi.encode(route));
