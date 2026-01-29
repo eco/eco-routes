@@ -77,7 +77,10 @@ contract LocalProverTest is Test {
         TokenAmount[] memory rewardTokens;
         if (tokenReward > 0) {
             rewardTokens = new TokenAmount[](1);
-            rewardTokens[0] = TokenAmount({token: address(token), amount: tokenReward});
+            rewardTokens[0] = TokenAmount({
+                token: address(token),
+                amount: tokenReward
+            });
         } else {
             rewardTokens = new TokenAmount[](0);
         }
@@ -104,10 +107,9 @@ contract LocalProverTest is Test {
         }
 
         // Publish and fund
-        (intentHash, vault) = portal.publishAndFund{value: _intent.reward.nativeAmount}(
-            _intent,
-            false
-        );
+        (intentHash, vault) = portal.publishAndFund{
+            value: _intent.reward.nativeAmount
+        }(_intent, false);
 
         vm.stopPrank();
     }
@@ -115,9 +117,15 @@ contract LocalProverTest is Test {
     // ============ A. Core IProver Interface Tests ============
 
     // A1. provenIntents()
-    function test_provenIntents_ReturnsClaimantFromPortalForFulfilledIntent() public {
+    function test_provenIntents_ReturnsClaimantFromPortalForFulfilledIntent()
+        public
+    {
         // Test: Returns claimant from Portal for fulfilled intent
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Fulfill via Portal directly (normal path)
@@ -139,7 +147,11 @@ contract LocalProverTest is Test {
 
     function test_provenIntents_ReturnsZeroForUnfulfilledIntent() public {
         // Test: Returns zero address for unfulfilled intent
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Don't fulfill it
@@ -151,12 +163,7 @@ contract LocalProverTest is Test {
     // A2. prove()
     function test_prove_IsNoOp() public {
         // Test: prove() is a no-op (doesn't revert)
-        localProver.prove{value: 0}(
-            address(0),
-            0,
-            "",
-            ""
-        );
+        localProver.prove{value: 0}(address(0), 0, "", "");
         // Should not revert
     }
 
@@ -178,21 +185,25 @@ contract LocalProverTest is Test {
     // B4. Validation - Reverts
     function test_flashFulfill_RevertsIfClaimantIsZero() public {
         // Test: Reverts if claimant is zero
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         _publishAndFundIntent(_intent);
 
         vm.prank(solver);
         vm.expectRevert(ILocalProver.InvalidClaimant.selector);
-        localProver.flashFulfill(
-            _intent.route,
-            _intent.reward,
-            bytes32(0)
-        );
+        localProver.flashFulfill(_intent.route, _intent.reward, bytes32(0));
     }
 
     function test_flashFulfill_RevertsIfIntentAlreadyFulfilled() public {
         // Test: Reverts if intent already fulfilled
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Fulfill via Portal first
@@ -217,7 +228,11 @@ contract LocalProverTest is Test {
 
     function test_flashFulfill_RevertsIfIntentExpired() public {
         // Test: Reverts if intent expired
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         _publishAndFundIntent(_intent);
 
         // Warp past deadline
@@ -237,7 +252,11 @@ contract LocalProverTest is Test {
         // Deploy a contract that rejects ETH transfers
         RejectEth rejecter = new RejectEth();
 
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         _publishAndFundIntent(_intent);
 
         bytes32 rejecterClaimant = bytes32(uint256(uint160(address(rejecter))));
@@ -298,11 +317,7 @@ contract LocalProverTest is Test {
 
         // FlashFulfill should succeed
         vm.prank(solver);
-        localProver.flashFulfill(
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
+        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
         // Verify tokens transferred to executor
         assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
@@ -338,7 +353,7 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: address(localProver),
-            nativeAmount: REWARD_AMOUNT,  // Native reward for solver
+            nativeAmount: REWARD_AMOUNT, // Native reward for solver
             tokens: rewardTokens
         });
 
@@ -357,11 +372,7 @@ contract LocalProverTest is Test {
 
         // FlashFulfill should succeed
         vm.prank(solver);
-        localProver.flashFulfill(
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
+        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
         // Verify tokens transferred to executor
         assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
@@ -423,11 +434,7 @@ contract LocalProverTest is Test {
 
         // FlashFulfill should succeed
         vm.prank(solver);
-        localProver.flashFulfill(
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
+        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
         // Verify route tokens (500) transferred to executor
         assertEq(token.balanceOf(address(portal.executor())), routeTokenAmount);
@@ -441,18 +448,26 @@ contract LocalProverTest is Test {
 
     // ============ C. Griefing Attack Tests ============
 
-    function test_griefing_LocalProverSentinel_AllowsRefundAfterDeadline() public {
+    function test_griefing_LocalProverSentinel_AllowsRefundAfterDeadline()
+        public
+    {
         // Test: Attacker calls Portal.fulfill with LocalProver as claimant (Vector 1)
         // Should not permanently brick the intent - refund should work after deadline
 
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Attacker fulfills with LocalProver as claimant (griefing)
         address attacker = makeAddr("attacker");
         vm.startPrank(attacker);
         vm.deal(attacker, REWARD_AMOUNT);
-        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(localProver))));
+        bytes32 localProverAsBytes32 = bytes32(
+            uint256(uint160(address(localProver)))
+        );
         portal.fulfill{value: REWARD_AMOUNT}(
             intentHash,
             _intent.route,
@@ -497,7 +512,11 @@ contract LocalProverTest is Test {
         // E.g., a Solana address with non-zero top 12 bytes
         // Should not permanently brick the intent - refund should work after deadline
 
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Attacker fulfills with non-EVM bytes32 (griefing)
@@ -545,17 +564,25 @@ contract LocalProverTest is Test {
         assertEq(creator.balance, creatorBalanceBefore + REWARD_AMOUNT);
     }
 
-    function test_griefing_LocalProverSentinel_BlocksRefundBeforeDeadline() public {
+    function test_griefing_LocalProverSentinel_BlocksRefundBeforeDeadline()
+        public
+    {
         // Test: Even with griefing, refund should not work before deadline
 
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Attacker fulfills with LocalProver as claimant (griefing)
         address attacker = makeAddr("attacker");
         vm.startPrank(attacker);
         vm.deal(attacker, REWARD_AMOUNT);
-        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(localProver))));
+        bytes32 localProverAsBytes32 = bytes32(
+            uint256(uint160(address(localProver)))
+        );
         portal.fulfill{value: REWARD_AMOUNT}(
             intentHash,
             _intent.route,
@@ -577,14 +604,20 @@ contract LocalProverTest is Test {
     function test_griefing_WithTokenReward_AllowsRefundAfterDeadline() public {
         // Test: Griefing with token rewards - refund should recover both native and tokens
 
-        Intent memory _intent = _createIntent(address(localProver), REWARD_AMOUNT, TOKEN_AMOUNT);
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            TOKEN_AMOUNT
+        );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Attacker fulfills with LocalProver as claimant (griefing)
         address attacker = makeAddr("attacker");
         vm.startPrank(attacker);
         vm.deal(attacker, REWARD_AMOUNT);
-        bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(localProver))));
+        bytes32 localProverAsBytes32 = bytes32(
+            uint256(uint160(address(localProver)))
+        );
         portal.fulfill{value: REWARD_AMOUNT}(
             intentHash,
             _intent.route,
@@ -609,25 +642,34 @@ contract LocalProverTest is Test {
 
         // Creator should receive both native and token refund
         assertEq(creator.balance, creatorNativeBalanceBefore + REWARD_AMOUNT);
-        assertEq(token.balanceOf(creator), creatorTokenBalanceBefore + TOKEN_AMOUNT);
+        assertEq(
+            token.balanceOf(creator),
+            creatorTokenBalanceBefore + TOKEN_AMOUNT
+        );
     }
 
     function test_flashFulfill_RevertsWithLocalProverAsClaimant() public {
         // Test that flashFulfill reverts when claimant is set to LocalProver address
         // This prevents fund stranding attacks where funds would be stuck in LocalProver
 
-        Intent memory intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        Intent memory intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
         _publishAndFundIntent(intent);
 
         address attacker = makeAddr("attacker");
-        bytes32 localProverAsClaimant = bytes32(uint256(uint160(address(localProver))));
+        bytes32 localProverAsClaimant = bytes32(
+            uint256(uint160(address(localProver)))
+        );
 
         vm.startPrank(attacker);
         vm.expectRevert(ILocalProver.InvalidClaimant.selector);
         localProver.flashFulfill(
             intent.route,
             intent.reward,
-            localProverAsClaimant  // Should revert - LocalProver cannot be claimant
+            localProverAsClaimant // Should revert - LocalProver cannot be claimant
         );
         vm.stopPrank();
     }
@@ -636,7 +678,11 @@ contract LocalProverTest is Test {
         // Test that flashFulfill reverts when intent uses a different prover
         // flashFulfill is LocalProver-specific and should only work with LocalProver intents
 
-        Intent memory intent = _createIntent(address(secondaryProver), REWARD_AMOUNT, 0);
+        Intent memory intent = _createIntent(
+            address(secondaryProver),
+            REWARD_AMOUNT,
+            0
+        );
         _publishAndFundIntent(intent);
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
@@ -646,9 +692,11 @@ contract LocalProverTest is Test {
         localProver.flashFulfill(
             intent.route,
             intent.reward,
-            claimantBytes  // Should revert - intent uses secondaryProver, not localProver
+            claimantBytes // Should revert - intent uses secondaryProver, not localProver
         );
         vm.stopPrank();
+    }
+
     function test_flashFulfill_SucceedsWithDuplicateRouteTokens() public {
         // Test: flashFulfill correctly handles duplicate tokens in route.tokens[]
         // This verifies that safeIncreaseAllowance accumulates approvals correctly
@@ -657,18 +705,18 @@ contract LocalProverTest is Test {
         TokenAmount[] memory routeTokens = new TokenAmount[](2);
         routeTokens[0] = TokenAmount({
             token: address(token),
-            amount: 300  // First occurrence: 300 tokens
+            amount: 300 // First occurrence: 300 tokens
         });
         routeTokens[1] = TokenAmount({
             token: address(token),
-            amount: 700  // Second occurrence: 700 tokens (total: 1000)
+            amount: 700 // Second occurrence: 700 tokens (total: 1000)
         });
 
         // Reward contains enough tokens to cover the route
         TokenAmount[] memory rewardTokens = new TokenAmount[](1);
         rewardTokens[0] = TokenAmount({
             token: address(token),
-            amount: TOKEN_AMOUNT  // 1000 tokens total
+            amount: TOKEN_AMOUNT // 1000 tokens total
         });
 
         Call[] memory calls = new Call[](0);
@@ -678,7 +726,7 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             nativeAmount: 0,
-            tokens: routeTokens,  // Duplicate tokens here
+            tokens: routeTokens, // Duplicate tokens here
             calls: calls
         });
 
@@ -704,11 +752,7 @@ contract LocalProverTest is Test {
 
         // FlashFulfill should succeed with duplicate tokens
         vm.prank(solver);
-        localProver.flashFulfill(
-            _intent.route,
-            _intent.reward,
-            claimantBytes
-        );
+        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
         // Verify all tokens (300 + 700 = 1000) transferred to executor
         assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
