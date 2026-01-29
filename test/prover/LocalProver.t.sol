@@ -632,6 +632,74 @@ contract LocalProverTest is Test {
         vm.stopPrank();
     }
 
+    function test_flashFulfill_SucceedsWithDuplicateRouteTokens() public {
+        // Test: flashFulfill correctly handles duplicate tokens in route.tokens[]
+        // This verifies that safeIncreaseAllowance accumulates approvals correctly
+
+        // Create route with same token appearing twice
+        TokenAmount[] memory routeTokens = new TokenAmount[](2);
+        routeTokens[0] = TokenAmount({
+            token: address(token),
+            amount: 300  // First occurrence: 300 tokens
+        });
+        routeTokens[1] = TokenAmount({
+            token: address(token),
+            amount: 700  // Second occurrence: 700 tokens (total: 1000)
+        });
+
+        // Reward contains enough tokens to cover the route
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
+        rewardTokens[0] = TokenAmount({
+            token: address(token),
+            amount: TOKEN_AMOUNT  // 1000 tokens total
+        });
+
+        Call[] memory calls = new Call[](0);
+
+        Route memory route = Route({
+            salt: bytes32(uint256(1)),
+            deadline: uint64(block.timestamp + 1000),
+            portal: address(portal),
+            nativeAmount: 0,
+            tokens: routeTokens,  // Duplicate tokens here
+            calls: calls
+        });
+
+        Reward memory reward = Reward({
+            deadline: uint64(block.timestamp + 2000),
+            creator: creator,
+            prover: address(localProver),
+            nativeAmount: 0,
+            tokens: rewardTokens
+        });
+
+        Intent memory _intent = Intent({
+            destination: CHAIN_ID,
+            route: route,
+            reward: reward
+        });
+
+        _publishAndFundIntent(_intent);
+
+        bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
+
+        uint256 solverBalanceBefore = token.balanceOf(solver);
+
+        // FlashFulfill should succeed with duplicate tokens
+        vm.prank(solver);
+        localProver.flashFulfill(
+            _intent.route,
+            _intent.reward,
+            claimantBytes
+        );
+
+        // Verify all tokens (300 + 700 = 1000) transferred to executor
+        assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
+
+        // Solver should receive no tokens since all were consumed by route
+        assertEq(token.balanceOf(solver), solverBalanceBefore);
+    }
+
     // ============ Helper Functions ============
 
     function _encodeProofs(
