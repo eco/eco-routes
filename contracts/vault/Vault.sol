@@ -97,7 +97,22 @@ contract Vault is IVault {
 
         uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
         if (nativeAmount > 0) {
-            SafeTransferLib.forceSafeTransferETH(claimant, nativeAmount);
+            // Try to send to claimant first
+            (bool success, ) = claimant.call{value: nativeAmount}("");
+
+            if (!success) {
+                // Fallback: send to creator instead
+                (bool creatorSuccess, ) = reward.creator.call{
+                    value: nativeAmount
+                }("");
+                require(creatorSuccess, "Transfer to creator failed");
+
+                emit WithdrawalFallbackToCreator(
+                    claimant,
+                    reward.creator,
+                    nativeAmount
+                );
+            }
         }
     }
 

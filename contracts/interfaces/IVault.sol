@@ -20,6 +20,13 @@ interface IVault {
     /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
 
+    /// @notice Emitted when native ETH transfer to claimant fails and is sent to creator instead
+    event WithdrawalFallbackToCreator(
+        address indexed claimant,
+        address indexed creator,
+        uint256 amount
+    );
+
     /**
      * @notice Funds the vault with reward tokens and native currency
      * @param reward The reward structure containing tokens and amounts

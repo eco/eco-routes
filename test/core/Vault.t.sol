@@ -852,7 +852,9 @@ contract VaultTest is Test {
         token.mint(address(vault), 1000);
         vm.deal(address(vault), 1 ether);
 
-        // Withdrawal should succeed even though claimant reverts on receive
+        uint256 creatorBalanceBefore = creator.balance;
+
+        // Withdrawal should succeed with fallback to creator for native ETH
         vm.prank(portal);
         vault.withdraw(reward, address(revertingClaimant));
 
@@ -860,9 +862,12 @@ contract VaultTest is Test {
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
 
-        // Verify claimant received funds (force transfer worked)
-        assertEq(address(revertingClaimant).balance, 1 ether);
+        // Verify claimant received tokens but NOT native ETH (reverted)
+        assertEq(address(revertingClaimant).balance, 0);
         assertEq(token.balanceOf(address(revertingClaimant)), 1000);
+
+        // Verify creator received native ETH via fallback
+        assertEq(creator.balance, creatorBalanceBefore + 1 ether);
     }
 
     function test_refund_success_withRevertingRefundee() public {
