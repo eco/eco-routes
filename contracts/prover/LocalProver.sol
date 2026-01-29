@@ -36,7 +36,8 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     /**
      * @notice Tracks which intent is currently being flash-fulfilled
      * @dev Used to enable withdrawal during flashFulfill execution (before Portal.claimants is set)
-     *      Only one flashFulfill can execute at a time due to nonReentrant modifier
+     *      Only one flashFulfill can execute at a time due to nonReentrant modifier.
+     *      Set to bytes32(uint256(1)) when not in use for gas savings (non-zero to non-zero is cheaper than zero to non-zero)
      */
     bytes32 private _flashFulfillInProgress;
 
@@ -48,6 +49,9 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         }
 
         _CHAIN_ID = uint64(block.chainid);
+
+        // Initialize to non-zero for gas savings on first flashFulfill
+        _flashFulfillInProgress = bytes32(uint256(1));
     }
 
     /**
@@ -193,9 +197,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         _PORTAL.withdraw(_CHAIN_ID, routeHash, reward);
 
         // Approve Portal to spend route tokens
+        // Use safeIncreaseAllowance to handle duplicate tokens correctly
         uint256 tokensLength = route.tokens.length;
         for (uint256 i = 0; i < tokensLength; ++i) {
-            IERC20(route.tokens[i].token).approve(
+            IERC20(route.tokens[i].token).safeIncreaseAllowance(
                 address(_PORTAL),
                 route.tokens[i].amount
             );
@@ -211,7 +216,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             claimant
         );
 
-        // EFFECTS - Transfer remaining funds to claimant
+        // INTERACTIONS - Transfer remaining funds to claimant
         address claimantAddress = claimant.toAddress();
 
         // Transfer reward tokens to claimant
@@ -232,6 +237,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         }
 
         emit FlashFulfilled(intentHash, claimant, remainingNative);
+
+        // Reset flash fulfill state to non-zero value for gas savings
+        // Non-zero to non-zero storage writes are cheaper than non-zero to zero
+        _flashFulfillInProgress = bytes32(uint256(1));
 
         return results;
     }
