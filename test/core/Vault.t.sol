@@ -878,7 +878,7 @@ contract VaultTest is Test {
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
 
         Reward memory reward = Reward({
-            creator: address(revertingRefundee),
+            creator: creator, // Normal creator address
             prover: address(0),
             deadline: uint64(block.timestamp + 1000),
             nativeAmount: 1 ether,
@@ -890,7 +890,9 @@ contract VaultTest is Test {
 
         vm.warp(block.timestamp + 2000);
 
-        // Refund should succeed even though refundee reverts on receive
+        uint256 creatorBalanceBefore = creator.balance;
+
+        // Refund should succeed with fallback to creator for native ETH
         vm.prank(portal);
         vault.refund(reward, address(revertingRefundee));
 
@@ -898,9 +900,12 @@ contract VaultTest is Test {
         assertEq(address(vault).balance, 0);
         assertEq(token.balanceOf(address(vault)), 0);
 
-        // Verify refundee received funds (force transfer worked)
-        assertEq(address(revertingRefundee).balance, 1 ether);
+        // Verify refundee received tokens but NOT native ETH (reverted)
+        assertEq(address(revertingRefundee).balance, 0);
         assertEq(token.balanceOf(address(revertingRefundee)), 1000);
+
+        // Verify creator received native ETH via fallback
+        assertEq(creator.balance, creatorBalanceBefore + 1 ether);
     }
 }
 

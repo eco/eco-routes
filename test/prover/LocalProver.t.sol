@@ -233,7 +233,7 @@ contract LocalProverTest is Test {
     }
 
     function test_flashFulfill_SucceedsEvenIfClaimantRejectsETH() public {
-        // Test: Succeeds even when claimant rejects ETH (force transfer prevents griefing)
+        // Test: Succeeds even when claimant rejects ETH (fallback-to-creator prevents griefing)
         // Deploy a contract that rejects ETH transfers
         RejectEth rejecter = new RejectEth();
 
@@ -242,7 +242,7 @@ contract LocalProverTest is Test {
 
         bytes32 rejecterClaimant = bytes32(uint256(uint160(address(rejecter))));
 
-        uint256 initialBalance = address(rejecter).balance;
+        uint256 creatorBalanceBefore = creator.balance;
 
         // Should succeed even though rejecter doesn't accept normal ETH transfers
         vm.prank(solver);
@@ -252,8 +252,9 @@ contract LocalProverTest is Test {
             rejecterClaimant
         );
 
-        // Verify the ETH was force-transferred to the rejecter
-        assertEq(address(rejecter).balance, initialBalance + REWARD_AMOUNT);
+        // Verify the ETH was sent to creator (fallback when claimant rejects)
+        assertEq(address(rejecter).balance, 0);
+        assertEq(creator.balance, creatorBalanceBefore + REWARD_AMOUNT);
     }
 
     // B5. Happy Path with Route Tokens

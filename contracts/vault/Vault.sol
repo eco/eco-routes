@@ -5,7 +5,6 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import {SafeTransferLib} from "solady/src/utils/SafeTransferLib.sol";
 
 import {IVault} from "../interfaces/IVault.sol";
 import {IPermit} from "../interfaces/IPermit.sol";
@@ -134,7 +133,22 @@ contract Vault is IVault {
 
         uint256 nativeAmount = address(this).balance;
         if (nativeAmount > 0) {
-            SafeTransferLib.forceSafeTransferETH(refundee, nativeAmount);
+            // Try to send to refundee first
+            (bool success, ) = refundee.call{value: nativeAmount}("");
+
+            if (!success) {
+                // Fallback: send to creator instead
+                (bool creatorSuccess, ) = reward.creator.call{
+                    value: nativeAmount
+                }("");
+                require(creatorSuccess, "Transfer to creator failed");
+
+                emit WithdrawalFallbackToCreator(
+                    refundee,
+                    reward.creator,
+                    nativeAmount
+                );
+            }
         }
     }
 
