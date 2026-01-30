@@ -96,22 +96,8 @@ contract Vault is IVault {
 
         uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
         if (nativeAmount > 0) {
-            // Try to send to claimant first
-            (bool success, ) = claimant.call{value: nativeAmount}("");
-
-            if (!success) {
-                // Fallback: send to creator instead
-                (bool creatorSuccess, ) = reward.creator.call{
-                    value: nativeAmount
-                }("");
-                require(creatorSuccess, "Transfer to creator failed");
-
-                emit WithdrawalFallbackToCreator(
-                    claimant,
-                    reward.creator,
-                    nativeAmount
-                );
-            }
+            // Try to send to claimant - if it fails, ETH remains in vault for refund
+            claimant.call{value: nativeAmount}("");
         }
     }
 
@@ -133,22 +119,8 @@ contract Vault is IVault {
 
         uint256 nativeAmount = address(this).balance;
         if (nativeAmount > 0) {
-            // Try to send to refundee first
-            (bool success, ) = refundee.call{value: nativeAmount}("");
-
-            if (!success) {
-                // Fallback: send to creator instead
-                (bool creatorSuccess, ) = reward.creator.call{
-                    value: nativeAmount
-                }("");
-                require(creatorSuccess, "Transfer to creator failed");
-
-                emit WithdrawalFallbackToCreator(
-                    refundee,
-                    reward.creator,
-                    nativeAmount
-                );
-            }
+            // Try to send to refundee - if it fails, ETH remains in vault for future refund attempts
+            refundee.call{value: nativeAmount}("");
         }
     }
 

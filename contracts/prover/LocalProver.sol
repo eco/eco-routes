@@ -226,18 +226,8 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Transfer remaining native
         uint256 remainingNative = address(this).balance;
         if (remainingNative > 0) {
-            // Try to send to claimant first
-            (bool success, ) = claimantAddress.call{value: remainingNative}("");
-
-            if (!success) {
-                // Fallback: send to creator instead
-                (bool creatorSuccess, ) = reward.creator.call{
-                    value: remainingNative
-                }("");
-                require(creatorSuccess, "Transfer to creator failed");
-
-                // Note: Creator can redistribute to correct solver address manually if needed
-            }
+            // Try to send to claimant - if it fails, ETH remains in contract
+            claimantAddress.call{value: remainingNative}("");
         }
 
         emit FlashFulfilled(intentHash, claimant, remainingNative);

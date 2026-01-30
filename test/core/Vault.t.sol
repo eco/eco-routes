@@ -852,22 +852,17 @@ contract VaultTest is Test {
         token.mint(address(vault), 1000);
         vm.deal(address(vault), 1 ether);
 
-        uint256 creatorBalanceBefore = creator.balance;
-
-        // Withdrawal should succeed with fallback to creator for native ETH
+        // Withdrawal should succeed - tokens transfer, ETH remains if claimant rejects
         vm.prank(portal);
         vault.withdraw(reward, address(revertingClaimant));
 
-        // Verify vault is empty
-        assertEq(address(vault).balance, 0);
+        // Verify ETH remains in vault (claimant rejected it)
+        assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 0);
 
         // Verify claimant received tokens but NOT native ETH (reverted)
         assertEq(address(revertingClaimant).balance, 0);
         assertEq(token.balanceOf(address(revertingClaimant)), 1000);
-
-        // Verify creator received native ETH via fallback
-        assertEq(creator.balance, creatorBalanceBefore + 1 ether);
     }
 
     function test_refund_success_withRevertingRefundee() public {
@@ -890,22 +885,17 @@ contract VaultTest is Test {
 
         vm.warp(block.timestamp + 2000);
 
-        uint256 creatorBalanceBefore = creator.balance;
-
-        // Refund should succeed with fallback to creator for native ETH
+        // Refund should succeed - tokens transfer, ETH remains if refundee rejects
         vm.prank(portal);
         vault.refund(reward, address(revertingRefundee));
 
-        // Verify vault is empty
-        assertEq(address(vault).balance, 0);
+        // Verify ETH remains in vault (refundee rejected it)
+        assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 0);
 
         // Verify refundee received tokens but NOT native ETH (reverted)
         assertEq(address(revertingRefundee).balance, 0);
         assertEq(token.balanceOf(address(revertingRefundee)), 1000);
-
-        // Verify creator received native ETH via fallback
-        assertEq(creator.balance, creatorBalanceBefore + 1 ether);
     }
 }
 
