@@ -833,4 +833,79 @@ contract VaultTest is Test {
         );
         vault.recover(creator, address(recoverToken));
     }
+
+    function test_withdraw_success_withRevertingClaimant() public {
+        // Deploy a contract that always reverts on receive
+        RevertingClaimant revertingClaimant = new RevertingClaimant();
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 1 ether,
+            tokens: tokens
+        });
+
+        token.mint(address(vault), 1000);
+        vm.deal(address(vault), 1 ether);
+
+        // Withdrawal should succeed - tokens transfer, ETH remains if claimant rejects
+        vm.prank(portal);
+        vault.withdraw(reward, address(revertingClaimant));
+
+        // Verify ETH remains in vault (claimant rejected it)
+        assertEq(address(vault).balance, 1 ether);
+        assertEq(token.balanceOf(address(vault)), 0);
+
+        // Verify claimant received tokens but NOT native ETH (reverted)
+        assertEq(address(revertingClaimant).balance, 0);
+        assertEq(token.balanceOf(address(revertingClaimant)), 1000);
+    }
+
+    function test_refund_success_withRevertingRefundee() public {
+        // Deploy a contract that always reverts on receive
+        RevertingClaimant revertingRefundee = new RevertingClaimant();
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator, // Normal creator address
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 1 ether,
+            tokens: tokens
+        });
+
+        token.mint(address(vault), 1000);
+        vm.deal(address(vault), 1 ether);
+
+        vm.warp(block.timestamp + 2000);
+
+        // Refund should succeed - tokens transfer, ETH remains if refundee rejects
+        vm.prank(portal);
+        vault.refund(reward, address(revertingRefundee));
+
+        // Verify ETH remains in vault (refundee rejected it)
+        assertEq(address(vault).balance, 1 ether);
+        assertEq(token.balanceOf(address(vault)), 0);
+
+        // Verify refundee received tokens but NOT native ETH (reverted)
+        assertEq(address(revertingRefundee).balance, 0);
+        assertEq(token.balanceOf(address(revertingRefundee)), 1000);
+    }
+}
+
+/// @notice Contract that reverts on receive to simulate griefing attack
+contract RevertingClaimant {
+    receive() external payable {
+        revert("RevertingClaimant: I reject your ETH");
+    }
+
+    fallback() external payable {
+        revert("RevertingClaimant: I reject your ETH");
+    }
 }

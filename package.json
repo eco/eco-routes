@@ -142,6 +142,7 @@
     "@metalayer/contracts": "^0.0.7",
     "@openzeppelin/contracts": "^5.0.2",
     "@openzeppelin/contracts-upgradeable": "^5.0.2",
+    "solady": "^0.1.26",
     "tronweb": "^6.0.4",
     "viem": "^2.22.21"
   },

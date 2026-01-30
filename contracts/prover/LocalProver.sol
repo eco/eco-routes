@@ -226,8 +226,8 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Transfer remaining native
         uint256 remainingNative = address(this).balance;
         if (remainingNative > 0) {
-            (bool success, ) = claimantAddress.call{value: remainingNative}("");
-            if (!success) revert NativeTransferFailed();
+            // Try to send to claimant - if it fails, ETH remains in contract
+            claimantAddress.call{value: remainingNative}("");
         }
 
         emit FlashFulfilled(intentHash, claimant, remainingNative);
