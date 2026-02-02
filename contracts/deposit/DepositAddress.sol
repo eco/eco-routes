@@ -145,8 +145,7 @@ contract DepositAddress is ReentrancyGuard {
 
         // Call Portal.publishAndFund
         Portal portalContract = Portal(portal);
-        address vault;
-        (intentHash, vault) = portalContract.publishAndFund(
+        (intentHash,) = portalContract.publishAndFund(
             destChain,
             routeBytes,
             reward,
