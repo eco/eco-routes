@@ -76,7 +76,7 @@ contract DepositAddressTest is Test {
 
     function test_initialize_revertsIfDepositorIsZero() public {
         // Deploy a new uninitialized deposit address
-        address predicted = factory.getDepositAddress(
+        factory.getDepositAddress(
             bytes32(uint256(0x9999))
         );
 
