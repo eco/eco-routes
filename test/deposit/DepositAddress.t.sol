@@ -139,7 +139,7 @@ contract DepositAddressTest is Test {
 
         // We can't predict the exact intentHash, but we can check that event was emitted
         vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        depositAddress.createIntent(amount);
 
         // Verify event was emitted with correct amount and caller
         Vm.Log[] memory logs = vm.getRecordedLogs();
