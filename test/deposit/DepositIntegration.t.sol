@@ -18,7 +18,7 @@ contract DepositIntegrationTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 5107100; // Solana
-    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
+    bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
@@ -58,7 +58,7 @@ contract DepositIntegrationTest is Test {
         factory = new DepositFactory(
             DESTINATION_CHAIN,
             address(token),
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             address(prover),
             DESTINATION_PORTAL,
@@ -182,13 +182,9 @@ contract DepositIntegrationTest is Test {
         // Fast forward past deadline
         vm.warp(block.timestamp + INTENT_DEADLINE_DURATION + 1);
 
-        // Note: Full refund test would require:
-        // 1. Correctly computing the route hash from the created intent
-        // 2. Having the prover mark the intent as unfulfilled
-        // 3. Calling refund with the correct parameters
-        //
-        // For now, we verify that the refund function exists and is callable
-        // The actual refund logic is tested in Portal/IntentSource tests
+        // Note: Depositor can now call Portal.refund() directly since they are the intent creator
+        // This allows refunds through the normal intent flow without a separate function
+        // Full refund testing is covered in Portal/IntentSource tests
 
         // Verify intent exists and is funded
         IIntentSource.Status status = portal.getRewardStatus(intentHash);

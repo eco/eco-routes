@@ -47,13 +47,6 @@ contract DepositAddress is ReentrancyGuard {
         address indexed caller
     );
 
-    /**
-     * @notice Emitted when an intent is refunded
-     * @param routeHash Hash of the route that was refunded
-     * @param refundee Address that received the refund
-     */
-    event IntentRefunded(bytes32 indexed routeHash, address indexed refundee);
-
     // ============ Errors ============
 
     error AlreadyInitialized();
@@ -62,7 +55,6 @@ contract DepositAddress is ReentrancyGuard {
     error InvalidDepositor();
     error ZeroAmount();
     error InsufficientBalance(uint256 requested, uint256 available);
-    error NoDepositorSet();
 
     // ============ Constructor ============
 
@@ -109,7 +101,7 @@ contract DepositAddress is ReentrancyGuard {
         (
             uint64 destChain,
             address sourceToken,
-            bytes32 targetToken,
+            bytes32 destinationToken,
             address portal,
             address prover,
             bytes32 destPortal,
@@ -125,7 +117,7 @@ contract DepositAddress is ReentrancyGuard {
         // Encode route bytes for Solana (Borsh format)
         bytes memory routeBytes = _encodeRoute(
             amount,
-            targetToken,
+            destinationToken,
             destPortal,
             deadlineDuration
         );
@@ -133,7 +125,7 @@ contract DepositAddress is ReentrancyGuard {
         // Construct Reward
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + deadlineDuration),
-            creator: address(this), // Deposit address is creator
+            creator: depositor, // Depositor receives refunds through normal intent flow
             prover: prover,
             nativeAmount: 0,
             tokens: new TokenAmount[](1)
@@ -157,29 +149,6 @@ contract DepositAddress is ReentrancyGuard {
         return intentHash;
     }
 
-    /**
-     * @notice Permissionless refund function for failed intents
-     * @dev Anyone can call this to refund tokens to the depositor if intent wasn't fulfilled
-     * @param routeHash Hash of the route (from createIntent)
-     * @param reward Reward struct (from createIntent)
-     */
-    function refund(
-        bytes32 routeHash,
-        Reward calldata reward
-    ) external nonReentrant {
-        if (!initialized) revert NotInitialized();
-        if (depositor == address(0)) revert NoDepositorSet();
-
-        // Get configuration from factory
-        (uint64 destChain, , , address portal, , , ) = FACTORY
-            .getConfiguration();
-
-        // Call Portal.refundTo (Portal checks that msg.sender == reward.creator)
-        Portal(portal).refundTo(destChain, routeHash, reward, depositor);
-
-        emit IntentRefunded(routeHash, depositor);
-    }
-
     // ============ Internal Functions ============
 
     /**
@@ -192,14 +161,14 @@ contract DepositAddress is ReentrancyGuard {
      *      - tokens: Vec<TokenAmount> (4 bytes length + elements)
      *      - calls: Vec<Call> (4 bytes length + elements)
      * @param amount Amount of tokens to transfer
-     * @param targetToken Token address on destination chain
+     * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
      * @param deadlineDuration Deadline duration in seconds
      * @return routeBytes Encoded route bytes
      */
     function _encodeRoute(
         uint256 amount,
-        bytes32 targetToken,
+        bytes32 destinationToken,
         bytes32 destPortal,
         uint64 deadlineDuration
     ) internal view returns (bytes memory) {
@@ -220,7 +189,7 @@ contract DepositAddress is ReentrancyGuard {
             destPortal, // 32 bytes
             uint64(0), // native_amount = 0 (8 bytes)
             uint32(1), // tokens.length = 1 (4 bytes)
-            targetToken, // tokens[0].token (32 bytes)
+            destinationToken, // tokens[0].token (32 bytes)
             uint64(amount), // tokens[0].amount (8 bytes, may need little-endian conversion)
             uint32(0) // calls.length = 0 (4 bytes)
         );

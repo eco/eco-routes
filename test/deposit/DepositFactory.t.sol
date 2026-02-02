@@ -13,7 +13,7 @@ contract DepositFactoryTest is Test {
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 5107100; // Solana
     address constant SOURCE_TOKEN = address(0x1234);
-    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
+    bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     address constant PROVER_ADDRESS = address(0x9ABC);
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
@@ -32,7 +32,7 @@ contract DepositFactoryTest is Test {
         factory = new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -55,7 +55,7 @@ contract DepositFactoryTest is Test {
 
         assertEq(destChain, DESTINATION_CHAIN);
         assertEq(sourceToken, SOURCE_TOKEN);
-        assertEq(targetToken, TARGET_TOKEN);
+        assertEq(targetToken, DESTINATION_TOKEN);
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, PROVER_ADDRESS);
         assertEq(destPortal, DESTINATION_PORTAL);
@@ -73,7 +73,7 @@ contract DepositFactoryTest is Test {
         new DepositFactory(
             DESTINATION_CHAIN,
             address(0), // Invalid
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -86,7 +86,7 @@ contract DepositFactoryTest is Test {
         new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(0), // Invalid
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -99,7 +99,7 @@ contract DepositFactoryTest is Test {
         new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             address(0), // Invalid
             DESTINATION_PORTAL,
@@ -107,8 +107,8 @@ contract DepositFactoryTest is Test {
         );
     }
 
-    function test_constructor_revertsOnInvalidTargetToken() public {
-        vm.expectRevert(DepositFactory.InvalidTargetToken.selector);
+    function test_constructor_revertsOnInvalidDestinationToken() public {
+        vm.expectRevert(DepositFactory.InvalidDestinationToken.selector);
         new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -125,7 +125,7 @@ contract DepositFactoryTest is Test {
         new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             bytes32(0), // Invalid
@@ -138,7 +138,7 @@ contract DepositFactoryTest is Test {
         new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -198,16 +198,16 @@ contract DepositFactoryTest is Test {
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
     }
 
+    function test_deploy_revertsIfZeroDestinationAddress() public {
+        vm.expectRevert(DepositFactory.InvalidDestinationAddress.selector);
+        factory.deploy(bytes32(0), DEPOSITOR_1);
+    }
+
     function test_deploy_revertsIfAlreadyDeployed() public {
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                DepositFactory.ContractAlreadyDeployed.selector,
-                predicted
-            )
-        );
+        // Should revert at clone level when trying to deploy to same address
+        vm.expectRevert();
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_2);
     }
 
@@ -244,7 +244,7 @@ contract DepositFactoryTest is Test {
         DepositFactory factory2 = new DepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
