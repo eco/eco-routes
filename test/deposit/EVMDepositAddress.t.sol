@@ -223,7 +223,7 @@ contract EVMDepositAddressTest is Test {
 
         // Get configuration for refund
         (
-            uint64 destChain,
+            , // destChain - not used in this test
             ,
             ,
             ,
