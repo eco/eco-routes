@@ -2,7 +2,7 @@
 import { describe, it } from 'mocha';
 import { expect } from 'chai';
 // eslint-disable-next-line node/no-extraneous-import
-import { BorshSchema, serialize, deserialize } from 'borsh';
+import { serialize, deserialize } from 'borsh';
 
 /**
  * Borsh Encoding Verification Tests
@@ -25,14 +25,6 @@ class TokenAmount {
   }
 }
 
-// eslint-disable-next-line no-unused-vars
-const TokenAmountSchema: BorshSchema = {
-  struct: {
-    token: { array: { type: 'u8', len: 32 } },
-    amount: 'u64'
-  }
-};
-
 class Call {
   target: Uint8Array;  // 32-byte Bytes32
   data: Uint8Array;    // Vec<u8>
@@ -42,13 +34,6 @@ class Call {
     this.data = fields.data;
   }
 }
-
-const CallSchema: BorshSchema = {
-  struct: {
-    target: { array: { type: 'u8', len: 32 } },
-    data: { array: { type: 'u8' } }
-  }
-};
 
 class Route {
   salt: Uint8Array;           // 32 bytes
@@ -75,16 +60,34 @@ class Route {
   }
 }
 
-const RouteSchema: BorshSchema = {
-  struct: {
-    salt: { array: { type: 'u8', len: 32 } },
-    deadline: 'u64',
-    portal: { array: { type: 'u8', len: 32 } },
-    nativeAmount: 'u64',
-    tokens: { array: { type: TokenAmount } },
-    calls: { array: { type: Call } }
-  }
-};
+// Define borsh schemas as Maps (required by borsh library)
+const schema = new Map([
+  [TokenAmount, {
+    kind: 'struct',
+    fields: [
+      ['token', [32]], // Fixed-size array of 32 bytes
+      ['amount', 'u64']
+    ]
+  }],
+  [Call, {
+    kind: 'struct',
+    fields: [
+      ['target', [32]], // Fixed-size array of 32 bytes
+      ['data', ['u8']]  // Variable-size array
+    ]
+  }],
+  [Route, {
+    kind: 'struct',
+    fields: [
+      ['salt', [32]],
+      ['deadline', 'u64'],
+      ['portal', [32]],
+      ['nativeAmount', 'u64'],
+      ['tokens', [TokenAmount]],
+      ['calls', [Call]]
+    ]
+  }]
+]);
 
 describe('Borsh Encoding Verification', () => {
   it('should encode Route with correct byte length (204 bytes)', () => {
@@ -123,7 +126,7 @@ describe('Borsh Encoding Verification', () => {
     });
 
     // Encode with borsh
-    const encoded = serialize(RouteSchema, route);
+    const encoded = Buffer.from(serialize(schema, route));
 
     // Verify length: 204 bytes (NOT 212 - no value field in Call)
     // 32 (salt) + 8 (deadline) + 32 (portal) + 8 (native_amount) + 4 (tokens.length)
@@ -147,7 +150,7 @@ describe('Borsh Encoding Verification', () => {
     expect(solidityRouteBytes.length).to.equal(204);
 
     // Deserialize with borsh
-    const decoded = deserialize(RouteSchema, solidityRouteBytes);
+    const decoded = deserialize(schema, Route, solidityRouteBytes);
 
     // Verify structure
     expect(decoded).to.be.an('object');
@@ -172,7 +175,7 @@ describe('Borsh Encoding Verification', () => {
     const salt = new Uint8Array(32);
     crypto.getRandomValues(salt);
 
-    const deadline = BigInt(Date.now() / 1000) + BigInt(604800);
+    const deadline = BigInt(Math.floor(Date.now() / 1000)) + BigInt(604800);
     const portal = new Uint8Array(32).fill(0xAB);
     const token = new Uint8Array(32).fill(0xCD);
     const destination = new Uint8Array(32).fill(0xEF);
@@ -197,10 +200,10 @@ describe('Borsh Encoding Verification', () => {
     });
 
     // Encode
-    const encoded = serialize(RouteSchema, originalRoute);
+    const encoded = Buffer.from(serialize(schema, originalRoute));
 
     // Decode
-    const decoded = deserialize(RouteSchema, encoded);
+    const decoded = deserialize(schema, Route, encoded);
 
     // Verify round-trip
     expect(decoded.deadline).to.equal(originalRoute.deadline);
@@ -211,7 +214,7 @@ describe('Borsh Encoding Verification', () => {
     expect(decoded.calls[0].data.length).to.equal(40);
 
     // Re-encode to verify byte-for-byte match
-    const reencoded = serialize(RouteSchema, decoded);
+    const reencoded = Buffer.from(serialize(schema, decoded));
     expect(Buffer.from(reencoded).toString('hex')).to.equal(Buffer.from(encoded).toString('hex'));
 
     console.log('Round-trip successful!');
@@ -223,7 +226,7 @@ describe('Borsh Encoding Verification', () => {
     const data = new Uint8Array(40).fill(2);
 
     const call = new Call({ target, data });
-    const encoded = serialize(CallSchema, call);
+    const encoded = Buffer.from(serialize(schema, call));
 
     // Expected: 32 (target) + 4 (data.length) + 40 (data) = 76 bytes
     // If it was 84 bytes, there would be an extra 8-byte value field
