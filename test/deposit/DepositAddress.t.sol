@@ -75,14 +75,14 @@ contract DepositAddressTest is Test {
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
-        // Deploy a new uninitialized deposit address
-        factory.getDepositAddress(
-            bytes32(uint256(0x9999))
-        );
-
-        // Manually deploy the proxy without initialization
+        // Attempt to deploy with zero depositor should revert
         vm.expectRevert(DepositAddress.InvalidDepositor.selector);
         factory.deploy(bytes32(uint256(0x9999)), address(0));
+    }
+
+    function test_initialize_revertsIfDestinationAddressIsZero() public {
+        vm.expectRevert(DepositAddress.InvalidDestinationAddress.selector);
+        factory.deploy(bytes32(0), DEPOSITOR);
     }
 
     // ============ createIntent Tests ============

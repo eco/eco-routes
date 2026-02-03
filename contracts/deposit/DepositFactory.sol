@@ -109,12 +109,14 @@ contract DepositFactory {
      * @notice Get deterministic deposit address for a user
      * @dev Can be called before deployment to predict the address
      * @param destinationAddress User's address on destination chain (as bytes32)
+     * @param depositor Address to receive refunds if intent fails
      * @return Predicted deposit address on source chain
      */
     function getDepositAddress(
-        bytes32 destinationAddress
+        bytes32 destinationAddress,
+        address depositor
     ) public view returns (address) {
-        bytes32 salt = _getSalt(destinationAddress);
+        bytes32 salt = _getSalt(destinationAddress, depositor);
         return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
     }
 
@@ -130,7 +132,7 @@ contract DepositFactory {
     ) external returns (address deployed) {
         if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
 
-        bytes32 salt = _getSalt(destinationAddress);
+        bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
         // Initialize the deposit address with destination and depositor
@@ -142,12 +144,14 @@ contract DepositFactory {
     /**
      * @notice Check if deposit contract is deployed for a user
      * @param destinationAddress User's address on destination chain
+     * @param depositor Address to receive refunds if intent fails
      * @return True if contract exists at predicted address
      */
     function isDeployed(
-        bytes32 destinationAddress
+        bytes32 destinationAddress,
+        address depositor
     ) external view returns (bool) {
-        address predicted = getDepositAddress(destinationAddress);
+        address predicted = getDepositAddress(destinationAddress, depositor);
         return predicted.code.length > 0;
     }
 
@@ -193,9 +197,10 @@ contract DepositFactory {
      * @return salt The CREATE2 salt
      */
     function _getSalt(
-        bytes32 destinationAddress
+        bytes32 destinationAddress,
+        address depositor
     ) internal pure returns (bytes32) {
-        // Use destination address directly as salt for simplicity
-        return destinationAddress;
+        // Hash both destination address and depositor for unique salt
+        return keccak256(abi.encodePacked(destinationAddress, depositor));
     }
 }

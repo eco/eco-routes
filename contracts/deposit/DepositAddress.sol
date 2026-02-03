@@ -54,6 +54,7 @@ contract DepositAddress is ReentrancyGuard {
     error NotInitialized();
     error OnlyFactory();
     error InvalidDepositor();
+    error InvalidDestinationAddress();
     error ZeroAmount();
     error AmountTooLarge(uint256 amount, uint256 maxAmount);
     error InsufficientBalance(uint256 requested, uint256 available);
@@ -80,6 +81,7 @@ contract DepositAddress is ReentrancyGuard {
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
+        if (_destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
 
         destinationAddress = _destinationAddress;

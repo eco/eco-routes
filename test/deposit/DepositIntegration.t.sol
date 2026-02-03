@@ -71,8 +71,8 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_fullDepositFlow() public {
         // 1. Get deposit address before deployment
-        address depositAddr = factory.getDepositAddress(USER_DESTINATION);
-        assertFalse(factory.isDeployed(USER_DESTINATION));
+        address depositAddr = factory.getDepositAddress(USER_DESTINATION, DEPOSITOR);
+        assertFalse(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
 
         // 2. User sends tokens to deposit address (simulating CEX withdrawal)
         uint256 depositAmount = 10_000 * 1e6;
@@ -82,7 +82,7 @@ contract DepositIntegrationTest is Test {
         // 3. Backend deploys deposit contract
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         assertEq(deployed, depositAddr);
-        assertTrue(factory.isDeployed(USER_DESTINATION));
+        assertTrue(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
 
         DepositAddress depositAddress = DepositAddress(deployed);
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
@@ -221,7 +221,7 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_deterministicAddressingWorks() public {
         // Get predicted address
-        address predicted = factory.getDepositAddress(USER_DESTINATION);
+        address predicted = factory.getDepositAddress(USER_DESTINATION, DEPOSITOR);
 
         // Send tokens to predicted address before deployment
         uint256 amount = 10_000 * 1e6;

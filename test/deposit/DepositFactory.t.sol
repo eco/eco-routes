@@ -149,13 +149,13 @@ contract DepositFactoryTest is Test {
     // ============ getDepositAddress Tests ============
 
     function test_getDepositAddress_returnsDeterministicAddress() public view {
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         assertTrue(predicted != address(0));
     }
 
     function test_getDepositAddress_sameAddressForSameDestination() public view {
-        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1);
-        address predicted2 = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address predicted2 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         assertEq(predicted1, predicted2);
     }
 
@@ -163,15 +163,24 @@ contract DepositFactoryTest is Test {
         public
         view
     {
-        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1);
-        address predicted2 = factory.getDepositAddress(USER_DESTINATION_2);
+        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address predicted2 = factory.getDepositAddress(USER_DESTINATION_2, DEPOSITOR_1);
+        assertTrue(predicted1 != predicted2);
+    }
+
+    function test_getDepositAddress_differentAddressForDifferentDepositor()
+        public
+        view
+    {
+        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address predicted2 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_2);
         assertTrue(predicted1 != predicted2);
     }
 
     // ============ deploy Tests ============
 
     function test_deploy_createsContractAtPredictedAddress() public {
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         address deployed = factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
         assertEq(deployed, predicted);
@@ -187,7 +196,7 @@ contract DepositFactoryTest is Test {
     }
 
     function test_deploy_emitsEvent() public {
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
         vm.expectEmit(true, true, false, false);
         emit DepositFactory.DepositContractDeployed(
@@ -206,9 +215,25 @@ contract DepositFactoryTest is Test {
     function test_deploy_revertsIfAlreadyDeployed() public {
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
-        // Should revert at clone level when trying to deploy to same address
+        // Should revert at clone level when trying to deploy to same address (same destination + same depositor)
         vm.expectRevert();
-        factory.deploy(USER_DESTINATION_1, DEPOSITOR_2);
+        factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
+    }
+
+    function test_deploy_allowsDifferentDepositorsToSameDestination() public {
+        address deployed1 = factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
+        address deployed2 = factory.deploy(USER_DESTINATION_1, DEPOSITOR_2);
+
+        // Different depositors to same destination should create different addresses
+        assertTrue(deployed1 != deployed2);
+        assertTrue(deployed1.code.length > 0);
+        assertTrue(deployed2.code.length > 0);
+
+        // Verify both are correctly initialized
+        assertEq(DepositAddress(deployed1).destinationAddress(), USER_DESTINATION_1);
+        assertEq(DepositAddress(deployed1).depositor(), DEPOSITOR_1);
+        assertEq(DepositAddress(deployed2).destinationAddress(), USER_DESTINATION_1);
+        assertEq(DepositAddress(deployed2).depositor(), DEPOSITOR_2);
     }
 
     function test_deploy_allowsDifferentUsers() public {
@@ -223,19 +248,19 @@ contract DepositFactoryTest is Test {
     // ============ isDeployed Tests ============
 
     function test_isDeployed_returnsFalseBeforeDeployment() public view {
-        assertFalse(factory.isDeployed(USER_DESTINATION_1));
+        assertFalse(factory.isDeployed(USER_DESTINATION_1, DEPOSITOR_1));
     }
 
     function test_isDeployed_returnsTrueAfterDeployment() public {
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
-        assertTrue(factory.isDeployed(USER_DESTINATION_1));
+        assertTrue(factory.isDeployed(USER_DESTINATION_1, DEPOSITOR_1));
     }
 
     function test_isDeployed_independentForDifferentUsers() public {
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
-        assertTrue(factory.isDeployed(USER_DESTINATION_1));
-        assertFalse(factory.isDeployed(USER_DESTINATION_2));
+        assertTrue(factory.isDeployed(USER_DESTINATION_1, DEPOSITOR_1));
+        assertFalse(factory.isDeployed(USER_DESTINATION_2, DEPOSITOR_1));
     }
 
     // ============ Multiple Factories Tests ============
@@ -251,8 +276,8 @@ contract DepositFactoryTest is Test {
             INTENT_DEADLINE_DURATION
         );
 
-        address addr1 = factory.getDepositAddress(USER_DESTINATION_1);
-        address addr2 = factory2.getDepositAddress(USER_DESTINATION_1);
+        address addr1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address addr2 = factory2.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
         // Different factories should produce different addresses even for same user
         // because they have different implementation addresses
@@ -262,12 +287,14 @@ contract DepositFactoryTest is Test {
     // ============ Fuzz Tests ============
 
     function testFuzz_getDepositAddress_deterministic(
-        bytes32 destination
+        bytes32 destination,
+        address depositor
     ) public view {
         vm.assume(destination != bytes32(0));
+        vm.assume(depositor != address(0));
 
-        address predicted1 = factory.getDepositAddress(destination);
-        address predicted2 = factory.getDepositAddress(destination);
+        address predicted1 = factory.getDepositAddress(destination, depositor);
+        address predicted2 = factory.getDepositAddress(destination, depositor);
 
         assertEq(predicted1, predicted2);
     }
@@ -279,7 +306,7 @@ contract DepositFactoryTest is Test {
         vm.assume(destination != bytes32(0));
         vm.assume(depositor != address(0));
 
-        address predicted = factory.getDepositAddress(destination);
+        address predicted = factory.getDepositAddress(destination, depositor);
         address deployed = factory.deploy(destination, depositor);
 
         assertEq(deployed, predicted);
