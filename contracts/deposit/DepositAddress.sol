@@ -160,7 +160,9 @@ contract DepositAddress is ReentrancyGuard {
      *      - portal: Bytes32 (32 bytes)
      *      - native_amount: u64 (8 bytes)
      *      - tokens: Vec<TokenAmount> (4 bytes length + elements)
+     *        - Each TokenAmount: token (32 bytes) + amount (8 bytes u64)
      *      - calls: Vec<Call> (4 bytes length + elements)
+     *        - Each Call: target (32 bytes) + value (8 bytes u64) + data length (4 bytes u32) + data (variable)
      * @param amount Amount of tokens to transfer
      * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
@@ -181,6 +183,12 @@ contract DepositAddress is ReentrancyGuard {
         // Calculate deadline
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
 
+        // Encode transfer instruction data (destination + amount)
+        bytes memory transferData = abi.encodePacked(
+            destinationAddress, // 32 bytes - recipient address
+            Endian.toLittleEndian64(uint64(amount)) // 8 bytes - transfer amount (little-endian)
+        );
+
         // Encode route matching Solana's Borsh format
         // Note: Solana uses little-endian for multi-byte integers
         bytes memory routeBytes = abi.encodePacked(
@@ -191,7 +199,12 @@ contract DepositAddress is ReentrancyGuard {
             Endian.toLittleEndian32(1), // tokens.length = 1 (4 bytes, little-endian)
             destinationToken, // tokens[0].token (32 bytes)
             Endian.toLittleEndian64(uint64(amount)), // tokens[0].amount (8 bytes, little-endian)
-            Endian.toLittleEndian32(0) // calls.length = 0 (4 bytes, little-endian)
+            Endian.toLittleEndian32(1), // calls.length = 1 (4 bytes, little-endian)
+            // Call struct (Borsh encoding):
+            destinationToken, // calls[0].target (32 bytes) - token to transfer
+            Endian.toLittleEndian64(0), // calls[0].value (8 bytes, little-endian) - no native tokens
+            Endian.toLittleEndian32(uint32(transferData.length)), // calls[0].data.length (4 bytes, little-endian)
+            transferData // calls[0].data (40 bytes: 32-byte address + 8-byte amount)
         );
 
         return routeBytes;
