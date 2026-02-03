@@ -100,6 +100,18 @@ contract DepositAddressTest is Test {
         depositAddress.createIntent(0);
     }
 
+    function test_createIntent_revertsIfAmountTooLarge() public {
+        uint256 tooLarge = uint256(type(uint64).max) + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DepositAddress.AmountTooLarge.selector,
+                tooLarge,
+                type(uint64).max
+            )
+        );
+        depositAddress.createIntent(tooLarge);
+    }
+
     function test_createIntent_revertsIfInsufficientBalance() public {
         // Don't send any tokens
         vm.expectRevert(
@@ -113,7 +125,8 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_approvesPortalForTokens() public {
-        uint256 amount = 1000 ether;
+        // 10,000 USDC (6 decimals) = 10,000 * 10^6
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         depositAddress.createIntent(amount);
@@ -124,7 +137,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_callsPortalPublishAndFund() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         bytes32 intentHash = depositAddress.createIntent(amount);
@@ -134,7 +147,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_emitsIntentCreatedEvent() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         // We can't predict the exact intentHash, but we can check that event was emitted
@@ -157,7 +170,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_returnsIntentHash() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         bytes32 intentHash = depositAddress.createIntent(amount);
@@ -166,7 +179,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_permissionless() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         // Anyone can call createIntent
@@ -177,8 +190,8 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_multipleCallsSucceed() public {
-        uint256 amount1 = 1000 ether;
-        uint256 amount2 = 500 ether;
+        uint256 amount1 = 10_000 * 1e6;
+        uint256 amount2 = 5_000 * 1e6;
 
         // First intent
         token.mint(address(depositAddress), amount1);
@@ -196,7 +209,7 @@ contract DepositAddressTest is Test {
     // ============ Route Encoding Tests ============
 
     function test_encodeRoute_includesAllParameters() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         // Create intent which internally calls _encodeRoute
@@ -227,6 +240,7 @@ contract DepositAddressTest is Test {
     ) public {
         vm.assume(requested > available);
         vm.assume(requested > 0);
+        vm.assume(requested <= type(uint64).max); // Must fit in uint64 for Solana
         vm.assume(available < type(uint256).max);
 
         token.mint(address(depositAddress), available);

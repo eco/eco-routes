@@ -55,6 +55,7 @@ contract DepositAddress is ReentrancyGuard {
     error OnlyFactory();
     error InvalidDepositor();
     error ZeroAmount();
+    error AmountTooLarge(uint256 amount, uint256 maxAmount);
     error InsufficientBalance(uint256 requested, uint256 available);
 
     // ============ Constructor ============
@@ -89,7 +90,9 @@ contract DepositAddress is ReentrancyGuard {
     /**
      * @notice Create a cross-chain intent for deposited tokens
      * @dev Encodes route bytes for Solana, constructs reward, and calls Portal.publishAndFund()
-     * @param amount Amount of tokens to bridge
+     *      Amount must fit in uint64 due to Solana's u64 token amount limitation.
+     *      This works for 6-decimal tokens (USDC, USDT) but restricts 18-decimal tokens.
+     * @param amount Amount of tokens to bridge (must be <= type(uint64).max)
      * @return intentHash Hash of the created intent
      */
     function createIntent(
@@ -97,6 +100,9 @@ contract DepositAddress is ReentrancyGuard {
     ) external nonReentrant returns (bytes32 intentHash) {
         if (!initialized) revert NotInitialized();
         if (amount == 0) revert ZeroAmount();
+        if (amount > type(uint64).max) {
+            revert AmountTooLarge(amount, type(uint64).max);
+        }
 
         // Get configuration from factory
         (

@@ -74,7 +74,7 @@ contract DepositIntegrationTest is Test {
         assertFalse(factory.isDeployed(USER_DESTINATION));
 
         // 2. User sends tokens to deposit address (simulating CEX withdrawal)
-        uint256 depositAmount = 1000 ether;
+        uint256 depositAmount = 10_000 * 1e6;
         token.mint(depositAddr, depositAmount);
         assertEq(token.balanceOf(depositAddr), depositAmount);
 
@@ -111,13 +111,13 @@ contract DepositIntegrationTest is Test {
         DepositAddress depositAddress = DepositAddress(deployed);
 
         // First deposit
-        uint256 amount1 = 1000 ether;
+        uint256 amount1 = 10_000 * 1e6;
         token.mint(deployed, amount1);
         bytes32 intentHash1 = depositAddress.createIntent(amount1);
         assertEq(token.balanceOf(deployed), 0);
 
         // Second deposit
-        uint256 amount2 = 500 ether;
+        uint256 amount2 = 5_000 * 1e6;
         token.mint(deployed, amount2);
         bytes32 intentHash2 = depositAddress.createIntent(amount2);
         assertEq(token.balanceOf(deployed), 0);
@@ -140,7 +140,7 @@ contract DepositIntegrationTest is Test {
         assertTrue(deployed1 != deployed2);
 
         // Both should work independently
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
 
         token.mint(deployed1, amount);
         bytes32 intentHash1 = DepositAddress(deployed1).createIntent(amount);
@@ -157,7 +157,7 @@ contract DepositIntegrationTest is Test {
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         DepositAddress depositAddress = DepositAddress(deployed);
 
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(deployed, amount);
         bytes32 intentHash = depositAddress.createIntent(amount);
 
@@ -175,7 +175,7 @@ contract DepositIntegrationTest is Test {
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         DepositAddress depositAddress = DepositAddress(deployed);
 
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(deployed, amount);
         bytes32 intentHash = depositAddress.createIntent(amount);
 
@@ -201,20 +201,20 @@ contract DepositIntegrationTest is Test {
 
         // Try to create intent without balance
         vm.expectRevert();
-        depositAddress.createIntent(1000 ether);
+        depositAddress.createIntent(10_000 * 1e6);
 
         // Add partial balance
-        token.mint(deployed, 500 ether);
+        token.mint(deployed, 5_000 * 1e6);
 
         // Try to create intent with more than balance
         vm.expectRevert();
-        depositAddress.createIntent(1000 ether);
+        depositAddress.createIntent(10_000 * 1e6);
 
         // Add remaining balance
-        token.mint(deployed, 500 ether);
+        token.mint(deployed, 5_000 * 1e6);
 
         // Now should succeed
-        bytes32 intentHash = depositAddress.createIntent(1000 ether);
+        bytes32 intentHash = depositAddress.createIntent(10_000 * 1e6);
         assertTrue(intentHash != bytes32(0));
     }
 
@@ -223,7 +223,7 @@ contract DepositIntegrationTest is Test {
         address predicted = factory.getDepositAddress(USER_DESTINATION);
 
         // Send tokens to predicted address before deployment
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(predicted, amount);
         assertEq(token.balanceOf(predicted), amount);
 
@@ -247,9 +247,9 @@ contract DepositIntegrationTest is Test {
         uint256 deployGas = gasBefore - gasleft();
 
         // Create intent
-        token.mint(deployed, 1000 ether);
+        token.mint(deployed, 10_000 * 1e6);
         gasBefore = gasleft();
-        DepositAddress(deployed).createIntent(1000 ether);
+        DepositAddress(deployed).createIntent(10_000 * 1e6);
         uint256 createIntentGas = gasBefore - gasleft();
 
         // Log gas usage for reference
