@@ -1,5 +1,7 @@
+// eslint-disable-next-line node/no-extraneous-import
 import { describe, it } from 'mocha';
 import { expect } from 'chai';
+// eslint-disable-next-line node/no-extraneous-import
 import { BorshSchema, serialize, deserialize } from 'borsh';
 
 /**
@@ -23,6 +25,7 @@ class TokenAmount {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 const TokenAmountSchema: BorshSchema = {
   struct: {
     token: { array: { type: 'u8', len: 32 } },
