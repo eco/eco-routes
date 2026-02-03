@@ -168,7 +168,7 @@ contract DepositAddress is ReentrancyGuard {
      *      - tokens: Vec<TokenAmount> (4 bytes length + elements)
      *        - Each TokenAmount: token (32 bytes) + amount (8 bytes u64)
      *      - calls: Vec<Call> (4 bytes length + elements)
-     *        - Each Call: target (32 bytes) + data length (4 bytes u32) + data (variable) + value (8 bytes u64)
+     *        - Each Call: target (32 bytes) + data length (4 bytes u32) + data (variable)
      * @param amount Amount of tokens to transfer
      * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
@@ -206,11 +206,10 @@ contract DepositAddress is ReentrancyGuard {
             destinationToken, // tokens[0].token (32 bytes)
             Endian.toLittleEndian64(uint64(amount)), // tokens[0].amount (8 bytes, little-endian)
             Endian.toLittleEndian32(1), // calls.length = 1 (4 bytes, little-endian)
-            // Call struct (Borsh encoding): target, data, value
+            // Call struct (Borsh encoding): target, data
             destinationToken, // calls[0].target (32 bytes) - token to transfer
             Endian.toLittleEndian32(uint32(transferData.length)), // calls[0].data.length (4 bytes, little-endian)
-            transferData, // calls[0].data (40 bytes: 32-byte address + 8-byte amount)
-            Endian.toLittleEndian64(0) // calls[0].value (8 bytes, little-endian) - no native tokens
+            transferData // calls[0].data (40 bytes: 32-byte address + 8-byte amount)
         );
 
         return routeBytes;
