@@ -17,7 +17,7 @@ contract DepositAddressTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 5107100; // Solana
-    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
+    bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     address constant PROVER_ADDRESS = address(0x9ABC);
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
@@ -38,7 +38,7 @@ contract DepositAddressTest is Test {
         factory = new DepositFactory(
             DESTINATION_CHAIN,
             address(token),
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -75,14 +75,14 @@ contract DepositAddressTest is Test {
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
-        // Deploy a new uninitialized deposit address
-        address predicted = factory.getDepositAddress(
-            bytes32(uint256(0x9999))
-        );
-
-        // Manually deploy the proxy without initialization
+        // Attempt to deploy with zero depositor should revert
         vm.expectRevert(DepositAddress.InvalidDepositor.selector);
         factory.deploy(bytes32(uint256(0x9999)), address(0));
+    }
+
+    function test_initialize_revertsIfDestinationAddressIsZero() public {
+        vm.expectRevert(DepositAddress.InvalidDestinationAddress.selector);
+        factory.deploy(bytes32(0), DEPOSITOR);
     }
 
     // ============ createIntent Tests ============
@@ -100,6 +100,18 @@ contract DepositAddressTest is Test {
         depositAddress.createIntent(0);
     }
 
+    function test_createIntent_revertsIfAmountTooLarge() public {
+        uint256 tooLarge = uint256(type(uint64).max) + 1;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DepositAddress.AmountTooLarge.selector,
+                tooLarge,
+                type(uint64).max
+            )
+        );
+        depositAddress.createIntent(tooLarge);
+    }
+
     function test_createIntent_revertsIfInsufficientBalance() public {
         // Don't send any tokens
         vm.expectRevert(
@@ -113,7 +125,8 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_approvesPortalForTokens() public {
-        uint256 amount = 1000 ether;
+        // 10,000 USDC (6 decimals) = 10,000 * 10^6
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         depositAddress.createIntent(amount);
@@ -124,7 +137,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_callsPortalPublishAndFund() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         bytes32 intentHash = depositAddress.createIntent(amount);
@@ -134,12 +147,12 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_emitsIntentCreatedEvent() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         // We can't predict the exact intentHash, but we can check that event was emitted
         vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        depositAddress.createIntent(amount);
 
         // Verify event was emitted with correct amount and caller
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -157,7 +170,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_returnsIntentHash() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         bytes32 intentHash = depositAddress.createIntent(amount);
@@ -166,7 +179,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_permissionless() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         // Anyone can call createIntent
@@ -177,8 +190,8 @@ contract DepositAddressTest is Test {
     }
 
     function test_createIntent_multipleCallsSucceed() public {
-        uint256 amount1 = 1000 ether;
-        uint256 amount2 = 500 ether;
+        uint256 amount1 = 10_000 * 1e6;
+        uint256 amount2 = 5_000 * 1e6;
 
         // First intent
         token.mint(address(depositAddress), amount1);
@@ -193,89 +206,10 @@ contract DepositAddressTest is Test {
         assertTrue(intentHash1 != intentHash2);
     }
 
-    // ============ refund Tests ============
-
-    function test_refund_revertsIfNotInitialized() public {
-        DepositAddress uninit = new DepositAddress();
-
-        Reward memory reward = Reward({
-            deadline: uint64(block.timestamp + 7 days),
-            creator: address(depositAddress),
-            prover: PROVER_ADDRESS,
-            nativeAmount: 0,
-            tokens: new TokenAmount[](1)
-        });
-        reward.tokens[0] = TokenAmount({token: address(token), amount: 1000});
-
-        vm.expectRevert(DepositAddress.NotInitialized.selector);
-        uninit.refund(bytes32(0), reward);
-    }
-
-    function test_refund_revertsIfNoDepositorSet() public {
-        // This test is tricky because we can't set depositor to 0 during initialization
-        // The factory's deploy function validates depositor != address(0)
-        // So this error would only occur if somehow depositor was cleared after init
-        // which isn't possible in the current implementation
-        // We'll skip this test as it's not a realistic scenario
-    }
-
-    function test_refund_isPermissionless() public {
-        // Create an intent first
-        uint256 amount = 1000 ether;
-        token.mint(address(depositAddress), amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
-
-        // Get the route hash and reward for refund
-        // In reality, these would come from the IntentPublished event
-        // For this test, we'll construct them
-        (
-            uint64 destChain,
-            ,
-            ,
-            ,
-            address prover,
-            ,
-            uint64 deadlineDuration
-        ) = factory.getConfiguration();
-
-        Reward memory reward = Reward({
-            deadline: uint64(block.timestamp + deadlineDuration),
-            creator: address(depositAddress),
-            prover: prover,
-            nativeAmount: 0,
-            tokens: new TokenAmount[](1)
-        });
-        reward.tokens[0] = TokenAmount({token: address(token), amount: amount});
-
-        // Fast forward past deadline
-        vm.warp(block.timestamp + deadlineDuration + 1);
-
-        // Calculate route hash (would normally come from event)
-        bytes memory routeBytes = abi.encodePacked(
-            bytes32(0), // salt placeholder
-            uint64(block.timestamp),
-            DESTINATION_PORTAL,
-            uint64(0),
-            uint32(1),
-            TARGET_TOKEN,
-            uint64(amount),
-            uint32(0)
-        );
-        bytes32 routeHash = keccak256(routeBytes);
-
-        // Anyone can call refund (it will fail in Portal if conditions aren't met)
-        vm.prank(ATTACKER);
-
-        // This will revert in Portal because the intent hasn't been properly set up
-        // but it demonstrates that the call is permissionless
-        vm.expectRevert();
-        depositAddress.refund(routeHash, reward);
-    }
-
     // ============ Route Encoding Tests ============
 
     function test_encodeRoute_includesAllParameters() public {
-        uint256 amount = 1000 ether;
+        uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
         // Create intent which internally calls _encodeRoute
@@ -306,6 +240,7 @@ contract DepositAddressTest is Test {
     ) public {
         vm.assume(requested > available);
         vm.assume(requested > 0);
+        vm.assume(requested <= type(uint64).max); // Must fit in uint64 for Solana
         vm.assume(available < type(uint256).max);
 
         token.mint(address(depositAddress), available);

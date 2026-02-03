@@ -21,8 +21,8 @@ contract DepositFactory {
     /// @notice Source token address (ERC20 on source chain)
     address public immutable SOURCE_TOKEN;
 
-    /// @notice Target token address on destination chain (as bytes32 for cross-VM compatibility)
-    bytes32 public immutable TARGET_TOKEN;
+    /// @notice Destination token address on destination chain (as bytes32 for cross-VM compatibility)
+    bytes32 public immutable DESTINATION_TOKEN;
 
     /// @notice Portal contract address on source chain
     address public immutable PORTAL_ADDRESS;
@@ -56,10 +56,10 @@ contract DepositFactory {
     error InvalidSourceToken();
     error InvalidPortalAddress();
     error InvalidProverAddress();
-    error InvalidTargetToken();
+    error InvalidDestinationToken();
     error InvalidDestinationPortal();
     error InvalidDeadlineDuration();
-    error ContractAlreadyDeployed(address depositAddress);
+    error InvalidDestinationAddress();
 
     // ============ Constructor ============
 
@@ -67,7 +67,7 @@ contract DepositFactory {
      * @notice Initialize the factory with route configuration
      * @param _destinationChain Target chain ID
      * @param _sourceToken ERC20 token address on source chain
-     * @param _targetToken Token address on destination chain (as bytes32)
+     * @param _destinationToken Token address on destination chain (as bytes32)
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
      * @param _destinationPortal Portal address on destination chain (as bytes32)
@@ -76,7 +76,7 @@ contract DepositFactory {
     constructor(
         uint64 _destinationChain,
         address _sourceToken,
-        bytes32 _targetToken,
+        bytes32 _destinationToken,
         address _portalAddress,
         address _proverAddress,
         bytes32 _destinationPortal,
@@ -86,14 +86,14 @@ contract DepositFactory {
         if (_sourceToken == address(0)) revert InvalidSourceToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
         if (_proverAddress == address(0)) revert InvalidProverAddress();
-        if (_targetToken == bytes32(0)) revert InvalidTargetToken();
+        if (_destinationToken == bytes32(0)) revert InvalidDestinationToken();
         if (_destinationPortal == bytes32(0)) revert InvalidDestinationPortal();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
 
         // Store configuration
         DESTINATION_CHAIN = _destinationChain;
         SOURCE_TOKEN = _sourceToken;
-        TARGET_TOKEN = _targetToken;
+        DESTINATION_TOKEN = _destinationToken;
         PORTAL_ADDRESS = _portalAddress;
         PROVER_ADDRESS = _proverAddress;
         DESTINATION_PORTAL = _destinationPortal;
@@ -109,12 +109,14 @@ contract DepositFactory {
      * @notice Get deterministic deposit address for a user
      * @dev Can be called before deployment to predict the address
      * @param destinationAddress User's address on destination chain (as bytes32)
+     * @param depositor Address to receive refunds if intent fails
      * @return Predicted deposit address on source chain
      */
     function getDepositAddress(
-        bytes32 destinationAddress
+        bytes32 destinationAddress,
+        address depositor
     ) public view returns (address) {
-        bytes32 salt = _getSalt(destinationAddress);
+        bytes32 salt = _getSalt(destinationAddress, depositor);
         return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
     }
 
@@ -128,14 +130,9 @@ contract DepositFactory {
         bytes32 destinationAddress,
         address depositor
     ) external returns (address deployed) {
-        address predicted = getDepositAddress(destinationAddress);
+        if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
 
-        // Check if already deployed
-        if (predicted.code.length > 0) {
-            revert ContractAlreadyDeployed(predicted);
-        }
-
-        bytes32 salt = _getSalt(destinationAddress);
+        bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
         // Initialize the deposit address with destination and depositor
@@ -147,12 +144,14 @@ contract DepositFactory {
     /**
      * @notice Check if deposit contract is deployed for a user
      * @param destinationAddress User's address on destination chain
+     * @param depositor Address to receive refunds if intent fails
      * @return True if contract exists at predicted address
      */
     function isDeployed(
-        bytes32 destinationAddress
+        bytes32 destinationAddress,
+        address depositor
     ) external view returns (bool) {
-        address predicted = getDepositAddress(destinationAddress);
+        address predicted = getDepositAddress(destinationAddress, depositor);
         return predicted.code.length > 0;
     }
 
@@ -160,7 +159,7 @@ contract DepositFactory {
      * @notice Get complete factory configuration
      * @return destinationChain Target chain ID
      * @return sourceToken Source token address
-     * @return targetToken Target token address (bytes32)
+     * @return destinationToken Destination token address (bytes32)
      * @return portalAddress Portal address on source chain
      * @return proverAddress Prover contract address
      * @return destinationPortal Portal address on destination chain (bytes32)
@@ -172,7 +171,7 @@ contract DepositFactory {
         returns (
             uint64 destinationChain,
             address sourceToken,
-            bytes32 targetToken,
+            bytes32 destinationToken,
             address portalAddress,
             address proverAddress,
             bytes32 destinationPortal,
@@ -182,7 +181,7 @@ contract DepositFactory {
         return (
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             PORTAL_ADDRESS,
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -198,9 +197,10 @@ contract DepositFactory {
      * @return salt The CREATE2 salt
      */
     function _getSalt(
-        bytes32 destinationAddress
+        bytes32 destinationAddress,
+        address depositor
     ) internal pure returns (bytes32) {
-        // Use destination address directly as salt for simplicity
-        return destinationAddress;
+        // Hash both destination address and depositor for unique salt
+        return keccak256(abi.encodePacked(destinationAddress, depositor));
     }
 }

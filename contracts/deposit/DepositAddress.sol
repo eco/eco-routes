@@ -7,6 +7,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Portal} from "../Portal.sol";
 import {Reward, TokenAmount} from "../types/Intent.sol";
 import {DepositFactory} from "./DepositFactory.sol";
+import {Endian} from "../libs/Endian.sol";
 
 /**
  * @title DepositAddress
@@ -47,22 +48,16 @@ contract DepositAddress is ReentrancyGuard {
         address indexed caller
     );
 
-    /**
-     * @notice Emitted when an intent is refunded
-     * @param routeHash Hash of the route that was refunded
-     * @param refundee Address that received the refund
-     */
-    event IntentRefunded(bytes32 indexed routeHash, address indexed refundee);
-
     // ============ Errors ============
 
     error AlreadyInitialized();
     error NotInitialized();
     error OnlyFactory();
     error InvalidDepositor();
+    error InvalidDestinationAddress();
     error ZeroAmount();
+    error AmountTooLarge(uint256 amount, uint256 maxAmount);
     error InsufficientBalance(uint256 requested, uint256 available);
-    error NoDepositorSet();
 
     // ============ Constructor ============
 
@@ -86,6 +81,7 @@ contract DepositAddress is ReentrancyGuard {
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
+        if (_destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
 
         destinationAddress = _destinationAddress;
@@ -96,7 +92,9 @@ contract DepositAddress is ReentrancyGuard {
     /**
      * @notice Create a cross-chain intent for deposited tokens
      * @dev Encodes route bytes for Solana, constructs reward, and calls Portal.publishAndFund()
-     * @param amount Amount of tokens to bridge
+     *      Amount must fit in uint64 due to Solana's u64 token amount limitation.
+     *      This works for 6-decimal tokens (USDC, USDT) but restricts 18-decimal tokens.
+     * @param amount Amount of tokens to bridge (must be <= type(uint64).max)
      * @return intentHash Hash of the created intent
      */
     function createIntent(
@@ -104,12 +102,15 @@ contract DepositAddress is ReentrancyGuard {
     ) external nonReentrant returns (bytes32 intentHash) {
         if (!initialized) revert NotInitialized();
         if (amount == 0) revert ZeroAmount();
+        if (amount > type(uint64).max) {
+            revert AmountTooLarge(amount, type(uint64).max);
+        }
 
         // Get configuration from factory
         (
             uint64 destChain,
             address sourceToken,
-            bytes32 targetToken,
+            bytes32 destinationToken,
             address portal,
             address prover,
             bytes32 destPortal,
@@ -125,7 +126,7 @@ contract DepositAddress is ReentrancyGuard {
         // Encode route bytes for Solana (Borsh format)
         bytes memory routeBytes = _encodeRoute(
             amount,
-            targetToken,
+            destinationToken,
             destPortal,
             deadlineDuration
         );
@@ -133,7 +134,7 @@ contract DepositAddress is ReentrancyGuard {
         // Construct Reward
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + deadlineDuration),
-            creator: address(this), // Deposit address is creator
+            creator: depositor, // Depositor receives refunds through normal intent flow
             prover: prover,
             nativeAmount: 0,
             tokens: new TokenAmount[](1)
@@ -145,8 +146,7 @@ contract DepositAddress is ReentrancyGuard {
 
         // Call Portal.publishAndFund
         Portal portalContract = Portal(portal);
-        address vault;
-        (intentHash, vault) = portalContract.publishAndFund(
+        (intentHash,) = portalContract.publishAndFund(
             destChain,
             routeBytes,
             reward,
@@ -156,29 +156,6 @@ contract DepositAddress is ReentrancyGuard {
         emit IntentCreated(intentHash, amount, msg.sender);
 
         return intentHash;
-    }
-
-    /**
-     * @notice Permissionless refund function for failed intents
-     * @dev Anyone can call this to refund tokens to the depositor if intent wasn't fulfilled
-     * @param routeHash Hash of the route (from createIntent)
-     * @param reward Reward struct (from createIntent)
-     */
-    function refund(
-        bytes32 routeHash,
-        Reward calldata reward
-    ) external nonReentrant {
-        if (!initialized) revert NotInitialized();
-        if (depositor == address(0)) revert NoDepositorSet();
-
-        // Get configuration from factory
-        (uint64 destChain, , , address portal, , , ) = FACTORY
-            .getConfiguration();
-
-        // Call Portal.refundTo (Portal checks that msg.sender == reward.creator)
-        Portal(portal).refundTo(destChain, routeHash, reward, depositor);
-
-        emit IntentRefunded(routeHash, depositor);
     }
 
     // ============ Internal Functions ============
@@ -191,16 +168,18 @@ contract DepositAddress is ReentrancyGuard {
      *      - portal: Bytes32 (32 bytes)
      *      - native_amount: u64 (8 bytes)
      *      - tokens: Vec<TokenAmount> (4 bytes length + elements)
+     *        - Each TokenAmount: token (32 bytes) + amount (8 bytes u64)
      *      - calls: Vec<Call> (4 bytes length + elements)
+     *        - Each Call: target (32 bytes) + data length (4 bytes u32) + data (variable)
      * @param amount Amount of tokens to transfer
-     * @param targetToken Token address on destination chain
+     * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
      * @param deadlineDuration Deadline duration in seconds
      * @return routeBytes Encoded route bytes
      */
     function _encodeRoute(
         uint256 amount,
-        bytes32 targetToken,
+        bytes32 destinationToken,
         bytes32 destPortal,
         uint64 deadlineDuration
     ) internal view returns (bytes memory) {
@@ -212,18 +191,27 @@ contract DepositAddress is ReentrancyGuard {
         // Calculate deadline
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
 
+        // Encode transfer instruction data (destination + amount)
+        bytes memory transferData = abi.encodePacked(
+            destinationAddress, // 32 bytes - recipient address
+            Endian.toLittleEndian64(uint64(amount)) // 8 bytes - transfer amount (little-endian)
+        );
+
         // Encode route matching Solana's Borsh format
         // Note: Solana uses little-endian for multi-byte integers
-        // TODO: Verify with Solana team if byte order conversion is needed
         bytes memory routeBytes = abi.encodePacked(
             salt, // 32 bytes
-            deadline, // 8 bytes (may need little-endian conversion)
+            Endian.toLittleEndian64(deadline), // 8 bytes (little-endian)
             destPortal, // 32 bytes
-            uint64(0), // native_amount = 0 (8 bytes)
-            uint32(1), // tokens.length = 1 (4 bytes)
-            targetToken, // tokens[0].token (32 bytes)
-            uint64(amount), // tokens[0].amount (8 bytes, may need little-endian conversion)
-            uint32(0) // calls.length = 0 (4 bytes)
+            Endian.toLittleEndian64(0), // native_amount = 0 (8 bytes, little-endian)
+            Endian.toLittleEndian32(1), // tokens.length = 1 (4 bytes, little-endian)
+            destinationToken, // tokens[0].token (32 bytes)
+            Endian.toLittleEndian64(uint64(amount)), // tokens[0].amount (8 bytes, little-endian)
+            Endian.toLittleEndian32(1), // calls.length = 1 (4 bytes, little-endian)
+            // Call struct (Borsh encoding): target, data
+            destinationToken, // calls[0].target (32 bytes) - token to transfer
+            Endian.toLittleEndian32(uint32(transferData.length)), // calls[0].data.length (4 bytes, little-endian)
+            transferData // calls[0].data (40 bytes: 32-byte address + 8-byte amount)
         );
 
         return routeBytes;
