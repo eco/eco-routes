@@ -18,13 +18,12 @@ contract EVMDepositIntegrationTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 10; // Optimism
-    address constant TARGET_TOKEN = address(0x5678);
-    address constant DESTINATION_PORTAL = address(0xDEF0);
+    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
+    bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
-    address constant USER_DESTINATION = address(0x1111);
-    address constant RECIPIENT = address(0x2222);
+    bytes32 constant USER_DESTINATION = bytes32(uint256(0x1111));
     address constant DEPOSITOR = address(0x3333);
 
     event IntentPublished(
@@ -70,8 +69,8 @@ contract EVMDepositIntegrationTest is Test {
 
     function test_integration_fullDepositFlow() public {
         // 1. Get deposit address before deployment
-        address depositAddr = factory.getDepositAddress(USER_DESTINATION);
-        assertFalse(factory.isDeployed(USER_DESTINATION));
+        address depositAddr = factory.getDepositAddress(USER_DESTINATION, DEPOSITOR);
+        assertFalse(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
 
         // 2. User sends tokens to deposit address (simulating CEX withdrawal)
         uint256 depositAmount = 1000 ether;
@@ -79,13 +78,12 @@ contract EVMDepositIntegrationTest is Test {
         assertEq(token.balanceOf(depositAddr), depositAmount);
 
         // 3. Backend deploys deposit contract
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         assertEq(deployed, depositAddr);
-        assertTrue(factory.isDeployed(USER_DESTINATION));
+        assertTrue(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
 
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
-        assertEq(depositAddress.recipient(), RECIPIENT);
         assertEq(depositAddress.depositor(), DEPOSITOR);
 
         // 4. Backend creates intent
@@ -106,7 +104,7 @@ contract EVMDepositIntegrationTest is Test {
 
     function test_integration_multipleDeposits() public {
         // Deploy deposit address
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
         // First deposit
@@ -126,15 +124,14 @@ contract EVMDepositIntegrationTest is Test {
     }
 
     function test_integration_differentUsersGetDifferentAddresses() public {
-        address user2Destination = address(0x2222);
-        address recipient2 = address(0x4444);
+        bytes32 user2Destination = bytes32(uint256(0x2222));
         address depositor2 = address(0x5555);
 
         // Deploy for user 1
-        address deployed1 = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed1 = factory.deploy(USER_DESTINATION, DEPOSITOR);
 
         // Deploy for user 2
-        address deployed2 = factory.deploy(user2Destination, recipient2, depositor2);
+        address deployed2 = factory.deploy(user2Destination, depositor2);
 
         // Should have different addresses
         assertTrue(deployed1 != deployed2);
@@ -154,7 +151,7 @@ contract EVMDepositIntegrationTest is Test {
 
     function test_integration_intentStatusTracking() public {
         // Deploy and create intent
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
         uint256 amount = 1000 ether;
@@ -172,7 +169,7 @@ contract EVMDepositIntegrationTest is Test {
 
     function test_integration_refundFlow() public {
         // Deploy and create intent
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
         uint256 amount = 1000 ether;
@@ -192,7 +189,7 @@ contract EVMDepositIntegrationTest is Test {
     }
 
     function test_integration_balanceChecks() public {
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
         // Try to create intent without balance
@@ -216,7 +213,7 @@ contract EVMDepositIntegrationTest is Test {
 
     function test_integration_deterministicAddressingWorks() public {
         // Get predicted address
-        address predicted = factory.getDepositAddress(USER_DESTINATION);
+        address predicted = factory.getDepositAddress(USER_DESTINATION, DEPOSITOR);
 
         // Send tokens to predicted address before deployment
         uint256 amount = 1000 ether;
@@ -224,7 +221,7 @@ contract EVMDepositIntegrationTest is Test {
         assertEq(token.balanceOf(predicted), amount);
 
         // Deploy at predicted address
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         assertEq(deployed, predicted);
 
         // Tokens should still be there
@@ -239,7 +236,7 @@ contract EVMDepositIntegrationTest is Test {
     function test_integration_gasEstimation() public {
         // Deploy
         uint256 gasBefore = gasleft();
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         uint256 deployGas = gasBefore - gasleft();
 
         // Create intent
@@ -261,35 +258,16 @@ contract EVMDepositIntegrationTest is Test {
 
     // ============ EVM-Specific Tests ============
 
-    function test_integration_recipientReceivesTokens() public {
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+    function test_integration_destinationAddressUsedAsRecipient() public {
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
-        // Verify recipient is set correctly
-        assertEq(depositAddress.recipient(), RECIPIENT);
+        // Verify destinationAddress is set correctly and will be used as recipient
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
-    }
-
-    function test_integration_differentRecipientAndDestination() public {
-        // Deploy with different recipient and destination
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
-        EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
-
-        // Create intent
-        uint256 amount = 1000 ether;
-        token.mint(deployed, amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
-
-        assertTrue(intentHash != bytes32(0));
-
-        // Verify both addresses are set correctly
-        assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
-        assertEq(depositAddress.recipient(), RECIPIENT);
-        assertTrue(depositAddress.recipient() != depositAddress.destinationAddress());
     }
 
     function test_integration_routeStructValidation() public {
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
         // Create intent which internally constructs Route struct

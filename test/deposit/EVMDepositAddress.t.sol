@@ -17,14 +17,13 @@ contract EVMDepositAddressTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 10; // Optimism
-    address constant TARGET_TOKEN = address(0x5678);
+    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
     address constant PROVER_ADDRESS = address(0x9ABC);
-    address constant DESTINATION_PORTAL = address(0xDEF0);
+    bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
-    address constant USER_DESTINATION = address(0x1111);
-    address constant RECIPIENT = address(0x2222);
+    bytes32 constant USER_DESTINATION = bytes32(uint256(0x1111));
     address constant DEPOSITOR = address(0x3333);
     address constant ATTACKER = address(0x6666);
 
@@ -47,7 +46,7 @@ contract EVMDepositAddressTest is Test {
         );
 
         // Deploy deposit address
-        address deployed = factory.deploy(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         depositAddress = EVMDepositAddress(deployed);
     }
 
@@ -57,17 +56,13 @@ contract EVMDepositAddressTest is Test {
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
     }
 
-    function test_initialize_setsRecipient() public view {
-        assertEq(depositAddress.recipient(), RECIPIENT);
-    }
-
     function test_initialize_setsDepositor() public view {
         assertEq(depositAddress.depositor(), DEPOSITOR);
     }
 
     function test_initialize_revertsIfAlreadyInitialized() public {
         vm.expectRevert(EVMDepositAddress.AlreadyInitialized.selector);
-        depositAddress.initialize(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        depositAddress.initialize(USER_DESTINATION, DEPOSITOR);
     }
 
     function test_initialize_revertsIfNotCalledByFactory() public {
@@ -76,17 +71,12 @@ contract EVMDepositAddressTest is Test {
 
         vm.prank(ATTACKER);
         vm.expectRevert(EVMDepositAddress.OnlyFactory.selector);
-        implementation.initialize(USER_DESTINATION, RECIPIENT, DEPOSITOR);
+        implementation.initialize(USER_DESTINATION, DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
         vm.expectRevert(EVMDepositAddress.InvalidDepositor.selector);
-        factory.deploy(address(0x9999), RECIPIENT, address(0));
-    }
-
-    function test_initialize_revertsIfRecipientIsZero() public {
-        vm.expectRevert(EVMDepositAddress.InvalidRecipient.selector);
-        factory.deploy(address(0x9999), address(0), DEPOSITOR);
+        factory.deploy(bytes32(uint256(0x9999)), address(0));
     }
 
     // ============ createIntent Tests ============
@@ -267,38 +257,19 @@ contract EVMDepositAddressTest is Test {
         assertTrue(intentHash != bytes32(0));
     }
 
-    function test_createIntent_setsRecipientInCall() public {
+    function test_createIntent_setsDestinationInCall() public {
         uint256 amount = 1000 ether;
         token.mint(address(depositAddress), amount);
 
         // Create intent
         bytes32 intentHash = depositAddress.createIntent(amount);
 
-        // The recipient should be set in the transfer call
-        // This is tested implicitly - if recipient was wrong, fulfillment would fail
+        // The destinationAddress should be set in the transfer call
+        // This is tested implicitly - if destination was wrong, fulfillment would fail
         assertTrue(intentHash != bytes32(0));
 
-        // Verify recipient is correctly set in storage
-        assertEq(depositAddress.recipient(), RECIPIENT);
-    }
-
-    // ============ Recipient Separation Tests ============
-
-    function test_recipientSeparation_recipientDifferentFromDestination() public view {
-        // Verify that recipient and destinationAddress can be different
+        // Verify destinationAddress is correctly set in storage
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
-        assertEq(depositAddress.recipient(), RECIPIENT);
-        assertTrue(depositAddress.recipient() != depositAddress.destinationAddress());
-    }
-
-    function test_recipientSeparation_recipientSameAsDestination() public {
-        // Deploy with recipient same as destination
-        address sameAddress = address(0x7777);
-        address deployed = factory.deploy(sameAddress, sameAddress, DEPOSITOR);
-        EVMDepositAddress depositAddr = EVMDepositAddress(deployed);
-
-        assertEq(depositAddr.destinationAddress(), sameAddress);
-        assertEq(depositAddr.recipient(), sameAddress);
     }
 
     // ============ Fuzz Tests ============

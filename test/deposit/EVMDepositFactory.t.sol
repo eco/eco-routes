@@ -13,16 +13,14 @@ contract EVMDepositFactoryTest is Test {
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 10; // Optimism
     address constant SOURCE_TOKEN = address(0x1234);
-    address constant TARGET_TOKEN = address(0x5678); // EVM address
+    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678)); // bytes32 for cross-VM compatibility
     address constant PROVER_ADDRESS = address(0x9ABC);
-    address constant DESTINATION_PORTAL = address(0xDEF0); // EVM address
+    bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0)); // bytes32 for cross-VM compatibility
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
-    address constant USER_DESTINATION_1 = address(0x1111);
-    address constant USER_DESTINATION_2 = address(0x2222);
-    address constant RECIPIENT_1 = address(0x3333);
-    address constant RECIPIENT_2 = address(0x4444);
+    bytes32 constant USER_DESTINATION_1 = bytes32(uint256(0x1111));
+    bytes32 constant USER_DESTINATION_2 = bytes32(uint256(0x2222));
     address constant DEPOSITOR_1 = address(0x5555);
     address constant DEPOSITOR_2 = address(0x6666);
 
@@ -48,10 +46,10 @@ contract EVMDepositFactoryTest is Test {
         (
             uint64 destChain,
             address sourceToken,
-            address targetToken,
+            bytes32 targetToken,
             address portalAddress,
             address proverAddress,
-            address destPortal,
+            bytes32 destPortal,
             uint64 deadlineDuration
         ) = factory.getConfiguration();
 
@@ -114,7 +112,7 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            address(0), // Invalid
+            bytes32(0), // Invalid
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -130,7 +128,7 @@ contract EVMDepositFactoryTest is Test {
             TARGET_TOKEN,
             address(portal),
             PROVER_ADDRESS,
-            address(0), // Invalid
+            bytes32(0), // Invalid
             INTENT_DEADLINE_DURATION
         );
     }
@@ -151,13 +149,13 @@ contract EVMDepositFactoryTest is Test {
     // ============ getDepositAddress Tests ============
 
     function test_getDepositAddress_returnsDeterministicAddress() public view {
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         assertTrue(predicted != address(0));
     }
 
     function test_getDepositAddress_sameAddressForSameDestination() public view {
-        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1);
-        address predicted2 = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address predicted2 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         assertEq(predicted1, predicted2);
     }
 
@@ -165,18 +163,17 @@ contract EVMDepositFactoryTest is Test {
         public
         view
     {
-        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1);
-        address predicted2 = factory.getDepositAddress(USER_DESTINATION_2);
+        address predicted1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address predicted2 = factory.getDepositAddress(USER_DESTINATION_2, DEPOSITOR_2);
         assertTrue(predicted1 != predicted2);
     }
 
     // ============ deploy Tests ============
 
     function test_deploy_createsContractAtPredictedAddress() public {
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         address deployed = factory.deploy(
             USER_DESTINATION_1,
-            RECIPIENT_1,
             DEPOSITOR_1
         );
 
@@ -187,30 +184,16 @@ contract EVMDepositFactoryTest is Test {
     function test_deploy_initializesDepositAddress() public {
         address deployed = factory.deploy(
             USER_DESTINATION_1,
-            RECIPIENT_1,
             DEPOSITOR_1
         );
         EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
 
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION_1);
-        assertEq(depositAddress.recipient(), RECIPIENT_1);
         assertEq(depositAddress.depositor(), DEPOSITOR_1);
     }
 
-    function test_deploy_setsRecipientCorrectly() public {
-        address deployed = factory.deploy(
-            USER_DESTINATION_1,
-            RECIPIENT_1,
-            DEPOSITOR_1
-        );
-        EVMDepositAddress depositAddress = EVMDepositAddress(deployed);
-
-        assertEq(depositAddress.recipient(), RECIPIENT_1);
-        assertTrue(depositAddress.recipient() != depositAddress.destinationAddress());
-    }
-
     function test_deploy_emitsEvent() public {
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
         vm.expectEmit(true, true, false, false);
         emit EVMDepositFactory.DepositContractDeployed(
@@ -218,31 +201,29 @@ contract EVMDepositFactoryTest is Test {
             predicted
         );
 
-        factory.deploy(USER_DESTINATION_1, RECIPIENT_1, DEPOSITOR_1);
+        factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
     }
 
     function test_deploy_revertsIfAlreadyDeployed() public {
-        factory.deploy(USER_DESTINATION_1, RECIPIENT_1, DEPOSITOR_1);
+        factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
-        address predicted = factory.getDepositAddress(USER_DESTINATION_1);
+        address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         vm.expectRevert(
             abi.encodeWithSelector(
                 EVMDepositFactory.ContractAlreadyDeployed.selector,
                 predicted
             )
         );
-        factory.deploy(USER_DESTINATION_1, RECIPIENT_2, DEPOSITOR_2);
+        factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
     }
 
     function test_deploy_allowsDifferentUsers() public {
         address deployed1 = factory.deploy(
             USER_DESTINATION_1,
-            RECIPIENT_1,
             DEPOSITOR_1
         );
         address deployed2 = factory.deploy(
             USER_DESTINATION_2,
-            RECIPIENT_2,
             DEPOSITOR_2
         );
 
@@ -254,19 +235,19 @@ contract EVMDepositFactoryTest is Test {
     // ============ isDeployed Tests ============
 
     function test_isDeployed_returnsFalseBeforeDeployment() public view {
-        assertFalse(factory.isDeployed(USER_DESTINATION_1));
+        assertFalse(factory.isDeployed(USER_DESTINATION_1, DEPOSITOR_1));
     }
 
     function test_isDeployed_returnsTrueAfterDeployment() public {
-        factory.deploy(USER_DESTINATION_1, RECIPIENT_1, DEPOSITOR_1);
-        assertTrue(factory.isDeployed(USER_DESTINATION_1));
+        factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
+        assertTrue(factory.isDeployed(USER_DESTINATION_1, DEPOSITOR_1));
     }
 
     function test_isDeployed_independentForDifferentUsers() public {
-        factory.deploy(USER_DESTINATION_1, RECIPIENT_1, DEPOSITOR_1);
+        factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
-        assertTrue(factory.isDeployed(USER_DESTINATION_1));
-        assertFalse(factory.isDeployed(USER_DESTINATION_2));
+        assertTrue(factory.isDeployed(USER_DESTINATION_1, DEPOSITOR_1));
+        assertFalse(factory.isDeployed(USER_DESTINATION_2, DEPOSITOR_2));
     }
 
     // ============ Multiple Factories Tests ============
@@ -282,8 +263,8 @@ contract EVMDepositFactoryTest is Test {
             INTENT_DEADLINE_DURATION
         );
 
-        address addr1 = factory.getDepositAddress(USER_DESTINATION_1);
-        address addr2 = factory2.getDepositAddress(USER_DESTINATION_1);
+        address addr1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
+        address addr2 = factory2.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
         // Different factories should produce different addresses even for same user
         // because they have different implementation addresses
@@ -293,27 +274,27 @@ contract EVMDepositFactoryTest is Test {
     // ============ Fuzz Tests ============
 
     function testFuzz_getDepositAddress_deterministic(
-        address destination
+        bytes32 destination,
+        address depositor
     ) public view {
-        vm.assume(destination != address(0));
+        vm.assume(destination != bytes32(0));
+        vm.assume(depositor != address(0));
 
-        address predicted1 = factory.getDepositAddress(destination);
-        address predicted2 = factory.getDepositAddress(destination);
+        address predicted1 = factory.getDepositAddress(destination, depositor);
+        address predicted2 = factory.getDepositAddress(destination, depositor);
 
         assertEq(predicted1, predicted2);
     }
 
     function testFuzz_deploy_succeeds(
-        address destination,
-        address recipient,
+        bytes32 destination,
         address depositor
     ) public {
-        vm.assume(destination != address(0));
-        vm.assume(recipient != address(0));
+        vm.assume(destination != bytes32(0));
         vm.assume(depositor != address(0));
 
-        address predicted = factory.getDepositAddress(destination);
-        address deployed = factory.deploy(destination, recipient, depositor);
+        address predicted = factory.getDepositAddress(destination, depositor);
+        address deployed = factory.deploy(destination, depositor);
 
         assertEq(deployed, predicted);
         assertTrue(deployed.code.length > 0);

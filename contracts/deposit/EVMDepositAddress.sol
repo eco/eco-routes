@@ -20,11 +20,8 @@ contract EVMDepositAddress is ReentrancyGuard {
 
     // ============ Storage ============
 
-    /// @notice User's destination address identifier (used for CREATE2 salt)
-    address public destinationAddress;
-
-    /// @notice Recipient address on destination chain (where tokens are actually sent)
-    address public recipient;
+    /// @notice User's destination address on target chain (used for CREATE2 salt and token recipient)
+    bytes32 public destinationAddress;
 
     /// @notice Depositor address on source chain (where refunds are sent if intent fails)
     address public depositor;
@@ -64,7 +61,6 @@ contract EVMDepositAddress is ReentrancyGuard {
     error NotInitialized();
     error OnlyFactory();
     error InvalidDepositor();
-    error InvalidRecipient();
     error ZeroAmount();
     error InsufficientBalance(uint256 requested, uint256 available);
     error NoDepositorSet();
@@ -82,22 +78,18 @@ contract EVMDepositAddress is ReentrancyGuard {
 
     /**
      * @notice Initialize the deposit address (called once by factory after deployment)
-     * @param _destinationAddress User's destination address (identifier for salt)
-     * @param _recipient Address that will receive tokens on destination chain
+     * @param _destinationAddress User's destination address (used for salt and token recipient)
      * @param _depositor Address to receive refunds if intent fails
      */
     function initialize(
-        address _destinationAddress,
-        address _recipient,
+        bytes32 _destinationAddress,
         address _depositor
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
         if (_depositor == address(0)) revert InvalidDepositor();
-        if (_recipient == address(0)) revert InvalidRecipient();
 
         destinationAddress = _destinationAddress;
-        recipient = _recipient;
         depositor = _depositor;
         initialized = true;
     }
@@ -118,12 +110,16 @@ contract EVMDepositAddress is ReentrancyGuard {
         (
             uint64 destChain,
             address sourceToken,
-            address targetToken,
+            bytes32 targetTokenBytes,
             address portal,
             address prover,
-            address destPortal,
+            bytes32 destPortalBytes,
             uint64 deadlineDuration
         ) = FACTORY.getConfiguration();
+
+        // Convert bytes32 to address for EVM compatibility
+        address targetToken = address(uint160(uint256(targetTokenBytes)));
+        address destPortal = address(uint160(uint256(destPortalBytes)));
 
         // Check balance
         uint256 balance = IERC20(sourceToken).balanceOf(address(this));
@@ -224,12 +220,12 @@ contract EVMDepositAddress is ReentrancyGuard {
     }
 
     /**
-     * @notice Construct Route struct with USDC transfer call
+     * @notice Construct Route struct with token transfer call
      * @param targetToken Token address on destination chain
      * @param destPortal Portal address on destination chain
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
-     * @return route Route struct with transfer call to recipient
+     * @return route Route struct with transfer call to destinationAddress
      */
     function _constructRoute(
         address targetToken,
@@ -249,13 +245,16 @@ contract EVMDepositAddress is ReentrancyGuard {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: targetToken, amount: amount});
 
-        // Construct USDC transfer call to recipient
+        // Convert bytes32 destinationAddress to address for EVM transfer call
+        address recipientAddr = address(uint160(uint256(destinationAddress)));
+
+        // Construct token transfer call to recipient
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
             target: targetToken,
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
-                recipient,
+                recipientAddr,
                 amount
             ),
             value: 0
@@ -296,7 +295,7 @@ contract EVMDepositAddress is ReentrancyGuard {
         // Construct reward
         reward = Reward({
             deadline: deadline,
-            creator: address(this), // Deposit address is creator
+            creator: depositor, // Depositor is creator (matches Solana implementation)
             prover: prover,
             nativeAmount: 0,
             tokens: tokens
