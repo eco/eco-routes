@@ -12,6 +12,7 @@ import {Semver} from "../libs/Semver.sol";
  * @notice Prover implementation that verifies oracle signatures over intent proofs
  * @dev Uses EIP-712 typed data signatures for secure proving. The oracle address is
  *      immutable and set at construction. Signatures include chain ID for replay protection.
+ * @custom:oz-upgrades-unsafe-allow state-variable-immutable constructor
  */
 contract TEEProver is ITEEProver, BaseProver, EIP712, Semver {
     using ECDSA for bytes32;

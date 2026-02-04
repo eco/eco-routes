@@ -22,20 +22,4 @@ interface ITEEProver is IProver {
      * @notice Signature verification failed
      */
     error InvalidSignature();
-
-    /*//////////////////////////////////////////////////////////////
-                            VIEW FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @notice Returns the immutable oracle address
-     * @return Address of the oracle that signs proofs
-     */
-    function ORACLE() external view returns (address);
-
-    /**
-     * @notice Returns the EIP-712 type hash for proofs
-     * @return Type hash used for signature verification
-     */
-    function PROOF_TYPEHASH() external view returns (bytes32);
 }
