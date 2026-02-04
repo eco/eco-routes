@@ -9,30 +9,30 @@ import {Semver} from "../libs/Semver.sol";
 
 /**
  * @title TEEProver
- * @notice Prover implementation that verifies oracle signatures over batches of intent proofs
- * @dev Uses EIP-712 typed data signatures for secure batch proving. The oracle address is
+ * @notice Prover implementation that verifies oracle signatures over intent proofs
+ * @dev Uses EIP-712 typed data signatures for secure proving. The oracle address is
  *      immutable and set at construction. Signatures include chain ID for replay protection.
  */
 contract TEEProver is ITEEProver, BaseProver, EIP712, Semver {
     using ECDSA for bytes32;
 
     /**
-     * @notice Immutable oracle address that signs batch proofs
+     * @notice Immutable oracle address that signs proofs
      * @dev Set once during construction and cannot be changed
      */
     address public immutable ORACLE;
 
     /**
-     * @notice EIP-712 type hash for batch proof verification
+     * @notice EIP-712 type hash for proof verification
      * @dev Covers destination chain ID and hash of encoded proofs
      */
-    bytes32 public constant BATCH_PROOF_TYPEHASH =
-        keccak256("BatchProof(uint64 destination,bytes32 proofsHash)");
+    bytes32 public constant PROOF_TYPEHASH =
+        keccak256("Proof(uint64 destination,bytes32 proofsHash)");
 
     /**
      * @notice Initializes the TEEProver contract
      * @param portal Address of the Portal contract
-     * @param oracle Address of the oracle that signs batch proofs
+     * @param oracle Address of the oracle that signs proofs
      */
     constructor(
         address portal,
@@ -46,14 +46,14 @@ contract TEEProver is ITEEProver, BaseProver, EIP712, Semver {
     }
 
     /**
-     * @notice Verifies oracle signature over batch proof data
+     * @notice Verifies oracle signature over proof data
      * @dev Uses EIP-712 typed data signature verification
      * @param destination Destination chain ID where intents were fulfilled
      * @param encodedProofs Encoded proof data: abi.encodePacked(intentHash1, claimant1, ...)
      * @param signature Oracle's ECDSA signature
      * @return True if signature is valid, false otherwise
      */
-    function _verifyBatchProof(
+    function _verifyProof(
         uint64 destination,
         bytes calldata encodedProofs,
         bytes calldata signature
@@ -63,7 +63,7 @@ contract TEEProver is ITEEProver, BaseProver, EIP712, Semver {
 
         // Create EIP-712 struct hash
         bytes32 structHash = keccak256(
-            abi.encode(BATCH_PROOF_TYPEHASH, destination, proofsHash)
+            abi.encode(PROOF_TYPEHASH, destination, proofsHash)
         );
 
         // Get EIP-712 typed data hash
@@ -77,8 +77,9 @@ contract TEEProver is ITEEProver, BaseProver, EIP712, Semver {
     }
 
     /**
-     * @notice Prove a batch of intents with oracle signature
+     * @notice Prove intents with oracle signature
      * @dev Implements IProver interface. Ignores sender parameter (required by interface).
+     *      Supports proving single or multiple intents with one signature.
      * @param sourceChainDomainID Destination chain ID where intents were fulfilled
      * @param encodedProofs Encoded proof data: abi.encodePacked(intentHash1, claimant1, intentHash2, claimant2, ...)
      * @param data Oracle's EIP-712 signature over (sourceChainDomainID, keccak256(encodedProofs))
@@ -90,7 +91,7 @@ contract TEEProver is ITEEProver, BaseProver, EIP712, Semver {
         bytes calldata data // signature
     ) external payable override {
         // Verify oracle signature
-        if (!_verifyBatchProof(sourceChainDomainID, encodedProofs, data)) {
+        if (!_verifyProof(sourceChainDomainID, encodedProofs, data)) {
             revert InvalidSignature();
         }
 

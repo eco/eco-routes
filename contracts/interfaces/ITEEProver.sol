@@ -6,7 +6,7 @@ import {IProver} from "./IProver.sol";
 /**
  * @title ITEEProver
  * @notice Interface for TEEProver with oracle signature verification
- * @dev Extends IProver with oracle-based batch proving using EIP-712 signatures
+ * @dev Extends IProver with oracle-based proving using EIP-712 signatures
  */
 interface ITEEProver is IProver {
     /*//////////////////////////////////////////////////////////////
@@ -29,13 +29,13 @@ interface ITEEProver is IProver {
 
     /**
      * @notice Returns the immutable oracle address
-     * @return Address of the oracle that signs batch proofs
+     * @return Address of the oracle that signs proofs
      */
     function ORACLE() external view returns (address);
 
     /**
-     * @notice Returns the EIP-712 type hash for batch proofs
+     * @notice Returns the EIP-712 type hash for proofs
      * @return Type hash used for signature verification
      */
-    function BATCH_PROOF_TYPEHASH() external view returns (bytes32);
+    function PROOF_TYPEHASH() external view returns (bytes32);
 }

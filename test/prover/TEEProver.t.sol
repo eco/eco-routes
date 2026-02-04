@@ -121,7 +121,7 @@ contract TEEProverTest is Test {
 
         bytes32 structHash = keccak256(
             abi.encode(
-                teeProver.BATCH_PROOF_TYPEHASH(),
+                teeProver.PROOF_TYPEHASH(),
                 destination,
                 proofsHash
             )
@@ -198,7 +198,7 @@ contract TEEProverTest is Test {
         bytes32 proofsHash = keccak256(encodedProofs);
         bytes32 structHash = keccak256(
             abi.encode(
-                teeProver.BATCH_PROOF_TYPEHASH(),
+                teeProver.PROOF_TYPEHASH(),
                 DESTINATION_CHAIN_ID,
                 proofsHash
             )
@@ -253,7 +253,7 @@ contract TEEProverTest is Test {
         teeProver.prove(address(0), DESTINATION_CHAIN_ID, tamperedProofs, signature);
     }
 
-    // ============ C. Batch Proving Tests ============
+    // ============ C. Proving Tests ============
 
     function test_prove_SingleIntentSucceeds() public {
         Intent memory _intent = _createIntent(DESTINATION_CHAIN_ID, REWARD_AMOUNT, 0);
@@ -272,7 +272,7 @@ contract TEEProverTest is Test {
         teeProver.prove(address(0), DESTINATION_CHAIN_ID, encodedProofs, signature);
     }
 
-    function test_prove_MultipleIntentsInBatch() public {
+    function test_prove_MultipleIntents() public {
         // Create 3 intents
         Intent memory intent1 = _createIntent(DESTINATION_CHAIN_ID, REWARD_AMOUNT, 0);
         Intent memory intent2 = _createIntent(DESTINATION_CHAIN_ID, REWARD_AMOUNT + 1, 0);
@@ -286,7 +286,7 @@ contract TEEProverTest is Test {
         address claimant2 = makeAddr("claimant2");
         address claimant3 = makeAddr("claimant3");
 
-        // Create batch proof
+        // Create encoded proofs for multiple intents
         bytes memory encodedProofs = abi.encodePacked(
             intentHash1, bytes32(uint256(uint160(claimant1))),
             intentHash2, bytes32(uint256(uint160(claimant2))),
@@ -295,7 +295,7 @@ contract TEEProverTest is Test {
 
         bytes memory signature = _generateSignature(DESTINATION_CHAIN_ID, encodedProofs);
 
-        // Prove batch
+        // Prove all intents
         teeProver.prove(address(0), DESTINATION_CHAIN_ID, encodedProofs, signature);
 
         // Verify all intents are proven
@@ -516,12 +516,12 @@ contract TEEProverTest is Test {
         teeProver.prove(address(0), DESTINATION_CHAIN_ID, oddProofs, signature);
     }
 
-    function test_prove_HandlesLargeBatch() public {
-        uint256 batchSize = 100;
+    function test_prove_HandlesLargeProofSet() public {
+        uint256 numIntents = 100;
         bytes memory encodedProofs = "";
 
         // Create 100 intents
-        for (uint256 i = 0; i < batchSize; i++) {
+        for (uint256 i = 0; i < numIntents; i++) {
             Intent memory _intent = _createIntent(DESTINATION_CHAIN_ID, REWARD_AMOUNT + i, 0);
             bytes32 intentHash = _computeIntentHash(_intent);
             address claimant = address(uint160(0x1000 + i));
@@ -544,10 +544,10 @@ contract TEEProverTest is Test {
         IProver.ProofData memory firstProof = teeProver.provenIntents(firstHash);
         assertEq(firstProof.claimant, address(0x1000));
 
-        Intent memory lastIntent = _createIntent(DESTINATION_CHAIN_ID, REWARD_AMOUNT + batchSize - 1, 0);
+        Intent memory lastIntent = _createIntent(DESTINATION_CHAIN_ID, REWARD_AMOUNT + numIntents - 1, 0);
         bytes32 lastHash = _computeIntentHash(lastIntent);
         IProver.ProofData memory lastProof = teeProver.provenIntents(lastHash);
-        assertEq(lastProof.claimant, address(uint160(0x1000 + batchSize - 1)));
+        assertEq(lastProof.claimant, address(uint160(0x1000 + numIntents - 1)));
     }
 
     // ============ G. Interface Tests ============
@@ -561,8 +561,8 @@ contract TEEProverTest is Test {
         assertEq(teeProver.version(), "2.6");
     }
 
-    function test_BATCH_PROOF_TYPEHASH_IsCorrect() public view {
-        bytes32 expected = keccak256("BatchProof(uint64 destination,bytes32 proofsHash)");
-        assertEq(teeProver.BATCH_PROOF_TYPEHASH(), expected);
+    function test_PROOF_TYPEHASH_IsCorrect() public view {
+        bytes32 expected = keccak256("Proof(uint64 destination,bytes32 proofsHash)");
+        assertEq(teeProver.PROOF_TYPEHASH(), expected);
     }
 }
