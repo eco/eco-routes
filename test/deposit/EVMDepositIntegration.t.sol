@@ -18,12 +18,12 @@ contract EVMDepositIntegrationTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 10; // Optimism
-    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
-    bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
+    address constant DESTINATION_TOKEN = address(0x5678);
+    address constant DESTINATION_PORTAL = address(0xDEF0);
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
-    bytes32 constant USER_DESTINATION = bytes32(uint256(0x1111));
+    address constant USER_DESTINATION = address(0x1111);
     address constant DEPOSITOR = address(0x3333);
 
     event IntentPublished(
@@ -57,7 +57,7 @@ contract EVMDepositIntegrationTest is Test {
         factory = new EVMDepositFactory(
             DESTINATION_CHAIN,
             address(token),
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             address(prover),
             DESTINATION_PORTAL,
@@ -124,7 +124,7 @@ contract EVMDepositIntegrationTest is Test {
     }
 
     function test_integration_differentUsersGetDifferentAddresses() public {
-        bytes32 user2Destination = bytes32(uint256(0x2222));
+        address user2Destination = address(0x2222);
         address depositor2 = address(0x5555);
 
         // Deploy for user 1

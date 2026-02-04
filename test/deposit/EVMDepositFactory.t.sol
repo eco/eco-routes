@@ -13,14 +13,14 @@ contract EVMDepositFactoryTest is Test {
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 10; // Optimism
     address constant SOURCE_TOKEN = address(0x1234);
-    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678)); // bytes32 for cross-VM compatibility
+    address constant DESTINATION_TOKEN = address(0x5678);
     address constant PROVER_ADDRESS = address(0x9ABC);
-    bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0)); // bytes32 for cross-VM compatibility
+    address constant DESTINATION_PORTAL = address(0xDEF0);
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
-    bytes32 constant USER_DESTINATION_1 = bytes32(uint256(0x1111));
-    bytes32 constant USER_DESTINATION_2 = bytes32(uint256(0x2222));
+    address constant USER_DESTINATION_1 = address(0x1111);
+    address constant USER_DESTINATION_2 = address(0x2222);
     address constant DEPOSITOR_1 = address(0x5555);
     address constant DEPOSITOR_2 = address(0x6666);
 
@@ -32,7 +32,7 @@ contract EVMDepositFactoryTest is Test {
         factory = new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -46,16 +46,16 @@ contract EVMDepositFactoryTest is Test {
         (
             uint64 destChain,
             address sourceToken,
-            bytes32 targetToken,
+            address destinationToken,
             address portalAddress,
             address proverAddress,
-            bytes32 destPortal,
+            address destPortal,
             uint64 deadlineDuration
         ) = factory.getConfiguration();
 
         assertEq(destChain, DESTINATION_CHAIN);
         assertEq(sourceToken, SOURCE_TOKEN);
-        assertEq(targetToken, TARGET_TOKEN);
+        assertEq(destinationToken, DESTINATION_TOKEN);
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, PROVER_ADDRESS);
         assertEq(destPortal, DESTINATION_PORTAL);
@@ -73,7 +73,7 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             address(0), // Invalid
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -86,7 +86,7 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(0), // Invalid
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -99,7 +99,7 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             address(0), // Invalid
             DESTINATION_PORTAL,
@@ -112,7 +112,7 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            bytes32(0), // Invalid
+            address(0), // Invalid
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -125,10 +125,10 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
-            bytes32(0), // Invalid
+            address(0), // Invalid
             INTENT_DEADLINE_DURATION
         );
     }
@@ -138,7 +138,7 @@ contract EVMDepositFactoryTest is Test {
         new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -256,7 +256,7 @@ contract EVMDepositFactoryTest is Test {
         EVMDepositFactory factory2 = new EVMDepositFactory(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -274,10 +274,10 @@ contract EVMDepositFactoryTest is Test {
     // ============ Fuzz Tests ============
 
     function testFuzz_getDepositAddress_deterministic(
-        bytes32 destination,
+        address destination,
         address depositor
     ) public view {
-        vm.assume(destination != bytes32(0));
+        vm.assume(destination != address(0));
         vm.assume(depositor != address(0));
 
         address predicted1 = factory.getDepositAddress(destination, depositor);
@@ -287,10 +287,10 @@ contract EVMDepositFactoryTest is Test {
     }
 
     function testFuzz_deploy_succeeds(
-        bytes32 destination,
+        address destination,
         address depositor
     ) public {
-        vm.assume(destination != bytes32(0));
+        vm.assume(destination != address(0));
         vm.assume(depositor != address(0));
 
         address predicted = factory.getDepositAddress(destination, depositor);

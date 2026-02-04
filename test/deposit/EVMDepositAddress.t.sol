@@ -17,13 +17,13 @@ contract EVMDepositAddressTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 10; // Optimism
-    bytes32 constant TARGET_TOKEN = bytes32(uint256(0x5678));
+    address constant DESTINATION_TOKEN = address(0x5678);
     address constant PROVER_ADDRESS = address(0x9ABC);
-    bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
+    address constant DESTINATION_PORTAL = address(0xDEF0);
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
-    bytes32 constant USER_DESTINATION = bytes32(uint256(0x1111));
+    address constant USER_DESTINATION = address(0x1111);
     address constant DEPOSITOR = address(0x3333);
     address constant ATTACKER = address(0x6666);
 
@@ -38,7 +38,7 @@ contract EVMDepositAddressTest is Test {
         factory = new EVMDepositFactory(
             DESTINATION_CHAIN,
             address(token),
-            TARGET_TOKEN,
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -76,7 +76,7 @@ contract EVMDepositAddressTest is Test {
 
     function test_initialize_revertsIfDepositorIsZero() public {
         vm.expectRevert(EVMDepositAddress.InvalidDepositor.selector);
-        factory.deploy(bytes32(uint256(0x9999)), address(0));
+        factory.deploy(address(0x9999), address(0));
     }
 
     // ============ createIntent Tests ============

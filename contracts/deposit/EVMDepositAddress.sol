@@ -21,7 +21,7 @@ contract EVMDepositAddress is ReentrancyGuard {
     // ============ Storage ============
 
     /// @notice User's destination address on target chain (used for CREATE2 salt and token recipient)
-    bytes32 public destinationAddress;
+    address public destinationAddress;
 
     /// @notice Depositor address on source chain (where refunds are sent if intent fails)
     address public depositor;
@@ -82,7 +82,7 @@ contract EVMDepositAddress is ReentrancyGuard {
      * @param _depositor Address to receive refunds if intent fails
      */
     function initialize(
-        bytes32 _destinationAddress,
+        address _destinationAddress,
         address _depositor
     ) external {
         if (initialized) revert AlreadyInitialized();
@@ -110,16 +110,12 @@ contract EVMDepositAddress is ReentrancyGuard {
         (
             uint64 destChain,
             address sourceToken,
-            bytes32 targetTokenBytes,
+            address destinationToken,
             address portal,
             address prover,
-            bytes32 destPortalBytes,
+            address destPortal,
             uint64 deadlineDuration
         ) = FACTORY.getConfiguration();
-
-        // Convert bytes32 to address for EVM compatibility
-        address targetToken = address(uint160(uint256(targetTokenBytes)));
-        address destPortal = address(uint160(uint256(destPortalBytes)));
 
         // Check balance
         uint256 balance = IERC20(sourceToken).balanceOf(address(this));
@@ -131,7 +127,7 @@ contract EVMDepositAddress is ReentrancyGuard {
         Intent memory intent = _constructIntent(
             destChain,
             sourceToken,
-            targetToken,
+            destinationToken,
             destPortal,
             prover,
             amount,
@@ -183,7 +179,7 @@ contract EVMDepositAddress is ReentrancyGuard {
      * @notice Construct complete Intent struct for EVM destination
      * @param destChain Destination chain ID
      * @param sourceToken Source token address
-     * @param targetToken Target token address on destination
+     * @param destinationToken Destination token address on destination chain
      * @param destPortal Portal address on destination chain
      * @param prover Prover contract address
      * @param amount Amount of tokens to transfer
@@ -193,7 +189,7 @@ contract EVMDepositAddress is ReentrancyGuard {
     function _constructIntent(
         uint64 destChain,
         address sourceToken,
-        address targetToken,
+        address destinationToken,
         address destPortal,
         address prover,
         uint256 amount,
@@ -201,7 +197,7 @@ contract EVMDepositAddress is ReentrancyGuard {
     ) internal view returns (Intent memory intent) {
         // Construct Route
         Route memory route = _constructRoute(
-            targetToken,
+            destinationToken,
             destPortal,
             amount,
             deadlineDuration
@@ -221,14 +217,14 @@ contract EVMDepositAddress is ReentrancyGuard {
 
     /**
      * @notice Construct Route struct with token transfer call
-     * @param targetToken Token address on destination chain
+     * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
      * @return route Route struct with transfer call to destinationAddress
      */
     function _constructRoute(
-        address targetToken,
+        address destinationToken,
         address destPortal,
         uint256 amount,
         uint64 deadlineDuration
@@ -243,18 +239,15 @@ contract EVMDepositAddress is ReentrancyGuard {
 
         // Construct token array
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: targetToken, amount: amount});
+        tokens[0] = TokenAmount({token: destinationToken, amount: amount});
 
-        // Convert bytes32 destinationAddress to address for EVM transfer call
-        address recipientAddr = address(uint160(uint256(destinationAddress)));
-
-        // Construct token transfer call to recipient
+        // Construct token transfer call to destinationAddress
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
-            target: targetToken,
+            target: destinationToken,
             data: abi.encodeWithSignature(
                 "transfer(address,uint256)",
-                recipientAddr,
+                destinationAddress,
                 amount
             ),
             value: 0
