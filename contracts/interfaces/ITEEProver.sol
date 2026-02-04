@@ -39,3 +39,4 @@ interface ITEEProver is IProver {
      */
     function PROOF_TYPEHASH() external view returns (bytes32);
 }
+
