@@ -2,12 +2,12 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {DepositFactory} from "../../contracts/deposit/DepositFactory.sol";
-import {DepositAddress} from "../../contracts/deposit/DepositAddress.sol";
+import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
+import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
 
 contract DepositFactoryTest is Test {
-    DepositFactory public factory;
+    DepositFactory_USDCTransfer_Solana public factory;
     Portal public portal;
 
     // Configuration parameters
@@ -29,7 +29,7 @@ contract DepositFactoryTest is Test {
         portal = new Portal();
 
         // Deploy factory
-        factory = new DepositFactory(
+        factory = new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,
@@ -69,8 +69,8 @@ contract DepositFactoryTest is Test {
     }
 
     function test_constructor_revertsOnInvalidSourceToken() public {
-        vm.expectRevert(DepositFactory.InvalidSourceToken.selector);
-        new DepositFactory(
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidSourceToken.selector);
+        new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             address(0), // Invalid
             DESTINATION_TOKEN,
@@ -82,8 +82,8 @@ contract DepositFactoryTest is Test {
     }
 
     function test_constructor_revertsOnInvalidPortal() public {
-        vm.expectRevert(DepositFactory.InvalidPortalAddress.selector);
-        new DepositFactory(
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidPortalAddress.selector);
+        new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,
@@ -95,8 +95,8 @@ contract DepositFactoryTest is Test {
     }
 
     function test_constructor_revertsOnInvalidProver() public {
-        vm.expectRevert(DepositFactory.InvalidProverAddress.selector);
-        new DepositFactory(
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidProverAddress.selector);
+        new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,
@@ -108,8 +108,8 @@ contract DepositFactoryTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDestinationToken() public {
-        vm.expectRevert(DepositFactory.InvalidDestinationToken.selector);
-        new DepositFactory(
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDestinationToken.selector);
+        new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             bytes32(0), // Invalid
@@ -121,8 +121,8 @@ contract DepositFactoryTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDestinationPortal() public {
-        vm.expectRevert(DepositFactory.InvalidDestinationPortal.selector);
-        new DepositFactory(
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDestinationPortal.selector);
+        new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,
@@ -134,8 +134,8 @@ contract DepositFactoryTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDeadlineDuration() public {
-        vm.expectRevert(DepositFactory.InvalidDeadlineDuration.selector);
-        new DepositFactory(
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDeadlineDuration.selector);
+        new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,
@@ -189,7 +189,7 @@ contract DepositFactoryTest is Test {
 
     function test_deploy_initializesDepositAddress() public {
         address deployed = factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
 
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION_1);
         assertEq(depositAddress.depositor(), DEPOSITOR_1);
@@ -199,7 +199,7 @@ contract DepositFactoryTest is Test {
         address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
         vm.expectEmit(true, true, false, false);
-        emit DepositFactory.DepositContractDeployed(
+        emit DepositFactory_USDCTransfer_Solana.DepositContractDeployed(
             USER_DESTINATION_1,
             predicted
         );
@@ -208,7 +208,7 @@ contract DepositFactoryTest is Test {
     }
 
     function test_deploy_revertsIfZeroDestinationAddress() public {
-        vm.expectRevert(DepositFactory.InvalidDestinationAddress.selector);
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDestinationAddress.selector);
         factory.deploy(bytes32(0), DEPOSITOR_1);
     }
 
@@ -230,10 +230,10 @@ contract DepositFactoryTest is Test {
         assertTrue(deployed2.code.length > 0);
 
         // Verify both are correctly initialized
-        assertEq(DepositAddress(deployed1).destinationAddress(), USER_DESTINATION_1);
-        assertEq(DepositAddress(deployed1).depositor(), DEPOSITOR_1);
-        assertEq(DepositAddress(deployed2).destinationAddress(), USER_DESTINATION_1);
-        assertEq(DepositAddress(deployed2).depositor(), DEPOSITOR_2);
+        assertEq(DepositAddress_USDCTransfer_Solana(deployed1).destinationAddress(), USER_DESTINATION_1);
+        assertEq(DepositAddress_USDCTransfer_Solana(deployed1).depositor(), DEPOSITOR_1);
+        assertEq(DepositAddress_USDCTransfer_Solana(deployed2).destinationAddress(), USER_DESTINATION_1);
+        assertEq(DepositAddress_USDCTransfer_Solana(deployed2).depositor(), DEPOSITOR_2);
     }
 
     function test_deploy_allowsDifferentUsers() public {
@@ -266,7 +266,7 @@ contract DepositFactoryTest is Test {
     // ============ Multiple Factories Tests ============
 
     function test_multipleFactories_generateDifferentAddresses() public {
-        DepositFactory factory2 = new DepositFactory(
+        DepositFactory_USDCTransfer_Solana factory2 = new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,

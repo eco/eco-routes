@@ -6,16 +6,16 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Portal} from "../Portal.sol";
 import {Reward, TokenAmount} from "../types/Intent.sol";
-import {DepositFactory} from "./DepositFactory.sol";
+import {DepositFactory_USDCTransfer_Solana} from "./DepositFactory_USDCTransfer_Solana.sol";
 import {Endian} from "../libs/Endian.sol";
 
 /**
- * @title DepositAddress
- * @notice Minimal proxy contract that encodes routes and creates cross-chain intents
+ * @title DepositAddress_USDCTransfer_Solana
+ * @notice Minimal proxy contract that encodes routes and creates cross-chain intents for USDC transfers to Solana
  * @dev Each DepositAddress is specific to one user's destination address
- *      Deployed via CREATE2 by DepositFactory for deterministic addressing
+ *      Deployed via CREATE2 by DepositFactory_USDCTransfer_Solana for deterministic addressing
  */
-contract DepositAddress is ReentrancyGuard {
+contract DepositAddress_USDCTransfer_Solana is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ Storage ============
@@ -32,7 +32,7 @@ contract DepositAddress is ReentrancyGuard {
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
-    DepositFactory private immutable FACTORY;
+    DepositFactory_USDCTransfer_Solana private immutable FACTORY;
 
     // ============ Events ============
 
@@ -65,7 +65,7 @@ contract DepositAddress is ReentrancyGuard {
      * @notice Sets the factory reference (called by factory during deployment)
      */
     constructor() {
-        FACTORY = DepositFactory(msg.sender);
+        FACTORY = DepositFactory_USDCTransfer_Solana(msg.sender);
     }
 
     // ============ External Functions ============

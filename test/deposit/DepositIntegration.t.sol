@@ -3,8 +3,8 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {DepositFactory} from "../../contracts/deposit/DepositFactory.sol";
-import {DepositAddress} from "../../contracts/deposit/DepositAddress.sol";
+import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
+import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
@@ -12,7 +12,7 @@ import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 
 contract DepositIntegrationTest is Test {
-    DepositFactory public factory;
+    DepositFactory_USDCTransfer_Solana public factory;
     Portal public portal;
     TestERC20 public token;
     TestProver public prover;
@@ -56,7 +56,7 @@ contract DepositIntegrationTest is Test {
         prover = new TestProver(address(portal));
 
         // Deploy factory
-        factory = new DepositFactory(
+        factory = new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             address(token),
             DESTINATION_TOKEN,
@@ -84,7 +84,7 @@ contract DepositIntegrationTest is Test {
         assertEq(deployed, depositAddr);
         assertTrue(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
 
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
         assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
         assertEq(depositAddress.depositor(), DEPOSITOR);
 
@@ -109,7 +109,7 @@ contract DepositIntegrationTest is Test {
     function test_integration_multipleDeposits() public {
         // Deploy deposit address
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
 
         // First deposit
         uint256 amount1 = 10_000 * 1e6;
@@ -144,10 +144,10 @@ contract DepositIntegrationTest is Test {
         uint256 amount = 10_000 * 1e6;
 
         token.mint(deployed1, amount);
-        bytes32 intentHash1 = DepositAddress(deployed1).createIntent(amount);
+        bytes32 intentHash1 = DepositAddress_USDCTransfer_Solana(deployed1).createIntent(amount);
 
         token.mint(deployed2, amount);
-        bytes32 intentHash2 = DepositAddress(deployed2).createIntent(amount);
+        bytes32 intentHash2 = DepositAddress_USDCTransfer_Solana(deployed2).createIntent(amount);
 
         assertTrue(intentHash1 != bytes32(0));
         assertTrue(intentHash2 != bytes32(0));
@@ -156,7 +156,7 @@ contract DepositIntegrationTest is Test {
     function test_integration_intentStatusTracking() public {
         // Deploy and create intent
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
 
         uint256 amount = 10_000 * 1e6;
         token.mint(deployed, amount);
@@ -174,7 +174,7 @@ contract DepositIntegrationTest is Test {
     function test_integration_refundFlow() public {
         // Deploy and create intent
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
 
         uint256 amount = 10_000 * 1e6;
         token.mint(deployed, amount);
@@ -198,7 +198,7 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_balanceChecks() public {
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
 
         // Try to create intent without balance
         vm.expectRevert();
@@ -236,7 +236,7 @@ contract DepositIntegrationTest is Test {
         assertEq(token.balanceOf(deployed), amount);
 
         // Create intent should work
-        DepositAddress depositAddress = DepositAddress(deployed);
+        DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
         bytes32 intentHash = depositAddress.createIntent(amount);
         assertTrue(intentHash != bytes32(0));
     }
@@ -250,7 +250,7 @@ contract DepositIntegrationTest is Test {
         // Create intent
         token.mint(deployed, 10_000 * 1e6);
         gasBefore = gasleft();
-        DepositAddress(deployed).createIntent(10_000 * 1e6);
+        DepositAddress_USDCTransfer_Solana(deployed).createIntent(10_000 * 1e6);
         uint256 createIntentGas = gasBefore - gasleft();
 
         // Log gas usage for reference

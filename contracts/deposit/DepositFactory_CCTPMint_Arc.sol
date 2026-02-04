@@ -2,27 +2,28 @@
 pragma solidity ^0.8.26;
 
 import {Clones} from "../vault/Clones.sol";
-import {DepositAddress} from "./DepositAddress.sol";
+import {DepositAddress_CCTPMint_Arc} from "./DepositAddress_CCTPMint_Arc.sol";
 
 /**
- * @title DepositFactory
- * @notice Factory contract for deploying deterministic deposit addresses
- * @dev Each factory is configured for a specific cross-chain route (e.g., Ethereum USDC → Solana USDC)
+ * @title DepositFactory_CCTPMint_Arc
+ * @notice Factory contract for deploying deterministic deposit addresses for CCTP minting on Arc
+ * @dev Each factory is configured for a specific cross-chain route (e.g., Ethereum USDC → Arc USDC via CCTP)
  *      Uses CREATE2 for deterministic address generation based on user's destination address
+ *      This version uses standard Intent structs instead of Borsh-encoded bytes
  */
-contract DepositFactory {
+contract DepositFactory_CCTPMint_Arc {
     using Clones for address;
 
     // ============ Immutable Configuration ============
 
-    /// @notice Destination chain ID (e.g., 5107100 for Solana)
+    /// @notice Destination chain ID (e.g., 10 for Optimism, 137 for Polygon)
     uint64 public immutable DESTINATION_CHAIN;
 
     /// @notice Source token address (ERC20 on source chain)
     address public immutable SOURCE_TOKEN;
 
-    /// @notice Destination token address on destination chain (as bytes32 for cross-VM compatibility)
-    bytes32 public immutable DESTINATION_TOKEN;
+    /// @notice Destination token address on destination chain
+    address public immutable DESTINATION_TOKEN;
 
     /// @notice Portal contract address on source chain
     address public immutable PORTAL_ADDRESS;
@@ -30,11 +31,14 @@ contract DepositFactory {
     /// @notice Prover contract address
     address public immutable PROVER_ADDRESS;
 
-    /// @notice Portal program address on destination chain (as bytes32 for Solana)
-    bytes32 public immutable DESTINATION_PORTAL;
+    /// @notice Portal contract address on destination chain
+    address public immutable DESTINATION_PORTAL;
 
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
     uint64 public immutable INTENT_DEADLINE_DURATION;
+
+    /// @notice CCTP destination domain ID for the target chain
+    uint32 public immutable DESTINATION_DOMAIN;
 
     /// @notice DepositAddress implementation contract
     address public immutable DEPOSIT_IMPLEMENTATION;
@@ -47,7 +51,7 @@ contract DepositFactory {
      * @param depositAddress Deployed DepositAddress contract address
      */
     event DepositContractDeployed(
-        bytes32 indexed destinationAddress,
+        address indexed destinationAddress,
         address indexed depositAddress
     );
 
@@ -56,38 +60,40 @@ contract DepositFactory {
     error InvalidSourceToken();
     error InvalidPortalAddress();
     error InvalidProverAddress();
-    error InvalidDestinationToken();
+    error InvalidTargetToken();
     error InvalidDestinationPortal();
     error InvalidDeadlineDuration();
-    error InvalidDestinationAddress();
+    error ContractAlreadyDeployed(address depositAddress);
 
     // ============ Constructor ============
 
     /**
      * @notice Initialize the factory with route configuration
      * @param _destinationChain Target chain ID
-     * @param _sourceToken ERC20 token address on source chain
-     * @param _destinationToken Token address on destination chain (as bytes32)
+     * @param _sourceToken ERC20 token address on source chain (burn token for CCTP)
+     * @param _destinationToken Token address on destination chain
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
-     * @param _destinationPortal Portal address on destination chain (as bytes32)
+     * @param _destinationPortal Portal address on destination chain
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
+     * @param _destinationDomain CCTP destination domain ID
      */
     constructor(
         uint64 _destinationChain,
         address _sourceToken,
-        bytes32 _destinationToken,
+        address _destinationToken,
         address _portalAddress,
         address _proverAddress,
-        bytes32 _destinationPortal,
-        uint64 _intentDeadlineDuration
+        address _destinationPortal,
+        uint64 _intentDeadlineDuration,
+        uint32 _destinationDomain
     ) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
         if (_proverAddress == address(0)) revert InvalidProverAddress();
-        if (_destinationToken == bytes32(0)) revert InvalidDestinationToken();
-        if (_destinationPortal == bytes32(0)) revert InvalidDestinationPortal();
+        if (_destinationToken == address(0)) revert InvalidTargetToken();
+        if (_destinationPortal == address(0)) revert InvalidDestinationPortal();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
 
         // Store configuration
@@ -98,9 +104,10 @@ contract DepositFactory {
         PROVER_ADDRESS = _proverAddress;
         DESTINATION_PORTAL = _destinationPortal;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
+        DESTINATION_DOMAIN = _destinationDomain;
 
         // Deploy implementation contract
-        DEPOSIT_IMPLEMENTATION = address(new DepositAddress());
+        DEPOSIT_IMPLEMENTATION = address(new DepositAddress_CCTPMint_Arc());
     }
 
     // ============ External Functions ============
@@ -108,12 +115,12 @@ contract DepositFactory {
     /**
      * @notice Get deterministic deposit address for a user
      * @dev Can be called before deployment to predict the address
-     * @param destinationAddress User's address on destination chain (as bytes32)
+     * @param destinationAddress User's address on destination chain
      * @param depositor Address to receive refunds if intent fails
      * @return Predicted deposit address on source chain
      */
     function getDepositAddress(
-        bytes32 destinationAddress,
+        address destinationAddress,
         address depositor
     ) public view returns (address) {
         bytes32 salt = _getSalt(destinationAddress, depositor);
@@ -122,21 +129,26 @@ contract DepositFactory {
 
     /**
      * @notice Deploy deposit contract for a user
-     * @param destinationAddress User's address on destination chain
+     * @param destinationAddress User's address on destination chain (used as CREATE2 salt)
      * @param depositor Address to receive refunds if intent fails
      * @return deployed Address of the deployed DepositAddress contract
      */
     function deploy(
-        bytes32 destinationAddress,
+        address destinationAddress,
         address depositor
     ) external returns (address deployed) {
-        if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
+        address predicted = getDepositAddress(destinationAddress, depositor);
+
+        // Check if already deployed
+        if (predicted.code.length > 0) {
+            revert ContractAlreadyDeployed(predicted);
+        }
 
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
         // Initialize the deposit address with destination and depositor
-        DepositAddress(deployed).initialize(destinationAddress, depositor);
+        DepositAddress_CCTPMint_Arc(deployed).initialize(destinationAddress, depositor);
 
         emit DepositContractDeployed(destinationAddress, deployed);
     }
@@ -148,7 +160,7 @@ contract DepositFactory {
      * @return True if contract exists at predicted address
      */
     function isDeployed(
-        bytes32 destinationAddress,
+        address destinationAddress,
         address depositor
     ) external view returns (bool) {
         address predicted = getDepositAddress(destinationAddress, depositor);
@@ -159,11 +171,12 @@ contract DepositFactory {
      * @notice Get complete factory configuration
      * @return destinationChain Target chain ID
      * @return sourceToken Source token address
-     * @return destinationToken Destination token address (bytes32)
+     * @return destinationToken Destination token address
      * @return portalAddress Portal address on source chain
      * @return proverAddress Prover contract address
-     * @return destinationPortal Portal address on destination chain (bytes32)
+     * @return destinationPortal Portal address on destination chain
      * @return intentDeadlineDuration Deadline duration in seconds
+     * @return destinationDomain CCTP destination domain ID
      */
     function getConfiguration()
         external
@@ -171,11 +184,12 @@ contract DepositFactory {
         returns (
             uint64 destinationChain,
             address sourceToken,
-            bytes32 destinationToken,
+            address destinationToken,
             address portalAddress,
             address proverAddress,
-            bytes32 destinationPortal,
-            uint64 intentDeadlineDuration
+            address destinationPortal,
+            uint64 intentDeadlineDuration,
+            uint32 destinationDomain
         )
     {
         return (
@@ -185,22 +199,23 @@ contract DepositFactory {
             PORTAL_ADDRESS,
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
-            INTENT_DEADLINE_DURATION
+            INTENT_DEADLINE_DURATION,
+            DESTINATION_DOMAIN
         );
     }
 
     // ============ Internal Functions ============
 
     /**
-     * @notice Generate CREATE2 salt from destination address
+     * @notice Generate CREATE2 salt from destination address and depositor
      * @param destinationAddress User's destination address
-     * @return salt The CREATE2 salt
+     * @param depositor Address to receive refunds
+     * @return salt The CREATE2 salt (hash of destination and depositor)
      */
     function _getSalt(
-        bytes32 destinationAddress,
+        address destinationAddress,
         address depositor
     ) internal pure returns (bytes32) {
-        // Hash both destination address and depositor for unique salt
         return keccak256(abi.encodePacked(destinationAddress, depositor));
     }
 }

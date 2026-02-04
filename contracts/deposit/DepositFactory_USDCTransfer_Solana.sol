@@ -2,28 +2,27 @@
 pragma solidity ^0.8.26;
 
 import {Clones} from "../vault/Clones.sol";
-import {EVMDepositAddress} from "./EVMDepositAddress.sol";
+import {DepositAddress_USDCTransfer_Solana} from "./DepositAddress_USDCTransfer_Solana.sol";
 
 /**
- * @title EVMDepositFactory
- * @notice Factory contract for deploying deterministic deposit addresses for EVM destinations
- * @dev Each factory is configured for a specific cross-chain route (e.g., Ethereum USDC → Optimism USDC)
+ * @title DepositFactory_USDCTransfer_Solana
+ * @notice Factory contract for deploying deterministic deposit addresses for USDC transfers to Solana
+ * @dev Each factory is configured for a specific cross-chain route (e.g., Ethereum USDC → Solana USDC)
  *      Uses CREATE2 for deterministic address generation based on user's destination address
- *      This version uses standard Intent structs instead of Borsh-encoded bytes
  */
-contract EVMDepositFactory {
+contract DepositFactory_USDCTransfer_Solana {
     using Clones for address;
 
     // ============ Immutable Configuration ============
 
-    /// @notice Destination chain ID (e.g., 10 for Optimism, 137 for Polygon)
+    /// @notice Destination chain ID (e.g., 5107100 for Solana)
     uint64 public immutable DESTINATION_CHAIN;
 
     /// @notice Source token address (ERC20 on source chain)
     address public immutable SOURCE_TOKEN;
 
-    /// @notice Destination token address on destination chain
-    address public immutable DESTINATION_TOKEN;
+    /// @notice Destination token address on destination chain (as bytes32 for cross-VM compatibility)
+    bytes32 public immutable DESTINATION_TOKEN;
 
     /// @notice Portal contract address on source chain
     address public immutable PORTAL_ADDRESS;
@@ -31,13 +30,13 @@ contract EVMDepositFactory {
     /// @notice Prover contract address
     address public immutable PROVER_ADDRESS;
 
-    /// @notice Portal contract address on destination chain
-    address public immutable DESTINATION_PORTAL;
+    /// @notice Portal program address on destination chain (as bytes32 for Solana)
+    bytes32 public immutable DESTINATION_PORTAL;
 
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
     uint64 public immutable INTENT_DEADLINE_DURATION;
 
-    /// @notice EVMDepositAddress implementation contract
+    /// @notice DepositAddress implementation contract
     address public immutable DEPOSIT_IMPLEMENTATION;
 
     // ============ Events ============
@@ -45,10 +44,10 @@ contract EVMDepositFactory {
     /**
      * @notice Emitted when a new deposit contract is deployed
      * @param destinationAddress User's destination address on target chain
-     * @param depositAddress Deployed EVMDepositAddress contract address
+     * @param depositAddress Deployed DepositAddress contract address
      */
     event DepositContractDeployed(
-        address indexed destinationAddress,
+        bytes32 indexed destinationAddress,
         address indexed depositAddress
     );
 
@@ -57,10 +56,10 @@ contract EVMDepositFactory {
     error InvalidSourceToken();
     error InvalidPortalAddress();
     error InvalidProverAddress();
-    error InvalidTargetToken();
+    error InvalidDestinationToken();
     error InvalidDestinationPortal();
     error InvalidDeadlineDuration();
-    error ContractAlreadyDeployed(address depositAddress);
+    error InvalidDestinationAddress();
 
     // ============ Constructor ============
 
@@ -68,27 +67,27 @@ contract EVMDepositFactory {
      * @notice Initialize the factory with route configuration
      * @param _destinationChain Target chain ID
      * @param _sourceToken ERC20 token address on source chain
-     * @param _destinationToken Token address on destination chain
+     * @param _destinationToken Token address on destination chain (as bytes32)
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
-     * @param _destinationPortal Portal address on destination chain
+     * @param _destinationPortal Portal address on destination chain (as bytes32)
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      */
     constructor(
         uint64 _destinationChain,
         address _sourceToken,
-        address _destinationToken,
+        bytes32 _destinationToken,
         address _portalAddress,
         address _proverAddress,
-        address _destinationPortal,
+        bytes32 _destinationPortal,
         uint64 _intentDeadlineDuration
     ) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
         if (_proverAddress == address(0)) revert InvalidProverAddress();
-        if (_destinationToken == address(0)) revert InvalidTargetToken();
-        if (_destinationPortal == address(0)) revert InvalidDestinationPortal();
+        if (_destinationToken == bytes32(0)) revert InvalidDestinationToken();
+        if (_destinationPortal == bytes32(0)) revert InvalidDestinationPortal();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
 
         // Store configuration
@@ -101,7 +100,7 @@ contract EVMDepositFactory {
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
 
         // Deploy implementation contract
-        DEPOSIT_IMPLEMENTATION = address(new EVMDepositAddress());
+        DEPOSIT_IMPLEMENTATION = address(new DepositAddress_USDCTransfer_Solana());
     }
 
     // ============ External Functions ============
@@ -109,12 +108,12 @@ contract EVMDepositFactory {
     /**
      * @notice Get deterministic deposit address for a user
      * @dev Can be called before deployment to predict the address
-     * @param destinationAddress User's address on destination chain
+     * @param destinationAddress User's address on destination chain (as bytes32)
      * @param depositor Address to receive refunds if intent fails
      * @return Predicted deposit address on source chain
      */
     function getDepositAddress(
-        address destinationAddress,
+        bytes32 destinationAddress,
         address depositor
     ) public view returns (address) {
         bytes32 salt = _getSalt(destinationAddress, depositor);
@@ -123,26 +122,21 @@ contract EVMDepositFactory {
 
     /**
      * @notice Deploy deposit contract for a user
-     * @param destinationAddress User's address on destination chain (used as CREATE2 salt)
+     * @param destinationAddress User's address on destination chain
      * @param depositor Address to receive refunds if intent fails
-     * @return deployed Address of the deployed EVMDepositAddress contract
+     * @return deployed Address of the deployed DepositAddress contract
      */
     function deploy(
-        address destinationAddress,
+        bytes32 destinationAddress,
         address depositor
     ) external returns (address deployed) {
-        address predicted = getDepositAddress(destinationAddress, depositor);
-
-        // Check if already deployed
-        if (predicted.code.length > 0) {
-            revert ContractAlreadyDeployed(predicted);
-        }
+        if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
 
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
         // Initialize the deposit address with destination and depositor
-        EVMDepositAddress(deployed).initialize(destinationAddress, depositor);
+        DepositAddress_USDCTransfer_Solana(deployed).initialize(destinationAddress, depositor);
 
         emit DepositContractDeployed(destinationAddress, deployed);
     }
@@ -154,7 +148,7 @@ contract EVMDepositFactory {
      * @return True if contract exists at predicted address
      */
     function isDeployed(
-        address destinationAddress,
+        bytes32 destinationAddress,
         address depositor
     ) external view returns (bool) {
         address predicted = getDepositAddress(destinationAddress, depositor);
@@ -165,10 +159,10 @@ contract EVMDepositFactory {
      * @notice Get complete factory configuration
      * @return destinationChain Target chain ID
      * @return sourceToken Source token address
-     * @return destinationToken Destination token address
+     * @return destinationToken Destination token address (bytes32)
      * @return portalAddress Portal address on source chain
      * @return proverAddress Prover contract address
-     * @return destinationPortal Portal address on destination chain
+     * @return destinationPortal Portal address on destination chain (bytes32)
      * @return intentDeadlineDuration Deadline duration in seconds
      */
     function getConfiguration()
@@ -177,10 +171,10 @@ contract EVMDepositFactory {
         returns (
             uint64 destinationChain,
             address sourceToken,
-            address destinationToken,
+            bytes32 destinationToken,
             address portalAddress,
             address proverAddress,
-            address destinationPortal,
+            bytes32 destinationPortal,
             uint64 intentDeadlineDuration
         )
     {
@@ -198,15 +192,15 @@ contract EVMDepositFactory {
     // ============ Internal Functions ============
 
     /**
-     * @notice Generate CREATE2 salt from destination address and depositor
+     * @notice Generate CREATE2 salt from destination address
      * @param destinationAddress User's destination address
-     * @param depositor Address to receive refunds
-     * @return salt The CREATE2 salt (hash of destination and depositor)
+     * @return salt The CREATE2 salt
      */
     function _getSalt(
-        address destinationAddress,
+        bytes32 destinationAddress,
         address depositor
     ) internal pure returns (bytes32) {
+        // Hash both destination address and depositor for unique salt
         return keccak256(abi.encodePacked(destinationAddress, depositor));
     }
 }

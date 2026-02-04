@@ -6,16 +6,16 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
-import {EVMDepositFactory} from "./EVMDepositFactory.sol";
+import {DepositFactory_CCTPMint_Arc} from "./DepositFactory_CCTPMint_Arc.sol";
 
 /**
- * @title EVMDepositAddress
- * @notice Minimal proxy contract that constructs Intent structs for EVM destinations
- * @dev Each EVMDepositAddress is specific to one user's destination address
- *      Deployed via CREATE2 by EVMDepositFactory for deterministic addressing
+ * @title DepositAddress_CCTPMint_Arc
+ * @notice Minimal proxy contract that constructs Intent structs for CCTP minting on Arc
+ * @dev Each DepositAddress is specific to one user's destination address
+ *      Deployed via CREATE2 by DepositFactory_CCTPMint_Arc for deterministic addressing
  *      Uses standard Intent/Route/Reward structs instead of Borsh-encoded bytes
  */
-contract EVMDepositAddress is ReentrancyGuard {
+contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ Storage ============
@@ -32,7 +32,7 @@ contract EVMDepositAddress is ReentrancyGuard {
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
-    EVMDepositFactory private immutable FACTORY;
+    DepositFactory_CCTPMint_Arc private immutable FACTORY;
 
     // ============ Events ============
 
@@ -48,13 +48,6 @@ contract EVMDepositAddress is ReentrancyGuard {
         address indexed caller
     );
 
-    /**
-     * @notice Emitted when an intent is refunded
-     * @param routeHash Hash of the route that was refunded
-     * @param refundee Address that received the refund
-     */
-    event IntentRefunded(bytes32 indexed routeHash, address indexed refundee);
-
     // ============ Errors ============
 
     error AlreadyInitialized();
@@ -63,7 +56,6 @@ contract EVMDepositAddress is ReentrancyGuard {
     error InvalidDepositor();
     error ZeroAmount();
     error InsufficientBalance(uint256 requested, uint256 available);
-    error NoDepositorSet();
 
     // ============ Constructor ============
 
@@ -71,7 +63,7 @@ contract EVMDepositAddress is ReentrancyGuard {
      * @notice Sets the factory reference (called by factory during deployment)
      */
     constructor() {
-        FACTORY = EVMDepositFactory(msg.sender);
+        FACTORY = DepositFactory_CCTPMint_Arc(msg.sender);
     }
 
     // ============ External Functions ============
@@ -114,7 +106,8 @@ contract EVMDepositAddress is ReentrancyGuard {
             address portal,
             address prover,
             address destPortal,
-            uint64 deadlineDuration
+            uint64 deadlineDuration,
+            uint32 destinationDomain
         ) = FACTORY.getConfiguration();
 
         // Check balance
@@ -131,7 +124,8 @@ contract EVMDepositAddress is ReentrancyGuard {
             destPortal,
             prover,
             amount,
-            deadlineDuration
+            deadlineDuration,
+            destinationDomain
         );
 
         // Approve Portal to spend tokens
@@ -148,29 +142,6 @@ contract EVMDepositAddress is ReentrancyGuard {
         emit IntentCreated(intentHash, amount, msg.sender);
 
         return intentHash;
-    }
-
-    /**
-     * @notice Permissionless refund function for failed intents
-     * @dev Anyone can call this to refund tokens to the depositor if intent wasn't fulfilled
-     * @param routeHash Hash of the route (from createIntent)
-     * @param reward Reward struct (from createIntent)
-     */
-    function refund(
-        bytes32 routeHash,
-        Reward calldata reward
-    ) external nonReentrant {
-        if (!initialized) revert NotInitialized();
-        if (depositor == address(0)) revert NoDepositorSet();
-
-        // Get configuration from factory
-        (uint64 destChain, , , address portal, , , ) = FACTORY
-            .getConfiguration();
-
-        // Call Portal.refundTo (Portal checks that msg.sender == reward.creator)
-        Portal(portal).refundTo(destChain, routeHash, reward, depositor);
-
-        emit IntentRefunded(routeHash, depositor);
     }
 
     // ============ Internal Functions ============
@@ -193,14 +164,17 @@ contract EVMDepositAddress is ReentrancyGuard {
         address destPortal,
         address prover,
         uint256 amount,
-        uint64 deadlineDuration
+        uint64 deadlineDuration,
+        uint32 destinationDomain
     ) internal view returns (Intent memory intent) {
         // Construct Route
         Route memory route = _constructRoute(
             destinationToken,
             destPortal,
             amount,
-            deadlineDuration
+            deadlineDuration,
+            destinationDomain,
+            sourceToken
         );
 
         // Construct Reward
@@ -216,18 +190,22 @@ contract EVMDepositAddress is ReentrancyGuard {
     }
 
     /**
-     * @notice Construct Route struct with token transfer call
+     * @notice Construct Route struct with CCTP depositForBurn call
      * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
-     * @param amount Amount of tokens to transfer
+     * @param amount Amount of tokens to burn and mint
      * @param deadlineDuration Deadline duration in seconds
-     * @return route Route struct with transfer call to destinationAddress
+     * @param destinationDomain CCTP destination domain ID
+     * @param sourceToken Source token to burn
+     * @return route Route struct with CCTP depositForBurn call
      */
     function _constructRoute(
         address destinationToken,
         address destPortal,
         uint256 amount,
-        uint64 deadlineDuration
+        uint64 deadlineDuration,
+        uint32 destinationDomain,
+        address sourceToken
     ) internal view returns (Route memory route) {
         // Generate unique salt
         bytes32 salt = keccak256(
@@ -237,18 +215,26 @@ contract EVMDepositAddress is ReentrancyGuard {
         // Calculate deadline
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
 
-        // Construct token array
+        // Construct token array (for destination chain)
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: destinationToken, amount: amount});
 
-        // Construct token transfer call to destinationAddress
+        // Convert destinationAddress to bytes32 for CCTP mintRecipient
+        bytes32 mintRecipient = bytes32(uint256(uint160(destinationAddress)));
+
+        // CCTP TokenMessengerV2 address
+        address cctpTokenMessenger = 0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d;
+
+        // Construct CCTP depositForBurn call
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
-            target: destinationToken,
+            target: cctpTokenMessenger,
             data: abi.encodeWithSignature(
-                "transfer(address,uint256)",
-                destinationAddress,
-                amount
+                "depositForBurn(uint256,uint32,bytes32,address)",
+                amount,
+                destinationDomain,
+                mintRecipient,
+                sourceToken
             ),
             value: 0
         });

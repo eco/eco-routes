@@ -3,15 +3,15 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {DepositFactory} from "../../contracts/deposit/DepositFactory.sol";
-import {DepositAddress} from "../../contracts/deposit/DepositAddress.sol";
+import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
+import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
 contract DepositAddressTest is Test {
-    DepositFactory public factory;
-    DepositAddress public depositAddress;
+    DepositFactory_USDCTransfer_Solana public factory;
+    DepositAddress_USDCTransfer_Solana public depositAddress;
     Portal public portal;
     TestERC20 public token;
 
@@ -35,7 +35,7 @@ contract DepositAddressTest is Test {
         portal = new Portal();
 
         // Deploy factory
-        factory = new DepositFactory(
+        factory = new DepositFactory_USDCTransfer_Solana(
             DESTINATION_CHAIN,
             address(token),
             DESTINATION_TOKEN,
@@ -47,7 +47,7 @@ contract DepositAddressTest is Test {
 
         // Deploy deposit address
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
-        depositAddress = DepositAddress(deployed);
+        depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
     }
 
     // ============ Initialization Tests ============
@@ -61,27 +61,27 @@ contract DepositAddressTest is Test {
     }
 
     function test_initialize_revertsIfAlreadyInitialized() public {
-        vm.expectRevert(DepositAddress.AlreadyInitialized.selector);
+        vm.expectRevert(DepositAddress_USDCTransfer_Solana.AlreadyInitialized.selector);
         depositAddress.initialize(USER_DESTINATION, DEPOSITOR);
     }
 
     function test_initialize_revertsIfNotCalledByFactory() public {
         // Deploy implementation directly (not via factory)
-        DepositAddress implementation = new DepositAddress();
+        DepositAddress_USDCTransfer_Solana implementation = new DepositAddress_USDCTransfer_Solana();
 
         vm.prank(ATTACKER);
-        vm.expectRevert(DepositAddress.OnlyFactory.selector);
+        vm.expectRevert(DepositAddress_USDCTransfer_Solana.OnlyFactory.selector);
         implementation.initialize(USER_DESTINATION, DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
         // Attempt to deploy with zero depositor should revert
-        vm.expectRevert(DepositAddress.InvalidDepositor.selector);
+        vm.expectRevert(DepositAddress_USDCTransfer_Solana.InvalidDepositor.selector);
         factory.deploy(bytes32(uint256(0x9999)), address(0));
     }
 
     function test_initialize_revertsIfDestinationAddressIsZero() public {
-        vm.expectRevert(DepositAddress.InvalidDestinationAddress.selector);
+        vm.expectRevert(DepositAddress_USDCTransfer_Solana.InvalidDestinationAddress.selector);
         factory.deploy(bytes32(0), DEPOSITOR);
     }
 
@@ -89,14 +89,14 @@ contract DepositAddressTest is Test {
 
     function test_createIntent_revertsIfNotInitialized() public {
         // Create a fresh implementation
-        DepositAddress uninit = new DepositAddress();
+        DepositAddress_USDCTransfer_Solana uninit = new DepositAddress_USDCTransfer_Solana();
 
-        vm.expectRevert(DepositAddress.NotInitialized.selector);
+        vm.expectRevert(DepositAddress_USDCTransfer_Solana.NotInitialized.selector);
         uninit.createIntent(1000);
     }
 
     function test_createIntent_revertsIfZeroAmount() public {
-        vm.expectRevert(DepositAddress.ZeroAmount.selector);
+        vm.expectRevert(DepositAddress_USDCTransfer_Solana.ZeroAmount.selector);
         depositAddress.createIntent(0);
     }
 
@@ -104,7 +104,7 @@ contract DepositAddressTest is Test {
         uint256 tooLarge = uint256(type(uint64).max) + 1;
         vm.expectRevert(
             abi.encodeWithSelector(
-                DepositAddress.AmountTooLarge.selector,
+                DepositAddress_USDCTransfer_Solana.AmountTooLarge.selector,
                 tooLarge,
                 type(uint64).max
             )
@@ -116,7 +116,7 @@ contract DepositAddressTest is Test {
         // Don't send any tokens
         vm.expectRevert(
             abi.encodeWithSelector(
-                DepositAddress.InsufficientBalance.selector,
+                DepositAddress_USDCTransfer_Solana.InsufficientBalance.selector,
                 1000,
                 0
             )
@@ -247,7 +247,7 @@ contract DepositAddressTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                DepositAddress.InsufficientBalance.selector,
+                DepositAddress_USDCTransfer_Solana.InsufficientBalance.selector,
                 requested,
                 available
             )
