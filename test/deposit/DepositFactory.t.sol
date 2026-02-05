@@ -11,9 +11,7 @@ contract DepositFactoryTest is Test {
     Portal public portal;
 
     // Configuration parameters
-    uint64 constant DESTINATION_CHAIN = 5107100; // Solana
     address constant SOURCE_TOKEN = address(0x1234);
-    bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     address constant PROVER_ADDRESS = address(0x9ABC);
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     bytes32 constant PORTAL_PDA = bytes32(uint256(0xABCD));
@@ -34,9 +32,7 @@ contract DepositFactoryTest is Test {
 
         // Deploy factory
         factory = new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -61,9 +57,9 @@ contract DepositFactoryTest is Test {
             bytes32 executorATA
         ) = factory.getConfiguration();
 
-        assertEq(destChain, DESTINATION_CHAIN);
+        assertEq(destChain, 1399811149); // Solana chain ID
         assertEq(sourceToken, SOURCE_TOKEN);
-        assertEq(targetToken, DESTINATION_TOKEN);
+        assertEq(targetToken, 0xc6fa7af3bedbad3a3d65f36aabc97431b1bbe4c2d2f6e0e47ca60203452f5d61); // Solana USDC
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, PROVER_ADDRESS);
         assertEq(destPortal, DESTINATION_PORTAL);
@@ -81,9 +77,7 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidSourceToken() public {
         vm.expectRevert(DepositFactory.InvalidSourceToken.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             address(0), // Invalid
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -96,9 +90,7 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidPortal() public {
         vm.expectRevert(DepositFactory.InvalidPortalAddress.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(0), // Invalid
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -111,26 +103,9 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidProver() public {
         vm.expectRevert(DepositFactory.InvalidProverAddress.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             address(0), // Invalid
-            DESTINATION_PORTAL,
-            PORTAL_PDA,
-            INTENT_DEADLINE_DURATION,
-            EXECUTOR_ATA
-        );
-    }
-
-    function test_constructor_revertsOnInvalidDestinationToken() public {
-        vm.expectRevert(DepositFactory.InvalidDestinationToken.selector);
-        new DepositFactory(
-            DESTINATION_CHAIN,
-            SOURCE_TOKEN,
-            bytes32(0), // Invalid
-            address(portal),
-            PROVER_ADDRESS,
             DESTINATION_PORTAL,
             PORTAL_PDA,
             INTENT_DEADLINE_DURATION,
@@ -141,9 +116,7 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidDestinationPortal() public {
         vm.expectRevert(DepositFactory.InvalidDestinationPortal.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             bytes32(0), // Invalid
@@ -156,9 +129,7 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidPortalPDA() public {
         vm.expectRevert(DepositFactory.InvalidPortalPDA.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -171,9 +142,7 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidDeadlineDuration() public {
         vm.expectRevert(DepositFactory.InvalidDeadlineDuration.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -186,9 +155,7 @@ contract DepositFactoryTest is Test {
     function test_constructor_revertsOnInvalidExecutorATA() public {
         vm.expectRevert(DepositFactory.InvalidExecutorATA.selector);
         new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
@@ -322,9 +289,7 @@ contract DepositFactoryTest is Test {
 
     function test_multipleFactories_generateDifferentAddresses() public {
         DepositFactory factory2 = new DepositFactory(
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
