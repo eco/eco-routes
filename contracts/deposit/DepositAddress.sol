@@ -18,6 +18,17 @@ import {Endian} from "../libs/Endian.sol";
 contract DepositAddress is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    // ============ Constants ============
+
+    /// @notice Solana SPL Token Program ID (hex encoding of TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA)
+    bytes32 public constant SPL_TOKEN_PROGRAM_ID = 0x06ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a9;
+
+    /// @notice Solana Associated Token Account Program ID (hex encoding of ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL)
+    bytes32 public constant ATA_PROGRAM_ID = 0x8c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f859;
+
+    /// @notice Token decimals for USDC and similar tokens on Solana
+    uint8 public constant TOKEN_DECIMALS = 6;
+
     // ============ Storage ============
 
     /// @notice User's destination address on target chain (where tokens are sent)
@@ -25,6 +36,9 @@ contract DepositAddress is ReentrancyGuard {
 
     /// @notice Depositor address on source chain (where refunds are sent if intent fails)
     address public depositor;
+
+    /// @notice Recipient's Associated Token Account on Solana (computed off-chain)
+    bytes32 public recipientATA;
 
     /// @notice Initialization flag
     bool private initialized;
@@ -55,6 +69,7 @@ contract DepositAddress is ReentrancyGuard {
     error OnlyFactory();
     error InvalidDepositor();
     error InvalidDestinationAddress();
+    error InvalidRecipientATA();
     error ZeroAmount();
     error AmountTooLarge(uint256 amount, uint256 maxAmount);
     error InsufficientBalance(uint256 requested, uint256 available);
@@ -74,18 +89,22 @@ contract DepositAddress is ReentrancyGuard {
      * @notice Initialize the deposit address (called once by factory after deployment)
      * @param _destinationAddress User's destination address (bytes32 for cross-VM compatibility)
      * @param _depositor Address to receive refunds if intent fails
+     * @param _recipientATA Recipient's Associated Token Account on Solana (computed off-chain)
      */
     function initialize(
         bytes32 _destinationAddress,
-        address _depositor
+        address _depositor,
+        bytes32 _recipientATA
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
         if (_destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
+        if (_recipientATA == bytes32(0)) revert InvalidRecipientATA();
 
         destinationAddress = _destinationAddress;
         depositor = _depositor;
+        recipientATA = _recipientATA;
         initialized = true;
     }
 
@@ -114,7 +133,9 @@ contract DepositAddress is ReentrancyGuard {
             address portal,
             address prover,
             bytes32 destPortal,
-            uint64 deadlineDuration
+            bytes32 portalPDA,
+            uint64 deadlineDuration,
+            bytes32 executorATA
         ) = FACTORY.getConfiguration();
 
         // Check balance
@@ -128,7 +149,9 @@ contract DepositAddress is ReentrancyGuard {
             amount,
             destinationToken,
             destPortal,
-            deadlineDuration
+            portalPDA,
+            deadlineDuration,
+            executorATA
         );
 
         // Construct Reward
@@ -170,18 +193,22 @@ contract DepositAddress is ReentrancyGuard {
      *      - tokens: Vec<TokenAmount> (4 bytes length + elements)
      *        - Each TokenAmount: token (32 bytes) + amount (8 bytes u64)
      *      - calls: Vec<Call> (4 bytes length + elements)
-     *        - Each Call: target (32 bytes) + data length (4 bytes u32) + data (variable)
+     *        - Each Call: target (32 bytes) + data (CalldataWithAccounts)
      * @param amount Amount of tokens to transfer
-     * @param destinationToken Token address on destination chain
-     * @param destPortal Portal address on destination chain
+     * @param destinationToken Token mint address on destination chain
+     * @param destPortal Portal program ID on destination chain
+     * @param portalPDA Portal's PDA vault authority (owns Executor ATA)
      * @param deadlineDuration Deadline duration in seconds
+     * @param executorATA Executor's Associated Token Account (source)
      * @return routeBytes Encoded route bytes
      */
     function _encodeRoute(
         uint256 amount,
         bytes32 destinationToken,
         bytes32 destPortal,
-        uint64 deadlineDuration
+        bytes32 portalPDA,
+        uint64 deadlineDuration,
+        bytes32 executorATA
     ) internal view returns (bytes memory) {
         // Generate unique salt
         bytes32 salt = keccak256(
@@ -191,10 +218,49 @@ contract DepositAddress is ReentrancyGuard {
         // Calculate deadline
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
 
-        // Encode transfer instruction data (destination + amount)
-        bytes memory transferData = abi.encodePacked(
-            destinationAddress, // 32 bytes - recipient address
-            Endian.toLittleEndian64(uint64(amount)) // 8 bytes - transfer amount (little-endian)
+        // Build SPL Token transfer_checked instruction data
+        // Discriminator (0x0c) + Amount (u64 LE) + Decimals (u8)
+        bytes memory instructionData = abi.encodePacked(
+            bytes1(0x0c), // transfer_checked discriminator
+            // USDC has 6 decimals on both EVM and SVM chains, so amounts fit in uint64
+            Endian.toLittleEndian64(uint64(amount)), // amount (little-endian)
+            TOKEN_DECIMALS // decimals = 6
+        );
+
+        // Build CalldataWithAccounts structure
+        // 1. Calldata.data (Vec<u8>)
+        // 2. account_count (u8)
+        // 3. accounts (Vec<SerializableAccountMeta>)
+        bytes memory calldataWithAccounts = abi.encodePacked(
+            // Calldata.data (Vec<u8>)
+            Endian.toLittleEndian32(uint32(instructionData.length)), // data length = 10
+            instructionData, // 10 bytes: 0x0c + 8-byte amount + 1-byte decimals
+
+            // account_count (u8)
+            bytes1(0x04), // 4 accounts
+
+            // accounts (Vec<SerializableAccountMeta>)
+            Endian.toLittleEndian32(4), // accounts.length = 4
+
+            // accounts[0]: Executor ATA (source token account) - writable, not signer
+            executorATA, // 32 bytes
+            bytes1(0x00), // is_signer = false
+            bytes1(0x01), // is_writable = true
+
+            // accounts[1]: Token mint - read-only, not signer
+            destinationToken, // 32 bytes
+            bytes1(0x00), // is_signer = false
+            bytes1(0x00), // is_writable = false
+
+            // accounts[2]: Recipient ATA (destination token account) - writable, not signer
+            recipientATA, // 32 bytes
+            bytes1(0x00), // is_signer = false
+            bytes1(0x01), // is_writable = true
+
+            // accounts[3]: Executor authority (Portal PDA) - read-only, not signer
+            portalPDA, // 32 bytes (Portal's PDA vault authority)
+            bytes1(0x00), // is_signer = false
+            bytes1(0x00) // is_writable = false
         );
 
         // Encode route matching Solana's Borsh format
@@ -209,9 +275,9 @@ contract DepositAddress is ReentrancyGuard {
             Endian.toLittleEndian64(uint64(amount)), // tokens[0].amount (8 bytes, little-endian)
             Endian.toLittleEndian32(1), // calls.length = 1 (4 bytes, little-endian)
             // Call struct (Borsh encoding): target, data
-            destinationToken, // calls[0].target (32 bytes) - token to transfer
-            Endian.toLittleEndian32(uint32(transferData.length)), // calls[0].data.length (4 bytes, little-endian)
-            transferData // calls[0].data (40 bytes: 32-byte address + 8-byte amount)
+            SPL_TOKEN_PROGRAM_ID, // calls[0].target (32 bytes) - SPL Token Program
+            Endian.toLittleEndian32(uint32(calldataWithAccounts.length)), // calls[0].data.length (4 bytes, little-endian)
+            calldataWithAccounts // calls[0].data (CalldataWithAccounts structure)
         );
 
         return routeBytes;

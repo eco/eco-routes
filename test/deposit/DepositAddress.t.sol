@@ -20,10 +20,13 @@ contract DepositAddressTest is Test {
     bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     address constant PROVER_ADDRESS = address(0x9ABC);
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
+    bytes32 constant PORTAL_PDA = bytes32(uint256(0xABCD));
+    bytes32 constant EXECUTOR_ATA = bytes32(uint256(0xEFAB));
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
     bytes32 constant USER_DESTINATION = bytes32(uint256(0x1111));
+    bytes32 constant RECIPIENT_ATA = bytes32(uint256(0x5555));
     address constant DEPOSITOR = address(0x3333);
     address constant ATTACKER = address(0x6666);
 
@@ -42,11 +45,13 @@ contract DepositAddressTest is Test {
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
-            INTENT_DEADLINE_DURATION
+            PORTAL_PDA,
+            INTENT_DEADLINE_DURATION,
+            EXECUTOR_ATA
         );
 
         // Deploy deposit address
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
         depositAddress = DepositAddress(deployed);
     }
 
@@ -60,9 +65,13 @@ contract DepositAddressTest is Test {
         assertEq(depositAddress.depositor(), DEPOSITOR);
     }
 
+    function test_initialize_setsRecipientATA() public view {
+        assertEq(depositAddress.recipientATA(), RECIPIENT_ATA);
+    }
+
     function test_initialize_revertsIfAlreadyInitialized() public {
         vm.expectRevert(DepositAddress.AlreadyInitialized.selector);
-        depositAddress.initialize(USER_DESTINATION, DEPOSITOR);
+        depositAddress.initialize(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
     }
 
     function test_initialize_revertsIfNotCalledByFactory() public {
@@ -71,18 +80,23 @@ contract DepositAddressTest is Test {
 
         vm.prank(ATTACKER);
         vm.expectRevert(DepositAddress.OnlyFactory.selector);
-        implementation.initialize(USER_DESTINATION, DEPOSITOR);
+        implementation.initialize(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
         // Attempt to deploy with zero depositor should revert
         vm.expectRevert(DepositAddress.InvalidDepositor.selector);
-        factory.deploy(bytes32(uint256(0x9999)), address(0));
+        factory.deploy(bytes32(uint256(0x9999)), address(0), RECIPIENT_ATA);
     }
 
     function test_initialize_revertsIfDestinationAddressIsZero() public {
         vm.expectRevert(DepositAddress.InvalidDestinationAddress.selector);
-        factory.deploy(bytes32(0), DEPOSITOR);
+        factory.deploy(bytes32(0), DEPOSITOR, RECIPIENT_ATA);
+    }
+
+    function test_initialize_revertsIfRecipientATAIsZero() public {
+        vm.expectRevert(DepositAddress.InvalidRecipientATA.selector);
+        factory.deploy(bytes32(uint256(0x9999)), DEPOSITOR, bytes32(0));
     }
 
     // ============ createIntent Tests ============

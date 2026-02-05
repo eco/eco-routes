@@ -33,8 +33,14 @@ contract DepositFactory {
     /// @notice Portal program address on destination chain (as bytes32 for Solana)
     bytes32 public immutable DESTINATION_PORTAL;
 
+    /// @notice Portal's PDA vault authority on Solana (owns Executor ATA)
+    bytes32 public immutable PORTAL_PDA;
+
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
     uint64 public immutable INTENT_DEADLINE_DURATION;
+
+    /// @notice Executor's Associated Token Account on Solana (for source funds)
+    bytes32 public immutable EXECUTOR_ATA;
 
     /// @notice DepositAddress implementation contract
     address public immutable DEPOSIT_IMPLEMENTATION;
@@ -58,8 +64,10 @@ contract DepositFactory {
     error InvalidProverAddress();
     error InvalidDestinationToken();
     error InvalidDestinationPortal();
+    error InvalidPortalPDA();
     error InvalidDeadlineDuration();
     error InvalidDestinationAddress();
+    error InvalidExecutorATA();
 
     // ============ Constructor ============
 
@@ -70,8 +78,10 @@ contract DepositFactory {
      * @param _destinationToken Token address on destination chain (as bytes32)
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
-     * @param _destinationPortal Portal address on destination chain (as bytes32)
+     * @param _destinationPortal Portal program ID on destination chain (as bytes32)
+     * @param _portalPDA Portal's PDA vault authority on Solana
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
+     * @param _executorATA Executor's Associated Token Account on Solana
      */
     constructor(
         uint64 _destinationChain,
@@ -80,7 +90,9 @@ contract DepositFactory {
         address _portalAddress,
         address _proverAddress,
         bytes32 _destinationPortal,
-        uint64 _intentDeadlineDuration
+        bytes32 _portalPDA,
+        uint64 _intentDeadlineDuration,
+        bytes32 _executorATA
     ) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
@@ -88,7 +100,9 @@ contract DepositFactory {
         if (_proverAddress == address(0)) revert InvalidProverAddress();
         if (_destinationToken == bytes32(0)) revert InvalidDestinationToken();
         if (_destinationPortal == bytes32(0)) revert InvalidDestinationPortal();
+        if (_portalPDA == bytes32(0)) revert InvalidPortalPDA();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
+        if (_executorATA == bytes32(0)) revert InvalidExecutorATA();
 
         // Store configuration
         DESTINATION_CHAIN = _destinationChain;
@@ -97,7 +111,9 @@ contract DepositFactory {
         PORTAL_ADDRESS = _portalAddress;
         PROVER_ADDRESS = _proverAddress;
         DESTINATION_PORTAL = _destinationPortal;
+        PORTAL_PDA = _portalPDA;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
+        EXECUTOR_ATA = _executorATA;
 
         // Deploy implementation contract
         DEPOSIT_IMPLEMENTATION = address(new DepositAddress());
@@ -124,19 +140,21 @@ contract DepositFactory {
      * @notice Deploy deposit contract for a user
      * @param destinationAddress User's address on destination chain
      * @param depositor Address to receive refunds if intent fails
+     * @param recipientATA Recipient's Associated Token Account on Solana (computed off-chain)
      * @return deployed Address of the deployed DepositAddress contract
      */
     function deploy(
         bytes32 destinationAddress,
-        address depositor
+        address depositor,
+        bytes32 recipientATA
     ) external returns (address deployed) {
         if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
 
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
-        // Initialize the deposit address with destination and depositor
-        DepositAddress(deployed).initialize(destinationAddress, depositor);
+        // Initialize the deposit address with destination, depositor, and recipient ATA
+        DepositAddress(deployed).initialize(destinationAddress, depositor, recipientATA);
 
         emit DepositContractDeployed(destinationAddress, deployed);
     }
@@ -162,8 +180,10 @@ contract DepositFactory {
      * @return destinationToken Destination token address (bytes32)
      * @return portalAddress Portal address on source chain
      * @return proverAddress Prover contract address
-     * @return destinationPortal Portal address on destination chain (bytes32)
+     * @return destinationPortal Portal program ID on destination chain (bytes32)
+     * @return portalPDA Portal's PDA vault authority on Solana
      * @return intentDeadlineDuration Deadline duration in seconds
+     * @return executorATA Executor's Associated Token Account on Solana
      */
     function getConfiguration()
         external
@@ -175,7 +195,9 @@ contract DepositFactory {
             address portalAddress,
             address proverAddress,
             bytes32 destinationPortal,
-            uint64 intentDeadlineDuration
+            bytes32 portalPDA,
+            uint64 intentDeadlineDuration,
+            bytes32 executorATA
         )
     {
         return (
@@ -185,7 +207,9 @@ contract DepositFactory {
             PORTAL_ADDRESS,
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
-            INTENT_DEADLINE_DURATION
+            PORTAL_PDA,
+            INTENT_DEADLINE_DURATION,
+            EXECUTOR_ATA
         );
     }
 
