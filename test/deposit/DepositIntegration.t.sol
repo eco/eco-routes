@@ -18,6 +18,7 @@ contract DepositIntegrationTest is Test {
     TestProver public prover;
 
     // Configuration parameters
+    bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     bytes32 constant PORTAL_PDA = bytes32(uint256(0xABCD));
     bytes32 constant EXECUTOR_ATA = bytes32(uint256(0xEFAB));
@@ -59,6 +60,7 @@ contract DepositIntegrationTest is Test {
         // Deploy factory
         factory = new DepositFactory(
             address(token),
+            DESTINATION_TOKEN,
             address(portal),
             address(prover),
             DESTINATION_PORTAL,

@@ -18,13 +18,13 @@ contract DepositFactory {
     /// @notice Solana chain ID
     uint64 public constant DESTINATION_CHAIN = 1399811149;
 
-    /// @notice Solana USDC token mint address (EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v)
-    bytes32 public constant DESTINATION_TOKEN = 0xc6fa7af3bedbad3a3d65f36aabc97431b1bbe4c2d2f6e0e47ca60203452f5d61;
-
     // ============ Immutable Configuration ============
 
     /// @notice Source token address (ERC20 on source chain)
     address public immutable SOURCE_TOKEN;
+
+    /// @notice Destination token address on destination chain (as bytes32 for cross-VM compatibility)
+    bytes32 public immutable DESTINATION_TOKEN;
 
     /// @notice Portal contract address on source chain
     address public immutable PORTAL_ADDRESS;
@@ -62,6 +62,7 @@ contract DepositFactory {
     // ============ Errors ============
 
     error InvalidSourceToken();
+    error InvalidDestinationToken();
     error InvalidPortalAddress();
     error InvalidProverAddress();
     error InvalidDestinationPortal();
@@ -75,6 +76,7 @@ contract DepositFactory {
     /**
      * @notice Initialize the factory with route configuration
      * @param _sourceToken ERC20 token address on source chain
+     * @param _destinationToken Token address on destination chain (as bytes32)
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
      * @param _destinationPortal Portal program ID on destination chain (as bytes32)
@@ -84,6 +86,7 @@ contract DepositFactory {
      */
     constructor(
         address _sourceToken,
+        bytes32 _destinationToken,
         address _portalAddress,
         address _proverAddress,
         bytes32 _destinationPortal,
@@ -93,6 +96,7 @@ contract DepositFactory {
     ) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
+        if (_destinationToken == bytes32(0)) revert InvalidDestinationToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
         if (_proverAddress == address(0)) revert InvalidProverAddress();
         if (_destinationPortal == bytes32(0)) revert InvalidDestinationPortal();
@@ -102,6 +106,7 @@ contract DepositFactory {
 
         // Store configuration
         SOURCE_TOKEN = _sourceToken;
+        DESTINATION_TOKEN = _destinationToken;
         PORTAL_ADDRESS = _portalAddress;
         PROVER_ADDRESS = _proverAddress;
         DESTINATION_PORTAL = _destinationPortal;

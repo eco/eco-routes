@@ -16,6 +16,7 @@ contract DepositAddressTest is Test {
     TestERC20 public token;
 
     // Configuration parameters
+    bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
     address constant PROVER_ADDRESS = address(0x9ABC);
     bytes32 constant DESTINATION_PORTAL = bytes32(uint256(0xDEF0));
     bytes32 constant PORTAL_PDA = bytes32(uint256(0xABCD));
@@ -38,6 +39,7 @@ contract DepositAddressTest is Test {
         // Deploy factory
         factory = new DepositFactory(
             address(token),
+            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
