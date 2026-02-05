@@ -126,18 +126,6 @@ contract DepositAddressTest is Test {
         depositAddress.createIntent(tooLarge);
     }
 
-    function test_createIntent_revertsIfInsufficientBalance() public {
-        // Don't send any tokens
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                DepositAddress.InsufficientBalance.selector,
-                1000,
-                0
-            )
-        );
-        depositAddress.createIntent(1000);
-    }
-
     function test_createIntent_approvesPortalForTokens() public {
         // 10,000 USDC (6 decimals) = 10,000 * 10^6
         uint256 amount = 10_000 * 1e6;
@@ -158,29 +146,6 @@ contract DepositAddressTest is Test {
 
         // Verify intent hash is not zero
         assertTrue(intentHash != bytes32(0));
-    }
-
-    function test_createIntent_emitsIntentCreatedEvent() public {
-        uint256 amount = 10_000 * 1e6;
-        token.mint(address(depositAddress), amount);
-
-        // We can't predict the exact intentHash, but we can check that event was emitted
-        vm.recordLogs();
-        depositAddress.createIntent(amount);
-
-        // Verify event was emitted with correct amount and caller
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        bool foundEvent = false;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (
-                logs[i].topics[0] ==
-                keccak256("IntentCreated(bytes32,uint256,address)")
-            ) {
-                foundEvent = true;
-                break;
-            }
-        }
-        assertTrue(foundEvent, "IntentCreated event should be emitted");
     }
 
     function test_createIntent_returnsIntentHash() public {
@@ -246,26 +211,5 @@ contract DepositAddressTest is Test {
         bytes32 intentHash = depositAddress.createIntent(amount);
 
         assertTrue(intentHash != bytes32(0));
-    }
-
-    function testFuzz_createIntent_revertsOnInsufficientBalance(
-        uint256 requested,
-        uint256 available
-    ) public {
-        vm.assume(requested > available);
-        vm.assume(requested > 0);
-        vm.assume(requested <= type(uint64).max); // Must fit in uint64 for Solana
-        vm.assume(available < type(uint256).max);
-
-        token.mint(address(depositAddress), available);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                DepositAddress.InsufficientBalance.selector,
-                requested,
-                available
-            )
-        );
-        depositAddress.createIntent(requested);
     }
 }

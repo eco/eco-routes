@@ -48,20 +48,6 @@ contract DepositAddress is ReentrancyGuard {
     /// @notice Reference to the factory that deployed this contract
     DepositFactory private immutable FACTORY;
 
-    // ============ Events ============
-
-    /**
-     * @notice Emitted when an intent is created
-     * @param intentHash Hash of the created intent
-     * @param amount Amount of tokens in the intent
-     * @param caller Address that triggered the intent creation
-     */
-    event IntentCreated(
-        bytes32 indexed intentHash,
-        uint256 amount,
-        address indexed caller
-    );
-
     // ============ Errors ============
 
     error AlreadyInitialized();
@@ -72,7 +58,6 @@ contract DepositAddress is ReentrancyGuard {
     error InvalidRecipientATA();
     error ZeroAmount();
     error AmountTooLarge(uint256 amount, uint256 maxAmount);
-    error InsufficientBalance(uint256 requested, uint256 available);
 
     // ============ Constructor ============
 
@@ -138,12 +123,6 @@ contract DepositAddress is ReentrancyGuard {
             bytes32 executorATA
         ) = FACTORY.getConfiguration();
 
-        // Check balance
-        uint256 balance = IERC20(sourceToken).balanceOf(address(this));
-        if (balance < amount) {
-            revert InsufficientBalance(amount, balance);
-        }
-
         // Encode route bytes for Solana (Borsh format)
         bytes memory routeBytes = _encodeRoute(
             amount,
@@ -175,8 +154,6 @@ contract DepositAddress is ReentrancyGuard {
             reward,
             false // allowPartial = false
         );
-
-        emit IntentCreated(intentHash, amount, msg.sender);
 
         return intentHash;
     }
