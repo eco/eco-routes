@@ -48,28 +48,24 @@ contract DepositAddressTest is Test {
             EXECUTOR_ATA
         );
 
-        // Deploy deposit address
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        // Deploy deposit address (RECIPIENT_ATA is passed as destinationAddress for Solana)
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         depositAddress = DepositAddress(deployed);
     }
 
     // ============ Initialization Tests ============
 
     function test_initialize_setsDestinationAddress() public view {
-        assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
+        assertEq(depositAddress.destinationAddress(), RECIPIENT_ATA);
     }
 
     function test_initialize_setsDepositor() public view {
         assertEq(depositAddress.depositor(), DEPOSITOR);
     }
 
-    function test_initialize_setsRecipientATA() public view {
-        assertEq(depositAddress.recipientATA(), RECIPIENT_ATA);
-    }
-
     function test_initialize_revertsIfAlreadyInitialized() public {
         vm.expectRevert(DepositAddress.AlreadyInitialized.selector);
-        depositAddress.initialize(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        depositAddress.initialize(RECIPIENT_ATA, DEPOSITOR);
     }
 
     function test_initialize_revertsIfNotCalledByFactory() public {
@@ -78,23 +74,18 @@ contract DepositAddressTest is Test {
 
         vm.prank(ATTACKER);
         vm.expectRevert(DepositAddress.OnlyFactory.selector);
-        implementation.initialize(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        implementation.initialize(RECIPIENT_ATA, DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
         // Attempt to deploy with zero depositor should revert
         vm.expectRevert(DepositAddress.InvalidDepositor.selector);
-        factory.deploy(bytes32(uint256(0x9999)), address(0), RECIPIENT_ATA);
+        factory.deploy(RECIPIENT_ATA, address(0));
     }
 
     function test_initialize_revertsIfDestinationAddressIsZero() public {
         vm.expectRevert(DepositAddress.InvalidDestinationAddress.selector);
-        factory.deploy(bytes32(0), DEPOSITOR, RECIPIENT_ATA);
-    }
-
-    function test_initialize_revertsIfRecipientATAIsZero() public {
-        vm.expectRevert(DepositAddress.InvalidRecipientATA.selector);
-        factory.deploy(bytes32(uint256(0x9999)), DEPOSITOR, bytes32(0));
+        factory.deploy(bytes32(0), DEPOSITOR);
     }
 
     // ============ createIntent Tests ============

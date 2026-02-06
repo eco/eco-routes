@@ -74,8 +74,8 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_fullDepositFlow() public {
         // 1. Get deposit address before deployment
-        address depositAddr = factory.getDepositAddress(USER_DESTINATION, DEPOSITOR);
-        assertFalse(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
+        address depositAddr = factory.getDepositAddress(RECIPIENT_ATA, DEPOSITOR);
+        assertFalse(factory.isDeployed(RECIPIENT_ATA, DEPOSITOR));
 
         // 2. User sends tokens to deposit address (simulating CEX withdrawal)
         uint256 depositAmount = 10_000 * 1e6;
@@ -83,14 +83,13 @@ contract DepositIntegrationTest is Test {
         assertEq(token.balanceOf(depositAddr), depositAmount);
 
         // 3. Backend deploys deposit contract
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         assertEq(deployed, depositAddr);
-        assertTrue(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
+        assertTrue(factory.isDeployed(RECIPIENT_ATA, DEPOSITOR));
 
         DepositAddress depositAddress = DepositAddress(deployed);
-        assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
+        assertEq(depositAddress.destinationAddress(), RECIPIENT_ATA);
         assertEq(depositAddress.depositor(), DEPOSITOR);
-        assertEq(depositAddress.recipientATA(), RECIPIENT_ATA);
 
         // 4. Backend creates intent
         bytes32 intentHash = depositAddress.createIntent(depositAmount);
@@ -112,7 +111,7 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_multipleDeposits() public {
         // Deploy deposit address
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         DepositAddress depositAddress = DepositAddress(deployed);
 
         // First deposit
@@ -132,15 +131,14 @@ contract DepositIntegrationTest is Test {
     }
 
     function test_integration_differentUsersGetDifferentAddresses() public {
-        bytes32 user2Destination = bytes32(uint256(0x2222));
         bytes32 user2RecipientATA = bytes32(uint256(0x6666));
         address depositor2 = address(0x5555);
 
         // Deploy for user 1
-        address deployed1 = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed1 = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
 
         // Deploy for user 2
-        address deployed2 = factory.deploy(user2Destination, depositor2, user2RecipientATA);
+        address deployed2 = factory.deploy(user2RecipientATA, depositor2);
 
         // Should have different addresses
         assertTrue(deployed1 != deployed2);
@@ -160,7 +158,7 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_intentStatusTracking() public {
         // Deploy and create intent
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         DepositAddress depositAddress = DepositAddress(deployed);
 
         uint256 amount = 10_000 * 1e6;
@@ -178,7 +176,7 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_refundFlow() public {
         // Deploy and create intent
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         DepositAddress depositAddress = DepositAddress(deployed);
 
         uint256 amount = 10_000 * 1e6;
@@ -202,7 +200,7 @@ contract DepositIntegrationTest is Test {
     }
 
     function test_integration_balanceChecks() public {
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         DepositAddress depositAddress = DepositAddress(deployed);
 
         // Try to create intent without balance
@@ -226,7 +224,7 @@ contract DepositIntegrationTest is Test {
 
     function test_integration_deterministicAddressingWorks() public {
         // Get predicted address
-        address predicted = factory.getDepositAddress(USER_DESTINATION, DEPOSITOR);
+        address predicted = factory.getDepositAddress(RECIPIENT_ATA, DEPOSITOR);
 
         // Send tokens to predicted address before deployment
         uint256 amount = 10_000 * 1e6;
@@ -234,7 +232,7 @@ contract DepositIntegrationTest is Test {
         assertEq(token.balanceOf(predicted), amount);
 
         // Deploy at predicted address
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         assertEq(deployed, predicted);
 
         // Tokens should still be there
@@ -249,7 +247,7 @@ contract DepositIntegrationTest is Test {
     function test_integration_gasEstimation() public {
         // Deploy
         uint256 gasBefore = gasleft();
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR, RECIPIENT_ATA);
+        address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         uint256 deployGas = gasBefore - gasleft();
 
         // Create intent

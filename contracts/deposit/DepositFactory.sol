@@ -51,7 +51,7 @@ contract DepositFactory {
 
     /**
      * @notice Emitted when a new deposit contract is deployed
-     * @param destinationAddress User's destination address on target chain
+     * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana
      * @param depositAddress Deployed DepositAddress contract address
      */
     event DepositContractDeployed(
@@ -123,7 +123,7 @@ contract DepositFactory {
     /**
      * @notice Get deterministic deposit address for a user
      * @dev Can be called before deployment to predict the address
-     * @param destinationAddress User's address on destination chain (as bytes32)
+     * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
      * @param depositor Address to receive refunds if intent fails
      * @return Predicted deposit address on source chain
      */
@@ -137,30 +137,30 @@ contract DepositFactory {
 
     /**
      * @notice Deploy deposit contract for a user
-     * @param destinationAddress User's address on destination chain
+     * @dev For Solana destinations, destinationAddress should be the recipient's Associated Token Account (ATA)
+     *      computed off-chain from: deriveAddress([ownerPubkey, TOKEN_PROGRAM_ID, mintPubkey], ATA_PROGRAM_ID)
+     * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
      * @param depositor Address to receive refunds if intent fails
-     * @param recipientATA Recipient's Associated Token Account on Solana (computed off-chain)
      * @return deployed Address of the deployed DepositAddress contract
      */
     function deploy(
         bytes32 destinationAddress,
-        address depositor,
-        bytes32 recipientATA
+        address depositor
     ) external returns (address deployed) {
         if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
 
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
-        // Initialize the deposit address with destination, depositor, and recipient ATA
-        DepositAddress(deployed).initialize(destinationAddress, depositor, recipientATA);
+        // Initialize the deposit address with destination and depositor
+        DepositAddress(deployed).initialize(destinationAddress, depositor);
 
         emit DepositContractDeployed(destinationAddress, deployed);
     }
 
     /**
      * @notice Check if deposit contract is deployed for a user
-     * @param destinationAddress User's address on destination chain
+     * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana
      * @param depositor Address to receive refunds if intent fails
      * @return True if contract exists at predicted address
      */
@@ -215,8 +215,9 @@ contract DepositFactory {
     // ============ Internal Functions ============
 
     /**
-     * @notice Generate CREATE2 salt from destination address
-     * @param destinationAddress User's destination address
+     * @notice Generate CREATE2 salt from destination address and depositor
+     * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana
+     * @param depositor Address to receive refunds if intent fails
      * @return salt The CREATE2 salt
      */
     function _getSalt(
