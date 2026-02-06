@@ -31,14 +31,12 @@ contract DepositAddress_USDCTransfer_Solana is ReentrancyGuard {
 
     // ============ Storage ============
 
-    /// @notice User's destination address on target chain (where tokens are sent)
+    /// @notice Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
+    /// @dev For Solana, this is computed off-chain as: deriveAddress([ownerPubkey, TOKEN_PROGRAM_ID, mintPubkey], ATA_PROGRAM_ID)
     bytes32 public destinationAddress;
 
     /// @notice Depositor address on source chain (where refunds are sent if intent fails)
     address public depositor;
-
-    /// @notice Recipient's Associated Token Account on Solana (computed off-chain)
-    bytes32 public recipientATA;
 
     /// @notice Initialization flag
     bool private initialized;
@@ -55,7 +53,6 @@ contract DepositAddress_USDCTransfer_Solana is ReentrancyGuard {
     error OnlyFactory();
     error InvalidDepositor();
     error InvalidDestinationAddress();
-    error InvalidRecipientATA();
     error ZeroAmount();
     error AmountTooLarge(uint256 amount, uint256 maxAmount);
 
@@ -72,24 +69,20 @@ contract DepositAddress_USDCTransfer_Solana is ReentrancyGuard {
 
     /**
      * @notice Initialize the deposit address (called once by factory after deployment)
-     * @param _destinationAddress User's destination address (bytes32 for cross-VM compatibility)
+     * @param _destinationAddress Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
      * @param _depositor Address to receive refunds if intent fails
-     * @param _recipientATA Recipient's Associated Token Account on Solana (computed off-chain)
      */
     function initialize(
         bytes32 _destinationAddress,
-        address _depositor,
-        bytes32 _recipientATA
+        address _depositor
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
         if (_destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
-        if (_recipientATA == bytes32(0)) revert InvalidRecipientATA();
 
         destinationAddress = _destinationAddress;
         depositor = _depositor;
-        recipientATA = _recipientATA;
         initialized = true;
     }
 
@@ -230,7 +223,7 @@ contract DepositAddress_USDCTransfer_Solana is ReentrancyGuard {
             bytes1(0x00), // is_writable = false
 
             // accounts[2]: Recipient ATA (destination token account) - writable, not signer
-            recipientATA, // 32 bytes
+            destinationAddress, // 32 bytes - Recipient's ATA on Solana
             bytes1(0x00), // is_signer = false
             bytes1(0x01), // is_writable = true
 
