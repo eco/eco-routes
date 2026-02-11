@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {DepositFactory_CCTPMint_Arc} from "../../contracts/deposit/DepositFactory_CCTPMint_Arc.sol";
 import {DepositAddress_CCTPMint_Arc} from "../../contracts/deposit/DepositAddress_CCTPMint_Arc.sol";
+import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
@@ -64,7 +65,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
     }
 
     function test_initialize_revertsIfAlreadyInitialized() public {
-        vm.expectRevert(DepositAddress_CCTPMint_Arc.AlreadyInitialized.selector);
+        vm.expectRevert(BaseDepositAddress.AlreadyInitialized.selector);
         depositAddress.initialize(USER_DESTINATION, DEPOSITOR);
     }
 
@@ -73,17 +74,17 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
         DepositAddress_CCTPMint_Arc implementation = new DepositAddress_CCTPMint_Arc();
 
         vm.prank(ATTACKER);
-        vm.expectRevert(DepositAddress_CCTPMint_Arc.OnlyFactory.selector);
+        vm.expectRevert(BaseDepositAddress.OnlyFactory.selector);
         implementation.initialize(USER_DESTINATION, DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
-        vm.expectRevert(DepositAddress_CCTPMint_Arc.InvalidDepositor.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDepositor.selector);
         factory.deploy(USER_DESTINATION, address(0));
     }
 
     function test_initialize_revertsIfDestinationAddressIsZero() public {
-        vm.expectRevert(DepositAddress_CCTPMint_Arc.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
         factory.deploy(address(0), DEPOSITOR);
     }
 
@@ -93,12 +94,12 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
         // Create a fresh implementation
         DepositAddress_CCTPMint_Arc uninit = new DepositAddress_CCTPMint_Arc();
 
-        vm.expectRevert(DepositAddress_CCTPMint_Arc.NotInitialized.selector);
+        vm.expectRevert(BaseDepositAddress.NotInitialized.selector);
         uninit.createIntent(1000);
     }
 
     function test_createIntent_revertsIfZeroAmount() public {
-        vm.expectRevert(DepositAddress_CCTPMint_Arc.ZeroAmount.selector);
+        vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
         depositAddress.createIntent(0);
     }
 
@@ -108,7 +109,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                DepositAddress_CCTPMint_Arc.InsufficientBalance.selector,
+                BaseDepositAddress.InsufficientBalance.selector,
                 amount,
                 0
             )

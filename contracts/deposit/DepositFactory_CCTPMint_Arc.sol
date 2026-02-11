@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Clones} from "../vault/Clones.sol";
+import {BaseDepositFactory} from "./BaseDepositFactory.sol";
 import {DepositAddress_CCTPMint_Arc} from "./DepositAddress_CCTPMint_Arc.sol";
 
 /**
@@ -11,9 +11,7 @@ import {DepositAddress_CCTPMint_Arc} from "./DepositAddress_CCTPMint_Arc.sol";
  *      Uses CREATE2 for deterministic address generation based on user's destination address
  *      This version uses standard Intent structs instead of Borsh-encoded bytes
  */
-contract DepositFactory_CCTPMint_Arc {
-    using Clones for address;
-
+contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
     // ============ Immutable Configuration ============
 
     /// @notice Destination chain ID (e.g., 10 for Optimism, 137 for Polygon)
@@ -43,21 +41,6 @@ contract DepositFactory_CCTPMint_Arc {
     /// @notice CCTP TokenMessenger contract address on source chain
     address public immutable CCTP_TOKEN_MESSENGER;
 
-    /// @notice DepositAddress implementation contract
-    address public immutable DEPOSIT_IMPLEMENTATION;
-
-    // ============ Events ============
-
-    /**
-     * @notice Emitted when a new deposit contract is deployed
-     * @param destinationAddress User's destination address on target chain
-     * @param depositAddress Deployed DepositAddress contract address
-     */
-    event DepositContractDeployed(
-        address indexed destinationAddress,
-        address indexed depositAddress
-    );
-
     // ============ Errors ============
 
     error InvalidSourceToken();
@@ -67,7 +50,6 @@ contract DepositFactory_CCTPMint_Arc {
     error InvalidDestinationPortal();
     error InvalidDeadlineDuration();
     error InvalidCCTPTokenMessenger();
-    error ContractAlreadyDeployed(address depositAddress);
 
     // ============ Constructor ============
 
@@ -93,7 +75,7 @@ contract DepositFactory_CCTPMint_Arc {
         uint64 _intentDeadlineDuration,
         uint32 _destinationDomain,
         address _cctpTokenMessenger
-    ) {
+    ) BaseDepositFactory(address(new DepositAddress_CCTPMint_Arc())) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
@@ -113,67 +95,9 @@ contract DepositFactory_CCTPMint_Arc {
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
         DESTINATION_DOMAIN = _destinationDomain;
         CCTP_TOKEN_MESSENGER = _cctpTokenMessenger;
-
-        // Deploy implementation contract
-        DEPOSIT_IMPLEMENTATION = address(new DepositAddress_CCTPMint_Arc());
     }
 
     // ============ External Functions ============
-
-    /**
-     * @notice Get deterministic deposit address for a user
-     * @dev Can be called before deployment to predict the address
-     * @param destinationAddress User's address on destination chain
-     * @param depositor Address to receive refunds if intent fails
-     * @return Predicted deposit address on source chain
-     */
-    function getDepositAddress(
-        address destinationAddress,
-        address depositor
-    ) public view returns (address) {
-        bytes32 salt = _getSalt(destinationAddress, depositor);
-        return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
-    }
-
-    /**
-     * @notice Deploy deposit contract for a user
-     * @param destinationAddress User's address on destination chain (used as CREATE2 salt)
-     * @param depositor Address to receive refunds if intent fails
-     * @return deployed Address of the deployed DepositAddress contract
-     */
-    function deploy(
-        address destinationAddress,
-        address depositor
-    ) external returns (address deployed) {
-        address predicted = getDepositAddress(destinationAddress, depositor);
-
-        // Check if already deployed
-        if (predicted.code.length > 0) {
-            revert ContractAlreadyDeployed(predicted);
-        }
-
-        bytes32 salt = _getSalt(destinationAddress, depositor);
-        deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
-
-        // Initialize the deposit address with destination and depositor
-        DepositAddress_CCTPMint_Arc(deployed).initialize(destinationAddress, depositor);
-
-        emit DepositContractDeployed(destinationAddress, deployed);
-    }
-
-    /**
-     * @notice Check if deposit contract is deployed for a user
-     * @param destinationAddress User's address on destination chain
-     * @param depositor Address to receive refunds if intent fails
-     * @return True if contract exists at predicted address
-     */
-    function isDeployed(
-        address destinationAddress,
-        address depositor
-    ) external view returns (bool) {
-        address predicted = getDepositAddress(destinationAddress, depositor);
-        return predicted.code.length > 0;
-    }
 
     /**
      * @notice Get complete factory configuration
@@ -218,15 +142,17 @@ contract DepositFactory_CCTPMint_Arc {
     // ============ Internal Functions ============
 
     /**
-     * @notice Generate CREATE2 salt from destination address and depositor
-     * @param destinationAddress User's destination address
-     * @param depositor Address to receive refunds
-     * @return salt The CREATE2 salt (hash of destination and depositor)
+     * @notice Initialize the deployed deposit contract
+     * @dev Implementation of abstract function from BaseDepositFactory
+     * @param deployed Address of the newly deployed contract
+     * @param destinationAddress User's destination address on target chain
+     * @param depositor Address to receive refunds if intent fails
      */
-    function _getSalt(
+    function _initializeDeployedContract(
+        address deployed,
         address destinationAddress,
         address depositor
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(destinationAddress, depositor));
+    ) internal override {
+        DepositAddress_CCTPMint_Arc(deployed).initialize(destinationAddress, depositor);
     }
 }

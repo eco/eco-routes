@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Clones} from "../vault/Clones.sol";
+import {BaseDepositFactory} from "./BaseDepositFactory.sol";
 import {DepositAddress_GatewayDeposit} from "./DepositAddress_GatewayDeposit.sol";
 
 /**
@@ -11,8 +11,7 @@ import {DepositAddress_GatewayDeposit} from "./DepositAddress_GatewayDeposit.sol
  *      Uses CREATE2 for deterministic address generation based on user's destination address
  *      This version uses standard Intent structs instead of Borsh-encoded bytes
  */
-contract DepositFactory_GatewayDeposit {
-    using Clones for address;
+contract DepositFactory_GatewayDeposit is BaseDepositFactory {
 
     // ============ Immutable Configuration ============
 
@@ -40,21 +39,6 @@ contract DepositFactory_GatewayDeposit {
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
     uint64 public immutable INTENT_DEADLINE_DURATION;
 
-    /// @notice DepositAddress implementation contract
-    address public immutable DEPOSIT_IMPLEMENTATION;
-
-    // ============ Events ============
-
-    /**
-     * @notice Emitted when a new deposit contract is deployed
-     * @param destinationAddress User's destination address on target chain
-     * @param depositAddress Deployed DepositAddress contract address
-     */
-    event DepositContractDeployed(
-        address indexed destinationAddress,
-        address indexed depositAddress
-    );
-
     // ============ Errors ============
 
     error InvalidSourceToken();
@@ -64,7 +48,6 @@ contract DepositFactory_GatewayDeposit {
     error InvalidDestinationPortal();
     error InvalidGatewayAddress();
     error InvalidDeadlineDuration();
-    error ContractAlreadyDeployed(address depositAddress);
 
     // ============ Constructor ============
 
@@ -88,7 +71,7 @@ contract DepositFactory_GatewayDeposit {
         address _destinationPortal,
         address _gatewayAddress,
         uint64 _intentDeadlineDuration
-    ) {
+    ) BaseDepositFactory(address(new DepositAddress_GatewayDeposit())) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
@@ -107,67 +90,9 @@ contract DepositFactory_GatewayDeposit {
         DESTINATION_PORTAL = _destinationPortal;
         GATEWAY_ADDRESS = _gatewayAddress;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
-
-        // Deploy implementation contract
-        DEPOSIT_IMPLEMENTATION = address(new DepositAddress_GatewayDeposit());
     }
 
     // ============ External Functions ============
-
-    /**
-     * @notice Get deterministic deposit address for a user
-     * @dev Can be called before deployment to predict the address
-     * @param destinationAddress User's address on destination chain
-     * @param depositor Address to receive refunds if intent fails
-     * @return Predicted deposit address on source chain
-     */
-    function getDepositAddress(
-        address destinationAddress,
-        address depositor
-    ) public view returns (address) {
-        bytes32 salt = _getSalt(destinationAddress, depositor);
-        return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
-    }
-
-    /**
-     * @notice Deploy deposit contract for a user
-     * @param destinationAddress User's address on destination chain (used as CREATE2 salt)
-     * @param depositor Address to receive refunds if intent fails
-     * @return deployed Address of the deployed DepositAddress contract
-     */
-    function deploy(
-        address destinationAddress,
-        address depositor
-    ) external returns (address deployed) {
-        address predicted = getDepositAddress(destinationAddress, depositor);
-
-        // Check if already deployed
-        if (predicted.code.length > 0) {
-            revert ContractAlreadyDeployed(predicted);
-        }
-
-        bytes32 salt = _getSalt(destinationAddress, depositor);
-        deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
-
-        // Initialize the deposit address with destination and depositor
-        DepositAddress_GatewayDeposit(deployed).initialize(destinationAddress, depositor);
-
-        emit DepositContractDeployed(destinationAddress, deployed);
-    }
-
-    /**
-     * @notice Check if deposit contract is deployed for a user
-     * @param destinationAddress User's address on destination chain
-     * @param depositor Address to receive refunds if intent fails
-     * @return True if contract exists at predicted address
-     */
-    function isDeployed(
-        address destinationAddress,
-        address depositor
-    ) external view returns (bool) {
-        address predicted = getDepositAddress(destinationAddress, depositor);
-        return predicted.code.length > 0;
-    }
 
     /**
      * @notice Get complete factory configuration
@@ -209,15 +134,17 @@ contract DepositFactory_GatewayDeposit {
     // ============ Internal Functions ============
 
     /**
-     * @notice Generate CREATE2 salt from destination address and depositor
-     * @param destinationAddress User's destination address
-     * @param depositor Address to receive refunds
-     * @return salt The CREATE2 salt (hash of destination and depositor)
+     * @notice Initialize the deployed deposit contract
+     * @dev Implementation of abstract function from BaseDepositFactory
+     * @param deployed Address of the newly deployed contract
+     * @param destinationAddress User's destination address on target chain
+     * @param depositor Address to receive refunds if intent fails
      */
-    function _getSalt(
+    function _initializeDeployedContract(
+        address deployed,
         address destinationAddress,
         address depositor
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(destinationAddress, depositor));
+    ) internal override {
+        DepositAddress_GatewayDeposit(deployed).initialize(destinationAddress, depositor);
     }
 }

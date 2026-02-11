@@ -4,6 +4,8 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {DepositFactory_GatewayDeposit} from "../../contracts/deposit/DepositFactory_GatewayDeposit.sol";
 import {DepositAddress_GatewayDeposit} from "../../contracts/deposit/DepositAddress_GatewayDeposit.sol";
+import {BaseDepositFactory} from "../../contracts/deposit/BaseDepositFactory.sol";
+import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {Portal} from "../../contracts/Portal.sol";
 
 contract DepositFactory_GatewayDepositTest is Test {
@@ -223,7 +225,7 @@ contract DepositFactory_GatewayDepositTest is Test {
         address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
         vm.expectEmit(true, true, false, false);
-        emit DepositFactory_GatewayDeposit.DepositContractDeployed(
+        emit BaseDepositFactory.DepositContractDeployed(
             USER_DESTINATION_1,
             predicted
         );
@@ -232,7 +234,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_deploy_revertsIfZeroDestinationAddress() public {
-        vm.expectRevert(DepositAddress_GatewayDeposit.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
         factory.deploy(address(0), DEPOSITOR_1);
     }
 

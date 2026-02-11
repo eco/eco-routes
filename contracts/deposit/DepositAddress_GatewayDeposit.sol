@@ -2,8 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
 import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_GatewayDeposit.sol";
@@ -15,48 +14,12 @@ import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_
  *      Deployed via CREATE2 by DepositFactory_GatewayDeposit for deterministic addressing
  *      Uses standard Intent/Route/Reward structs instead of Borsh-encoded bytes
  */
-contract DepositAddress_GatewayDeposit is ReentrancyGuard {
-    using SafeERC20 for IERC20;
-
-    // ============ Storage ============
-
-    /// @notice User's destination address on target chain (used for CREATE2 salt and token recipient)
-    address public destinationAddress;
-
-    /// @notice Depositor address on source chain (where refunds are sent if intent fails)
-    address public depositor;
-
-    /// @notice Initialization flag
-    bool private initialized;
+contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
     DepositFactory private immutable FACTORY;
-
-    // ============ Events ============
-
-    /**
-     * @notice Emitted when an intent is created
-     * @param intentHash Hash of the created intent
-     * @param amount Amount of tokens in the intent
-     * @param caller Address that triggered the intent creation
-     */
-    event IntentCreated(
-        bytes32 indexed intentHash,
-        uint256 amount,
-        address indexed caller
-    );
-
-    // ============ Errors ============
-
-    error AlreadyInitialized();
-    error NotInitialized();
-    error OnlyFactory();
-    error InvalidDestinationAddress();
-    error InvalidDepositor();
-    error ZeroAmount();
-    error InsufficientBalance(uint256 requested, uint256 available);
 
     // ============ Constructor ============
 
@@ -67,39 +30,34 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
         FACTORY = DepositFactory(msg.sender);
     }
 
-    // ============ External Functions ============
+    // ============ Internal Functions ============
 
     /**
-     * @notice Initialize the deposit address (called once by factory after deployment)
-     * @param _destinationAddress User's destination address (used for salt and token recipient)
-     * @param _depositor Address to receive refunds if intent fails
+     * @notice Get the factory address that deployed this contract
+     * @dev Implementation of abstract function from BaseDepositAddress
+     * @return Address of the factory contract
      */
-    function initialize(
-        address _destinationAddress,
-        address _depositor
-    ) external {
-        if (initialized) revert AlreadyInitialized();
-        if (msg.sender != address(FACTORY)) revert OnlyFactory();
-        if (_destinationAddress == address(0)) revert InvalidDestinationAddress();
-        if (_depositor == address(0)) revert InvalidDepositor();
-
-        destinationAddress = _destinationAddress;
-        depositor = _depositor;
-        initialized = true;
+    function _factory() internal view override returns (address) {
+        return address(FACTORY);
     }
 
     /**
-     * @notice Create a cross-chain intent for deposited tokens
-     * @dev Constructs Intent struct with Route and Reward, calls Portal.publishAndFund()
+     * @notice Get the source token address for this deposit
+     * @dev Implementation of abstract function from BaseDepositAddress
+     * @return Address of the source token
+     */
+    function _getSourceToken() internal view override returns (address) {
+        (, address sourceToken, , , , , , ) = FACTORY.getConfiguration();
+        return sourceToken;
+    }
+
+    /**
+     * @notice Execute variant-specific intent creation logic
+     * @dev Implementation of abstract function from BaseDepositAddress
      * @param amount Amount of tokens to bridge
      * @return intentHash Hash of the created intent
      */
-    function createIntent(
-        uint256 amount
-    ) external nonReentrant returns (bytes32 intentHash) {
-        if (!initialized) revert NotInitialized();
-        if (amount == 0) revert ZeroAmount();
-
+    function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
             uint64 destChain,
@@ -111,12 +69,6 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
             address gateway,
             uint64 deadlineDuration
         ) = FACTORY.getConfiguration();
-
-        // Check balance
-        uint256 balance = IERC20(sourceToken).balanceOf(address(this));
-        if (balance < amount) {
-            revert InsufficientBalance(amount, balance);
-        }
 
         // Construct Intent struct
         Intent memory intent = _constructIntent(
@@ -142,12 +94,8 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
             false // allowPartial = false
         );
 
-        emit IntentCreated(intentHash, amount, msg.sender);
-
         return intentHash;
     }
-
-    // ============ Internal Functions ============
 
     /**
      * @notice Construct complete Intent struct for EVM destination
