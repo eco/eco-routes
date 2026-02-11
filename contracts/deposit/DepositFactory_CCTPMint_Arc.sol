@@ -40,6 +40,9 @@ contract DepositFactory_CCTPMint_Arc {
     /// @notice CCTP destination domain ID for the target chain
     uint32 public immutable DESTINATION_DOMAIN;
 
+    /// @notice CCTP TokenMessenger contract address on source chain
+    address public immutable CCTP_TOKEN_MESSENGER;
+
     /// @notice DepositAddress implementation contract
     address public immutable DEPOSIT_IMPLEMENTATION;
 
@@ -63,6 +66,7 @@ contract DepositFactory_CCTPMint_Arc {
     error InvalidTargetToken();
     error InvalidDestinationPortal();
     error InvalidDeadlineDuration();
+    error InvalidCCTPTokenMessenger();
     error ContractAlreadyDeployed(address depositAddress);
 
     // ============ Constructor ============
@@ -77,6 +81,7 @@ contract DepositFactory_CCTPMint_Arc {
      * @param _destinationPortal Portal address on destination chain
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      * @param _destinationDomain CCTP destination domain ID
+     * @param _cctpTokenMessenger CCTP TokenMessenger contract address on source chain
      */
     constructor(
         uint64 _destinationChain,
@@ -86,7 +91,8 @@ contract DepositFactory_CCTPMint_Arc {
         address _proverAddress,
         address _destinationPortal,
         uint64 _intentDeadlineDuration,
-        uint32 _destinationDomain
+        uint32 _destinationDomain,
+        address _cctpTokenMessenger
     ) {
         // Validation
         if (_sourceToken == address(0)) revert InvalidSourceToken();
@@ -95,6 +101,7 @@ contract DepositFactory_CCTPMint_Arc {
         if (_destinationToken == address(0)) revert InvalidTargetToken();
         if (_destinationPortal == address(0)) revert InvalidDestinationPortal();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
+        if (_cctpTokenMessenger == address(0)) revert InvalidCCTPTokenMessenger();
 
         // Store configuration
         DESTINATION_CHAIN = _destinationChain;
@@ -105,6 +112,7 @@ contract DepositFactory_CCTPMint_Arc {
         DESTINATION_PORTAL = _destinationPortal;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
         DESTINATION_DOMAIN = _destinationDomain;
+        CCTP_TOKEN_MESSENGER = _cctpTokenMessenger;
 
         // Deploy implementation contract
         DEPOSIT_IMPLEMENTATION = address(new DepositAddress_CCTPMint_Arc());
@@ -177,6 +185,7 @@ contract DepositFactory_CCTPMint_Arc {
      * @return destinationPortal Portal address on destination chain
      * @return intentDeadlineDuration Deadline duration in seconds
      * @return destinationDomain CCTP destination domain ID
+     * @return cctpTokenMessenger CCTP TokenMessenger contract address
      */
     function getConfiguration()
         external
@@ -189,7 +198,8 @@ contract DepositFactory_CCTPMint_Arc {
             address proverAddress,
             address destinationPortal,
             uint64 intentDeadlineDuration,
-            uint32 destinationDomain
+            uint32 destinationDomain,
+            address cctpTokenMessenger
         )
     {
         return (
@@ -200,7 +210,8 @@ contract DepositFactory_CCTPMint_Arc {
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
             INTENT_DEADLINE_DURATION,
-            DESTINATION_DOMAIN
+            DESTINATION_DOMAIN,
+            CCTP_TOKEN_MESSENGER
         );
     }
 

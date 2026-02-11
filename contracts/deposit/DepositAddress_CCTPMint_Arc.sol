@@ -6,7 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
-import {DepositFactory_CCTPMint_Arc} from "./DepositFactory_CCTPMint_Arc.sol";
+import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CCTPMint_Arc.sol";
 
 /**
  * @title DepositAddress_CCTPMint_Arc
@@ -32,7 +32,7 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
-    DepositFactory_CCTPMint_Arc private immutable FACTORY;
+    DepositFactory private immutable FACTORY;
 
     // ============ Events ============
 
@@ -53,6 +53,7 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
     error AlreadyInitialized();
     error NotInitialized();
     error OnlyFactory();
+    error InvalidDestinationAddress();
     error InvalidDepositor();
     error ZeroAmount();
     error InsufficientBalance(uint256 requested, uint256 available);
@@ -63,7 +64,7 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
      * @notice Sets the factory reference (called by factory during deployment)
      */
     constructor() {
-        FACTORY = DepositFactory_CCTPMint_Arc(msg.sender);
+        FACTORY = DepositFactory(msg.sender);
     }
 
     // ============ External Functions ============
@@ -79,6 +80,7 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
+        if (_destinationAddress == address(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
 
         destinationAddress = _destinationAddress;
@@ -107,7 +109,8 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
             address prover,
             address destPortal,
             uint64 deadlineDuration,
-            uint32 destinationDomain
+            uint32 destinationDomain,
+            address cctpTokenMessenger
         ) = FACTORY.getConfiguration();
 
         // Check balance
@@ -125,7 +128,8 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
             prover,
             amount,
             deadlineDuration,
-            destinationDomain
+            destinationDomain,
+            cctpTokenMessenger
         );
 
         // Approve Portal to spend tokens
@@ -155,6 +159,8 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
      * @param prover Prover contract address
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
+     * @param destinationDomain CCTP destination domain ID
+     * @param cctpTokenMessenger CCTP TokenMessenger contract address
      * @return intent Complete Intent struct ready for publishing
      */
     function _constructIntent(
@@ -165,7 +171,8 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
         address prover,
         uint256 amount,
         uint64 deadlineDuration,
-        uint32 destinationDomain
+        uint32 destinationDomain,
+        address cctpTokenMessenger
     ) internal view returns (Intent memory intent) {
         // Construct Route
         Route memory route = _constructRoute(
@@ -174,7 +181,8 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
             amount,
             deadlineDuration,
             destinationDomain,
-            sourceToken
+            sourceToken,
+            cctpTokenMessenger
         );
 
         // Construct Reward
@@ -197,6 +205,7 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
      * @param deadlineDuration Deadline duration in seconds
      * @param destinationDomain CCTP destination domain ID
      * @param sourceToken Source token to burn
+     * @param cctpTokenMessenger CCTP TokenMessenger contract address
      * @return route Route struct with CCTP depositForBurn call
      */
     function _constructRoute(
@@ -205,7 +214,8 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
         uint256 amount,
         uint64 deadlineDuration,
         uint32 destinationDomain,
-        address sourceToken
+        address sourceToken,
+        address cctpTokenMessenger
     ) internal view returns (Route memory route) {
         // Generate unique salt
         bytes32 salt = keccak256(
@@ -221,9 +231,6 @@ contract DepositAddress_CCTPMint_Arc is ReentrancyGuard {
 
         // Convert destinationAddress to bytes32 for CCTP mintRecipient
         bytes32 mintRecipient = bytes32(uint256(uint160(destinationAddress)));
-
-        // CCTP TokenMessengerV2 address
-        address cctpTokenMessenger = 0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d;
 
         // Construct CCTP depositForBurn call
         Call[] memory calls = new Call[](1);

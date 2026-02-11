@@ -6,7 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
-import {DepositFactory_GatewayDeposit} from "./DepositFactory_GatewayDeposit.sol";
+import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_GatewayDeposit.sol";
 
 /**
  * @title DepositAddress_GatewayDeposit
@@ -32,7 +32,7 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
-    DepositFactory_GatewayDeposit private immutable FACTORY;
+    DepositFactory private immutable FACTORY;
 
     // ============ Events ============
 
@@ -53,6 +53,7 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
     error AlreadyInitialized();
     error NotInitialized();
     error OnlyFactory();
+    error InvalidDestinationAddress();
     error InvalidDepositor();
     error ZeroAmount();
     error InsufficientBalance(uint256 requested, uint256 available);
@@ -63,7 +64,7 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
      * @notice Sets the factory reference (called by factory during deployment)
      */
     constructor() {
-        FACTORY = DepositFactory_GatewayDeposit(msg.sender);
+        FACTORY = DepositFactory(msg.sender);
     }
 
     // ============ External Functions ============
@@ -79,6 +80,7 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != address(FACTORY)) revert OnlyFactory();
+        if (_destinationAddress == address(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
 
         destinationAddress = _destinationAddress;
@@ -106,6 +108,7 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
             address portal,
             address prover,
             address destPortal,
+            address gateway,
             uint64 deadlineDuration
         ) = FACTORY.getConfiguration();
 
@@ -122,8 +125,10 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
             destinationToken,
             destPortal,
             prover,
+            gateway,
             amount,
-            deadlineDuration
+            deadlineDuration,
+            depositor
         );
 
         // Approve Portal to spend tokens
@@ -151,8 +156,10 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
      * @param destinationToken Destination token address on destination chain
      * @param destPortal Portal address on destination chain
      * @param prover Prover contract address
+     * @param gateway Gateway contract address on destination chain
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
+     * @param depositorAddr Depositor address for Gateway call
      * @return intent Complete Intent struct ready for publishing
      */
     function _constructIntent(
@@ -161,15 +168,19 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
         address destinationToken,
         address destPortal,
         address prover,
+        address gateway,
         uint256 amount,
-        uint64 deadlineDuration
+        uint64 deadlineDuration,
+        address depositorAddr
     ) internal view returns (Intent memory intent) {
         // Construct Route
         Route memory route = _constructRoute(
             destinationToken,
             destPortal,
+            gateway,
             amount,
-            deadlineDuration
+            deadlineDuration,
+            depositorAddr
         );
 
         // Construct Reward
@@ -177,7 +188,8 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
             sourceToken,
             prover,
             amount,
-            deadlineDuration
+            deadlineDuration,
+            depositorAddr
         );
 
         // Combine into Intent
@@ -185,18 +197,22 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
     }
 
     /**
-     * @notice Construct Route struct with token transfer call
+     * @notice Construct Route struct with Gateway depositFor call
      * @param destinationToken Token address on destination chain
      * @param destPortal Portal address on destination chain
+     * @param gateway Gateway contract address on destination chain
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
-     * @return route Route struct with transfer call to destinationAddress
+     * @param depositorAddr Depositor address for Gateway call
+     * @return route Route struct with Gateway depositFor call
      */
     function _constructRoute(
         address destinationToken,
         address destPortal,
+        address gateway,
         uint256 amount,
-        uint64 deadlineDuration
+        uint64 deadlineDuration,
+        address depositorAddr
     ) internal view returns (Route memory route) {
         // Generate unique salt
         bytes32 salt = keccak256(
@@ -210,15 +226,14 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: destinationToken, amount: amount});
 
-        // TODO: Update Gateway call structure
-        // Current implementation uses simple token transfer
-        // Need to determine correct Gateway contract address and call data
+        // Construct Gateway depositFor call
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
-            target: destinationToken,
+            target: gateway,
             data: abi.encodeWithSignature(
-                "transfer(address,uint256)",
-                destinationAddress,
+                "depositFor(address,address,uint256)",
+                destinationToken,
+                depositorAddr,
                 amount
             ),
             value: 0
@@ -241,13 +256,15 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
      * @param prover Prover contract address
      * @param amount Amount of tokens as reward
      * @param deadlineDuration Deadline duration in seconds
+     * @param depositorAddr Depositor address to receive refunds
      * @return reward Reward struct with escrowed source tokens
      */
     function _constructReward(
         address sourceToken,
         address prover,
         uint256 amount,
-        uint64 deadlineDuration
+        uint64 deadlineDuration,
+        address depositorAddr
     ) internal view returns (Reward memory reward) {
         // Calculate deadline
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
@@ -259,7 +276,7 @@ contract DepositAddress_GatewayDeposit is ReentrancyGuard {
         // Construct reward
         reward = Reward({
             deadline: deadline,
-            creator: depositor, // Depositor is creator (matches Solana implementation)
+            creator: depositorAddr, // Depositor is creator (matches Solana implementation)
             prover: prover,
             nativeAmount: 0,
             tokens: tokens

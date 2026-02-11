@@ -34,6 +34,9 @@ contract DepositFactory_GatewayDeposit {
     /// @notice Portal contract address on destination chain
     address public immutable DESTINATION_PORTAL;
 
+    /// @notice Gateway contract address on destination chain
+    address public immutable GATEWAY_ADDRESS;
+
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
     uint64 public immutable INTENT_DEADLINE_DURATION;
 
@@ -59,6 +62,7 @@ contract DepositFactory_GatewayDeposit {
     error InvalidProverAddress();
     error InvalidTargetToken();
     error InvalidDestinationPortal();
+    error InvalidGatewayAddress();
     error InvalidDeadlineDuration();
     error ContractAlreadyDeployed(address depositAddress);
 
@@ -72,6 +76,7 @@ contract DepositFactory_GatewayDeposit {
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
      * @param _destinationPortal Portal address on destination chain
+     * @param _gatewayAddress Gateway contract address on destination chain
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      */
     constructor(
@@ -81,6 +86,7 @@ contract DepositFactory_GatewayDeposit {
         address _portalAddress,
         address _proverAddress,
         address _destinationPortal,
+        address _gatewayAddress,
         uint64 _intentDeadlineDuration
     ) {
         // Validation
@@ -89,6 +95,7 @@ contract DepositFactory_GatewayDeposit {
         if (_proverAddress == address(0)) revert InvalidProverAddress();
         if (_destinationToken == address(0)) revert InvalidTargetToken();
         if (_destinationPortal == address(0)) revert InvalidDestinationPortal();
+        if (_gatewayAddress == address(0)) revert InvalidGatewayAddress();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
 
         // Store configuration
@@ -98,6 +105,7 @@ contract DepositFactory_GatewayDeposit {
         PORTAL_ADDRESS = _portalAddress;
         PROVER_ADDRESS = _proverAddress;
         DESTINATION_PORTAL = _destinationPortal;
+        GATEWAY_ADDRESS = _gatewayAddress;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
 
         // Deploy implementation contract
@@ -169,6 +177,7 @@ contract DepositFactory_GatewayDeposit {
      * @return portalAddress Portal address on source chain
      * @return proverAddress Prover contract address
      * @return destinationPortal Portal address on destination chain
+     * @return gatewayAddress Gateway contract address on destination chain
      * @return intentDeadlineDuration Deadline duration in seconds
      */
     function getConfiguration()
@@ -181,6 +190,7 @@ contract DepositFactory_GatewayDeposit {
             address portalAddress,
             address proverAddress,
             address destinationPortal,
+            address gatewayAddress,
             uint64 intentDeadlineDuration
         )
     {
@@ -191,6 +201,7 @@ contract DepositFactory_GatewayDeposit {
             PORTAL_ADDRESS,
             PROVER_ADDRESS,
             DESTINATION_PORTAL,
+            GATEWAY_ADDRESS,
             INTENT_DEADLINE_DURATION
         );
     }
