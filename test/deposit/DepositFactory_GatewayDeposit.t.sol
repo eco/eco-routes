@@ -75,7 +75,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_constructor_revertsOnInvalidSourceToken() public {
-        vm.expectRevert(DepositFactory_GatewayDeposit.InvalidSourceToken.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidSourceToken.selector);
         new DepositFactory_GatewayDeposit(
             DESTINATION_CHAIN,
             address(0), // Invalid
@@ -103,7 +103,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_constructor_revertsOnInvalidPortal() public {
-        vm.expectRevert(DepositFactory_GatewayDeposit.InvalidPortalAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidPortalAddress.selector);
         new DepositFactory_GatewayDeposit(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -117,7 +117,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_constructor_revertsOnInvalidProver() public {
-        vm.expectRevert(DepositFactory_GatewayDeposit.InvalidProverAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidProverAddress.selector);
         new DepositFactory_GatewayDeposit(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -131,7 +131,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDestinationPortal() public {
-        vm.expectRevert(DepositFactory_GatewayDeposit.InvalidDestinationPortal.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationPortal.selector);
         new DepositFactory_GatewayDeposit(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -159,7 +159,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDeadlineDuration() public {
-        vm.expectRevert(DepositFactory_GatewayDeposit.InvalidDeadlineDuration.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDeadlineDuration.selector);
         new DepositFactory_GatewayDeposit(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,

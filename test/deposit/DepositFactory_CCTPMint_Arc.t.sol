@@ -79,7 +79,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_constructor_revertsOnInvalidSourceToken() public {
-        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidSourceToken.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidSourceToken.selector);
         new DepositFactory_CCTPMint_Arc(
             DESTINATION_CHAIN,
             address(0), // Invalid
@@ -109,7 +109,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_constructor_revertsOnInvalidPortal() public {
-        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidPortalAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidPortalAddress.selector);
         new DepositFactory_CCTPMint_Arc(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -124,7 +124,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_constructor_revertsOnInvalidProver() public {
-        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidProverAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidProverAddress.selector);
         new DepositFactory_CCTPMint_Arc(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -139,7 +139,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDestinationPortal() public {
-        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidDestinationPortal.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationPortal.selector);
         new DepositFactory_CCTPMint_Arc(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,
@@ -154,7 +154,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_constructor_revertsOnInvalidDeadlineDuration() public {
-        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidDeadlineDuration.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDeadlineDuration.selector);
         new DepositFactory_CCTPMint_Arc(
             DESTINATION_CHAIN,
             SOURCE_TOKEN,

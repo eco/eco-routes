@@ -41,13 +41,8 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
 
     // ============ Errors ============
 
-    error InvalidSourceToken();
-    error InvalidPortalAddress();
-    error InvalidProverAddress();
     error InvalidTargetToken();
-    error InvalidDestinationPortal();
     error InvalidGatewayAddress();
-    error InvalidDeadlineDuration();
 
     // ============ Constructor ============
 

@@ -43,12 +43,7 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
 
     // ============ Errors ============
 
-    error InvalidSourceToken();
-    error InvalidPortalAddress();
-    error InvalidProverAddress();
     error InvalidTargetToken();
-    error InvalidDestinationPortal();
-    error InvalidDeadlineDuration();
     error InvalidCCTPTokenMessenger();
 
     // ============ Constructor ============

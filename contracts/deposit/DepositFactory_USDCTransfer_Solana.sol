@@ -62,13 +62,13 @@ contract DepositFactory_USDCTransfer_Solana {
     // ============ Errors ============
 
     error InvalidSourceToken();
-    error InvalidDestinationToken();
     error InvalidPortalAddress();
     error InvalidProverAddress();
-    error InvalidDestinationPortal();
-    error InvalidPortalPDA();
     error InvalidDeadlineDuration();
+    error InvalidDestinationPortal();
     error InvalidDestinationAddress();
+    error InvalidDestinationToken();
+    error InvalidPortalPDA();
     error InvalidExecutorATA();
 
     // ============ Constructor ============

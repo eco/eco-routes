@@ -29,6 +29,15 @@ abstract contract BaseDepositFactory {
         address indexed depositContract
     );
 
+    // ============ Errors ============
+
+    error InvalidSourceToken();
+    error InvalidPortalAddress();
+    error InvalidProverAddress();
+    error InvalidDeadlineDuration();
+    error InvalidDestinationPortal();
+    error InvalidDestinationAddress();
+
     // ============ Constructor ============
 
     /**
