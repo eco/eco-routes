@@ -228,7 +228,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         address deployed = factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
         DepositAddress_CCTPMint_Arc depositAddress = DepositAddress_CCTPMint_Arc(deployed);
 
-        assertEq(depositAddress.destinationAddress(), USER_DESTINATION_1);
+        assertEq(depositAddress.destinationAddress(), bytes32(uint256(uint160(USER_DESTINATION_1))));
         assertEq(depositAddress.depositor(), DEPOSITOR_1);
     }
 
@@ -265,9 +265,9 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         assertTrue(deployed1.code.length > 0);
         assertTrue(deployed2.code.length > 0);
 
-        assertEq(DepositAddress_CCTPMint_Arc(deployed1).destinationAddress(), USER_DESTINATION_1);
+        assertEq(DepositAddress_CCTPMint_Arc(deployed1).destinationAddress(), bytes32(uint256(uint160(USER_DESTINATION_1))));
         assertEq(DepositAddress_CCTPMint_Arc(deployed1).depositor(), DEPOSITOR_1);
-        assertEq(DepositAddress_CCTPMint_Arc(deployed2).destinationAddress(), USER_DESTINATION_1);
+        assertEq(DepositAddress_CCTPMint_Arc(deployed2).destinationAddress(), bytes32(uint256(uint160(USER_DESTINATION_1))));
         assertEq(DepositAddress_CCTPMint_Arc(deployed2).depositor(), DEPOSITOR_2);
     }
 

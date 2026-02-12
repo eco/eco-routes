@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
 import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
@@ -64,7 +65,7 @@ contract DepositAddressTest is Test {
     }
 
     function test_initialize_revertsIfAlreadyInitialized() public {
-        vm.expectRevert(DepositAddress_USDCTransfer_Solana.AlreadyInitialized.selector);
+        vm.expectRevert(BaseDepositAddress.AlreadyInitialized.selector);
         depositAddress.initialize(RECIPIENT_ATA, DEPOSITOR);
     }
 
@@ -73,18 +74,18 @@ contract DepositAddressTest is Test {
         DepositAddress_USDCTransfer_Solana implementation = new DepositAddress_USDCTransfer_Solana();
 
         vm.prank(ATTACKER);
-        vm.expectRevert(DepositAddress_USDCTransfer_Solana.OnlyFactory.selector);
+        vm.expectRevert(BaseDepositAddress.OnlyFactory.selector);
         implementation.initialize(RECIPIENT_ATA, DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
         // Attempt to deploy with zero depositor should revert
-        vm.expectRevert(DepositAddress_USDCTransfer_Solana.InvalidDepositor.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDepositor.selector);
         factory.deploy(RECIPIENT_ATA, address(0));
     }
 
     function test_initialize_revertsIfDestinationAddressIsZero() public {
-        vm.expectRevert(DepositAddress_USDCTransfer_Solana.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
         factory.deploy(bytes32(0), DEPOSITOR);
     }
 
@@ -94,17 +95,19 @@ contract DepositAddressTest is Test {
         // Create a fresh implementation
         DepositAddress_USDCTransfer_Solana uninit = new DepositAddress_USDCTransfer_Solana();
 
-        vm.expectRevert(DepositAddress_USDCTransfer_Solana.NotInitialized.selector);
+        vm.expectRevert(BaseDepositAddress.NotInitialized.selector);
         uninit.createIntent(1000);
     }
 
     function test_createIntent_revertsIfZeroAmount() public {
-        vm.expectRevert(DepositAddress_USDCTransfer_Solana.ZeroAmount.selector);
+        vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
         depositAddress.createIntent(0);
     }
 
     function test_createIntent_revertsIfAmountTooLarge() public {
         uint256 tooLarge = uint256(type(uint64).max) + 1;
+        // Mint tokens so balance check passes
+        token.mint(address(depositAddress), tooLarge);
         vm.expectRevert(
             abi.encodeWithSelector(
                 DepositAddress_USDCTransfer_Solana.AmountTooLarge.selector,

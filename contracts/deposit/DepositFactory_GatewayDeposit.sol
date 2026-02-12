@@ -145,6 +145,8 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
         address destinationAddress,
         address depositor
     ) internal override {
-        DepositAddress_GatewayDeposit(deployed).initialize(destinationAddress, depositor);
+        // Convert EVM address to bytes32 for universal destination address format
+        bytes32 destinationBytes32 = bytes32(uint256(uint160(destinationAddress)));
+        DepositAddress_GatewayDeposit(deployed).initialize(destinationBytes32, depositor);
     }
 }

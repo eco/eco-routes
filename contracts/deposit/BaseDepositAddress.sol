@@ -17,7 +17,8 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     // ============ Storage ============
 
     /// @notice User's destination address on target chain (used for CREATE2 salt and token recipient)
-    address public destinationAddress;
+    /// @dev bytes32 for universal chain compatibility (supports both EVM and non-EVM chains)
+    bytes32 public destinationAddress;
 
     /// @notice Depositor address on source chain (where refunds are sent if intent fails)
     address public depositor;
@@ -39,16 +40,16 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
 
     /**
      * @notice Initialize the deposit address (called once by factory after deployment)
-     * @param _destinationAddress User's destination address (used for salt and token recipient)
+     * @param _destinationAddress User's destination address (bytes32 for universal chain compatibility)
      * @param _depositor Address to receive refunds if intent fails
      */
     function initialize(
-        address _destinationAddress,
+        bytes32 _destinationAddress,
         address _depositor
     ) external {
         if (initialized) revert AlreadyInitialized();
         if (msg.sender != _factory()) revert OnlyFactory();
-        if (_destinationAddress == address(0)) revert InvalidDestinationAddress();
+        if (_destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
         if (_depositor == address(0)) revert InvalidDepositor();
 
         destinationAddress = _destinationAddress;

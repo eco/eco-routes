@@ -177,9 +177,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: destinationToken, amount: amount});
 
-        // Convert destinationAddress to bytes32 for CCTP mintRecipient
-        bytes32 mintRecipient = bytes32(uint256(uint160(destinationAddress)));
-
+        // destinationAddress is already bytes32 format, use directly as CCTP mintRecipient
         // Construct CCTP depositForBurn call
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
@@ -188,7 +186,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
                 "depositForBurn(uint256,uint32,bytes32,address)",
                 amount,
                 destinationDomain,
-                mintRecipient,
+                destinationAddress, // Use bytes32 destinationAddress directly as mintRecipient
                 sourceToken
             ),
             value: 0

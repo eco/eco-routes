@@ -148,7 +148,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         assertTrue(factory.isDeployed(USER_DESTINATION, DEPOSITOR));
 
         DepositAddress_CCTPMint_Arc depositAddress = DepositAddress_CCTPMint_Arc(deployed);
-        assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
+        assertEq(depositAddress.destinationAddress(), bytes32(uint256(uint160(USER_DESTINATION))));
         assertEq(depositAddress.depositor(), DEPOSITOR);
 
         // 4. Backend creates intent

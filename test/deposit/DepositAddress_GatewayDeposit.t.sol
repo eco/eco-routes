@@ -55,7 +55,7 @@ contract DepositAddress_GatewayDepositTest is Test {
     // ============ Initialization Tests ============
 
     function test_initialize_setsDestinationAddress() public view {
-        assertEq(depositAddress.destinationAddress(), USER_DESTINATION);
+        assertEq(depositAddress.destinationAddress(), bytes32(uint256(uint160(USER_DESTINATION))));
     }
 
     function test_initialize_setsDepositor() public view {
@@ -64,7 +64,7 @@ contract DepositAddress_GatewayDepositTest is Test {
 
     function test_initialize_revertsIfAlreadyInitialized() public {
         vm.expectRevert(BaseDepositAddress.AlreadyInitialized.selector);
-        depositAddress.initialize(USER_DESTINATION, DEPOSITOR);
+        depositAddress.initialize(bytes32(uint256(uint160(USER_DESTINATION))), DEPOSITOR);
     }
 
     function test_initialize_revertsIfNotCalledByFactory() public {
@@ -73,7 +73,7 @@ contract DepositAddress_GatewayDepositTest is Test {
 
         vm.prank(ATTACKER);
         vm.expectRevert(BaseDepositAddress.OnlyFactory.selector);
-        implementation.initialize(USER_DESTINATION, DEPOSITOR);
+        implementation.initialize(bytes32(uint256(uint160(USER_DESTINATION))), DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
