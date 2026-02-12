@@ -69,12 +69,6 @@ contract DepositIntegration_CCTPMintTest is Test {
     address constant DEPOSITOR = address(0x3333);
     address constant SOLVER = address(0x4444);
 
-    event IntentCreated(
-        bytes32 indexed intentHash,
-        uint256 amount,
-        address indexed caller
-    );
-
     event IntentPublished(
         bytes32 indexed intentHash,
         uint64 destination,
@@ -550,17 +544,6 @@ contract DepositIntegration_CCTPMintTest is Test {
         vm.recordLogs();
         bytes32 intentHash = depositAddress.createIntent(amount);
         Vm.Log[] memory logs = vm.getRecordedLogs();
-
-        // Verify IntentCreated event was emitted
-        bool foundIntentCreated = false;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == keccak256("IntentCreated(bytes32,uint256,address)")) {
-                foundIntentCreated = true;
-                assertEq(logs[i].topics[1], intentHash, "Intent hash should match");
-                break;
-            }
-        }
-        assertTrue(foundIntentCreated, "IntentCreated event should be emitted");
 
         // Verify IntentPublished event was emitted (contains CCTP call)
         bool foundIntentPublished = false;

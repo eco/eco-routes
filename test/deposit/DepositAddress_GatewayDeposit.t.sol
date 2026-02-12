@@ -144,29 +144,6 @@ contract DepositAddress_GatewayDepositTest is Test {
         assertTrue(intentHash != bytes32(0));
     }
 
-    function test_createIntent_emitsIntentCreatedEvent() public {
-        uint256 amount = 10_000 * 1e18;
-        token.mint(address(depositAddress), amount);
-
-        vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent(amount);
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-
-        // Find IntentCreated event
-        bool found = false;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (
-                logs[i].topics[0] ==
-                keccak256("IntentCreated(bytes32,uint256,address)")
-            ) {
-                found = true;
-                assertEq(logs[i].topics[1], intentHash);
-                break;
-            }
-        }
-        assertTrue(found, "IntentCreated event not emitted");
-    }
-
     function test_createIntent_permissionless() public {
         uint256 amount = 10_000 * 1e18;
         token.mint(address(depositAddress), amount);

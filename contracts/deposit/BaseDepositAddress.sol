@@ -25,20 +25,6 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     /// @notice Initialization flag
     bool private initialized;
 
-    // ============ Events ============
-
-    /**
-     * @notice Emitted when an intent is created
-     * @param intentHash Hash of the created intent
-     * @param amount Amount of tokens in the intent
-     * @param caller Address that triggered the intent creation
-     */
-    event IntentCreated(
-        bytes32 indexed intentHash,
-        uint256 amount,
-        address indexed caller
-    );
-
     // ============ Errors ============
 
     error AlreadyInitialized();
@@ -94,7 +80,6 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
         // Execute variant-specific intent creation
         intentHash = _executeIntent(amount);
 
-        emit IntentCreated(intentHash, amount, msg.sender);
         return intentHash;
     }
 
