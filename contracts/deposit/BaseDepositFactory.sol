@@ -29,10 +29,6 @@ abstract contract BaseDepositFactory {
         address indexed depositContract
     );
 
-    // ============ Errors ============
-
-    error ContractAlreadyDeployed(address depositAddress);
-
     // ============ Constructor ============
 
     /**
@@ -47,7 +43,6 @@ abstract contract BaseDepositFactory {
 
     /**
      * @notice Deploy a new deposit address using CREATE2 for deterministic addressing
-     * @dev Reverts if contract already exists at predicted address
      * @param destinationAddress User's destination address on target chain
      * @param depositor Address to receive refunds if intent fails
      * @return deployed Address of the deployed deposit contract
@@ -56,12 +51,6 @@ abstract contract BaseDepositFactory {
         address destinationAddress,
         address depositor
     ) external returns (address deployed) {
-        // Check if already deployed
-        address predicted = getDepositAddress(destinationAddress, depositor);
-        if (predicted.code.length > 0) {
-            revert ContractAlreadyDeployed(predicted);
-        }
-
         // Deploy using CREATE2 with deterministic salt
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
