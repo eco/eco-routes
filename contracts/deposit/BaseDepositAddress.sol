@@ -34,7 +34,6 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     error InvalidDestinationAddress();
     error InvalidDepositor();
     error ZeroAmount();
-    error InsufficientBalance(uint256 requested, uint256 available);
 
     // ============ External Functions ============
 
@@ -60,23 +59,18 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     /**
      * @notice Create a cross-chain intent for deposited tokens
      * @dev Template method: validates common requirements, delegates to variant-specific execution
-     * @param amount Amount of tokens to bridge
+     *      Uses the entire balance of source tokens held by this contract
      * @return intentHash Hash of the created intent
      */
-    function createIntent(
-        uint256 amount
-    ) external nonReentrant returns (bytes32 intentHash) {
+    function createIntent() external nonReentrant returns (bytes32 intentHash) {
         if (!initialized) revert NotInitialized();
-        if (amount == 0) revert ZeroAmount();
 
         // Get source token from derived contract
         address sourceToken = _getSourceToken();
 
-        // Check balance
-        uint256 balance = IERC20(sourceToken).balanceOf(address(this));
-        if (balance < amount) {
-            revert InsufficientBalance(amount, balance);
-        }
+        // Get balance of source token held by this contract
+        uint256 amount = IERC20(sourceToken).balanceOf(address(this));
+        if (amount == 0) revert ZeroAmount();
 
         // Execute variant-specific intent creation
         intentHash = _executeIntent(amount);

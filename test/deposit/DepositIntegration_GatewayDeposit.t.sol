@@ -128,7 +128,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
         assertEq(depositAddress.depositor(), DEPOSITOR);
 
         // 4. Backend creates intent
-        bytes32 intentHash = depositAddress.createIntent(depositAmount);
+        bytes32 intentHash = depositAddress.createIntent();
         assertTrue(intentHash != bytes32(0));
 
         // 5. Verify tokens moved from deposit address to vault
@@ -169,7 +169,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
         // Create intent and capture the route/reward from events
         vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent(depositAmount);
+        bytes32 intentHash = depositAddress.createIntent();
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         // Extract route and reward from IntentPublished event
@@ -302,7 +302,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
         // Create intent and capture events
         vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent(depositAmount);
+        bytes32 intentHash = depositAddress.createIntent();
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         // Find IntentPublished event and decode route
@@ -376,13 +376,13 @@ contract DepositIntegration_GatewayDepositTest is Test {
         // First deposit
         uint256 amount1 = 10_000 * 1e18;
         token.mint(deployed, amount1);
-        bytes32 intentHash1 = depositAddress.createIntent(amount1);
+        bytes32 intentHash1 = depositAddress.createIntent();
         assertEq(token.balanceOf(deployed), 0);
 
         // Second deposit
         uint256 amount2 = 5_000 * 1e18;
         token.mint(deployed, amount2);
-        bytes32 intentHash2 = depositAddress.createIntent(amount2);
+        bytes32 intentHash2 = depositAddress.createIntent();
         assertEq(token.balanceOf(deployed), 0);
 
         // Intents should be different
@@ -419,10 +419,10 @@ contract DepositIntegration_GatewayDepositTest is Test {
         uint256 amount = 10_000 * 1e18;
 
         token.mint(deployed1, amount);
-        bytes32 intentHash1 = DepositAddress_GatewayDeposit(deployed1).createIntent(amount);
+        bytes32 intentHash1 = DepositAddress_GatewayDeposit(deployed1).createIntent();
 
         token.mint(deployed2, amount);
-        bytes32 intentHash2 = DepositAddress_GatewayDeposit(deployed2).createIntent(amount);
+        bytes32 intentHash2 = DepositAddress_GatewayDeposit(deployed2).createIntent();
 
         assertTrue(intentHash1 != bytes32(0));
         assertTrue(intentHash2 != bytes32(0));
@@ -439,7 +439,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
         uint256 amount = 10_000 * 1e18;
         token.mint(deployed, amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Fast forward past deadline
         vm.warp(block.timestamp + INTENT_DEADLINE_DURATION + 1);
@@ -478,7 +478,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
         // Create intent should work
         DepositAddress_GatewayDeposit depositAddress = DepositAddress_GatewayDeposit(deployed);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
         assertTrue(intentHash != bytes32(0));
     }
 
@@ -519,7 +519,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
         // Create intent and capture events
         vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         // Verify IntentPublished event was emitted (contains Gateway call)
@@ -546,7 +546,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
         // Create intent
         token.mint(deployed, 10_000 * 1e18);
         gasBefore = gasleft();
-        DepositAddress_GatewayDeposit(deployed).createIntent(10_000 * 1e18);
+        DepositAddress_GatewayDeposit(deployed).createIntent();
         uint256 createIntentGas = gasBefore - gasleft();
 
         // Log gas usage for reference

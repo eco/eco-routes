@@ -95,33 +95,20 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
         DepositAddress_CCTPMint_Arc uninit = new DepositAddress_CCTPMint_Arc();
 
         vm.expectRevert(BaseDepositAddress.NotInitialized.selector);
-        uninit.createIntent(1000);
+        uninit.createIntent();
     }
 
     function test_createIntent_revertsIfZeroAmount() public {
-        vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
-        depositAddress.createIntent(0);
-    }
-
-    function test_createIntent_revertsIfInsufficientBalance() public {
-        uint256 amount = 10_000 * 1e6;
         // Don't mint tokens, so balance is 0
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                BaseDepositAddress.InsufficientBalance.selector,
-                amount,
-                0
-            )
-        );
-        depositAddress.createIntent(amount);
+        vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
+        depositAddress.createIntent();
     }
 
     function test_createIntent_approvesPortalForTokens() public {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        depositAddress.createIntent(amount);
+        depositAddress.createIntent();
 
         // After publishAndFund, tokens should be transferred to vault
         assertEq(token.balanceOf(address(depositAddress)), 0);
@@ -131,7 +118,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Verify intent hash is not zero
         assertTrue(intentHash != bytes32(0));
@@ -141,7 +128,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
@@ -152,7 +139,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
         // Anyone can call createIntent
         vm.prank(ATTACKER);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
@@ -163,11 +150,11 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
         // First intent
         token.mint(address(depositAddress), amount1);
-        bytes32 intentHash1 = depositAddress.createIntent(amount1);
+        bytes32 intentHash1 = depositAddress.createIntent();
 
         // Second intent
         token.mint(address(depositAddress), amount2);
-        bytes32 intentHash2 = depositAddress.createIntent(amount2);
+        bytes32 intentHash2 = depositAddress.createIntent();
 
         assertTrue(intentHash1 != bytes32(0));
         assertTrue(intentHash2 != bytes32(0));
@@ -180,7 +167,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
         vm.assume(amount > 0 && amount <= type(uint256).max / 2);
 
         token.mint(address(depositAddress), amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }

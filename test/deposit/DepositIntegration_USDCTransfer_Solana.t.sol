@@ -92,7 +92,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         assertEq(depositAddress.depositor(), DEPOSITOR);
 
         // 4. Backend creates intent
-        bytes32 intentHash = depositAddress.createIntent(depositAmount);
+        bytes32 intentHash = depositAddress.createIntent();
         assertTrue(intentHash != bytes32(0));
 
         // 5. Verify tokens moved from deposit address to vault
@@ -117,13 +117,13 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         // First deposit
         uint256 amount1 = 10_000 * 1e6;
         token.mint(deployed, amount1);
-        bytes32 intentHash1 = depositAddress.createIntent(amount1);
+        bytes32 intentHash1 = depositAddress.createIntent();
         assertEq(token.balanceOf(deployed), 0);
 
         // Second deposit
         uint256 amount2 = 5_000 * 1e6;
         token.mint(deployed, amount2);
-        bytes32 intentHash2 = depositAddress.createIntent(amount2);
+        bytes32 intentHash2 = depositAddress.createIntent();
         assertEq(token.balanceOf(deployed), 0);
 
         // Intents should be different
@@ -147,10 +147,10 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         uint256 amount = 10_000 * 1e6;
 
         token.mint(deployed1, amount);
-        bytes32 intentHash1 = DepositAddress_USDCTransfer_Solana(deployed1).createIntent(amount);
+        bytes32 intentHash1 = DepositAddress_USDCTransfer_Solana(deployed1).createIntent();
 
         token.mint(deployed2, amount);
-        bytes32 intentHash2 = DepositAddress_USDCTransfer_Solana(deployed2).createIntent(amount);
+        bytes32 intentHash2 = DepositAddress_USDCTransfer_Solana(deployed2).createIntent();
 
         assertTrue(intentHash1 != bytes32(0));
         assertTrue(intentHash2 != bytes32(0));
@@ -163,7 +163,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
 
         uint256 amount = 10_000 * 1e6;
         token.mint(deployed, amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Check intent status
         IIntentSource.Status status = portal.getRewardStatus(intentHash);
@@ -181,7 +181,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
 
         uint256 amount = 10_000 * 1e6;
         token.mint(deployed, amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Fast forward past deadline
         vm.warp(block.timestamp + INTENT_DEADLINE_DURATION + 1);
@@ -203,23 +203,26 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
         DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
 
-        // Try to create intent without balance
+        // Try to create intent without balance - should revert with ZeroAmount
         vm.expectRevert();
-        depositAddress.createIntent(10_000 * 1e6);
+        depositAddress.createIntent();
 
         // Add partial balance
         token.mint(deployed, 5_000 * 1e6);
 
-        // Try to create intent with more than balance
-        vm.expectRevert();
-        depositAddress.createIntent(10_000 * 1e6);
+        // Now createIntent uses the entire balance (5,000 USDC)
+        bytes32 intentHash1 = depositAddress.createIntent();
+        assertTrue(intentHash1 != bytes32(0));
+        assertEq(token.balanceOf(deployed), 0, "Balance should be fully used");
 
-        // Add remaining balance
-        token.mint(deployed, 5_000 * 1e6);
+        // Add more balance for second intent
+        token.mint(deployed, 10_000 * 1e6);
 
-        // Now should succeed
-        bytes32 intentHash = depositAddress.createIntent(10_000 * 1e6);
-        assertTrue(intentHash != bytes32(0));
+        // Create another intent with the new balance
+        bytes32 intentHash2 = depositAddress.createIntent();
+        assertTrue(intentHash2 != bytes32(0));
+        assertTrue(intentHash1 != intentHash2, "Intent hashes should be different");
+        assertEq(token.balanceOf(deployed), 0, "Balance should be fully used again");
     }
 
     function test_integration_deterministicAddressingWorks() public {
@@ -240,7 +243,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
 
         // Create intent should work
         DepositAddress_USDCTransfer_Solana depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
         assertTrue(intentHash != bytes32(0));
     }
 
@@ -253,7 +256,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         // Create intent
         token.mint(deployed, 10_000 * 1e6);
         gasBefore = gasleft();
-        DepositAddress_USDCTransfer_Solana(deployed).createIntent(10_000 * 1e6);
+        DepositAddress_USDCTransfer_Solana(deployed).createIntent();
         uint256 createIntentGas = gasBefore - gasleft();
 
         // Log gas usage for reference

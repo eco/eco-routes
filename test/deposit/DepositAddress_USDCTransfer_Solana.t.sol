@@ -96,17 +96,18 @@ contract DepositAddressTest is Test {
         DepositAddress_USDCTransfer_Solana uninit = new DepositAddress_USDCTransfer_Solana();
 
         vm.expectRevert(BaseDepositAddress.NotInitialized.selector);
-        uninit.createIntent(1000);
+        uninit.createIntent();
     }
 
     function test_createIntent_revertsIfZeroAmount() public {
+        // Don't mint tokens, so balance is 0
         vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
-        depositAddress.createIntent(0);
+        depositAddress.createIntent();
     }
 
     function test_createIntent_revertsIfAmountTooLarge() public {
         uint256 tooLarge = uint256(type(uint64).max) + 1;
-        // Mint tokens so balance check passes
+        // Mint tokens so balance will be too large
         token.mint(address(depositAddress), tooLarge);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -115,7 +116,7 @@ contract DepositAddressTest is Test {
                 type(uint64).max
             )
         );
-        depositAddress.createIntent(tooLarge);
+        depositAddress.createIntent();
     }
 
     function test_createIntent_approvesPortalForTokens() public {
@@ -123,7 +124,7 @@ contract DepositAddressTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        depositAddress.createIntent(amount);
+        depositAddress.createIntent();
 
         // Check that portal was approved (it should have transferred the tokens)
         // After publishAndFund, the approval should be used
@@ -134,7 +135,7 @@ contract DepositAddressTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Verify intent hash is not zero
         assertTrue(intentHash != bytes32(0));
@@ -144,7 +145,7 @@ contract DepositAddressTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
@@ -155,7 +156,7 @@ contract DepositAddressTest is Test {
 
         // Anyone can call createIntent
         vm.prank(ATTACKER);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
@@ -166,11 +167,11 @@ contract DepositAddressTest is Test {
 
         // First intent
         token.mint(address(depositAddress), amount1);
-        bytes32 intentHash1 = depositAddress.createIntent(amount1);
+        bytes32 intentHash1 = depositAddress.createIntent();
 
         // Second intent
         token.mint(address(depositAddress), amount2);
-        bytes32 intentHash2 = depositAddress.createIntent(amount2);
+        bytes32 intentHash2 = depositAddress.createIntent();
 
         assertTrue(intentHash1 != bytes32(0));
         assertTrue(intentHash2 != bytes32(0));
@@ -184,7 +185,7 @@ contract DepositAddressTest is Test {
         token.mint(address(depositAddress), amount);
 
         // Create intent which internally calls _encodeRoute
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Verify intent was created successfully
         assertTrue(intentHash != bytes32(0));
@@ -200,7 +201,7 @@ contract DepositAddressTest is Test {
         vm.assume(amount > 0 && amount <= type(uint64).max);
 
         token.mint(address(depositAddress), amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
