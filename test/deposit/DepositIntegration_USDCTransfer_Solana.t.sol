@@ -11,7 +11,7 @@ import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 
-contract DepositIntegrationTest is Test {
+contract DepositIntegration_USDCTransfer_SolanaTest is Test {
     DepositFactory_USDCTransfer_Solana public factory;
     Portal public portal;
     TestERC20 public token;
