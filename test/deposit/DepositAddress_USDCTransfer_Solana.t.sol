@@ -3,15 +3,16 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
-import {DepositFactory} from "../../contracts/deposit/DepositFactory.sol";
-import {DepositAddress} from "../../contracts/deposit/DepositAddress.sol";
+import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
+import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
+import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
 contract DepositAddressTest is Test {
-    DepositFactory public factory;
-    DepositAddress public depositAddress;
+    DepositFactory_USDCTransfer_Solana public factory;
+    DepositAddress_USDCTransfer_Solana public depositAddress;
     Portal public portal;
     TestERC20 public token;
 
@@ -37,7 +38,7 @@ contract DepositAddressTest is Test {
         portal = new Portal();
 
         // Deploy factory
-        factory = new DepositFactory(
+        factory = new DepositFactory_USDCTransfer_Solana(
             address(token),
             DESTINATION_TOKEN,
             address(portal),
@@ -50,7 +51,7 @@ contract DepositAddressTest is Test {
 
         // Deploy deposit address (RECIPIENT_ATA is passed as destinationAddress for Solana)
         address deployed = factory.deploy(RECIPIENT_ATA, DEPOSITOR);
-        depositAddress = DepositAddress(deployed);
+        depositAddress = DepositAddress_USDCTransfer_Solana(deployed);
     }
 
     // ============ Initialization Tests ============
@@ -64,27 +65,27 @@ contract DepositAddressTest is Test {
     }
 
     function test_initialize_revertsIfAlreadyInitialized() public {
-        vm.expectRevert(DepositAddress.AlreadyInitialized.selector);
+        vm.expectRevert(BaseDepositAddress.AlreadyInitialized.selector);
         depositAddress.initialize(RECIPIENT_ATA, DEPOSITOR);
     }
 
     function test_initialize_revertsIfNotCalledByFactory() public {
         // Deploy implementation directly (not via factory)
-        DepositAddress implementation = new DepositAddress();
+        DepositAddress_USDCTransfer_Solana implementation = new DepositAddress_USDCTransfer_Solana();
 
         vm.prank(ATTACKER);
-        vm.expectRevert(DepositAddress.OnlyFactory.selector);
+        vm.expectRevert(BaseDepositAddress.OnlyFactory.selector);
         implementation.initialize(RECIPIENT_ATA, DEPOSITOR);
     }
 
     function test_initialize_revertsIfDepositorIsZero() public {
         // Attempt to deploy with zero depositor should revert
-        vm.expectRevert(DepositAddress.InvalidDepositor.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDepositor.selector);
         factory.deploy(RECIPIENT_ATA, address(0));
     }
 
     function test_initialize_revertsIfDestinationAddressIsZero() public {
-        vm.expectRevert(DepositAddress.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
         factory.deploy(bytes32(0), DEPOSITOR);
     }
 
@@ -92,27 +93,30 @@ contract DepositAddressTest is Test {
 
     function test_createIntent_revertsIfNotInitialized() public {
         // Create a fresh implementation
-        DepositAddress uninit = new DepositAddress();
+        DepositAddress_USDCTransfer_Solana uninit = new DepositAddress_USDCTransfer_Solana();
 
-        vm.expectRevert(DepositAddress.NotInitialized.selector);
-        uninit.createIntent(1000);
+        vm.expectRevert(BaseDepositAddress.NotInitialized.selector);
+        uninit.createIntent();
     }
 
     function test_createIntent_revertsIfZeroAmount() public {
-        vm.expectRevert(DepositAddress.ZeroAmount.selector);
-        depositAddress.createIntent(0);
+        // Don't mint tokens, so balance is 0
+        vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
+        depositAddress.createIntent();
     }
 
     function test_createIntent_revertsIfAmountTooLarge() public {
         uint256 tooLarge = uint256(type(uint64).max) + 1;
+        // Mint tokens so balance will be too large
+        token.mint(address(depositAddress), tooLarge);
         vm.expectRevert(
             abi.encodeWithSelector(
-                DepositAddress.AmountTooLarge.selector,
+                DepositAddress_USDCTransfer_Solana.AmountTooLarge.selector,
                 tooLarge,
                 type(uint64).max
             )
         );
-        depositAddress.createIntent(tooLarge);
+        depositAddress.createIntent();
     }
 
     function test_createIntent_approvesPortalForTokens() public {
@@ -120,7 +124,7 @@ contract DepositAddressTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        depositAddress.createIntent(amount);
+        depositAddress.createIntent();
 
         // Check that portal was approved (it should have transferred the tokens)
         // After publishAndFund, the approval should be used
@@ -131,7 +135,7 @@ contract DepositAddressTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Verify intent hash is not zero
         assertTrue(intentHash != bytes32(0));
@@ -141,7 +145,7 @@ contract DepositAddressTest is Test {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
@@ -152,7 +156,7 @@ contract DepositAddressTest is Test {
 
         // Anyone can call createIntent
         vm.prank(ATTACKER);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
@@ -163,11 +167,11 @@ contract DepositAddressTest is Test {
 
         // First intent
         token.mint(address(depositAddress), amount1);
-        bytes32 intentHash1 = depositAddress.createIntent(amount1);
+        bytes32 intentHash1 = depositAddress.createIntent();
 
         // Second intent
         token.mint(address(depositAddress), amount2);
-        bytes32 intentHash2 = depositAddress.createIntent(amount2);
+        bytes32 intentHash2 = depositAddress.createIntent();
 
         assertTrue(intentHash1 != bytes32(0));
         assertTrue(intentHash2 != bytes32(0));
@@ -181,7 +185,7 @@ contract DepositAddressTest is Test {
         token.mint(address(depositAddress), amount);
 
         // Create intent which internally calls _encodeRoute
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         // Verify intent was created successfully
         assertTrue(intentHash != bytes32(0));
@@ -197,7 +201,7 @@ contract DepositAddressTest is Test {
         vm.assume(amount > 0 && amount <= type(uint64).max);
 
         token.mint(address(depositAddress), amount);
-        bytes32 intentHash = depositAddress.createIntent(amount);
+        bytes32 intentHash = depositAddress.createIntent();
 
         assertTrue(intentHash != bytes32(0));
     }
