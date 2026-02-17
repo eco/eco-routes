@@ -109,14 +109,12 @@ contract DepositIntegration_CCTPMintTest is Test {
         tokenMessenger = new MockTokenMessenger();
         gateway = new MockGateway();
 
-        // Deploy factory with same chain as destination
+        // Deploy factory for local intents
         factory = new DepositFactory_CCTPMint_Arc(
-            CHAIN_ID, // Same chain for testing
             address(token),
             DESTINATION_TOKEN,
             address(portal),
             address(prover),
-            DESTINATION_PORTAL,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
             address(tokenMessenger)
@@ -175,15 +173,12 @@ contract DepositIntegration_CCTPMintTest is Test {
      * @dev For same-chain testing, we deploy a special factory where destination token = source token
      */
     function test_integration_createAndFulfillIntent() public {
-        // Deploy a special factory for same-chain testing where destination token = source token
-        // and destination portal = source portal
+        // Deploy a special factory for local intent testing where destination token = source token
         DepositFactory_CCTPMint_Arc sameChainFactory = new DepositFactory_CCTPMint_Arc(
-            CHAIN_ID,
             address(token), // source token
             address(token), // destination token (same for testing)
             address(portal),
             address(prover),
-            address(portal), // destination portal (same for testing)
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
             address(tokenMessenger)
@@ -370,7 +365,7 @@ contract DepositIntegration_CCTPMintTest is Test {
 
                 // Decode and verify route structure
                 Route memory route = abi.decode(routeBytes, (Route));
-                assertEq(route.portal, DESTINATION_PORTAL, "Route portal should be destination portal");
+                assertEq(route.portal, address(portal), "Route portal should be portal address");
                 assertEq(route.nativeAmount, 0, "Route should have no native amount");
                 assertEq(route.tokens.length, 1, "Route should have one token");
                 assertEq(route.tokens[0].token, DESTINATION_TOKEN, "Route token should be destination USDC");
@@ -508,23 +503,19 @@ contract DepositIntegration_CCTPMintTest is Test {
      */
     function test_integration_factoryConfigurationCorrect() public view {
         (
-            uint64 destChain,
             address sourceToken,
             address destinationToken,
             address portalAddress,
             address proverAddress,
-            address destPortal,
             uint64 deadlineDuration,
             uint32 destinationDomain,
             address cctpTokenMessenger
         ) = factory.getConfiguration();
 
-        assertEq(destChain, CHAIN_ID);
         assertEq(sourceToken, address(token));
         assertEq(destinationToken, DESTINATION_TOKEN);
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, address(prover));
-        assertEq(destPortal, DESTINATION_PORTAL);
         assertEq(deadlineDuration, INTENT_DEADLINE_DURATION);
         assertEq(destinationDomain, DESTINATION_DOMAIN);
         assertEq(cctpTokenMessenger, address(tokenMessenger));

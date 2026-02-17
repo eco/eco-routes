@@ -9,10 +9,18 @@ import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CC
 
 /**
  * @title DepositAddress_CCTPMint_Arc
- * @notice Minimal proxy contract that constructs Intent structs for CCTP minting on Arc
- * @dev Each DepositAddress is specific to one user's destination address
- *      Deployed via CREATE2 by DepositFactory_CCTPMint_Arc for deterministic addressing
- *      Uses standard Intent/Route/Reward structs instead of Borsh-encoded bytes
+ * @notice Minimal proxy contract that constructs Intent structs for CCTP transfers to Arc
+ * @dev Creates LOCAL intents (same-chain fulfillment).
+ *      Each DepositAddress is specific to one user's destination address.
+ *      Deployed via CREATE2 by DepositFactory_CCTPMint_Arc for deterministic addressing.
+ *
+ * @dev Intent Call Flow:
+ *      When a solver fulfills the intent, it executes:
+ *      `TokenMessenger.depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken)`
+ *
+ *      This burns USDC tokens on the current chain via CCTP and initiates a cross-chain
+ *      message to mint tokens on the destination domain (Arc), with the mintRecipient
+ *      receiving the minted tokens.
  */
 contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
 
@@ -47,7 +55,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @return Address of the source token
      */
     function _getSourceToken() internal view override returns (address) {
-        (, address sourceToken, , , , , , , ) = FACTORY.getConfiguration();
+        (address sourceToken, , , , , , ) = FACTORY.getConfiguration();
         return sourceToken;
     }
 
@@ -60,23 +68,24 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
     function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
-            uint64 destChain,
             address sourceToken,
             address destinationToken,
             address portal,
             address prover,
-            address destPortal,
             uint64 deadlineDuration,
             uint32 destinationDomain,
             address cctpTokenMessenger
         ) = FACTORY.getConfiguration();
+
+        // Use current chain ID for local intent
+        uint64 destChain = uint64(block.chainid);
 
         // Construct Intent struct
         Intent memory intent = _constructIntent(
             destChain,
             sourceToken,
             destinationToken,
-            destPortal,
+            portal,
             prover,
             amount,
             deadlineDuration,
@@ -99,11 +108,11 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
     }
 
     /**
-     * @notice Construct complete Intent struct for EVM destination
+     * @notice Construct complete Intent struct
      * @param destChain Destination chain ID
      * @param sourceToken Source token address
-     * @param destinationToken Destination token address on destination chain
-     * @param destPortal Portal address on destination chain
+     * @param destinationToken Destination token address
+     * @param portal Portal address
      * @param prover Prover contract address
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
@@ -115,7 +124,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         uint64 destChain,
         address sourceToken,
         address destinationToken,
-        address destPortal,
+        address portal,
         address prover,
         uint256 amount,
         uint64 deadlineDuration,
@@ -125,7 +134,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         // Construct Route
         Route memory route = _constructRoute(
             destinationToken,
-            destPortal,
+            portal,
             amount,
             deadlineDuration,
             destinationDomain,
@@ -148,7 +157,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
     /**
      * @notice Construct Route struct with CCTP depositForBurn call
      * @param destinationToken Token address on destination chain
-     * @param destPortal Portal address on destination chain
+     * @param portal Portal address
      * @param amount Amount of tokens to burn and mint
      * @param deadlineDuration Deadline duration in seconds
      * @param destinationDomain CCTP destination domain ID
@@ -158,7 +167,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      */
     function _constructRoute(
         address destinationToken,
-        address destPortal,
+        address portal,
         uint256 amount,
         uint64 deadlineDuration,
         uint32 destinationDomain,
@@ -196,7 +205,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         route = Route({
             salt: salt,
             deadline: deadline,
-            portal: destPortal,
+            portal: portal,
             nativeAmount: 0,
             tokens: tokens,
             calls: calls

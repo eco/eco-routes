@@ -38,12 +38,10 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
         // Deploy factory
         factory = new DepositFactory_CCTPMint_Arc(
-            DESTINATION_CHAIN,
             address(token),
             DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
-            DESTINATION_PORTAL,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
             CCTP_TOKEN_MESSENGER

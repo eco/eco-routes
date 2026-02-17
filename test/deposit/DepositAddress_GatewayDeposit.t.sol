@@ -37,12 +37,10 @@ contract DepositAddress_GatewayDepositTest is Test {
 
         // Deploy factory
         factory = new DepositFactory_GatewayDeposit(
-            DESTINATION_CHAIN,
             address(token),
             DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
-            DESTINATION_PORTAL,
             GATEWAY,
             INTENT_DEADLINE_DURATION
         );

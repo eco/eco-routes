@@ -10,9 +10,9 @@ import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_
 /**
  * @title DepositAddress_GatewayDeposit
  * @notice Minimal proxy contract that constructs Intent structs for Gateway deposits
- * @dev Each DepositAddress is specific to one user's destination address
- *      Deployed via CREATE2 by DepositFactory_GatewayDeposit for deterministic addressing
- *      Uses standard Intent/Route/Reward structs instead of Borsh-encoded bytes
+ * @dev Creates LOCAL intents (same-chain fulfillment).
+ *      Each DepositAddress is specific to one user's destination address.
+ *      Deployed via CREATE2 by DepositFactory_GatewayDeposit for deterministic addressing.
  */
 contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
@@ -47,7 +47,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
      * @return Address of the source token
      */
     function _getSourceToken() internal view override returns (address) {
-        (, address sourceToken, , , , , , ) = FACTORY.getConfiguration();
+        (address sourceToken, , , , , ) = FACTORY.getConfiguration();
         return sourceToken;
     }
 
@@ -60,22 +60,23 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
     function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
-            uint64 destChain,
             address sourceToken,
             address destinationToken,
             address portal,
             address prover,
-            address destPortal,
             address gateway,
             uint64 deadlineDuration
         ) = FACTORY.getConfiguration();
+
+        // Use current chain ID for local intent
+        uint64 destChain = uint64(block.chainid);
 
         // Construct Intent struct
         Intent memory intent = _constructIntent(
             destChain,
             sourceToken,
             destinationToken,
-            destPortal,
+            portal,
             prover,
             gateway,
             amount,
@@ -98,13 +99,13 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
     }
 
     /**
-     * @notice Construct complete Intent struct for EVM destination
+     * @notice Construct complete Intent struct
      * @param destChain Destination chain ID
      * @param sourceToken Source token address
-     * @param destinationToken Destination token address on destination chain
-     * @param destPortal Portal address on destination chain
+     * @param destinationToken Destination token address
+     * @param portal Portal address
      * @param prover Prover contract address
-     * @param gateway Gateway contract address on destination chain
+     * @param gateway Gateway contract address
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
      * @param depositorAddr Depositor address for Gateway call
@@ -114,7 +115,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         uint64 destChain,
         address sourceToken,
         address destinationToken,
-        address destPortal,
+        address portal,
         address prover,
         address gateway,
         uint256 amount,
@@ -124,7 +125,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         // Construct Route
         Route memory route = _constructRoute(
             destinationToken,
-            destPortal,
+            portal,
             gateway,
             amount,
             deadlineDuration,
@@ -146,9 +147,9 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
     /**
      * @notice Construct Route struct with Gateway depositFor call
-     * @param destinationToken Token address on destination chain
-     * @param destPortal Portal address on destination chain
-     * @param gateway Gateway contract address on destination chain
+     * @param destinationToken Token address
+     * @param portal Portal address
+     * @param gateway Gateway contract address
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
      * @param depositorAddr Depositor address for Gateway call
@@ -156,7 +157,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
      */
     function _constructRoute(
         address destinationToken,
-        address destPortal,
+        address portal,
         address gateway,
         uint256 amount,
         uint64 deadlineDuration,
@@ -191,7 +192,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         route = Route({
             salt: salt,
             deadline: deadline,
-            portal: destPortal,
+            portal: portal,
             nativeAmount: 0,
             tokens: tokens,
             calls: calls

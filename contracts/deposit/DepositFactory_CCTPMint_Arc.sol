@@ -6,31 +6,29 @@ import {DepositAddress_CCTPMint_Arc} from "./DepositAddress_CCTPMint_Arc.sol";
 
 /**
  * @title DepositFactory_CCTPMint_Arc
- * @notice Factory contract for deploying deterministic deposit addresses for CCTP minting on Arc
- * @dev Each factory is configured for a specific cross-chain route (e.g., Ethereum USDC → Arc USDC via CCTP)
- *      Uses CREATE2 for deterministic address generation based on user's destination address
- *      This version uses standard Intent structs instead of Borsh-encoded bytes
+ * @notice Factory contract for deploying deterministic deposit addresses for CCTP transfers to Arc
+ * @dev Deploys deposit addresses which allow users to deposit funds into CCTP to be transferred to Arc chain.
+ *      Creates LOCAL intents (same-chain fulfillment).
+ *      Uses CREATE2 for deterministic address generation based on user's destination address.
+ *
+ * @dev Prover Configuration:
+ *      This factory should be configured with a LocalProver address, as intents
+ *      are created and fulfilled on the same chain.
  */
 contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
     // ============ Immutable Configuration ============
 
-    /// @notice Destination chain ID (e.g., 10 for Optimism, 137 for Polygon)
-    uint64 public immutable DESTINATION_CHAIN;
-
-    /// @notice Source token address (ERC20 on source chain)
+    /// @notice Source token address (ERC20 on current chain)
     address public immutable SOURCE_TOKEN;
 
     /// @notice Destination token address on destination chain
     address public immutable DESTINATION_TOKEN;
 
-    /// @notice Portal contract address on source chain
+    /// @notice Portal contract address
     address public immutable PORTAL_ADDRESS;
 
     /// @notice Prover contract address
     address public immutable PROVER_ADDRESS;
-
-    /// @notice Portal contract address on destination chain
-    address public immutable DESTINATION_PORTAL;
 
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
     uint64 public immutable INTENT_DEADLINE_DURATION;
@@ -50,23 +48,19 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
 
     /**
      * @notice Initialize the factory with route configuration
-     * @param _destinationChain Target chain ID
-     * @param _sourceToken ERC20 token address on source chain (burn token for CCTP)
-     * @param _destinationToken Token address on destination chain
-     * @param _portalAddress Portal contract address on source chain
-     * @param _proverAddress Prover contract address
-     * @param _destinationPortal Portal address on destination chain
+     * @param _sourceToken Source token address (burn token for CCTP)
+     * @param _destinationToken Destination token address
+     * @param _portalAddress Portal contract address
+     * @param _proverAddress LocalProver contract address
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      * @param _destinationDomain CCTP destination domain ID
-     * @param _cctpTokenMessenger CCTP TokenMessenger contract address on source chain
+     * @param _cctpTokenMessenger CCTP TokenMessenger contract address
      */
     constructor(
-        uint64 _destinationChain,
         address _sourceToken,
         address _destinationToken,
         address _portalAddress,
         address _proverAddress,
-        address _destinationPortal,
         uint64 _intentDeadlineDuration,
         uint32 _destinationDomain,
         address _cctpTokenMessenger
@@ -76,17 +70,14 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
         if (_proverAddress == address(0)) revert InvalidProverAddress();
         if (_destinationToken == address(0)) revert InvalidTargetToken();
-        if (_destinationPortal == address(0)) revert InvalidDestinationPortal();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
         if (_cctpTokenMessenger == address(0)) revert InvalidCCTPTokenMessenger();
 
         // Store configuration
-        DESTINATION_CHAIN = _destinationChain;
         SOURCE_TOKEN = _sourceToken;
         DESTINATION_TOKEN = _destinationToken;
         PORTAL_ADDRESS = _portalAddress;
         PROVER_ADDRESS = _proverAddress;
-        DESTINATION_PORTAL = _destinationPortal;
         INTENT_DEADLINE_DURATION = _intentDeadlineDuration;
         DESTINATION_DOMAIN = _destinationDomain;
         CCTP_TOKEN_MESSENGER = _cctpTokenMessenger;
@@ -96,12 +87,10 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
 
     /**
      * @notice Get complete factory configuration
-     * @return destinationChain Target chain ID
      * @return sourceToken Source token address
      * @return destinationToken Destination token address
-     * @return portalAddress Portal address on source chain
-     * @return proverAddress Prover contract address
-     * @return destinationPortal Portal address on destination chain
+     * @return portalAddress Portal address
+     * @return proverAddress LocalProver contract address
      * @return intentDeadlineDuration Deadline duration in seconds
      * @return destinationDomain CCTP destination domain ID
      * @return cctpTokenMessenger CCTP TokenMessenger contract address
@@ -110,24 +99,20 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
         external
         view
         returns (
-            uint64 destinationChain,
             address sourceToken,
             address destinationToken,
             address portalAddress,
             address proverAddress,
-            address destinationPortal,
             uint64 intentDeadlineDuration,
             uint32 destinationDomain,
             address cctpTokenMessenger
         )
     {
         return (
-            DESTINATION_CHAIN,
             SOURCE_TOKEN,
             DESTINATION_TOKEN,
             PORTAL_ADDRESS,
             PROVER_ADDRESS,
-            DESTINATION_PORTAL,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
             CCTP_TOKEN_MESSENGER
