@@ -128,8 +128,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
             portal,
             gateway,
             amount,
-            deadlineDuration,
-            depositorAddr
+            deadlineDuration
         );
 
         // Construct Reward
@@ -152,7 +151,6 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
      * @param gateway Gateway contract address
      * @param amount Amount of tokens to transfer
      * @param deadlineDuration Deadline duration in seconds
-     * @param depositorAddr Depositor address for Gateway call
      * @return route Route struct with Gateway depositFor call
      */
     function _constructRoute(
@@ -160,8 +158,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         address portal,
         address gateway,
         uint256 amount,
-        uint64 deadlineDuration,
-        address depositorAddr
+        uint64 deadlineDuration
     ) internal view returns (Route memory route) {
         // Generate unique salt
         bytes32 salt = keccak256(
@@ -176,13 +173,14 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         tokens[0] = TokenAmount({token: destinationToken, amount: amount});
 
         // Construct Gateway depositFor call
+        // Convert destinationAddress (bytes32) to address for the recipient
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
             target: gateway,
             data: abi.encodeWithSignature(
                 "depositFor(address,address,uint256)",
                 destinationToken,
-                depositorAddr,
+                address(uint160(uint256(destinationAddress))),
                 amount
             ),
             value: 0

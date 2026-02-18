@@ -253,7 +253,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
                     (address, address, uint256)
                 );
                 assertEq(token_, address(token), "DepositFor should be for correct token");
-                assertEq(recipient, DEPOSITOR, "DepositFor should send to depositor");
+                assertEq(recipient, USER_DESTINATION, "DepositFor should send to destination address");
                 assertEq(amount_, depositAmount, "DepositFor should be for correct amount");
                 foundDepositFor = true;
                 break;
@@ -344,11 +344,11 @@ contract DepositIntegration_GatewayDepositTest is Test {
                 assertEq(route.calls[0].target, address(gateway), "Call target should be Gateway");
                 assertEq(route.calls[0].value, 0, "Gateway call should have no value");
 
-                // Verify Gateway call is depositFor
+                // Verify Gateway call is depositFor with destination address as recipient
                 bytes memory expectedCall = abi.encodeWithSignature(
                     "depositFor(address,address,uint256)",
                     DESTINATION_TOKEN,
-                    DEPOSITOR,
+                    USER_DESTINATION,
                     depositAmount
                 );
                 assertEq(route.calls[0].data, expectedCall, "Gateway call should be depositFor");
