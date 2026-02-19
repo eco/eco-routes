@@ -2,15 +2,15 @@
 pragma solidity ^0.8.26;
 
 import {Clones} from "../vault/Clones.sol";
-import {DepositAddress} from "./DepositAddress.sol";
+import {DepositAddress_USDCTransfer_Solana} from "./DepositAddress_USDCTransfer_Solana.sol";
 
 /**
- * @title DepositFactory
- * @notice Factory contract for deploying deterministic deposit addresses
+ * @title DepositFactory_USDCTransfer_Solana
+ * @notice Factory contract for deploying deterministic deposit addresses for USDC transfers to Solana
  * @dev Each factory is configured for a specific cross-chain route (e.g., Ethereum USDC → Solana USDC)
  *      Uses CREATE2 for deterministic address generation based on user's destination address
  */
-contract DepositFactory {
+contract DepositFactory_USDCTransfer_Solana {
     using Clones for address;
 
     // ============ Constants ============
@@ -62,13 +62,13 @@ contract DepositFactory {
     // ============ Errors ============
 
     error InvalidSourceToken();
-    error InvalidDestinationToken();
     error InvalidPortalAddress();
     error InvalidProverAddress();
-    error InvalidDestinationPortal();
-    error InvalidPortalPDA();
     error InvalidDeadlineDuration();
+    error InvalidDestinationPortal();
     error InvalidDestinationAddress();
+    error InvalidDestinationToken();
+    error InvalidPortalPDA();
     error InvalidExecutorATA();
 
     // ============ Constructor ============
@@ -115,7 +115,7 @@ contract DepositFactory {
         EXECUTOR_ATA = _executorATA;
 
         // Deploy implementation contract
-        DEPOSIT_IMPLEMENTATION = address(new DepositAddress());
+        DEPOSIT_IMPLEMENTATION = address(new DepositAddress_USDCTransfer_Solana());
     }
 
     // ============ External Functions ============
@@ -153,7 +153,7 @@ contract DepositFactory {
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
         // Initialize the deposit address with destination and depositor
-        DepositAddress(deployed).initialize(destinationAddress, depositor);
+        DepositAddress_USDCTransfer_Solana(deployed).initialize(destinationAddress, depositor);
 
         emit DepositContractDeployed(destinationAddress, deployed);
     }

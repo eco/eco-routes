@@ -2,21 +2,19 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
 import {Reward, TokenAmount} from "../types/Intent.sol";
-import {DepositFactory} from "./DepositFactory.sol";
+import {DepositFactory_USDCTransfer_Solana as DepositFactory} from "./DepositFactory_USDCTransfer_Solana.sol";
 import {Endian} from "../libs/Endian.sol";
 
 /**
- * @title DepositAddress
- * @notice Minimal proxy contract that encodes routes and creates cross-chain intents
+ * @title DepositAddress_USDCTransfer_Solana
+ * @notice Minimal proxy contract that encodes routes and creates cross-chain intents for USDC transfers to Solana
  * @dev Each DepositAddress is specific to one user's destination address
- *      Deployed via CREATE2 by DepositFactory for deterministic addressing
+ *      Deployed via CREATE2 by DepositFactory_USDCTransfer_Solana for deterministic addressing
  */
-contract DepositAddress is ReentrancyGuard {
-    using SafeERC20 for IERC20;
+contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
 
     // ============ Constants ============
 
@@ -29,18 +27,6 @@ contract DepositAddress is ReentrancyGuard {
     /// @notice Token decimals for USDC and similar tokens on Solana
     uint8 public constant TOKEN_DECIMALS = 6;
 
-    // ============ Storage ============
-
-    /// @notice Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
-    /// @dev For Solana, this is computed off-chain as: deriveAddress([ownerPubkey, TOKEN_PROGRAM_ID, mintPubkey], ATA_PROGRAM_ID)
-    bytes32 public destinationAddress;
-
-    /// @notice Depositor address on source chain (where refunds are sent if intent fails)
-    address public depositor;
-
-    /// @notice Initialization flag
-    bool private initialized;
-
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
@@ -48,12 +34,6 @@ contract DepositAddress is ReentrancyGuard {
 
     // ============ Errors ============
 
-    error AlreadyInitialized();
-    error NotInitialized();
-    error OnlyFactory();
-    error InvalidDepositor();
-    error InvalidDestinationAddress();
-    error ZeroAmount();
     error AmountTooLarge(uint256 amount, uint256 maxAmount);
 
     // ============ Constructor ============
@@ -65,40 +45,37 @@ contract DepositAddress is ReentrancyGuard {
         FACTORY = DepositFactory(msg.sender);
     }
 
-    // ============ External Functions ============
+    // ============ Internal Functions ============
 
     /**
-     * @notice Initialize the deposit address (called once by factory after deployment)
-     * @param _destinationAddress Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
-     * @param _depositor Address to receive refunds if intent fails
+     * @notice Get the factory address that deployed this contract
+     * @dev Implementation of abstract function from BaseDepositAddress
+     * @return Address of the factory contract
      */
-    function initialize(
-        bytes32 _destinationAddress,
-        address _depositor
-    ) external {
-        if (initialized) revert AlreadyInitialized();
-        if (msg.sender != address(FACTORY)) revert OnlyFactory();
-        if (_destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
-        if (_depositor == address(0)) revert InvalidDepositor();
-
-        destinationAddress = _destinationAddress;
-        depositor = _depositor;
-        initialized = true;
+    function _factory() internal view override returns (address) {
+        return address(FACTORY);
     }
 
     /**
-     * @notice Create a cross-chain intent for deposited tokens
-     * @dev Encodes route bytes for Solana, constructs reward, and calls Portal.publishAndFund()
+     * @notice Get the source token address for this deposit
+     * @dev Implementation of abstract function from BaseDepositAddress
+     * @return Address of the source token
+     */
+    function _getSourceToken() internal view override returns (address) {
+        (, address sourceToken, , , , , , , ) = FACTORY.getConfiguration();
+        return sourceToken;
+    }
+
+    /**
+     * @notice Execute variant-specific intent creation logic
+     * @dev Implementation of abstract function from BaseDepositAddress
      *      Amount must fit in uint64 due to Solana's u64 token amount limitation.
      *      This works for 6-decimal tokens (USDC, USDT) but restricts 18-decimal tokens.
      * @param amount Amount of tokens to bridge (must be <= type(uint64).max)
      * @return intentHash Hash of the created intent
      */
-    function createIntent(
-        uint256 amount
-    ) external nonReentrant returns (bytes32 intentHash) {
-        if (!initialized) revert NotInitialized();
-        if (amount == 0) revert ZeroAmount();
+    function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
+        // Validate amount fits in uint64 for Solana compatibility
         if (amount > type(uint64).max) {
             revert AmountTooLarge(amount, type(uint64).max);
         }
@@ -150,8 +127,6 @@ contract DepositAddress is ReentrancyGuard {
 
         return intentHash;
     }
-
-    // ============ Internal Functions ============
 
     /**
      * @notice Encode route bytes for Solana using Borsh format
