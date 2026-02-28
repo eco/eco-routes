@@ -206,7 +206,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                     assertEq(route.tokens.length, 1, "Intent 1 route should have one token");
                     assertEq(route.tokens[0].token, address(token), "Intent 1 route token should be source USDC");
                     assertEq(route.tokens[0].amount, depositAmount, "Intent 1 route token amount should match deposit");
-                    assertEq(route.calls.length, 1, "Intent 1 route should have one call (CCTP depositForBurn)");
+                    assertEq(route.calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
                     assertEq(rewardTokens.length, 1, "Intent 1 reward should have one token");
                     assertEq(rewardTokens[0].token, address(token), "Intent 1 reward token should be source USDC");
                     assertEq(rewardTokens[0].amount, depositAmount, "Intent 1 reward amount should match deposit");

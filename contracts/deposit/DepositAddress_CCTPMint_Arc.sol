@@ -246,9 +246,18 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         TokenAmount[] memory routeTokens = new TokenAmount[](1);
         routeTokens[0] = TokenAmount({token: sourceToken, amount: amount});
 
-        // Route calls: CCTP depositForBurn
-        Call[] memory calls = new Call[](1);
+        // Route calls: approve TokenMessenger + CCTP depositForBurn
+        Call[] memory calls = new Call[](2);
         calls[0] = Call({
+            target: sourceToken,
+            data: abi.encodeWithSignature(
+                "approve(address,uint256)",
+                cctpTokenMessenger,
+                amount
+            ),
+            value: 0
+        });
+        calls[1] = Call({
             target: cctpTokenMessenger,
             data: abi.encodeWithSignature(
                 "depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)",

@@ -330,11 +330,15 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
                     assertEq(route.tokens.length, 1, "Intent 1 route should have one token");
                     assertEq(route.tokens[0].token, address(token), "Intent 1 route token should be source USDC");
                     assertEq(route.tokens[0].amount, amount, "Intent 1 route token amount should match deposit");
-                    assertEq(route.calls.length, 1, "Intent 1 route should have one call (CCTP depositForBurn)");
+                    assertEq(route.calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
 
-                    // Verify CCTP depositForBurn call
-                    assertEq(route.calls[0].target, CCTP_TOKEN_MESSENGER, "Call target should be TokenMessenger");
-                    assertEq(route.calls[0].value, 0, "CCTP call should have no value");
+                    // Verify approve call (calls[0])
+                    assertEq(route.calls[0].target, address(token), "Call 0 target should be source token (approve)");
+                    assertEq(route.calls[0].value, 0, "Approve call should have no value");
+
+                    // Verify CCTP depositForBurn call (calls[1])
+                    assertEq(route.calls[1].target, CCTP_TOKEN_MESSENGER, "Call 1 target should be TokenMessenger");
+                    assertEq(route.calls[1].value, 0, "CCTP call should have no value");
 
                     // Verify reward
                     assertEq(rewardNativeAmount, 0, "Intent 1 reward should have no native amount");
@@ -378,9 +382,9 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
                     Route memory route = abi.decode(routeBytes, (Route));
 
-                    // Decode the CCTP depositForBurn call data
+                    // Decode the CCTP depositForBurn call data (calls[1], after approve)
                     // Expected signature: depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)
-                    bytes memory callData = route.calls[0].data;
+                    bytes memory callData = route.calls[1].data;
 
                     // Skip the 4-byte selector and decode the parameters
                     bytes4 selector = bytes4(callData);
@@ -458,7 +462,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
-                    bytes memory callData = route.calls[0].data;
+                    bytes memory callData = route.calls[1].data; // calls[1] = depositForBurn (after approve)
 
                     // Decode the third parameter (mintRecipient) from the CCTP call
                     (
