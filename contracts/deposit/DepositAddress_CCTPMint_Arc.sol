@@ -9,20 +9,24 @@ import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CC
 
 /**
  * @title DepositAddress_CCTPMint_Arc
- * @notice Minimal proxy contract that constructs Intent structs for CCTP transfers to Arc
- * @dev Creates LOCAL intents (same-chain fulfillment).
+ * @notice Minimal proxy contract that constructs two Intent structs for CCTP+Gateway transfers to Arc
+ * @dev Creates TWO intents to bridge USDC from source chain to Arc via CCTP, then deposit into Gateway:
+ *      Intent 2 (published first): Gateway deposit on Arc — receives CCTP-bridged USDC and deposits into Gateway
+ *      Intent 1 (published and funded second): CCTP burn on source chain — burns USDC and mints to Intent 2's vault
  *      Each DepositAddress is specific to one user's destination address.
  *      Deployed via CREATE2 by DepositFactory_CCTPMint_Arc for deterministic addressing.
  *
  * @dev Intent Call Flow:
- *      When a solver fulfills the intent, it executes:
- *      `TokenMessenger.depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken)`
- *
- *      This burns USDC tokens on the current chain via CCTP and initiates a cross-chain
- *      message to mint tokens on the destination domain (Arc), with the mintRecipient
- *      receiving the minted tokens.
+ *      Intent 1: Solver calls TokenMessengerV2.depositForBurn to burn USDC on source chain via CCTP,
+ *                minting to Intent 2's vault on Arc.
+ *      Intent 2: Solver approves Gateway for USDC and calls Gateway.depositFor to credit the user.
  */
 contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
+
+    // ============ Constants ============
+
+    /// @notice Scaling factor for converting 6-decimal USDC to 18-decimal native USDC on Arc
+    uint256 private constant NATIVE_USDC_SCALING = 1e12;
 
     // ============ Immutables ============
 
@@ -55,191 +59,238 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @return Address of the source token
      */
     function _getSourceToken() internal view override returns (address) {
-        (address sourceToken, , , , , , ) = FACTORY.getConfiguration();
+        (address sourceToken, , , , , , , , , ) = FACTORY.getConfiguration();
         return sourceToken;
     }
 
     /**
      * @notice Execute variant-specific intent creation logic
-     * @dev Implementation of abstract function from BaseDepositAddress
+     * @dev Creates TWO intents:
+     *      1. Gateway deposit intent on Arc (published first to obtain vault address)
+     *      2. CCTP burn intent on source chain (funded with deposited USDC, mints to Intent 2's vault)
      * @param amount Amount of tokens to bridge
-     * @return intentHash Hash of the created intent
+     * @return intentHash Hash of the CCTP burn intent (Intent 1)
      */
     function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
             address sourceToken,
-            address destinationToken,
-            address portal,
-            address prover,
+            address portalAddress,
+            address proverAddress,
             uint64 deadlineDuration,
             uint32 destinationDomain,
-            address cctpTokenMessenger
+            address cctpTokenMessenger,
+            uint64 arcChainId,
+            address arcProverAddress,
+            address arcUsdc,
+            address gatewayAddress
         ) = FACTORY.getConfiguration();
 
-        // Use current chain ID for local intent
-        uint64 destChain = uint64(block.chainid);
+        // Generate unique salt (same for both intents)
+        bytes32 salt = keccak256(
+            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+        );
 
-        // Construct Intent struct
-        Intent memory intent = _constructIntent(
-            destChain,
-            sourceToken,
-            destinationToken,
-            portal,
-            prover,
+        // Calculate deadline (same for both intents)
+        uint64 deadline = uint64(block.timestamp + deadlineDuration);
+
+        // ---- Step 1: Construct and publish Intent 2 (Gateway deposit on Arc) ----
+        Intent memory intent2 = _constructGatewayIntent(
+            arcChainId,
+            portalAddress,
+            arcProverAddress,
+            arcUsdc,
+            gatewayAddress,
             amount,
-            deadlineDuration,
+            salt,
+            deadline
+        );
+
+        // Publish Intent 2 and get its vault address
+        Portal portalContract = Portal(portalAddress);
+        (, address vault2) = portalContract.publish(intent2);
+
+        // ---- Step 2: Construct, fund, and publish Intent 1 (CCTP burn on source chain) ----
+        Intent memory intent1 = _constructCCTPIntent(
+            sourceToken,
+            portalAddress,
+            proverAddress,
+            cctpTokenMessenger,
             destinationDomain,
-            cctpTokenMessenger
+            vault2,
+            amount,
+            salt,
+            deadline
         );
 
-        // Approve Portal to spend tokens
-        IERC20(sourceToken).approve(portal, amount);
-
-        // Call Portal.publishAndFund with Intent struct
-        Portal portalContract = Portal(portal);
-        address vault;
-        (intentHash, vault) = portalContract.publishAndFund(
-            intent,
-            false // allowPartial = false
-        );
+        // Approve Portal to spend tokens and publish+fund Intent 1
+        IERC20(sourceToken).approve(portalAddress, amount);
+        (intentHash, ) = portalContract.publishAndFund(intent1, false);
 
         return intentHash;
     }
 
     /**
-     * @notice Construct complete Intent struct
-     * @param destChain Destination chain ID
-     * @param sourceToken Source token address
-     * @param destinationToken Destination token address
-     * @param portal Portal address
-     * @param prover Prover contract address
-     * @param amount Amount of tokens to transfer
-     * @param deadlineDuration Deadline duration in seconds
-     * @param destinationDomain CCTP destination domain ID
-     * @param cctpTokenMessenger CCTP TokenMessenger contract address
-     * @return intent Complete Intent struct ready for publishing
+     * @notice Construct the Gateway deposit intent (Intent 2) for Arc chain
+     * @dev This intent is fulfilled on Arc: solver approves Gateway for USDC and calls depositFor
+     * @param arcChainId Arc chain ID
+     * @param portalAddress Portal address (same on all chains)
+     * @param arcProverAddress LocalProver address on Arc
+     * @param arcUsdc USDC ERC20 address on Arc
+     * @param gatewayAddress Gateway contract address on Arc
+     * @param amount Amount of USDC (6 decimals)
+     * @param salt Unique salt for the intent
+     * @param deadline Deadline timestamp for the intent
+     * @return intent Complete Intent struct for the Gateway deposit
      */
-    function _constructIntent(
-        uint64 destChain,
-        address sourceToken,
-        address destinationToken,
-        address portal,
-        address prover,
+    function _constructGatewayIntent(
+        uint64 arcChainId,
+        address portalAddress,
+        address arcProverAddress,
+        address arcUsdc,
+        address gatewayAddress,
         uint256 amount,
-        uint64 deadlineDuration,
-        uint32 destinationDomain,
-        address cctpTokenMessenger
+        bytes32 salt,
+        uint64 deadline
     ) internal view returns (Intent memory intent) {
-        // Construct Route
-        Route memory route = _constructRoute(
-            destinationToken,
-            portal,
-            amount,
-            deadlineDuration,
-            destinationDomain,
-            sourceToken,
-            cctpTokenMessenger
-        );
+        // Arc's native token is USDC at 18 decimals. The arcUsdc ERC20 is a 6-decimal wrapper.
+        // nativeAmount funds the vault in native USDC (18 decimals), while the route calls
+        // (approve and depositFor) interact with the 6-decimal ERC20.
+        uint256 nativeAmount = amount * NATIVE_USDC_SCALING;
 
-        // Construct Reward
-        Reward memory reward = _constructReward(
-            sourceToken,
-            prover,
-            amount,
-            deadlineDuration
-        );
+        // Route tokens: empty (native USDC)
+        TokenAmount[] memory routeTokens = new TokenAmount[](0);
 
-        // Combine into Intent
-        intent = Intent({destination: destChain, route: route, reward: reward});
-    }
-
-    /**
-     * @notice Construct Route struct with CCTP depositForBurn call
-     * @param destinationToken Token address on destination chain
-     * @param portal Portal address
-     * @param amount Amount of tokens to burn and mint
-     * @param deadlineDuration Deadline duration in seconds
-     * @param destinationDomain CCTP destination domain ID
-     * @param sourceToken Source token to burn
-     * @param cctpTokenMessenger CCTP TokenMessenger contract address
-     * @return route Route struct with CCTP depositForBurn call
-     */
-    function _constructRoute(
-        address destinationToken,
-        address portal,
-        uint256 amount,
-        uint64 deadlineDuration,
-        uint32 destinationDomain,
-        address sourceToken,
-        address cctpTokenMessenger
-    ) internal view returns (Route memory route) {
-        // Generate unique salt
-        bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
-        );
-
-        // Calculate deadline
-        uint64 deadline = uint64(block.timestamp + deadlineDuration);
-
-        // Construct token array (for destination chain)
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: destinationToken, amount: amount});
-
-        // destinationAddress is already bytes32 format, use directly as CCTP mintRecipient
-        // Construct CCTP depositForBurn call
-        Call[] memory calls = new Call[](1);
+        // Route calls: approve Gateway + depositFor (both use 6-decimal arcUsdc amounts)
+        Call[] memory calls = new Call[](2);
         calls[0] = Call({
-            target: cctpTokenMessenger,
+            target: arcUsdc,
             data: abi.encodeWithSignature(
-                "depositForBurn(uint256,uint32,bytes32,address)",
-                amount,
-                destinationDomain,
-                destinationAddress, // Use bytes32 destinationAddress directly as mintRecipient
-                sourceToken
+                "approve(address,uint256)",
+                gatewayAddress,
+                amount
+            ),
+            value: 0
+        });
+        calls[1] = Call({
+            target: gatewayAddress,
+            data: abi.encodeWithSignature(
+                "depositFor(address,address,uint256)",
+                arcUsdc,
+                address(uint160(uint256(destinationAddress))),
+                amount
             ),
             value: 0
         });
 
         // Construct route
-        route = Route({
+        Route memory route = Route({
             salt: salt,
             deadline: deadline,
-            portal: portal,
-            nativeAmount: 0,
-            tokens: tokens,
+            portal: portalAddress,
+            nativeAmount: nativeAmount,
+            tokens: routeTokens,
             calls: calls
+        });
+
+        // Reward tokens: empty (native USDC reward)
+        TokenAmount[] memory rewardTokens = new TokenAmount[](0);
+
+        // Construct reward
+        Reward memory reward = Reward({
+            deadline: deadline,
+            creator: depositor,
+            prover: arcProverAddress,
+            nativeAmount: nativeAmount,
+            tokens: rewardTokens
+        });
+
+        // Combine into Intent
+        intent = Intent({
+            destination: arcChainId,
+            route: route,
+            reward: reward
         });
     }
 
     /**
-     * @notice Construct Reward struct for the intent
-     * @param sourceToken Source token address
-     * @param prover Prover contract address
-     * @param amount Amount of tokens as reward
-     * @param deadlineDuration Deadline duration in seconds
-     * @return reward Reward struct with escrowed source tokens
+     * @notice Construct the CCTP burn intent (Intent 1) for source chain
+     * @dev This intent is fulfilled locally: solver calls TokenMessengerV2.depositForBurn
+     *      to burn USDC and mint to Intent 2's vault on Arc
+     * @param sourceToken Source USDC token address
+     * @param portalAddress Portal address on source chain
+     * @param proverAddress LocalProver address on source chain
+     * @param cctpTokenMessenger CCTP TokenMessengerV2 address
+     * @param destinationDomain CCTP destination domain ID for Arc
+     * @param vault2 Intent 2's vault address (CCTP mintRecipient)
+     * @param amount Amount of USDC (6 decimals)
+     * @param salt Unique salt for the intent
+     * @param deadline Deadline timestamp for the intent
+     * @return intent Complete Intent struct for the CCTP burn
      */
-    function _constructReward(
+    function _constructCCTPIntent(
         address sourceToken,
-        address prover,
+        address portalAddress,
+        address proverAddress,
+        address cctpTokenMessenger,
+        uint32 destinationDomain,
+        address vault2,
         uint256 amount,
-        uint64 deadlineDuration
-    ) internal view returns (Reward memory reward) {
-        // Calculate deadline
-        uint64 deadline = uint64(block.timestamp + deadlineDuration);
+        bytes32 salt,
+        uint64 deadline
+    ) internal view returns (Intent memory intent) {
+        // Use current chain ID for local intent
+        uint64 destChain = uint64(block.chainid);
 
-        // Construct reward token array
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: sourceToken, amount: amount});
+        // Route tokens: source USDC
+        TokenAmount[] memory routeTokens = new TokenAmount[](1);
+        routeTokens[0] = TokenAmount({token: sourceToken, amount: amount});
+
+        // Route calls: CCTP depositForBurn
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: cctpTokenMessenger,
+            data: abi.encodeWithSignature(
+                "depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)",
+                amount,
+                destinationDomain,
+                bytes32(uint256(uint160(vault2))), // mintRecipient = Intent 2 vault
+                sourceToken,
+                bytes32(0), // destinationCaller (anyone)
+                0, // maxFee (standard = free)
+                2000 // minFinalityThreshold (standard)
+            ),
+            value: 0
+        });
+
+        // Construct route
+        Route memory route = Route({
+            salt: salt,
+            deadline: deadline,
+            portal: portalAddress,
+            nativeAmount: 0,
+            tokens: routeTokens,
+            calls: calls
+        });
+
+        // Reward tokens: source USDC
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
+        rewardTokens[0] = TokenAmount({token: sourceToken, amount: amount});
 
         // Construct reward
-        reward = Reward({
+        Reward memory reward = Reward({
             deadline: deadline,
-            creator: depositor, // Depositor is creator (matches Solana implementation)
-            prover: prover,
+            creator: depositor,
+            prover: proverAddress,
             nativeAmount: 0,
-            tokens: tokens
+            tokens: rewardTokens
+        });
+
+        // Combine into Intent
+        intent = Intent({
+            destination: destChain,
+            route: route,
+            reward: reward
         });
     }
 }
