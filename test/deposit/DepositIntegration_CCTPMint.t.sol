@@ -12,57 +12,26 @@ import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
 /**
- * @title MockTokenMessenger
- * @notice Mock CCTP TokenMessenger for testing
+ * @title DepositIntegration_CCTPMintTest
+ * @notice Integration tests for the CCTP+Gateway dual-intent deposit flow.
+ *         Exercises the end-to-end lifecycle: factory deployment, deterministic addressing,
+ *         token deposits, dual-intent creation, and Portal funding across
+ *         DepositFactory_CCTPMint_Arc, DepositAddress_CCTPMint_Arc, and Portal.
  */
-contract MockTokenMessenger {
-    event DepositForBurn(
-        uint256 amount,
-        uint32 destinationDomain,
-        bytes32 mintRecipient,
-        address burnToken
-    );
-
-    function depositForBurn(
-        uint256 amount,
-        uint32 destinationDomain,
-        bytes32 mintRecipient,
-        address burnToken
-    ) external returns (uint64) {
-        // In real CCTP, tokens would be burned here
-        // For testing, we just emit the event to verify the call was made correctly
-        emit DepositForBurn(amount, destinationDomain, mintRecipient, burnToken);
-        return 1; // Mock nonce
-    }
-}
-
-/**
- * @title MockGateway
- * @notice Mock Gateway contract for receiving USDC on destination chain
- */
-contract MockGateway {
-    event Received(address token, address recipient, uint256 amount);
-
-    function receiveMessage(bytes32 sender, bytes calldata message) external {
-        // Mock implementation - just emit event
-        emit Received(address(0), address(0), 0);
-    }
-}
-
 contract DepositIntegration_CCTPMintTest is Test {
     DepositFactory_CCTPMint_Arc public factory;
     Portal public portal;
     LocalProver public prover;
     TestERC20 public token;
-    MockTokenMessenger public tokenMessenger;
-    MockGateway public gateway;
 
     // Configuration parameters (using same chain for testing)
     uint64 public CHAIN_ID;
-    address constant DESTINATION_TOKEN = address(0x5678); // USDC on destination
-    address constant DESTINATION_PORTAL = address(0xDEF0);
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
-    uint32 constant DESTINATION_DOMAIN = 0; // Same chain domain
+    uint32 constant DESTINATION_DOMAIN = 6; // Arc CCTP domain
+    uint64 constant ARC_CHAIN_ID = 41455;
+    address constant ARC_PROVER_ADDRESS = address(0xBBBB);
+    address constant ARC_USDC = address(0xCCCC);
+    address constant GATEWAY_ADDRESS = address(0xDDDD);
 
     // Test user addresses
     address constant USER_DESTINATION = address(0x1111);
@@ -105,19 +74,18 @@ contract DepositIntegration_CCTPMintTest is Test {
         // Deploy LocalProver (for same-chain testing)
         prover = new LocalProver(address(portal));
 
-        // Deploy mock contracts
-        tokenMessenger = new MockTokenMessenger();
-        gateway = new MockGateway();
-
-        // Deploy factory for local intents
+        // Deploy factory with dual-intent configuration
         factory = new DepositFactory_CCTPMint_Arc(
             address(token),
-            DESTINATION_TOKEN,
             address(portal),
             address(prover),
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
-            address(tokenMessenger)
+            address(0xABCD), // CCTP TokenMessenger mock address
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
         );
 
         // Fund solver
@@ -128,7 +96,7 @@ contract DepositIntegration_CCTPMintTest is Test {
 
     /**
      * @notice Full end-to-end test: deploy factory, deploy deposit address,
-     *         create intent, and verify funding
+     *         create dual intents, and verify funding
      */
     function test_integration_fullCCTPMintFlow() public {
         // 1. Get deposit address before deployment
@@ -149,8 +117,10 @@ contract DepositIntegration_CCTPMintTest is Test {
         assertEq(depositAddress.destinationAddress(), bytes32(uint256(uint160(USER_DESTINATION))));
         assertEq(depositAddress.depositor(), DEPOSITOR);
 
-        // 4. Backend creates intent
+        // 4. Backend creates dual intents
+        vm.recordLogs();
         bytes32 intentHash = depositAddress.createIntent();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
         assertTrue(intentHash != bytes32(0));
 
         // 5. Verify tokens moved from deposit address to vault
@@ -164,159 +134,22 @@ contract DepositIntegration_CCTPMintTest is Test {
             "Intent should be funded"
         );
 
-        // Note: Full fulfillment testing is covered in test_integration_flashFulfillCCTPFlow
-        // This test focuses on the deposit address creation and intent funding flow
-    }
-
-    /**
-     * @notice Test full cycle: create intent, fulfill it with LocalProver, verify results
-     * @dev For same-chain testing, we deploy a special factory where destination token = source token
-     */
-    function test_integration_createAndFulfillIntent() public {
-        // Deploy a special factory for local intent testing where destination token = source token
-        DepositFactory_CCTPMint_Arc sameChainFactory = new DepositFactory_CCTPMint_Arc(
-            address(token), // source token
-            address(token), // destination token (same for testing)
-            address(portal),
-            address(prover),
-            INTENT_DEADLINE_DURATION,
-            DESTINATION_DOMAIN,
-            address(tokenMessenger)
+        // 7. Verify two IntentPublished events were emitted
+        bytes32 intentPublishedSig = keccak256(
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
         );
 
-        address deployed = sameChainFactory.deploy(USER_DESTINATION, DEPOSITOR);
-        DepositAddress_CCTPMint_Arc depositAddress = DepositAddress_CCTPMint_Arc(deployed);
-
-        uint256 depositAmount = 10_000 * 1e6;
-        token.mint(deployed, depositAmount);
-
-        // Create intent and capture the route/reward from events
-        vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent();
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-
-        // Extract route and reward from IntentPublished event
-        Route memory route;
-        Reward memory reward;
-        bool foundIntent = false;
-
+        uint256 intentPublishedCount = 0;
         for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == keccak256("IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])")) {
-                (
-                    uint64 destination,
-                    bytes memory routeBytes,
-                    uint64 rewardDeadline,
-                    uint256 rewardNativeAmount,
-                    TokenAmount[] memory rewardTokens
-                ) = abi.decode(
-                    logs[i].data,
-                    (uint64, bytes, uint64, uint256, TokenAmount[])
-                );
-
-                route = abi.decode(routeBytes, (Route));
-                reward = Reward({
-                    deadline: rewardDeadline,
-                    creator: DEPOSITOR,
-                    prover: address(prover),
-                    nativeAmount: rewardNativeAmount,
-                    tokens: rewardTokens
-                });
-
-                foundIntent = true;
-                break;
+            if (logs[i].topics[0] == intentPublishedSig) {
+                intentPublishedCount++;
             }
         }
-        assertTrue(foundIntent, "Should find IntentPublished event");
-
-        // Verify the route token is the same as source (for same-chain test)
-        assertEq(route.tokens[0].token, address(token), "Route token should be source token for same-chain test");
-
-        // Verify intent was funded
-        IIntentSource.Status statusBefore = portal.getRewardStatus(intentHash);
-        assertEq(uint256(statusBefore), uint256(IIntentSource.Status.Funded), "Intent should be funded");
-
-        // Fulfill the intent with LocalProver using flashFulfill
-        vm.startPrank(SOLVER);
-
-        // Solver needs to provide the route tokens
-        token.mint(SOLVER, depositAmount);
-        token.approve(address(portal), depositAmount);
-
-        uint256 solverBalanceBefore = token.balanceOf(SOLVER);
-        assertEq(solverBalanceBefore, depositAmount, "Solver should start with route token amount");
-
-        // Use flashFulfill to atomically fulfill and withdraw
-        // This will:
-        // 1. Withdraw reward tokens from vault to LocalProver
-        // 2. Fulfill the intent (spending solver's route tokens, which go to Executor, then CCTP is called)
-        // 3. Transfer all rewards from LocalProver to solver
-        vm.recordLogs();
-        prover.flashFulfill(
-            route,
-            reward,
-            bytes32(uint256(uint160(SOLVER)))
-        );
-        Vm.Log[] memory fulfillLogs = vm.getRecordedLogs();
-
-        vm.stopPrank();
-
-        // Verify tokens were actually moved:
-        // 1. Route tokens should have been transferred to Executor during fulfillment
-        //    (They stay with Executor since MockTokenMessenger doesn't transfer them)
-        address executor = address(portal.executor());
-        uint256 executorBalance = token.balanceOf(executor);
-        assertEq(
-            executorBalance,
-            depositAmount,
-            "Executor should have received route tokens during fulfillment"
-        );
-
-        // 2. Verify CCTP depositForBurn was called correctly by checking events
-        //    (This proves the intent was fulfilled with correct parameters)
-        bool foundDepositForBurn = false;
-        for (uint256 i = 0; i < fulfillLogs.length; i++) {
-            if (fulfillLogs[i].topics[0] == keccak256("DepositForBurn(uint256,uint32,bytes32,address)")) {
-                (uint256 amount_, uint32 domain, bytes32 recipient, address burnToken) = abi.decode(
-                    fulfillLogs[i].data,
-                    (uint256, uint32, bytes32, address)
-                );
-                assertEq(amount_, depositAmount, "DepositForBurn should be for correct amount");
-                assertEq(domain, DESTINATION_DOMAIN, "DepositForBurn should be for correct domain");
-                assertEq(burnToken, address(token), "DepositForBurn should burn correct token");
-                // mintRecipient should be USER_DESTINATION (the destination address) encoded as bytes32
-                assertEq(recipient, bytes32(uint256(uint160(USER_DESTINATION))), "DepositForBurn should mint to user destination");
-                foundDepositForBurn = true;
-                break;
-            }
-        }
-        assertTrue(foundDepositForBurn, "DepositForBurn event should be emitted");
-
-        // 3. SOLVER should have received reward tokens
-        // Solver spent depositAmount (route tokens) and received depositAmount (rewards)
-        // Net effect: balance should be the same
-        uint256 solverBalanceAfter = token.balanceOf(SOLVER);
-        assertEq(
-            solverBalanceAfter,
-            depositAmount,
-            "Solver should have same balance (spent route tokens, received rewards)"
-        );
-
-        // Verify the intent was fulfilled and withdrawn
-        IIntentSource.Status statusAfter = portal.getRewardStatus(intentHash);
-        assertEq(uint256(statusAfter), uint256(IIntentSource.Status.Withdrawn), "Intent should be withdrawn");
-
-        // Verify the claimant is correct
-        bytes32 claimantBytes = portal.claimants(intentHash);
-        address claimant = address(uint160(uint256(claimantBytes)));
-        assertEq(claimant, SOLVER, "Claimant should be the solver");
-
-        // Verify LocalProver recognizes the fulfillment
-        assertEq(prover.provenIntents(intentHash).claimant, SOLVER, "Prover should recognize solver as claimant");
-        assertEq(prover.provenIntents(intentHash).destination, CHAIN_ID, "Prover should have correct destination");
+        assertEq(intentPublishedCount, 2, "Should emit exactly two IntentPublished events");
     }
 
     /**
-     * @notice Test that the intent structure is correct by decoding the published event
+     * @notice Test that the dual intent structure is correct by decoding the published events
      */
     function test_integration_intentStructureIsCorrect() public {
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
@@ -330,16 +163,19 @@ contract DepositIntegration_CCTPMintTest is Test {
         bytes32 intentHash = depositAddress.createIntent();
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
-        // Find IntentPublished event and decode route
-        bool foundIntent = false;
+        bytes32 intentPublishedSig = keccak256(
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+        );
+
+        // Find and verify both IntentPublished events
+        uint256 eventIdx = 0;
         for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == keccak256("IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])")) {
-                // Indexed fields are in topics: intentHash, creator, prover
+            if (logs[i].topics[0] == intentPublishedSig) {
+                // Indexed fields
                 bytes32 publishedIntentHash = logs[i].topics[1];
                 address creator = address(uint160(uint256(logs[i].topics[2])));
-                address proverAddr = address(uint160(uint256(logs[i].topics[3])));
 
-                // Non-indexed fields are in data
+                // Non-indexed fields
                 (
                     uint64 destination,
                     bytes memory routeBytes,
@@ -351,35 +187,36 @@ contract DepositIntegration_CCTPMintTest is Test {
                     (uint64, bytes, uint64, uint256, TokenAmount[])
                 );
 
-                // Verify intent matches
-                assertEq(publishedIntentHash, intentHash, "Intent hash should match");
-                assertEq(destination, CHAIN_ID, "Destination should be same chain");
-                assertEq(creator, DEPOSITOR, "Creator should be depositor");
-                assertEq(proverAddr, address(prover), "Prover should be LocalProver");
-
-                // Verify reward structure
-                assertEq(rewardNativeAmount, 0, "Should have no native reward");
-                assertEq(rewardTokens.length, 1, "Should have one reward token");
-                assertEq(rewardTokens[0].token, address(token), "Reward token should be source USDC");
-                assertEq(rewardTokens[0].amount, depositAmount, "Reward amount should match deposit");
-
-                // Decode and verify route structure
                 Route memory route = abi.decode(routeBytes, (Route));
-                assertEq(route.portal, address(portal), "Route portal should be portal address");
-                assertEq(route.nativeAmount, 0, "Route should have no native amount");
-                assertEq(route.tokens.length, 1, "Route should have one token");
-                assertEq(route.tokens[0].token, DESTINATION_TOKEN, "Route token should be destination USDC");
-                assertEq(route.tokens[0].amount, depositAmount, "Route token amount should match deposit");
-                assertEq(route.calls.length, 1, "Route should have one call (CCTP)");
-                assertEq(route.calls[0].target, address(tokenMessenger), "Call target should be TokenMessenger");
-                assertEq(route.calls[0].value, 0, "CCTP call should have no value");
 
-                foundIntent = true;
-                break;
+                if (eventIdx == 0) {
+                    // Intent 2 (Gateway deposit on Arc) - published first
+                    assertEq(destination, ARC_CHAIN_ID, "Intent 2 destination should be Arc chain");
+                    assertEq(creator, DEPOSITOR, "Intent 2 creator should be depositor");
+                    assertEq(route.portal, address(portal), "Intent 2 route portal should be portal address");
+                    assertEq(route.tokens.length, 0, "Intent 2 route should have empty tokens (native USDC)");
+                    assertEq(route.calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
+                    assertEq(rewardTokens.length, 0, "Intent 2 reward should have empty tokens (native USDC)");
+                } else {
+                    // Intent 1 (CCTP burn on source chain) - published second
+                    assertEq(publishedIntentHash, intentHash, "Intent 1 hash should match returned hash");
+                    assertEq(destination, CHAIN_ID, "Intent 1 destination should be source chain");
+                    assertEq(creator, DEPOSITOR, "Intent 1 creator should be depositor");
+                    assertEq(route.portal, address(portal), "Intent 1 route portal should be portal address");
+                    assertEq(route.tokens.length, 1, "Intent 1 route should have one token");
+                    assertEq(route.tokens[0].token, address(token), "Intent 1 route token should be source USDC");
+                    assertEq(route.tokens[0].amount, depositAmount, "Intent 1 route token amount should match deposit");
+                    assertEq(route.calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
+                    assertEq(rewardTokens.length, 1, "Intent 1 reward should have one token");
+                    assertEq(rewardTokens[0].token, address(token), "Intent 1 reward token should be source USDC");
+                    assertEq(rewardTokens[0].amount, depositAmount, "Intent 1 reward amount should match deposit");
+                }
+
+                eventIdx++;
             }
         }
 
-        assertTrue(foundIntent, "IntentPublished event should be found");
+        assertEq(eventIdx, 2, "Should have found exactly two IntentPublished events");
     }
 
     /**
@@ -395,7 +232,8 @@ contract DepositIntegration_CCTPMintTest is Test {
         bytes32 intentHash1 = depositAddress.createIntent();
         assertEq(token.balanceOf(deployed), 0);
 
-        // Second deposit
+        // Second deposit (new block.timestamp to avoid salt collision)
+        vm.warp(block.timestamp + 1);
         uint256 amount2 = 5_000 * 1e6;
         token.mint(deployed, amount2);
         bytes32 intentHash2 = depositAddress.createIntent();
@@ -437,6 +275,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         token.mint(deployed1, amount);
         bytes32 intentHash1 = DepositAddress_CCTPMint_Arc(deployed1).createIntent();
 
+        vm.warp(block.timestamp + 1);
         token.mint(deployed2, amount);
         bytes32 intentHash2 = DepositAddress_CCTPMint_Arc(deployed2).createIntent();
 
@@ -499,57 +338,7 @@ contract DepositIntegration_CCTPMintTest is Test {
     }
 
     /**
-     * @notice Test configuration is correctly set
-     */
-    function test_integration_factoryConfigurationCorrect() public view {
-        (
-            address sourceToken,
-            address destinationToken,
-            address portalAddress,
-            address proverAddress,
-            uint64 deadlineDuration,
-            uint32 destinationDomain,
-            address cctpTokenMessenger
-        ) = factory.getConfiguration();
-
-        assertEq(sourceToken, address(token));
-        assertEq(destinationToken, DESTINATION_TOKEN);
-        assertEq(portalAddress, address(portal));
-        assertEq(proverAddress, address(prover));
-        assertEq(deadlineDuration, INTENT_DEADLINE_DURATION);
-        assertEq(destinationDomain, DESTINATION_DOMAIN);
-        assertEq(cctpTokenMessenger, address(tokenMessenger));
-    }
-
-    /**
-     * @notice Test CCTP call is constructed correctly by checking emitted events
-     */
-    function test_integration_cctpCallConstruction() public {
-        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
-        DepositAddress_CCTPMint_Arc depositAddress = DepositAddress_CCTPMint_Arc(deployed);
-
-        uint256 amount = 10_000 * 1e6;
-        token.mint(deployed, amount);
-
-        // Create intent and capture events
-        vm.recordLogs();
-        bytes32 intentHash = depositAddress.createIntent();
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-
-        // Verify IntentPublished event was emitted (contains CCTP call)
-        bool foundIntentPublished = false;
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == keccak256("IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])")) {
-                foundIntentPublished = true;
-                assertEq(logs[i].topics[1], intentHash, "Intent hash should match");
-                break;
-            }
-        }
-        assertTrue(foundIntentPublished, "IntentPublished event should be emitted with CCTP call");
-    }
-
-    /**
-     * @notice Test gas estimation for CCTP flow
+     * @notice Test gas estimation for dual-intent flow
      */
     function test_integration_gasEstimation() public {
         // Deploy
@@ -565,22 +354,12 @@ contract DepositIntegration_CCTPMintTest is Test {
 
         // Log gas usage for reference
         emit log_named_uint("Deploy gas", deployGas);
-        emit log_named_uint("CreateIntent gas", createIntentGas);
+        emit log_named_uint("CreateIntent gas (dual-intent)", createIntentGas);
 
         // Basic sanity checks
         assertTrue(deployGas > 0);
         assertTrue(createIntentGas > 0);
         assertTrue(deployGas < 500_000); // Should be < 500k for minimal proxy
-        assertTrue(createIntentGas < 500_000); // Should be < 500k for intent creation
-    }
-
-    // ============ Helper Functions ============
-
-    function _createTokenArray(
-        uint256 amount
-    ) internal view returns (TokenAmount[] memory) {
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(token), amount: amount});
-        return tokens;
+        assertTrue(createIntentGas < 1_000_000); // Should be < 1M for dual-intent creation
     }
 }

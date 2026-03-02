@@ -13,14 +13,15 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     Portal public portal;
 
     // Configuration parameters
-    uint64 constant DESTINATION_CHAIN = 42161; // Arbitrum
     address constant SOURCE_TOKEN = address(0x1234);
-    address constant DESTINATION_TOKEN = address(0x5678);
     address constant PROVER_ADDRESS = address(0x9ABC);
-    address constant DESTINATION_PORTAL = address(0xDEF0);
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
-    uint32 constant DESTINATION_DOMAIN = 3; // Arbitrum CCTP domain
+    uint32 constant DESTINATION_DOMAIN = 6; // Arc CCTP domain
     address constant CCTP_TOKEN_MESSENGER = address(0xABCD);
+    uint64 constant ARC_CHAIN_ID = 41455;
+    address constant ARC_PROVER_ADDRESS = address(0xBBBB);
+    address constant ARC_USDC = address(0xCCCC);
+    address constant GATEWAY_ADDRESS = address(0xDDDD);
 
     // Test user addresses
     address constant USER_DESTINATION_1 = address(0x1111);
@@ -29,18 +30,19 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     address constant DEPOSITOR_2 = address(0x4444);
 
     function setUp() public {
-        // Deploy Portal
         portal = new Portal();
 
-        // Deploy factory
         factory = new DepositFactory_CCTPMint_Arc(
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
-            CCTP_TOKEN_MESSENGER
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
         );
     }
 
@@ -49,21 +51,27 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     function test_constructor_setsConfigurationCorrectly() public view {
         (
             address sourceToken,
-            address destinationToken,
             address portalAddress,
             address proverAddress,
             uint64 deadlineDuration,
             uint32 destinationDomain,
-            address cctpTokenMessenger
+            address cctpTokenMessenger,
+            uint64 arcChainId,
+            address arcProverAddress,
+            address arcUsdc,
+            address gatewayAddress
         ) = factory.getConfiguration();
 
         assertEq(sourceToken, SOURCE_TOKEN);
-        assertEq(destinationToken, DESTINATION_TOKEN);
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, PROVER_ADDRESS);
         assertEq(deadlineDuration, INTENT_DEADLINE_DURATION);
         assertEq(destinationDomain, DESTINATION_DOMAIN);
         assertEq(cctpTokenMessenger, CCTP_TOKEN_MESSENGER);
+        assertEq(arcChainId, ARC_CHAIN_ID);
+        assertEq(arcProverAddress, ARC_PROVER_ADDRESS);
+        assertEq(arcUsdc, ARC_USDC);
+        assertEq(gatewayAddress, GATEWAY_ADDRESS);
     }
 
     function test_constructor_deploysImplementation() public view {
@@ -76,51 +84,47 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         vm.expectRevert(BaseDepositFactory.InvalidSourceToken.selector);
         new DepositFactory_CCTPMint_Arc(
             address(0), // Invalid
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
-            CCTP_TOKEN_MESSENGER
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
         );
     }
 
-    function test_constructor_revertsOnInvalidDestinationToken() public {
-        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidTargetToken.selector);
-        new DepositFactory_CCTPMint_Arc(
-            SOURCE_TOKEN,
-            address(0), // Invalid
-            address(portal),
-            PROVER_ADDRESS,
-            INTENT_DEADLINE_DURATION,
-            DESTINATION_DOMAIN,
-            CCTP_TOKEN_MESSENGER
-        );
-    }
-
-    function test_constructor_revertsOnInvalidPortal() public {
+    function test_constructor_revertsOnInvalidPortalAddress() public {
         vm.expectRevert(BaseDepositFactory.InvalidPortalAddress.selector);
         new DepositFactory_CCTPMint_Arc(
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(0), // Invalid
             PROVER_ADDRESS,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
-            CCTP_TOKEN_MESSENGER
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
         );
     }
 
-    function test_constructor_revertsOnInvalidProver() public {
+    function test_constructor_revertsOnInvalidProverAddress() public {
         vm.expectRevert(BaseDepositFactory.InvalidProverAddress.selector);
         new DepositFactory_CCTPMint_Arc(
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             address(0), // Invalid
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
-            CCTP_TOKEN_MESSENGER
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
         );
     }
 
@@ -128,12 +132,15 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         vm.expectRevert(BaseDepositFactory.InvalidDeadlineDuration.selector);
         new DepositFactory_CCTPMint_Arc(
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             0, // Invalid
             DESTINATION_DOMAIN,
-            CCTP_TOKEN_MESSENGER
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
         );
     }
 
@@ -141,11 +148,78 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidCCTPTokenMessenger.selector);
         new DepositFactory_CCTPMint_Arc(
             SOURCE_TOKEN,
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             INTENT_DEADLINE_DURATION,
             DESTINATION_DOMAIN,
+            address(0), // Invalid
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
+        );
+    }
+
+    function test_constructor_revertsOnInvalidArcChainId() public {
+        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidArcChainId.selector);
+        new DepositFactory_CCTPMint_Arc(
+            SOURCE_TOKEN,
+            address(portal),
+            PROVER_ADDRESS,
+            INTENT_DEADLINE_DURATION,
+            DESTINATION_DOMAIN,
+            CCTP_TOKEN_MESSENGER,
+            0, // Invalid
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
+            GATEWAY_ADDRESS
+        );
+    }
+
+    function test_constructor_revertsOnInvalidArcProverAddress() public {
+        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidArcProverAddress.selector);
+        new DepositFactory_CCTPMint_Arc(
+            SOURCE_TOKEN,
+            address(portal),
+            PROVER_ADDRESS,
+            INTENT_DEADLINE_DURATION,
+            DESTINATION_DOMAIN,
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            address(0), // Invalid
+            ARC_USDC,
+            GATEWAY_ADDRESS
+        );
+    }
+
+    function test_constructor_revertsOnInvalidArcUsdc() public {
+        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidArcUsdc.selector);
+        new DepositFactory_CCTPMint_Arc(
+            SOURCE_TOKEN,
+            address(portal),
+            PROVER_ADDRESS,
+            INTENT_DEADLINE_DURATION,
+            DESTINATION_DOMAIN,
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            address(0), // Invalid
+            GATEWAY_ADDRESS
+        );
+    }
+
+    function test_constructor_revertsOnInvalidGatewayAddress() public {
+        vm.expectRevert(DepositFactory_CCTPMint_Arc.InvalidGatewayAddress.selector);
+        new DepositFactory_CCTPMint_Arc(
+            SOURCE_TOKEN,
+            address(portal),
+            PROVER_ADDRESS,
+            INTENT_DEADLINE_DURATION,
+            DESTINATION_DOMAIN,
+            CCTP_TOKEN_MESSENGER,
+            ARC_CHAIN_ID,
+            ARC_PROVER_ADDRESS,
+            ARC_USDC,
             address(0) // Invalid
         );
     }
@@ -157,7 +231,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         assertTrue(predicted != address(0));
     }
 
-    function test_getDepositAddress_sameAddressForSameDestination() public view {
+    function test_getDepositAddress_sameAddressForSameParams() public view {
         address predicted1 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         address predicted2 = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
         assertEq(predicted1, predicted2);
@@ -219,7 +293,6 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     function test_deploy_revertsIfAlreadyDeployed() public {
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
 
-        // Should revert at clone level when trying to deploy to same address
         vm.expectRevert();
         factory.deploy(USER_DESTINATION_1, DEPOSITOR_1);
     }
