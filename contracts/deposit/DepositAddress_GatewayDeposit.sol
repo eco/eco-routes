@@ -10,7 +10,10 @@ import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_
 /**
  * @title DepositAddress_GatewayDeposit
  * @notice Minimal proxy contract that constructs Intent structs for Gateway deposits
- * @dev Creates LOCAL intents (same-chain fulfillment).
+ * @dev Creates LOCAL intents (same-chain fulfillment). Because source and destination are the
+ *      same chain, the single TOKEN from the factory serves as both the source token (escrowed
+ *      as the solver reward) and the destination token (transferred by the solver to fulfill
+ *      the route).
  *      Each DepositAddress is specific to one user's destination address.
  *      Deployed via CREATE2 by DepositFactory_GatewayDeposit for deterministic addressing.
  */

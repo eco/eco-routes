@@ -7,7 +7,9 @@ import {DepositAddress_GatewayDeposit} from "./DepositAddress_GatewayDeposit.sol
 /**
  * @title DepositFactory_GatewayDeposit
  * @notice Factory contract for deploying deterministic deposit addresses for Gateway deposits
- * @dev Creates LOCAL intents (same-chain fulfillment) on the Arc chain.
+ * @dev Creates LOCAL intents (same-chain fulfillment) on the Arc chain. Because source and
+ *      destination are the same chain, TOKEN serves as both the source token (escrowed as the
+ *      solver reward) and the destination token (transferred by the solver to fulfill the route).
  *      This factory is designed to be deployed on the Arc chain.
  *      Uses CREATE2 for deterministic address generation based on user's destination address.
  *
