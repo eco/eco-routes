@@ -58,8 +58,14 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
 
     /**
      * @notice Create a cross-chain intent for deposited tokens
-     * @dev Template method: validates common requirements, delegates to variant-specific execution
-     *      Uses the entire balance of source tokens held by this contract
+     * @dev Template method: validates common requirements, delegates to variant-specific execution.
+     *      Uses the entire balance of source tokens held by this contract.
+     *
+     * @dev PERMISSIONLESS: this function has no access control. Any caller can trigger intent
+     *      creation as soon as tokens are present in the contract. This is by design — the
+     *      off-chain backend calls it on the depositor's behalf — but depositors must be aware
+     *      that funds sent to this address will be immediately swept into an intent by anyone.
+     *      Only send tokens here when you are ready for the intent to be published.
      * @return intentHash Hash of the created intent
      */
     function createIntent() external nonReentrant returns (bytes32 intentHash) {
