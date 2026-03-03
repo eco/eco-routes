@@ -52,10 +52,12 @@ contract DepositFactory_USDCTransfer_Solana {
     /**
      * @notice Emitted when a new deposit contract is deployed
      * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana
+     * @param depositor Address to receive refunds if intent fails
      * @param depositAddress Deployed DepositAddress contract address
      */
     event DepositContractDeployed(
         bytes32 indexed destinationAddress,
+        address indexed depositor,
         address indexed depositAddress
     );
 
@@ -155,7 +157,7 @@ contract DepositFactory_USDCTransfer_Solana {
         // Initialize the deposit address with destination and depositor
         DepositAddress_USDCTransfer_Solana(deployed).initialize(destinationAddress, depositor);
 
-        emit DepositContractDeployed(destinationAddress, deployed);
+        emit DepositContractDeployed(destinationAddress, depositor, deployed);
     }
 
     /**

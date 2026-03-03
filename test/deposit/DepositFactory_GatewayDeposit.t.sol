@@ -192,9 +192,10 @@ contract DepositFactory_GatewayDepositTest is Test {
     function test_deploy_emitsEvent() public {
         address predicted = factory.getDepositAddress(USER_DESTINATION_1, DEPOSITOR_1);
 
-        vm.expectEmit(true, true, false, false);
+        vm.expectEmit(true, true, true, false);
         emit BaseDepositFactory.DepositContractDeployed(
             USER_DESTINATION_1,
+            DEPOSITOR_1,
             predicted
         );
 

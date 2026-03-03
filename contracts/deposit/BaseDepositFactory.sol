@@ -22,10 +22,12 @@ abstract contract BaseDepositFactory {
     /**
      * @notice Emitted when a new deposit contract is deployed
      * @param destinationAddress User's destination address on target chain
+     * @param depositor Address to receive refunds if intent fails
      * @param depositContract Address of deployed deposit contract
      */
     event DepositContractDeployed(
         address indexed destinationAddress,
+        address indexed depositor,
         address indexed depositContract
     );
 
@@ -67,7 +69,7 @@ abstract contract BaseDepositFactory {
         // Initialize the deployed contract
         _initializeDeployedContract(deployed, destinationAddress, depositor);
 
-        emit DepositContractDeployed(destinationAddress, deployed);
+        emit DepositContractDeployed(destinationAddress, depositor, deployed);
         return deployed;
     }
 
