@@ -17,7 +17,6 @@ contract DepositAddress_GatewayDepositTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 42161; // Arbitrum
-    address constant DESTINATION_TOKEN = address(0x5678);
     address constant PROVER_ADDRESS = address(0x9ABC);
     address constant DESTINATION_PORTAL = address(0xDEF0);
     address constant GATEWAY = address(0xAAAA);
@@ -38,7 +37,6 @@ contract DepositAddress_GatewayDepositTest is Test {
         // Deploy factory
         factory = new DepositFactory_GatewayDeposit(
             address(token),
-            DESTINATION_TOKEN,
             address(portal),
             PROVER_ADDRESS,
             GATEWAY,
