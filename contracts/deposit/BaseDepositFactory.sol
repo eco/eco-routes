@@ -75,6 +75,9 @@ abstract contract BaseDepositFactory {
 
     /**
      * @notice Predict the deterministic address for a deposit contract
+     * @dev Uses the standard EVM CREATE2 prefix (0xff). These contracts are intended for
+     *      deployment on fully EVM-compatible chains only. Chains with a non-standard CREATE2
+     *      prefix (e.g. TRON, which uses 0x41) will produce incorrect address predictions.
      * @param destinationAddress User's destination address on target chain
      * @param depositor Address to receive refunds if intent fails
      * @return predicted Deterministic address of the deposit contract
