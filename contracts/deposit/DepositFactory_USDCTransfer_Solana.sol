@@ -68,7 +68,6 @@ contract DepositFactory_USDCTransfer_Solana {
     error InvalidProverAddress();
     error InvalidDeadlineDuration();
     error InvalidDestinationPortal();
-    error InvalidDestinationAddress();
     error InvalidDestinationToken();
     error InvalidPortalPDA();
     error InvalidExecutorATA();
@@ -151,8 +150,6 @@ contract DepositFactory_USDCTransfer_Solana {
         bytes32 destinationAddress,
         address depositor
     ) external returns (address deployed) {
-        if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
-
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 

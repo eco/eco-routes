@@ -250,11 +250,6 @@ contract DepositFactoryTest is Test {
         factory.deploy(RECIPIENT_ATA_1, DEPOSITOR_1);
     }
 
-    function test_deploy_revertsIfZeroDestinationAddress() public {
-        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDestinationAddress.selector);
-        factory.deploy(bytes32(0), DEPOSITOR_1);
-    }
-
     function test_deploy_revertsIfAlreadyDeployed() public {
         factory.deploy(RECIPIENT_ATA_1, DEPOSITOR_1);
 
