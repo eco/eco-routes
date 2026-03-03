@@ -17,6 +17,7 @@ import {DepositAddress_CCTPMint_Arc} from "./DepositAddress_CCTPMint_Arc.sol";
  *      and an ARC_PROVER_ADDRESS for the Arc chain.
  */
 contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
+
     // ============ Immutable Configuration ============
 
     /// @notice Source token address (USDC ERC20 on source chain)

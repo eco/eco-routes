@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
@@ -15,6 +16,7 @@ import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_
  *      Deployed via CREATE2 by DepositFactory_GatewayDeposit for deterministic addressing.
  */
 contract DepositAddress_GatewayDeposit is BaseDepositAddress {
+    using SafeERC20 for IERC20;
 
     // ============ Immutables ============
 
@@ -85,7 +87,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         );
 
         // Approve Portal to spend tokens
-        IERC20(sourceToken).approve(portal, amount);
+        IERC20(sourceToken).forceApprove(portal, amount);
 
         // Call Portal.publishAndFund with Intent struct
         Portal portalContract = Portal(portal);
@@ -94,8 +96,6 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
             intent,
             false // allowPartial = false
         );
-
-        return intentHash;
     }
 
     /**
