@@ -26,6 +26,10 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     /// @notice Initialization flag
     bool private initialized;
 
+    /// @notice Per-deposit-address nonce, incremented on every createIntent() call
+    /// @dev Mixed into the route salt to guarantee uniqueness even within the same block
+    uint256 private _nonce;
+
     // ============ Errors ============
 
     error AlreadyInitialized();
@@ -72,6 +76,9 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
         uint256 amount = IERC20(sourceToken).balanceOf(address(this));
         if (amount == 0) revert ZeroAmount();
 
+        // Increment nonce before execution so derived contracts read the updated value
+        ++_nonce;
+
         // Execute variant-specific intent creation
         intentHash = _executeIntent(amount);
 
@@ -79,6 +86,15 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     }
 
     // ============ Internal Functions ============
+
+    /**
+     * @notice Returns the current nonce for use in salt construction
+     * @dev Called by derived contracts inside _executeIntent to mix into the route salt
+     * @return Current nonce value (already incremented for this call)
+     */
+    function _currentNonce() internal view returns (uint256) {
+        return _nonce;
+    }
 
     /**
      * @notice Get the factory address that deployed this contract
