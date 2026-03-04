@@ -37,6 +37,7 @@ abstract contract BaseDepositFactory {
     error InvalidDeadlineDuration();
     error InvalidDestinationPortal();
     error InvalidDestinationAddress();
+    error InvalidDepositor();
 
     // ============ Constructor ============
 
@@ -60,6 +61,9 @@ abstract contract BaseDepositFactory {
         address destinationAddress,
         address depositor
     ) external returns (address deployed) {
+        if (destinationAddress == address(0)) revert InvalidDestinationAddress();
+        if (depositor == address(0)) revert InvalidDepositor();
+
         // Deploy using CREATE2 with deterministic salt
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
@@ -81,6 +85,9 @@ abstract contract BaseDepositFactory {
         address destinationAddress,
         address depositor
     ) public view returns (address predicted) {
+        if (destinationAddress == address(0)) revert InvalidDestinationAddress();
+        if (depositor == address(0)) revert InvalidDepositor();
+
         bytes32 salt = _getSalt(destinationAddress, depositor);
         return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
     }

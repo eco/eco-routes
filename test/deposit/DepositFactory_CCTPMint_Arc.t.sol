@@ -255,6 +255,16 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         assertTrue(predicted1 != predicted2);
     }
 
+    function test_getDepositAddress_revertsIfZeroDestinationAddress() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationAddress.selector);
+        factory.getDepositAddress(address(0), DEPOSITOR_1);
+    }
+
+    function test_getDepositAddress_revertsIfZeroDepositor() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDepositor.selector);
+        factory.getDepositAddress(USER_DESTINATION_1, address(0));
+    }
+
     // ============ deploy Tests ============
 
     function test_deploy_createsContractAtPredictedAddress() public {
@@ -286,8 +296,13 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_deploy_revertsIfZeroDestinationAddress() public {
-        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationAddress.selector);
         factory.deploy(address(0), DEPOSITOR_1);
+    }
+
+    function test_deploy_revertsIfZeroDepositor() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDepositor.selector);
+        factory.deploy(USER_DESTINATION_1, address(0));
     }
 
     function test_deploy_revertsIfAlreadyDeployed() public {
