@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
@@ -22,6 +23,7 @@ import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CC
  *      Intent 2: Solver approves Gateway for USDC and calls Gateway.depositFor to credit the user.
  */
 contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
+    using SafeERC20 for IERC20;
 
     // ============ Constants ============
 
@@ -124,10 +126,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         );
 
         // Approve Portal to spend tokens and publish+fund Intent 1
-        IERC20(sourceToken).approve(portalAddress, amount);
+        IERC20(sourceToken).forceApprove(portalAddress, amount);
         (intentHash, ) = portalContract.publishAndFund(intent1, false);
-
-        return intentHash;
     }
 
     /**
