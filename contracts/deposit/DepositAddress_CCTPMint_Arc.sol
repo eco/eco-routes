@@ -86,9 +86,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             address gatewayAddress
         ) = FACTORY.getConfiguration();
 
-        // Generate unique salt (same for both intents)
+        // Generate unique salt (same for both intents) — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, _currentNonce())
         );
 
         // Calculate deadline (same for both intents)

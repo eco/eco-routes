@@ -155,9 +155,9 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
         uint64 deadlineDuration,
         bytes32 executorATA
     ) internal view returns (bytes memory) {
-        // Generate unique salt
+        // Generate unique salt — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, _currentNonce())
         );
 
         // Calculate deadline

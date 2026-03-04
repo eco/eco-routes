@@ -160,9 +160,9 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         uint256 amount,
         uint64 deadlineDuration
     ) internal view returns (Route memory route) {
-        // Generate unique salt
+        // Generate unique salt — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, _currentNonce())
         );
 
         // Calculate deadline
