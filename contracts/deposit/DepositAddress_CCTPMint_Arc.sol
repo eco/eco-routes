@@ -28,6 +28,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
     /// @notice Scaling factor for converting 6-decimal USDC to 18-decimal native USDC on Arc
     uint256 private constant NATIVE_USDC_SCALING = 1e12;
 
+    /// @notice Denominator for fee basis point calculations
+    uint256 private constant FEE_DENOMINATOR = 100_000;
+
     // ============ Immutables ============
 
     /// @notice Reference to the factory that deployed this contract
@@ -59,7 +62,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @return Address of the source token
      */
     function _getSourceToken() internal view override returns (address) {
-        (address sourceToken, , , , , , , , , ) = FACTORY.getConfiguration();
+        (address sourceToken, , , , , , , , , , ) = FACTORY.getConfiguration();
         return sourceToken;
     }
 
@@ -83,7 +86,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             uint64 arcChainId,
             address arcProverAddress,
             address arcUsdc,
-            address gatewayAddress
+            address gatewayAddress,
+            uint256 maxFeeBps
         ) = FACTORY.getConfiguration();
 
         // Generate unique salt (same for both intents)
@@ -94,6 +98,10 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         // Calculate deadline (same for both intents)
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
 
+        // Compute CCTP fast-deposit fee (rounded up) and net amount received on destination
+        uint256 maxFee = (amount * maxFeeBps + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
+        uint256 netAmount = amount - maxFee;
+
         // ---- Step 1: Construct and publish Intent 2 (Gateway deposit on Arc) ----
         Intent memory intent2 = _constructGatewayIntent(
             arcChainId,
@@ -101,7 +109,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             arcProverAddress,
             arcUsdc,
             gatewayAddress,
-            amount,
+            netAmount,
             salt,
             deadline
         );
@@ -119,6 +127,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             destinationDomain,
             vault2,
             amount,
+            maxFee,
             salt,
             deadline
         );
@@ -138,7 +147,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @param arcProverAddress LocalProver address on Arc
      * @param arcUsdc USDC ERC20 address on Arc
      * @param gatewayAddress Gateway contract address on Arc
-     * @param amount Amount of USDC (6 decimals)
+     * @param netAmount Amount of USDC after CCTP fee deduction (6 decimals)
      * @param salt Unique salt for the intent
      * @param deadline Deadline timestamp for the intent
      * @return intent Complete Intent struct for the Gateway deposit
@@ -149,14 +158,14 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         address arcProverAddress,
         address arcUsdc,
         address gatewayAddress,
-        uint256 amount,
+        uint256 netAmount,
         bytes32 salt,
         uint64 deadline
     ) internal view returns (Intent memory intent) {
         // Arc's native token is USDC at 18 decimals. The arcUsdc ERC20 is a 6-decimal wrapper.
         // nativeAmount funds the vault in native USDC (18 decimals), while the route calls
         // (approve and depositFor) interact with the 6-decimal ERC20.
-        uint256 nativeAmount = amount * NATIVE_USDC_SCALING;
+        uint256 nativeAmount = netAmount * NATIVE_USDC_SCALING;
 
         // Route tokens: empty (native USDC)
         TokenAmount[] memory routeTokens = new TokenAmount[](0);
@@ -168,7 +177,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             data: abi.encodeWithSignature(
                 "approve(address,uint256)",
                 gatewayAddress,
-                amount
+                netAmount
             ),
             value: 0
         });
@@ -178,7 +187,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
                 "depositFor(address,address,uint256)",
                 arcUsdc,
                 address(uint160(uint256(destinationAddress))),
-                amount
+                netAmount
             ),
             value: 0
         });
@@ -224,6 +233,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @param destinationDomain CCTP destination domain ID for Arc
      * @param vault2 Intent 2's vault address (CCTP mintRecipient)
      * @param amount Amount of USDC (6 decimals)
+     * @param maxFee Maximum CCTP fast-deposit fee (deducted on destination)
      * @param salt Unique salt for the intent
      * @param deadline Deadline timestamp for the intent
      * @return intent Complete Intent struct for the CCTP burn
@@ -236,6 +246,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         uint32 destinationDomain,
         address vault2,
         uint256 amount,
+        uint256 maxFee,
         bytes32 salt,
         uint64 deadline
     ) internal view returns (Intent memory intent) {
@@ -266,8 +277,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
                 bytes32(uint256(uint160(vault2))), // mintRecipient = Intent 2 vault
                 sourceToken,
                 bytes32(0), // destinationCaller (anyone)
-                0, // maxFee (standard = free)
-                2000 // minFinalityThreshold (standard)
+                maxFee, // maxFee for CCTP fast-deposit
+                0 // minFinalityThreshold (fast finality)
             ),
             value: 0
         });

@@ -97,7 +97,8 @@ contract DepositIntegration_CCTPMintTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
 
         // Fund solver
