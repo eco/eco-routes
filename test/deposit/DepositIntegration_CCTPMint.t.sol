@@ -408,7 +408,8 @@ contract DepositIntegration_CCTPMintTest is Test {
             localChainId,           // ARC_CHAIN_ID = block.chainid for local testing
             address(arcProver),     // Arc LocalProver (real, on same test chain)
             address(arcUsdc),
-            address(mockGateway)
+            address(mockGateway),
+            0                       // maxFeeBps (0 = no fee cap for testing)
         );
 
         // --- Deploy deposit address and fund with source USDC ---
