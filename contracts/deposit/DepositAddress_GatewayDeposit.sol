@@ -89,8 +89,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
         // Call Portal.publishAndFund with Intent struct
         Portal portalContract = Portal(portal);
-        address vault;
-        (intentHash, vault) = portalContract.publishAndFund(
+        (intentHash, ) = portalContract.publishAndFund(
             intent,
             false // allowPartial = false
         );

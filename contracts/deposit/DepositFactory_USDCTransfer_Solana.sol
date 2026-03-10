@@ -52,10 +52,12 @@ contract DepositFactory_USDCTransfer_Solana {
     /**
      * @notice Emitted when a new deposit contract is deployed
      * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana
+     * @param depositor Address to receive refunds if intent fails
      * @param depositAddress Deployed DepositAddress contract address
      */
     event DepositContractDeployed(
         bytes32 indexed destinationAddress,
+        address indexed depositor,
         address indexed depositAddress
     );
 
@@ -66,7 +68,6 @@ contract DepositFactory_USDCTransfer_Solana {
     error InvalidProverAddress();
     error InvalidDeadlineDuration();
     error InvalidDestinationPortal();
-    error InvalidDestinationAddress();
     error InvalidDestinationToken();
     error InvalidPortalPDA();
     error InvalidExecutorATA();
@@ -122,7 +123,9 @@ contract DepositFactory_USDCTransfer_Solana {
 
     /**
      * @notice Get deterministic deposit address for a user
-     * @dev Can be called before deployment to predict the address
+     * @dev Uses the standard EVM CREATE2 prefix (0xff). This contract is intended for
+     *      deployment on fully EVM-compatible chains only. Chains with a non-standard CREATE2
+     *      prefix (e.g. TRON, which uses 0x41) will produce incorrect address predictions.
      * @param destinationAddress Recipient's Associated Token Account (ATA) on Solana where tokens will be sent
      * @param depositor Address to receive refunds if intent fails
      * @return Predicted deposit address on source chain
@@ -147,15 +150,13 @@ contract DepositFactory_USDCTransfer_Solana {
         bytes32 destinationAddress,
         address depositor
     ) external returns (address deployed) {
-        if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
-
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
 
         // Initialize the deposit address with destination and depositor
         DepositAddress_USDCTransfer_Solana(deployed).initialize(destinationAddress, depositor);
 
-        emit DepositContractDeployed(destinationAddress, deployed);
+        emit DepositContractDeployed(destinationAddress, depositor, deployed);
     }
 
     /**

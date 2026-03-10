@@ -104,14 +104,16 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
         );
 
         // Construct Reward
+        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
+        rewardTokens[0] = TokenAmount({token: sourceToken, amount: amount});
+
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + deadlineDuration),
             creator: depositor, // Depositor receives refunds through normal intent flow
             prover: prover,
             nativeAmount: 0,
-            tokens: new TokenAmount[](1)
+            tokens: rewardTokens
         });
-        reward.tokens[0] = TokenAmount({token: sourceToken, amount: amount});
 
         // Approve Portal to spend tokens
         IERC20(sourceToken).approve(portal, amount);
