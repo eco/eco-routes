@@ -225,7 +225,6 @@ contract DepositFactory_USDCTransfer_Solana {
         bytes32 destinationAddress,
         address depositor
     ) internal pure returns (bytes32) {
-        // Hash both destination address and depositor for unique salt
         return keccak256(abi.encodePacked(destinationAddress, depositor));
     }
 }
