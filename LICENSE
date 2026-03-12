@@ -1,71 +1,228 @@
-Business Source License 1.1
-License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
-"Business Source License" is a trademark of MariaDB Corporation Ab.
+Eco Source-Available License 1.0
+
+License text copyright (c) 2024-2026 Eco Foundation. All Rights Reserved.
 -----------------------------------------------------------------------------
+
 Parameters
+
 Licensor:             Eco Foundation
-Licensed Work:        Eco Routes v1.0, v1.5
-                      The Licensed Work is (c) 2024, 2025 Eco Foundation
-Additional Use Grant: None (but carveouts for permissionless production
-                      deployment will be added in the future)
-Change Date:          The earlier of 2026-12-31 or a date specified at
-                      docs.eco.com
+Licensed Work:        Eco Routes v1.0, 1.5
+                      The Licensed Work is (c) 2024-2026 Eco Foundation
+Additional Use Grant: None
+Change Date:          None; to be determined at a future date
 Change License:       The MIT License
+
 -----------------------------------------------------------------------------
-Terms
-The Licensor hereby grants you the right to copy, modify, create derivative
-works, redistribute, and make non-production use of the Licensed Work. The
-Licensor may make an Additional Use Grant, above, permitting limited
-production use.
-Effective on the Change Date, or the fourth anniversary of the first publicly
-available distribution of a specific version of the Licensed Work under this
-License, whichever comes first, the Licensor hereby grants you rights under
-the terms of the Change License, and the rights granted in the paragraph
-above terminate.
-If your use of the Licensed Work does not comply with the requirements
-currently in effect as described in this License, you must purchase a
-commercial license from the Licensor, its affiliated entities, or authorized
-resellers, or you must refrain from using the Licensed Work.
-All copies of the original and modified Licensed Work, and derivative works
-of the Licensed Work, are subject to this License. This License applies
-separately for each version of the Licensed Work and the Change Date may vary
-for each version of the Licensed Work released by Licensor.
-You must conspicuously display this License on each original or modified copy
-of the Licensed Work. If you receive the Licensed Work in original or
-modified form from a third party, the terms and conditions set forth in this
-License apply to your use of that work.
-Any use of the Licensed Work in violation of this License will automatically
-terminate your rights under this License for the current and all other
-versions of the Licensed Work.
-This License does not grant you any right in any trademark or logo of
-Licensor or its affiliates (provided that you may use a trademark or logo of
-Licensor as expressly required by this License).
-TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
-AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
-EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
-TITLE.
-MariaDB hereby grants you permission to use this License’s text to license
-your works, and to refer to it using the trademark "Business Source License",
-as long as you comply with the Covenants of Licensor below.
+
+1.  Definitions
+
+"Additional Use Grant" means the additional rights (if any) granted in the
+Parameters section above. If the Additional Use Grant reads "None," no
+additional rights are granted beyond those in Section 2.
+
+"Change Date" means the date specified in the Parameters section above for
+the applicable version of the Licensed Work.
+
+"Change License" means the license identified in the Parameters section
+above.
+
+"Derivative Work" means any work that is based on, incorporates, or is a
+modification of the Licensed Work.
+
+"Non-Production Use" means use that is not directed toward a Production
+Deployment. Non-Production Use includes, without limitation, personal study,
+internal research and development, educational use, testing, prototyping, and
+use in development or staging environments that are not accessible to end
+users.
+
+"Production Deployment" means any of the following: (a) deploying, verifying,
+or causing to be deployed any smart contract or other executable code that
+includes, is compiled from, or is a Derivative Work of, the Licensed Work on
+any blockchain, distributed-ledger, or comparable network accessible by third
+parties; (b) operating or making available to third parties any software
+service, product, or system that incorporates the Licensed Work or a
+Derivative Work; or (c) any other use of the Licensed Work or a Derivative
+Work to process transactions, relay value, or provide services to third
+parties.
+
+"Separate Deployment Agreement" means a written agreement between you and the
+Licensor (or its authorized representative) that expressly grants you the
+right to make a Production Deployment of the Licensed Work or a Derivative
+Work, subject to the terms and conditions set forth therein.
+
 -----------------------------------------------------------------------------
-Covenants of Licensor
-In consideration of the right to use this License’s text and the "Business
-Source License" name and trademark, Licensor covenants to MariaDB, and to all
-other recipients of the licensed work to be provided by Licensor:
-1. To specify as the Change License the GPL Version 2.0 or any later version,
-   or a license that is compatible with GPL Version 2.0 or a later version,
-   where "compatible" means that software provided under the Change License can
-   be included in a program with software provided under GPL Version 2.0 or a
-   later version. Licensor may specify additional Change Licenses without
-   limitation.
-2. To either: (a) specify an additional grant of rights to use that does not
-   impose any additional restriction on the right granted in this License, as
-   the Additional Use Grant; or (b) insert the text "None".
-3. To specify a Change Date.
-4. Not to modify this License in any other way.
+
+2.  Grant of Rights — Non-Production Use
+
+Subject to the terms of this License, the Licensor grants you a worldwide,
+non-exclusive, royalty-free, non-transferable, non-sublicensable license to
+copy, modify, create Derivative Works of, and redistribute the Licensed Work,
+solely for Non-Production Use.
+
 -----------------------------------------------------------------------------
+
+3.  Additional Use Grant
+
+The Licensor may specify an Additional Use Grant in the Parameters section
+above, permitting limited use of the Licensed Work beyond the Non-Production
+Use rights granted in Section 2. Any such grant is subject to the conditions
+and limitations stated in the Parameters section. If the Additional Use Grant
+reads "None," this Section grants no additional rights.
+
+-----------------------------------------------------------------------------
+
+4.  Production Deployment
+
+You may not make a Production Deployment of the Licensed Work or any
+Derivative Work unless you have entered into a Separate Deployment Agreement
+with the Licensor. Any Production Deployment made without a Separate
+Deployment Agreement is a material breach of this License.
+
+The terms of any Separate Deployment Agreement (including, without
+limitation, obligations relating to protocol upgrades, fee mechanisms,
+operational requirements, and termination) are negotiated independently and
+are not governed by this License.
+
+-----------------------------------------------------------------------------
+
+5.  Change Date Conversion
+
+Effective on the Change Date for a given version of the Licensed Work, the
+Licensor hereby grants you rights to that version under the terms of the
+Change License. On and after the Change Date, the Change License governs your
+use of that version, and the restrictions in Sections 4 and 6 of this License
+no longer apply to that version.
+
+This License applies separately for each version of the Licensed Work. The
+Change Date may vary for each version released by the Licensor. The
+conversion of one version under this Section does not affect the terms
+applicable to any other version.
+
+If no Change Date is specified in the Parameters section (i.e., the field
+reads "None"), or if no Change License is specified, then no conversion
+occurs and this License governs the Licensed Work in perpetuity.
+
+-----------------------------------------------------------------------------
+
+6.  Restrictions
+
+Except as expressly permitted by Sections 2, 3, 4, and 5, you may not (and
+may not permit or enable others to):
+
+    (a) make a Production Deployment of the Licensed Work or any Derivative
+        Work;
+
+    (b) use the Licensed Work or any Derivative Work in connection with any
+        product or service offered to third parties, including any
+        as-a-service, protocol-as-a-service, or infrastructure offering;
+
+    (c) sublicense, sell, lease, or otherwise transfer the Licensed Work or
+        any rights granted under this License to any third party, except
+        that you may redistribute the Licensed Work and Derivative Works
+        for Non-Production Use in accordance with Section 2; or
+
+    (d) remove or alter any copyright, license, or attribution notices
+        contained in the Licensed Work.
+
+-----------------------------------------------------------------------------
+
+7.  Third-Party Components
+
+Portions of the Licensed Work may include or depend upon third-party
+components distributed under their own license terms. Those components remain
+governed by their respective licenses. Nothing in this License restricts your
+rights under those licenses, and nothing in those licenses expands your
+rights to the Licensed Work.
+
+-----------------------------------------------------------------------------
+
+8.  Termination
+
+    (a) Any use of the Licensed Work in violation of this License will
+        automatically and immediately terminate your rights under this
+        License.
+
+    (b) Upon termination, you must cease all use of the Licensed Work and
+        destroy all copies in your possession or control.
+
+    (c) Termination is without prejudice to any other rights or remedies
+        available to the Licensor, including injunctive relief and damages.
+
+    (d) Sections 1, 5, 7, 9, 10, and 11 survive termination.
+
+-----------------------------------------------------------------------------
+
+9.  Trademarks
+
+This License does not grant you any right in any trademark, trade name, logo,
+or service mark of the Licensor or its affiliates, except that you may use
+such marks solely to the extent required to reproduce the notices required by
+this License.
+
+-----------------------------------------------------------------------------
+
+10. Disclaimer of Warranties
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS
+PROVIDED "AS IS" AND "AS AVAILABLE," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, TITLE, QUIET ENJOYMENT, OR
+ACCURACY. THE LICENSOR DOES NOT WARRANT THAT THE LICENSED WORK WILL BE
+UNINTERRUPTED, ERROR-FREE, OR SECURE.
+
+THE LICENSED WORK MAY BE UNDER ACTIVE DEVELOPMENT. USE OF THE LICENSED WORK
+IS AT YOUR SOLE RISK.
+
+-----------------------------------------------------------------------------
+
+11. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL THE
+LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL,
+EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, LOST DATA, COST OF
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES, OR BUSINESS INTERRUPTION,
+ARISING OUT OF OR RELATED TO THIS LICENSE OR THE LICENSED WORK, HOWEVER
+CAUSED AND UNDER ANY THEORY OF LIABILITY (INCLUDING CONTRACT, TORT, STRICT
+LIABILITY, OR OTHERWISE), EVEN IF THE LICENSOR HAS BEEN ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGES.
+
+-----------------------------------------------------------------------------
+
+12. General
+
+    (a) Entire Agreement. This License constitutes the entire agreement
+        between you and the Licensor with respect to the Licensed Work,
+        except to the extent superseded or supplemented by a Separate
+        Deployment Agreement.
+
+    (b) Severability. If any provision of this License is held invalid or
+        unenforceable, the remaining provisions continue in full force and
+        effect.
+
+    (c) No Waiver. The failure of the Licensor to enforce any right or
+        provision of this License does not constitute a waiver of that
+        right or provision.
+
+    (d) Assignment. You may not assign or transfer your rights or
+        obligations under this License without the prior written consent
+        of the Licensor. The Licensor may freely assign this License.
+
+    (e) Notice. You must conspicuously include this License text on each
+        copy or Derivative Work of the Licensed Work.
+
+    (f) Governing Law. This License is governed by and construed in
+        accordance with the laws of the State of Delaware, United States of America,
+	without regard to its conflict-of-laws principles.
+
+-----------------------------------------------------------------------------
+
 Notice
-The Business Source License (this document, or the "License") is not an Open
-Source license. However, the Licensed Work will eventually be made available
-under an Open Source License, as stated in this License.
+
+This is a source-available license and is not an open-source license. The
+Licensed Work is made available for inspection, study, and Non-Production
+Use. Production Deployment requires a Separate Deployment Agreement with the
+Licensor.
+
+If a Change Date is specified, the Licensed Work will become available under
+the Change License on that date. If the Change Date reads "None," no such
+conversion will occur.
