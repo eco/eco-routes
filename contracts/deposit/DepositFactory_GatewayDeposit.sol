@@ -7,7 +7,9 @@ import {DepositAddress_GatewayDeposit} from "./DepositAddress_GatewayDeposit.sol
 /**
  * @title DepositFactory_GatewayDeposit
  * @notice Factory contract for deploying deterministic deposit addresses for Gateway deposits
- * @dev Creates LOCAL intents (same-chain fulfillment) on the Arc chain.
+ * @dev Creates LOCAL intents (same-chain fulfillment) on the Arc chain. Because source and
+ *      destination are the same chain, TOKEN serves as both the source token (escrowed as the
+ *      solver reward) and the destination token (transferred by the solver to fulfill the route).
  *      This factory is designed to be deployed on the Arc chain.
  *      Uses CREATE2 for deterministic address generation based on user's destination address.
  *
@@ -26,11 +28,8 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
 
     // ============ Immutable Configuration ============
 
-    /// @notice Source token address (ERC20 on current chain)
-    address public immutable SOURCE_TOKEN;
-
-    /// @notice Destination token address on destination chain
-    address public immutable DESTINATION_TOKEN;
+    /// @notice Token address (ERC20 on current chain — used for both route and reward)
+    address public immutable TOKEN;
 
     /// @notice Portal contract address
     address public immutable PORTAL_ADDRESS;
@@ -38,7 +37,7 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
     /// @notice Prover contract address
     address public immutable PROVER_ADDRESS;
 
-    /// @notice Gateway contract address on destination chain
+    /// @notice Gateway contract address
     address public immutable GATEWAY_ADDRESS;
 
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
@@ -46,39 +45,34 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
 
     // ============ Errors ============
 
-    error InvalidTargetToken();
     error InvalidGatewayAddress();
 
     // ============ Constructor ============
 
     /**
      * @notice Initialize the factory with route configuration
-     * @param _sourceToken Source token address
-     * @param _destinationToken Destination token address
+     * @param _token Token address (same token used for route and reward)
      * @param _portalAddress Portal contract address
      * @param _proverAddress LocalProver contract address
      * @param _gatewayAddress Gateway contract address
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      */
     constructor(
-        address _sourceToken,
-        address _destinationToken,
+        address _token,
         address _portalAddress,
         address _proverAddress,
         address _gatewayAddress,
         uint64 _intentDeadlineDuration
     ) BaseDepositFactory(address(new DepositAddress_GatewayDeposit())) {
         // Validation
-        if (_sourceToken == address(0)) revert InvalidSourceToken();
+        if (_token == address(0)) revert InvalidSourceToken();
         if (_portalAddress == address(0)) revert InvalidPortalAddress();
         if (_proverAddress == address(0)) revert InvalidProverAddress();
-        if (_destinationToken == address(0)) revert InvalidTargetToken();
         if (_gatewayAddress == address(0)) revert InvalidGatewayAddress();
         if (_intentDeadlineDuration == 0) revert InvalidDeadlineDuration();
 
         // Store configuration
-        SOURCE_TOKEN = _sourceToken;
-        DESTINATION_TOKEN = _destinationToken;
+        TOKEN = _token;
         PORTAL_ADDRESS = _portalAddress;
         PROVER_ADDRESS = _proverAddress;
         GATEWAY_ADDRESS = _gatewayAddress;
@@ -89,8 +83,7 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
 
     /**
      * @notice Get complete factory configuration
-     * @return sourceToken Source token address
-     * @return destinationToken Destination token address
+     * @return token Token address
      * @return portalAddress Portal address
      * @return proverAddress LocalProver contract address
      * @return gatewayAddress Gateway contract address
@@ -100,8 +93,7 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
         external
         view
         returns (
-            address sourceToken,
-            address destinationToken,
+            address token,
             address portalAddress,
             address proverAddress,
             address gatewayAddress,
@@ -109,8 +101,7 @@ contract DepositFactory_GatewayDeposit is BaseDepositFactory {
         )
     {
         return (
-            SOURCE_TOKEN,
-            DESTINATION_TOKEN,
+            TOKEN,
             PORTAL_ADDRESS,
             PROVER_ADDRESS,
             GATEWAY_ADDRESS,

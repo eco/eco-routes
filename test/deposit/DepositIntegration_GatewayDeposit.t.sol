@@ -38,8 +38,6 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
     // Configuration parameters (using same chain for testing)
     uint64 public CHAIN_ID;
-    address constant DESTINATION_TOKEN = address(0x5678); // Token on destination
-    address constant DESTINATION_PORTAL = address(0xDEF0);
     uint64 constant INTENT_DEADLINE_DURATION = 7 days;
 
     // Test user addresses
@@ -86,10 +84,9 @@ contract DepositIntegration_GatewayDepositTest is Test {
         // Deploy mock gateway
         gateway = new MockGateway();
 
-        // Deploy factory for local intents
+        // Deploy factory — TOKEN is same token used for route and reward
         factory = new DepositFactory_GatewayDeposit(
             address(token),
-            DESTINATION_TOKEN,
             address(portal),
             address(prover),
             address(gateway),
@@ -143,20 +140,9 @@ contract DepositIntegration_GatewayDepositTest is Test {
 
     /**
      * @notice Test full cycle: create intent, fulfill it with LocalProver, verify results
-     * @dev For same-chain testing, we deploy a special factory where destination token = source token
      */
     function test_integration_createAndFulfillIntent() public {
-        // Deploy a special factory for local intent testing where destination token = source token
-        DepositFactory_GatewayDeposit sameChainFactory = new DepositFactory_GatewayDeposit(
-            address(token), // source token
-            address(token), // destination token (same for testing)
-            address(portal),
-            address(prover),
-            address(gateway),
-            INTENT_DEADLINE_DURATION
-        );
-
-        address deployed = sameChainFactory.deploy(USER_DESTINATION, DEPOSITOR);
+        address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
         DepositAddress_GatewayDeposit depositAddress = DepositAddress_GatewayDeposit(deployed);
 
         uint256 depositAmount = 10_000 * 1e18;
@@ -200,8 +186,8 @@ contract DepositIntegration_GatewayDepositTest is Test {
         }
         assertTrue(foundIntent, "Should find IntentPublished event");
 
-        // Verify the route token is the same as source (for same-chain test)
-        assertEq(route.tokens[0].token, address(token), "Route token should be source token for same-chain test");
+        // Verify the route token matches the factory token
+        assertEq(route.tokens[0].token, address(token), "Route token should match factory token");
 
         // Verify intent was funded
         IIntentSource.Status statusBefore = portal.getRewardStatus(intentHash);
@@ -330,7 +316,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
                 // Verify reward structure
                 assertEq(rewardNativeAmount, 0, "Should have no native reward");
                 assertEq(rewardTokens.length, 1, "Should have one reward token");
-                assertEq(rewardTokens[0].token, address(token), "Reward token should be source token");
+                assertEq(rewardTokens[0].token, address(token), "Reward token should be factory token");
                 assertEq(rewardTokens[0].amount, depositAmount, "Reward amount should match deposit");
 
                 // Decode and verify route structure
@@ -338,7 +324,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
                 assertEq(route.portal, address(portal), "Route portal should be portal address");
                 assertEq(route.nativeAmount, 0, "Route should have no native amount");
                 assertEq(route.tokens.length, 1, "Route should have one token");
-                assertEq(route.tokens[0].token, DESTINATION_TOKEN, "Route token should be destination token");
+                assertEq(route.tokens[0].token, address(token), "Route token should match factory token");
                 assertEq(route.tokens[0].amount, depositAmount, "Route token amount should match deposit");
                 assertEq(route.calls.length, 1, "Route should have one call (Gateway)");
                 assertEq(route.calls[0].target, address(gateway), "Call target should be Gateway");
@@ -347,7 +333,7 @@ contract DepositIntegration_GatewayDepositTest is Test {
                 // Verify Gateway call is depositFor with destination address as recipient
                 bytes memory expectedCall = abi.encodeWithSignature(
                     "depositFor(address,address,uint256)",
-                    DESTINATION_TOKEN,
+                    address(token),
                     USER_DESTINATION,
                     depositAmount
                 );
@@ -482,16 +468,14 @@ contract DepositIntegration_GatewayDepositTest is Test {
      */
     function test_integration_factoryConfigurationCorrect() public view {
         (
-            address sourceToken,
-            address destinationToken,
+            address token_,
             address portalAddress,
             address proverAddress,
             address gatewayAddress,
             uint64 deadlineDuration
         ) = factory.getConfiguration();
 
-        assertEq(sourceToken, address(token));
-        assertEq(destinationToken, DESTINATION_TOKEN);
+        assertEq(token_, address(token));
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, address(prover));
         assertEq(gatewayAddress, address(gateway));
