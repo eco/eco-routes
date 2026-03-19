@@ -76,25 +76,13 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
         uint256 amount = IERC20(sourceToken).balanceOf(address(this));
         if (amount == 0) revert ZeroAmount();
 
-        // Increment nonce before execution so derived contracts read the updated value
-        ++_nonce;
-
-        // Execute variant-specific intent creation
-        intentHash = _executeIntent(amount);
+        // Execute variant-specific intent creation, passing the incremented nonce directly
+        intentHash = _executeIntent(amount, ++_nonce);
 
         return intentHash;
     }
 
     // ============ Internal Functions ============
-
-    /**
-     * @notice Returns the current nonce for use in salt construction
-     * @dev Called by derived contracts inside _executeIntent to mix into the route salt
-     * @return Current nonce value (already incremented for this call)
-     */
-    function _currentNonce() internal view returns (uint256) {
-        return _nonce;
-    }
 
     /**
      * @notice Get the factory address that deployed this contract
@@ -114,7 +102,8 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
      * @notice Execute variant-specific intent creation logic
      * @dev Must be implemented by derived contracts to construct and publish their intent
      * @param amount Amount of tokens to bridge
+     * @param nonce Current nonce value for unique salt construction
      * @return intentHash Hash of the created intent
      */
-    function _executeIntent(uint256 amount) internal virtual returns (bytes32 intentHash);
+    function _executeIntent(uint256 amount, uint256 nonce) internal virtual returns (bytes32 intentHash);
 }

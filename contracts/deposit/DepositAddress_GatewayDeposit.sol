@@ -57,7 +57,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
      * @param amount Amount of tokens to bridge
      * @return intentHash Hash of the created intent
      */
-    function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
+    function _executeIntent(uint256 amount, uint256 nonce) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
             address sourceToken,
@@ -81,7 +81,8 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
             gateway,
             amount,
             deadlineDuration,
-            depositor
+            depositor,
+            nonce
         );
 
         // Approve Portal to spend tokens
@@ -120,7 +121,8 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         address gateway,
         uint256 amount,
         uint64 deadlineDuration,
-        address depositorAddr
+        address depositorAddr,
+        uint256 nonce
     ) internal view returns (Intent memory intent) {
         // Construct Route
         Route memory route = _constructRoute(
@@ -128,7 +130,8 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
             portal,
             gateway,
             amount,
-            deadlineDuration
+            deadlineDuration,
+            nonce
         );
 
         // Construct Reward
@@ -158,11 +161,12 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         address portal,
         address gateway,
         uint256 amount,
-        uint64 deadlineDuration
+        uint64 deadlineDuration,
+        uint256 nonce
     ) internal view returns (Route memory route) {
         // Generate unique salt — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp, _currentNonce())
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, nonce)
         );
 
         // Calculate deadline
