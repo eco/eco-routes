@@ -141,15 +141,13 @@ class BaseDeployer {
     return network.chainId
   }
 
-  /** Offline prediction of Portal address via ERC-2470 CREATE2 */
-  predictPortalAddress(portalSalt: string): string {
-    const { bytecode } = loadArtifact('Portal')
-    const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
-    const bytecodeHash = ethers.keccak256(creationCode)
-    return ethers.getCreate2Address(ERC2470_FACTORY, portalSalt, bytecodeHash)
+  /** Predict Portal address via CREATE3 (view call) */
+  async predictPortalAddress(portalSalt: string): Promise<string> {
+    const create3 = new ethers.Contract(CREATE3_DEPLOYER, CREATE3_ABI, this.provider)
+    return await create3.deployedAddress('0x', this.wallet.address, portalSalt)
   }
 
-  /** Deploy Portal on Base via ERC-2470 SingletonFactory */
+  /** Deploy Portal on Base via CREATE3 */
   async deployPortal(
     portalSalt: string,
     existingPortal?: string,
@@ -159,25 +157,31 @@ class BaseDeployer {
       return existingPortal
     }
 
-    const predicted = this.predictPortalAddress(portalSalt)
-    console.log(`  Predicted address: ${predicted}`)
+    const predictedAddr = await this.predictPortalAddress(portalSalt)
+    console.log(`  Predicted address: ${predictedAddr}`)
 
-    // Check if already deployed (ERC-2470 reverts silently on re-deploy)
-    const code = await this.provider.getCode(predicted)
+    const code = await this.provider.getCode(predictedAddr)
     if (code !== '0x') {
-      console.log(`  Already deployed at: ${predicted}`)
-      return predicted
+      console.log(`  Already deployed at: ${predictedAddr}`)
+      return predictedAddr
     }
 
     const { bytecode } = loadArtifact('Portal')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
-    const factory = new ethers.Contract(ERC2470_FACTORY, ERC2470_ABI, this.wallet)
 
-    console.log('  Deploying via ERC-2470...')
-    const tx = await factory.deploy(creationCode, portalSalt)
+    const create3 = new ethers.Contract(CREATE3_DEPLOYER, CREATE3_ABI, this.wallet)
+    console.log('  Deploying via CREATE3...')
+    const tx = await create3.deploy(creationCode, portalSalt)
     const receipt = await tx.wait()
-    console.log(`  Deployed at: ${predicted} (tx: ${receipt.hash})`)
-    return predicted
+
+    const finalCode = await this.provider.getCode(predictedAddr)
+    if (finalCode === '0x') {
+      throw new Error(
+        `Base Portal deployment failed: no code at ${predictedAddr} after tx ${receipt.hash}`,
+      )
+    }
+    console.log(`  Deployed at: ${predictedAddr} (tx: ${receipt.hash})`)
+    return predictedAddr
   }
 
   /**
@@ -313,12 +317,9 @@ class TronDeployer {
     initCode: string,
     salt: string,
   ): Promise<string> {
-    const saltStripped = (
-      salt.startsWith('0x') ? salt.slice(2) : salt
-    ).padStart(64, '0')
-    const initCodeStripped = initCode.startsWith('0x')
-      ? initCode.slice(2)
-      : initCode
+    // TronWeb v5+ uses ethers.js AbiCoder internally — values must be
+    // 0x-prefixed hex strings. Salts are keccak256 outputs so already valid.
+    const initCodeHex = initCode.startsWith('0x') ? initCode : '0x' + initCode
 
     const result =
       await this.tronWeb.transactionBuilder.triggerSmartContract(
@@ -326,8 +327,8 @@ class TronDeployer {
         'deploy(bytes,bytes32)',
         { feeLimit: 5_000_000_000, callValue: 0 },
         [
-          { type: 'bytes', value: initCodeStripped },
-          { type: 'bytes32', value: saltStripped },
+          { type: 'bytes', value: initCodeHex },
+          { type: 'bytes32', value: salt },
         ],
       )
 
@@ -360,9 +361,14 @@ class TronDeployer {
     throw new Error('Factory call timed out')
   }
 
-  /** Deploy Portal on Tron and return 0x-prefixed hex20 address */
+  /**
+   * Deploy Portal on Tron directly (not via CREATE2 factory).
+   * TVM does not support nested CREATE inside CREATE2, so Portal must be
+   * deployed with a standard createSmartContract call.
+   * Returns 0x-prefixed hex20 address.
+   */
   async deployPortal(
-    portalSalt: string,
+    _portalSalt: string,
     existingPortal?: string,
   ): Promise<string> {
     if (existingPortal) {
@@ -373,19 +379,46 @@ class TronDeployer {
       return hex20
     }
 
-    const predicted = this.predictPortalAddress(portalSalt)
-    console.log(`  Predicted address: ${predicted}`)
+    const { abi, bytecode } = loadArtifact('Portal')
+    const bytecodeHex = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode
 
-    const { bytecode } = loadArtifact('Portal')
-    const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
-    const actual20 = await this.deployViaFactory(creationCode, portalSalt)
+    console.log('  Deploying directly via createSmartContract...')
+    const deployerHex = this.tronWeb.defaultAddress.hex as string
+    const tx = await this.tronWeb.transactionBuilder.createSmartContract(
+      {
+        abi,
+        bytecode: bytecodeHex,
+        feeLimit: 5_000_000_000,
+        callValue: 0,
+        userFeePercentage: 100,
+        originEnergyLimit: 10_000_000,
+      },
+      deployerHex,
+    )
 
-    if (actual20.toLowerCase() !== predicted.toLowerCase()) {
-      throw new Error(
-        `Tron Portal address mismatch! Expected: ${predicted}, Got: ${actual20}`,
-      )
+    const signed = await this.tronWeb.trx.sign(tx)
+    const broadcast = await this.tronWeb.trx.sendRawTransaction(signed)
+    if (!broadcast.result) {
+      throw new Error(`Portal broadcast failed: ${JSON.stringify(broadcast)}`)
     }
-    return actual20
+
+    console.log(`  txId: ${broadcast.txid}`)
+
+    // Wait for confirmation and extract contract address
+    for (let i = 0; i < 20; i++) {
+      await sleep(3000)
+      const info: any = await this.tronWeb.trx.getTransactionInfo(broadcast.txid)
+      if (info?.id) {
+        if (info.receipt?.result !== 'SUCCESS') {
+          throw new Error(`Portal deployment failed: ${JSON.stringify(info)}`)
+        }
+        const addrHex41: string = info.contract_address
+        const hex20 = '0x' + addrHex41.slice(2)
+        console.log(`  Deployed at (hex20): ${hex20}`)
+        return hex20
+      }
+    }
+    throw new Error('Portal deployment timed out')
   }
 
   /** Deploy LZ Prover on Tron and return 0x-prefixed hex20 address */
@@ -398,6 +431,14 @@ class TronDeployer {
     predictedAddr20: string,
   ): Promise<string> {
     console.log(`  Predicted address: ${predictedAddr20}`)
+
+    // Check if already deployed
+    const base58 = this.tronWeb.address.fromHex('41' + predictedAddr20.slice(2)) as string
+    const existing = await this.tronWeb.trx.getContract(base58).catch(() => null)
+    if (existing?.contract_address) {
+      console.log(`  Already deployed at: ${predictedAddr20}`)
+      return predictedAddr20
+    }
 
     const { initCode } = this.computeLZProver(
       lzSalt,
@@ -424,7 +465,6 @@ class DeployOrchestrator {
   private tronDeployer: TronDeployer
   private isDryRun: boolean
   private isTestnet: boolean
-  private deployFilePath: string
   private abiCoder: ethers.AbiCoder
 
   private baseLZEndpoint: string
@@ -440,7 +480,6 @@ class DeployOrchestrator {
   constructor() {
     this.isDryRun = process.argv.includes('--dry-run')
     this.isTestnet = process.argv.includes('--testnet')
-    this.deployFilePath = process.env.DEPLOY_FILE || 'out/deploy.csv'
     this.abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
     // Private key (works for both Base secp256k1 and Tron)
@@ -507,25 +546,6 @@ class DeployOrchestrator {
     this.existingTronPortal = process.env.TRON_PORTAL_CONTRACT
   }
 
-  private appendToCSV(
-    entries: Array<{
-      chainId: number | bigint
-      address: string
-      contractPath: string
-      constructorArgs: string
-    }>,
-  ): void {
-    const outputDir = path.dirname(this.deployFilePath)
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true })
-    }
-    const lines = entries.map(
-      (e) => `${e.chainId},${e.address},${e.contractPath},${e.constructorArgs}`,
-    )
-    fs.appendFileSync(this.deployFilePath, lines.join('\n') + '\n')
-    console.log(`\nAppended ${entries.length} entries to ${this.deployFilePath}`)
-  }
-
   async run(): Promise<void> {
     console.log('=== Base + Tron Deployment Orchestrator ===')
     console.log(`Mode:      ${this.isDryRun ? 'DRY RUN (no transactions)' : 'LIVE'}`)
@@ -534,11 +554,11 @@ class DeployOrchestrator {
     console.log(`LZ Prover salt: ${this.lzSalt}`)
     console.log()
 
-    // ── Step 1: Deploy Portal on Base (CREATE2 via ERC-2470) ─────────────────
+    // ── Step 1: Deploy Portal on Base (CREATE3) ───────────────────────────────
     console.log('=== Step 1: Portal on Base ===')
     let basePortal: string
     if (this.isDryRun) {
-      basePortal = this.baseDeployer.predictPortalAddress(this.portalSalt)
+      basePortal = await this.baseDeployer.predictPortalAddress(this.portalSalt)
       console.log(`  [DRY RUN] Would deploy at: ${basePortal}`)
     } else {
       basePortal = await this.baseDeployer.deployPortal(
@@ -547,12 +567,12 @@ class DeployOrchestrator {
       )
     }
 
-    // ── Step 2: Deploy Portal on Tron (CREATE2 via Create2Factory_Tron) ──────
+    // ── Step 2: Deploy Portal on Tron (direct, no CREATE2 — TVM limitation) ──
     console.log('\n=== Step 2: Portal on Tron ===')
     let tronPortalHex20: string
     if (this.isDryRun) {
-      tronPortalHex20 = this.tronDeployer.predictPortalAddress(this.portalSalt)
-      console.log(`  [DRY RUN] Would deploy at: ${tronPortalHex20}`)
+      console.log(`  [DRY RUN] Address only known after deployment (direct deploy, not CREATE2)`)
+      tronPortalHex20 = '0x0000000000000000000000000000000000000000'
     } else {
       tronPortalHex20 = await this.tronDeployer.deployPortal(
         this.portalSalt,
@@ -572,9 +592,14 @@ class DeployOrchestrator {
       throw new Error('TRON_LZ_ENDPOINT required')
     }
 
-    // Cross-VM provers for Tron prover: the Base LZ prover (left-aligned bytes32)
-    const baseLZProverBytes32 = addressToBytes32Left(baseLZProverAddr)
-    console.log(`  Base LZ Prover → bytes32: ${baseLZProverBytes32}`)
+    // Tron LayerZeroProver whitelist entry for the Base LZ Prover — RIGHT-aligned bytes32.
+    // baseLZProverAddr is a 0x-prefixed hex20 EVM address.
+    // When the Base LZ endpoint sends a packet, it sets origin.sender =
+    // bytes32(uint256(uint160(addr))), i.e. right-aligned. The Tron prover's
+    // allowInitializePath() calls isWhitelisted(origin.sender), so this entry must be
+    // the right-aligned encoding. (Confirmed: left-aligned returns false.)
+    const baseLZProverBytes32 = ethers.zeroPadValue(baseLZProverAddr, 32)
+    console.log(`  Base LZ Prover (0x-hex20 → right-aligned bytes32): ${baseLZProverBytes32}`)
 
     const { addr20hex: tronLZProverPredicted } =
       this.tronDeployer.computeLZProver(
@@ -609,10 +634,15 @@ class DeployOrchestrator {
       throw new Error('BASE_LZ_ENDPOINT required')
     }
 
-    // Cross-VM provers for Base prover: the Tron LZ prover (left-aligned bytes32)
-    // tronLZProverAddr is already 0x-prefixed hex20, so addressToBytes32Left works directly
+    // Base LayerZeroProver whitelist entry for the Tron LZ Prover — LEFT-aligned bytes32.
+    // tronLZProverAddr is a 0x-prefixed hex20 address (strip of the hex41 0x41 prefix).
+    // When the Tron LZ endpoint sends a packet, origin.sender encodes the Tron contract
+    // address as bytes32(bytes20(addr)) — left-aligned (address occupies the high 20 bytes).
+    // The Base prover's allowInitializePath() calls isWhitelisted(origin.sender), so this
+    // entry must be the left-aligned encoding. (Confirmed: right-aligned returns false.)
+    // Equivalent Solidity: bytes32(bytes20(tronLZProverAddr))
     const tronLZProverBytes32 = addressToBytes32Left(tronLZProverAddr)
-    console.log(`  Tron LZ Prover → bytes32: ${tronLZProverBytes32}`)
+    console.log(`  Tron LZ Prover (0x-hex20 → left-aligned bytes32): ${tronLZProverBytes32}`)
 
     let baseLZProverFinal: string
     if (this.isDryRun) {
@@ -638,73 +668,40 @@ class DeployOrchestrator {
       )
     }
 
-    // ── Step 7: Summary + CSV output ──────────────────────────────────────────
+    // ── Step 7: Summary ───────────────────────────────────────────────────────
+    const toTronBase58 = (hex20: string) =>
+      this.tronDeployer.tronWeb.address.fromHex('41' + hex20.slice(2)) as string
+
+    const tronPortalBase58 = toTronBase58(tronPortalHex20)
+    const tronLZProverBase58 = toTronBase58(tronLZProverAddr)
+
     console.log('\n=== Deployment Summary ===')
-    const table = [
-      ['Base Portal', basePortal],
-      ['Base LayerZeroProver', baseLZProverFinal],
-      ['Tron Portal', tronPortalHex20],
-      ['Tron LayerZeroProver', tronLZProverAddr],
-    ]
-    for (const [label, addr] of table) {
-      console.log(`  ${label.padEnd(24)} ${addr}`)
-    }
+    console.log(`  Base Portal:            ${basePortal}`)
+    console.log(`  Base LayerZeroProver:   ${baseLZProverFinal}`)
+    console.log(`  Tron Portal (b58):      ${tronPortalBase58}`)
+    console.log(`  Tron Portal (0x-hex20): ${tronPortalHex20}`)
+    console.log(`  Tron LZ Prover (b58):   ${tronLZProverBase58}`)
+    console.log(`  Tron LZ Prover (0x-hex20): ${tronLZProverAddr}`)
 
-    if (!this.isDryRun) {
-      const baseChainId = await this.baseDeployer.getChainId()
-      const tronChainId = this.tronDeployer.getChainId()
-
-      const lzArgTypes = [
-        'address',
-        'address',
-        'address',
-        'bytes32[]',
-        'uint256',
-      ]
-      const baseLZArgs = this.abiCoder.encode(lzArgTypes, [
-        this.baseLZEndpoint,
-        this.baseDelegate,
-        basePortal,
-        [tronLZProverBytes32],
-        MIN_GAS_LIMIT,
-      ])
-      const tronLZArgs = this.abiCoder.encode(lzArgTypes, [
-        this.tronLZEndpointHex20,
-        this.tronDelegateHex20,
-        tronPortalHex20,
-        [baseLZProverBytes32],
-        MIN_GAS_LIMIT,
-      ])
-
-      this.appendToCSV([
-        {
-          chainId: baseChainId,
-          address: basePortal,
-          contractPath: 'contracts/Portal.sol:Portal',
-          constructorArgs: '0x',
-        },
-        {
-          chainId: baseChainId,
-          address: baseLZProverFinal,
-          contractPath:
-            'contracts/prover/LayerZeroProver.sol:LayerZeroProver',
-          constructorArgs: baseLZArgs,
-        },
-        {
-          chainId: tronChainId,
-          address: tronPortalHex20,
-          contractPath: 'contracts/Portal.sol:Portal',
-          constructorArgs: '0x',
-        },
-        {
-          chainId: tronChainId,
-          address: tronLZProverAddr,
-          contractPath:
-            'contracts/prover/LayerZeroProver.sol:LayerZeroProver',
-          constructorArgs: tronLZArgs,
-        },
-      ])
-    }
+    console.log('\n=== Post-Deployment LZ Configuration Notes ===')
+    console.log('  Whitelist encodings (immutable — fixed at deploy time):')
+    console.log(`    Tron prover whitelist (receives from Base):`)
+    console.log(`      Base LZ Prover (0x-hex20) → right-aligned bytes32: ${baseLZProverBytes32}`)
+    console.log(`    Base prover whitelist (receives from Tron):`)
+    console.log(`      Tron LZ Prover (0x-hex20) → left-aligned bytes32:  ${tronLZProverBytes32}`)
+    console.log()
+    console.log('  LZ send/receive library configs:')
+    console.log('    Both chains use default configs set by LZ Labs — no setConfig() call needed.')
+    console.log('    Default DVN: LZ Labs DVN (confirmed via docs/lzDeployments.json).')
+    console.log('    To override (custom DVN or executor), call IMessageLibManager.setConfig()')
+    console.log('    on the LZ endpoint using the delegate address set at deploy time.')
+    console.log()
+    console.log('  DVN testnet caveat:')
+    console.log('    On Tron Shasta, the LZ Labs DVN off-chain worker may not actively process')
+    console.log('    Tron→EVM routes. On-chain DVNFeePaid event fires and fees are paid, but')
+    console.log('    proof delivery to Base may not occur. Contact LZ Labs to confirm support.')
+    console.log()
+    console.log('  No setPeer() needed: LayerZeroProver uses Whitelist.sol (set above) instead.')
   }
 }
 
