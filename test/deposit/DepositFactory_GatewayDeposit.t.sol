@@ -14,8 +14,7 @@ contract DepositFactory_GatewayDepositTest is Test {
 
     // Configuration parameters
     uint64 constant DESTINATION_CHAIN = 42161; // Arbitrum
-    address constant SOURCE_TOKEN = address(0x1234);
-    address constant DESTINATION_TOKEN = address(0x5678);
+    address constant TOKEN = address(0x1234);
     address constant PROVER_ADDRESS = address(0x9ABC);
     address constant DESTINATION_PORTAL = address(0xDEF0);
     address constant GATEWAY = address(0xAAAA);
@@ -33,8 +32,7 @@ contract DepositFactory_GatewayDepositTest is Test {
 
         // Deploy factory
         factory = new DepositFactory_GatewayDeposit(
-            SOURCE_TOKEN,
-            DESTINATION_TOKEN,
+            TOKEN,
             address(portal),
             PROVER_ADDRESS,
             GATEWAY,
@@ -46,16 +44,14 @@ contract DepositFactory_GatewayDepositTest is Test {
 
     function test_constructor_setsConfigurationCorrectly() public view {
         (
-            address sourceToken,
-            address destinationToken,
+            address token,
             address portalAddress,
             address proverAddress,
             address gateway,
             uint64 deadlineDuration
         ) = factory.getConfiguration();
 
-        assertEq(sourceToken, SOURCE_TOKEN);
-        assertEq(destinationToken, DESTINATION_TOKEN);
+        assertEq(token, TOKEN);
         assertEq(portalAddress, address(portal));
         assertEq(proverAddress, PROVER_ADDRESS);
         assertEq(gateway, GATEWAY);
@@ -72,19 +68,6 @@ contract DepositFactory_GatewayDepositTest is Test {
         vm.expectRevert(BaseDepositFactory.InvalidSourceToken.selector);
         new DepositFactory_GatewayDeposit(
             address(0), // Invalid
-            DESTINATION_TOKEN,
-            address(portal),
-            PROVER_ADDRESS,
-            GATEWAY,
-            INTENT_DEADLINE_DURATION
-        );
-    }
-
-    function test_constructor_revertsOnInvalidDestinationToken() public {
-        vm.expectRevert(DepositFactory_GatewayDeposit.InvalidTargetToken.selector);
-        new DepositFactory_GatewayDeposit(
-            SOURCE_TOKEN,
-            address(0), // Invalid
             address(portal),
             PROVER_ADDRESS,
             GATEWAY,
@@ -95,8 +78,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     function test_constructor_revertsOnInvalidPortal() public {
         vm.expectRevert(BaseDepositFactory.InvalidPortalAddress.selector);
         new DepositFactory_GatewayDeposit(
-            SOURCE_TOKEN,
-            DESTINATION_TOKEN,
+            TOKEN,
             address(0), // Invalid
             PROVER_ADDRESS,
             GATEWAY,
@@ -107,8 +89,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     function test_constructor_revertsOnInvalidProver() public {
         vm.expectRevert(BaseDepositFactory.InvalidProverAddress.selector);
         new DepositFactory_GatewayDeposit(
-            SOURCE_TOKEN,
-            DESTINATION_TOKEN,
+            TOKEN,
             address(portal),
             address(0), // Invalid
             GATEWAY,
@@ -119,8 +100,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     function test_constructor_revertsOnInvalidGateway() public {
         vm.expectRevert(DepositFactory_GatewayDeposit.InvalidGatewayAddress.selector);
         new DepositFactory_GatewayDeposit(
-            SOURCE_TOKEN,
-            DESTINATION_TOKEN,
+            TOKEN,
             address(portal),
             PROVER_ADDRESS,
             address(0), // Invalid
@@ -131,8 +111,7 @@ contract DepositFactory_GatewayDepositTest is Test {
     function test_constructor_revertsOnInvalidDeadlineDuration() public {
         vm.expectRevert(BaseDepositFactory.InvalidDeadlineDuration.selector);
         new DepositFactory_GatewayDeposit(
-            SOURCE_TOKEN,
-            DESTINATION_TOKEN,
+            TOKEN,
             address(portal),
             PROVER_ADDRESS,
             GATEWAY,
@@ -171,6 +150,16 @@ contract DepositFactory_GatewayDepositTest is Test {
         assertTrue(predicted1 != predicted2);
     }
 
+    function test_getDepositAddress_revertsIfZeroDestinationAddress() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationAddress.selector);
+        factory.getDepositAddress(address(0), DEPOSITOR_1);
+    }
+
+    function test_getDepositAddress_revertsIfZeroDepositor() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDepositor.selector);
+        factory.getDepositAddress(USER_DESTINATION_1, address(0));
+    }
+
     // ============ deploy Tests ============
 
     function test_deploy_createsContractAtPredictedAddress() public {
@@ -203,8 +192,13 @@ contract DepositFactory_GatewayDepositTest is Test {
     }
 
     function test_deploy_revertsIfZeroDestinationAddress() public {
-        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationAddress.selector);
         factory.deploy(address(0), DEPOSITOR_1);
+    }
+
+    function test_deploy_revertsIfZeroDepositor() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDepositor.selector);
+        factory.deploy(USER_DESTINATION_1, address(0));
     }
 
     function test_deploy_revertsIfAlreadyDeployed() public {

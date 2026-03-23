@@ -71,6 +71,7 @@ contract DepositFactory_USDCTransfer_Solana {
     error InvalidDestinationToken();
     error InvalidPortalPDA();
     error InvalidExecutorATA();
+    error InvalidDepositor();
 
     // ============ Constructor ============
 
@@ -134,6 +135,9 @@ contract DepositFactory_USDCTransfer_Solana {
         bytes32 destinationAddress,
         address depositor
     ) public view returns (address) {
+        if (destinationAddress == bytes32(0)) revert InvalidDestinationAddress();
+        if (depositor == address(0)) revert InvalidDepositor();
+
         bytes32 salt = _getSalt(destinationAddress, depositor);
         return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
     }

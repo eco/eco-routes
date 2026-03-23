@@ -10,7 +10,10 @@ import {DepositFactory_GatewayDeposit as DepositFactory} from "./DepositFactory_
 /**
  * @title DepositAddress_GatewayDeposit
  * @notice Minimal proxy contract that constructs Intent structs for Gateway deposits
- * @dev Creates LOCAL intents (same-chain fulfillment).
+ * @dev Creates LOCAL intents (same-chain fulfillment). Because source and destination are the
+ *      same chain, the single TOKEN from the factory serves as both the source token (escrowed
+ *      as the solver reward) and the destination token (transferred by the solver to fulfill
+ *      the route).
  *      Each DepositAddress is specific to one user's destination address.
  *      Deployed via CREATE2 by DepositFactory_GatewayDeposit for deterministic addressing.
  */
@@ -42,13 +45,13 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
     }
 
     /**
-     * @notice Get the source token address for this deposit
+     * @notice Get the token address for this deposit
      * @dev Implementation of abstract function from BaseDepositAddress
-     * @return Address of the source token
+     * @return Address of the token
      */
     function _getSourceToken() internal view override returns (address) {
-        (address sourceToken, , , , , ) = FACTORY.getConfiguration();
-        return sourceToken;
+        (address token, , , , ) = FACTORY.getConfiguration();
+        return token;
     }
 
     /**
@@ -60,8 +63,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
     function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
-            address sourceToken,
-            address destinationToken,
+            address token,
             address portal,
             address prover,
             address gateway,
@@ -74,8 +76,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         // Construct Intent struct
         Intent memory intent = _constructIntent(
             destChain,
-            sourceToken,
-            destinationToken,
+            token,
             portal,
             prover,
             gateway,
@@ -85,7 +86,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
         );
 
         // Approve Portal to spend tokens
-        IERC20(sourceToken).approve(portal, amount);
+        IERC20(token).approve(portal, amount);
 
         // Call Portal.publishAndFund with Intent struct
         Portal portalContract = Portal(portal);
@@ -100,8 +101,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
     /**
      * @notice Construct complete Intent struct
      * @param destChain Destination chain ID
-     * @param sourceToken Source token address
-     * @param destinationToken Destination token address
+     * @param token Token address (used for both route and reward)
      * @param portal Portal address
      * @param prover Prover contract address
      * @param gateway Gateway contract address
@@ -112,8 +112,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
      */
     function _constructIntent(
         uint64 destChain,
-        address sourceToken,
-        address destinationToken,
+        address token,
         address portal,
         address prover,
         address gateway,
@@ -123,7 +122,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
     ) internal view returns (Intent memory intent) {
         // Construct Route
         Route memory route = _constructRoute(
-            destinationToken,
+            token,
             portal,
             gateway,
             amount,
@@ -132,7 +131,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
         // Construct Reward
         Reward memory reward = _constructReward(
-            sourceToken,
+            token,
             prover,
             amount,
             deadlineDuration,
@@ -145,7 +144,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
     /**
      * @notice Construct Route struct with Gateway depositFor call
-     * @param destinationToken Token address
+     * @param token Token address
      * @param portal Portal address
      * @param gateway Gateway contract address
      * @param amount Amount of tokens to transfer
@@ -153,7 +152,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
      * @return route Route struct with Gateway depositFor call
      */
     function _constructRoute(
-        address destinationToken,
+        address token,
         address portal,
         address gateway,
         uint256 amount,
@@ -169,7 +168,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
         // Construct token array
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: destinationToken, amount: amount});
+        tokens[0] = TokenAmount({token: token, amount: amount});
 
         // Construct Gateway depositFor call
         // Convert destinationAddress (bytes32) to address for the recipient
@@ -178,7 +177,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
             target: gateway,
             data: abi.encodeWithSignature(
                 "depositFor(address,address,uint256)",
-                destinationToken,
+                token,
                 address(uint160(uint256(destinationAddress))),
                 amount
             ),
@@ -198,15 +197,15 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
     /**
      * @notice Construct Reward struct for the intent
-     * @param sourceToken Source token address
+     * @param token Token address
      * @param prover Prover contract address
      * @param amount Amount of tokens as reward
      * @param deadlineDuration Deadline duration in seconds
      * @param depositorAddr Depositor address to receive refunds
-     * @return reward Reward struct with escrowed source tokens
+     * @return reward Reward struct with escrowed tokens
      */
     function _constructReward(
-        address sourceToken,
+        address token,
         address prover,
         uint256 amount,
         uint64 deadlineDuration,
@@ -217,7 +216,7 @@ contract DepositAddress_GatewayDeposit is BaseDepositAddress {
 
         // Construct reward token array
         TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: sourceToken, amount: amount});
+        tokens[0] = TokenAmount({token: token, amount: amount});
 
         // Construct reward
         reward = Reward({
