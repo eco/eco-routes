@@ -67,6 +67,7 @@ contract DepositFactory_USDCTransfer_Solana {
     error InvalidPortalAddress();
     error InvalidProverAddress();
     error InvalidDeadlineDuration();
+    error InvalidDestinationAddress();
     error InvalidDestinationPortal();
     error InvalidDestinationToken();
     error InvalidPortalPDA();
