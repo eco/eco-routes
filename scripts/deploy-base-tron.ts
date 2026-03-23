@@ -98,14 +98,6 @@ function predictCreate2Tron(
   return '0x' + ethers.keccak256(packed).slice(-40)
 }
 
-/**
- * Left-align an EVM address in bytes32 — equivalent to bytes32(bytes20(addr)) in Solidity.
- * Result: 0x + 40 hex chars (address) + 24 zero chars = 66 chars total.
- */
-function addressToBytes32Left(addr: string): string {
-  const stripped = (addr.startsWith('0x') ? addr.slice(2) : addr).toLowerCase()
-  return '0x' + stripped + '000000000000000000000000'
-}
 
 /**
  * Normalize a Tron address (base58 / hex41 / hex0x) to 0x-prefixed 20-byte hex.
@@ -546,6 +538,77 @@ class DeployOrchestrator {
     this.existingTronPortal = process.env.TRON_PORTAL_CONTRACT
   }
 
+  /**
+   * Verify that both LayerZeroProver whitelists contain the correct right-aligned
+   * peer address, and that allowInitializePath returns true for each direction.
+   * Throws if any check fails.
+   */
+  private async verifyWhitelists(
+    baseLZProver: string,
+    tronLZProver: string,
+    tronBytes32: string,  // right-aligned tronLZProver (for Base whitelist check)
+    baseBytes32: string,  // right-aligned baseLZProver (for Tron whitelist check)
+  ): Promise<void> {
+    const TRON_EID = 40420
+    const BASE_EID = 40245
+
+    const WHITELIST_ABI = [
+      'function getWhitelist() view returns (bytes32[])',
+      'function isWhitelisted(bytes32 addr) view returns (bool)',
+      'function allowInitializePath(tuple(uint32 srcEid, bytes32 sender, uint64 nonce) origin) view returns (bool)',
+    ]
+
+    // ── Check Base LayerZeroProver ───────────────────────────────────────────
+    const baseRpcUrl = process.env.BASE_RPC_URL || (this.isTestnet ? 'https://sepolia.base.org' : '')
+    const baseProvider = new ethers.JsonRpcProvider(baseRpcUrl)
+    const baseContract = new ethers.Contract(baseLZProver, WHITELIST_ABI, baseProvider)
+
+    const baseWhitelist: string[] = await baseContract.getWhitelist()
+    const baseIsWhitelisted: boolean = await baseContract.isWhitelisted(tronBytes32)
+    const baseAllowInit: boolean = await baseContract.allowInitializePath({ srcEid: TRON_EID, sender: tronBytes32, nonce: 0 })
+
+    console.log(`  Base prover whitelist: ${JSON.stringify(baseWhitelist)}`)
+    console.log(`  Base isWhitelisted(tron right-aligned): ${baseIsWhitelisted}`)
+    console.log(`  Base allowInitializePath(srcEid=${TRON_EID}): ${baseAllowInit}`)
+    if (!baseIsWhitelisted || !baseAllowInit) {
+      throw new Error(
+        `Base LayerZeroProver whitelist WRONG!\n` +
+        `  Expected right-aligned tron prover: ${tronBytes32}\n` +
+        `  Got whitelist: ${JSON.stringify(baseWhitelist)}\n` +
+        `  isWhitelisted=${baseIsWhitelisted}, allowInitializePath=${baseAllowInit}\n` +
+        `  CRITICAL: Must redeploy with ethers.zeroPadValue(tronLZProver, 32) in whitelist.`
+      )
+    }
+
+    // ── Check Tron LayerZeroProver ───────────────────────────────────────────
+    const tronProverB58 = this.tronDeployer.tronWeb.address.fromHex('41' + tronLZProver.slice(2)) as string
+    const TRON_WHITELIST_ABI = [
+      { name: 'getWhitelist', type: 'function', inputs: [], outputs: [{ type: 'bytes32[]' }], stateMutability: 'view' },
+      { name: 'isWhitelisted', type: 'function', inputs: [{ name: 'addr', type: 'bytes32' }], outputs: [{ type: 'bool' }], stateMutability: 'view' },
+      { name: 'allowInitializePath', type: 'function', inputs: [{ name: 'origin', type: 'tuple', components: [{ name: 'srcEid', type: 'uint32' }, { name: 'sender', type: 'bytes32' }, { name: 'nonce', type: 'uint64' }] }], outputs: [{ type: 'bool' }], stateMutability: 'view' },
+    ]
+    const tronContract = await this.tronDeployer.tronWeb.contract(TRON_WHITELIST_ABI, tronProverB58)
+
+    const tronWhitelist = await tronContract.getWhitelist().call()
+    const tronIsWhitelisted: boolean = await tronContract.isWhitelisted(baseBytes32).call()
+    const tronAllowInit: boolean = await tronContract.allowInitializePath([BASE_EID, baseBytes32, 0]).call()
+
+    console.log(`  Tron prover whitelist: ${JSON.stringify(tronWhitelist)}`)
+    console.log(`  Tron isWhitelisted(base right-aligned): ${tronIsWhitelisted}`)
+    console.log(`  Tron allowInitializePath(srcEid=${BASE_EID}): ${tronAllowInit}`)
+    if (!tronIsWhitelisted || !tronAllowInit) {
+      throw new Error(
+        `Tron LayerZeroProver whitelist WRONG!\n` +
+        `  Expected right-aligned base prover: ${baseBytes32}\n` +
+        `  Got whitelist: ${JSON.stringify(tronWhitelist)}\n` +
+        `  isWhitelisted=${tronIsWhitelisted}, allowInitializePath=${tronAllowInit}\n` +
+        `  CRITICAL: Must redeploy with ethers.zeroPadValue(baseLZProver, 32) in whitelist.`
+      )
+    }
+
+    console.log('  ✓ Both whitelists verified — right-aligned, allowInitializePath=true on both sides')
+  }
+
   async run(): Promise<void> {
     console.log('=== Base + Tron Deployment Orchestrator ===')
     console.log(`Mode:      ${this.isDryRun ? 'DRY RUN (no transactions)' : 'LIVE'}`)
@@ -634,15 +697,13 @@ class DeployOrchestrator {
       throw new Error('BASE_LZ_ENDPOINT required')
     }
 
-    // Base LayerZeroProver whitelist entry for the Tron LZ Prover — LEFT-aligned bytes32.
-    // tronLZProverAddr is a 0x-prefixed hex20 address (strip of the hex41 0x41 prefix).
-    // When the Tron LZ endpoint sends a packet, origin.sender encodes the Tron contract
-    // address as bytes32(bytes20(addr)) — left-aligned (address occupies the high 20 bytes).
-    // The Base prover's allowInitializePath() calls isWhitelisted(origin.sender), so this
-    // entry must be the left-aligned encoding. (Confirmed: right-aligned returns false.)
-    // Equivalent Solidity: bytes32(bytes20(tronLZProverAddr))
-    const tronLZProverBytes32 = addressToBytes32Left(tronLZProverAddr)
-    console.log(`  Tron LZ Prover (0x-hex20 → left-aligned bytes32): ${tronLZProverBytes32}`)
+    // Base LayerZeroProver whitelist entry for the Tron LZ Prover — RIGHT-aligned bytes32.
+    // Tron is EVM-compatible: origin.sender is encoded as bytes32(uint160(addr)) = right-aligned,
+    // identical to any EVM chain. Verified directly from the on-chain packet header in the
+    // receiveUln302 PacketVerified event — the sender field has 12 leading zero bytes.
+    // Using left-aligned here causes LZ_PathNotInitializable() on message delivery.
+    const tronLZProverBytes32 = ethers.zeroPadValue(tronLZProverAddr, 32)
+    console.log(`  Tron LZ Prover (0x-hex20 → right-aligned bytes32): ${tronLZProverBytes32}`)
 
     let baseLZProverFinal: string
     if (this.isDryRun) {
@@ -668,14 +729,25 @@ class DeployOrchestrator {
       )
     }
 
-    // ── Step 7: Summary ───────────────────────────────────────────────────────
+    // ── Step 7: Verify whitelists on-chain ────────────────────────────────────
+    if (!this.isDryRun) {
+      console.log('\n=== Step 7: Verify whitelist alignment ===')
+      await this.verifyWhitelists(
+        baseLZProverFinal,
+        tronLZProverAddr,
+        tronLZProverBytes32,
+        baseLZProverBytes32,
+      )
+    }
+
+    // ── Step 8: Summary ───────────────────────────────────────────────────────
     const toTronBase58 = (hex20: string) =>
       this.tronDeployer.tronWeb.address.fromHex('41' + hex20.slice(2)) as string
 
     const tronPortalBase58 = toTronBase58(tronPortalHex20)
     const tronLZProverBase58 = toTronBase58(tronLZProverAddr)
 
-    console.log('\n=== Deployment Summary ===')
+    console.log('\n=== Step 8: Deployment Summary ===')
     console.log(`  Base Portal:            ${basePortal}`)
     console.log(`  Base LayerZeroProver:   ${baseLZProverFinal}`)
     console.log(`  Tron Portal (b58):      ${tronPortalBase58}`)
@@ -688,13 +760,26 @@ class DeployOrchestrator {
     console.log(`    Tron prover whitelist (receives from Base):`)
     console.log(`      Base LZ Prover (0x-hex20) → right-aligned bytes32: ${baseLZProverBytes32}`)
     console.log(`    Base prover whitelist (receives from Tron):`)
-    console.log(`      Tron LZ Prover (0x-hex20) → left-aligned bytes32:  ${tronLZProverBytes32}`)
+    console.log(`      Tron LZ Prover (0x-hex20) → right-aligned bytes32: ${tronLZProverBytes32}`)
     console.log()
-    console.log('  LZ send/receive library configs:')
-    console.log('    Both chains use default configs set by LZ Labs — no setConfig() call needed.')
-    console.log('    Default DVN: LZ Labs DVN (confirmed via docs/lzDeployments.json).')
-    console.log('    To override (custom DVN or executor), call IMessageLibManager.setConfig()')
-    console.log('    on the LZ endpoint using the delegate address set at deploy time.')
+    console.log('  LZ OApp config — REQUIRED post-deploy steps on Base Sepolia:')
+    console.log('    Base Sepolia has NO default send/receive library for the Tron EID (40420).')
+    console.log('    You MUST call these on Base Sepolia LZ endpoint (0x6EDCE65403992e310A62460808c4b910D972f10f)')
+    console.log('    using the delegate (deployer) wallet:')
+    console.log()
+    console.log('    1. setSendLibrary(baseLZProver, 40420, 0xC1868e054425D378095A003EcbA3823a5D0135C9)')
+    console.log('    2. setReceiveLibrary(baseLZProver, 40420, 0x12523de19dc41c91F7d2093E0CFbB76b17012C8d, 0)')
+    console.log('    3. setConfig — ULN send:  confirmations=2, DVN=[0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6]')
+    console.log('    4. setConfig — Executor:  maxMsgSize=10000, executor=0x8A3D588D9f6AC041476b094f97FF94ec30169d3D')
+    console.log('    5. setConfig — ULN recv:  confirmations=1, DVN=[0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6]')
+    console.log()
+    console.log('    DVN address (LayerZero Labs): 0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6')
+    console.log('    (from docs/lzDeployments.json base-sepolia dvns — the non-lzReadCompatible entry)')
+    console.log()
+    console.log('    Tron Shasta: set explicit OApp config to remove LZDeadDVN from defaults.')
+    console.log('    Tron DVN (LayerZero Labs): 0xc6b1a264d9bb30a8d19575b0bb3ba525a3a6fc93')
+    console.log('    6. setConfig — Tron ULN send: confirmations=1, DVN=[0xc6b1a264d9bb30a8d19575b0bb3ba525a3a6fc93]')
+    console.log('    7. setConfig — Tron ULN recv: confirmations=2, DVN=[0xc6b1a264d9bb30a8d19575b0bb3ba525a3a6fc93]')
     console.log()
     console.log('  DVN testnet caveat:')
     console.log('    On Tron Shasta, the LZ Labs DVN off-chain worker may not actively process')

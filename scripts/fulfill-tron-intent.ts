@@ -14,16 +14,16 @@ import 'dotenv/config'
 // ── Deployed addresses ──────────────────────────────────────────────────────
 const TRON_PORTAL_BASE58   = 'TLp4t7Lv41iLXEqTuB4fkq7WKqUVxZxRo9'
 const TRON_PORTAL_HEX20    = '0x76eedca4f0a7aa6d04db86005d0de0efba73e99e'
-const TRON_LZ_PROVER_HEX20 = '0x732e4c4a3d81627e0d343889af186cfc96b76c0b'
-const BASE_LZ_PROVER       = '0x25122417560665F1393847C8591e4b1e4daCbc6D'
+const TRON_LZ_PROVER_HEX20 = '0x0d8ac908e4a836b98d8188d8736505fb40062ccc'
+const BASE_LZ_PROVER       = '0x5F43d3c6140669e1FFB9A0eCbF1188B76DB4B898'
 
 // Base Sepolia LayerZero EID (source chain)
 const BASE_SEPOLIA_EID = 40245n
 
 // ── Intent values (from create-base-intent output) ─────────────────────────
-const INTENT_HASH     = '0xbc8d77d3916d608394e391487ec9f0bb5b44dbb603b0a9063fcecc54add4da5b'
-const INTENT_SALT     = '0xdb559d6a07b5d27ca42bb84c1cf3fc56139000d1961f45fd5b2778149253be05'
-const INTENT_DEADLINE = 1774238153n
+const INTENT_HASH     = '0xf6b939708f4ad798846c63c4134cb07fed6ed87b4730bc3ad5f941cc9037517d'
+const INTENT_SALT     = '0x2a30d08513e9dec28c1844f1adb4fbfd88390e3f90e94e943530fc988957a85a'
+const INTENT_DEADLINE = 1774291540n
 const CREATOR_HEX20   = '0xffe05fc55f42a9ae9eb97731c1ca1e0aa9030fde'
 
 // ── ABI fragments ──────────────────────────────────────────────────────────
@@ -107,8 +107,8 @@ async function main() {
   // and process the proof. Tron's LZ endpoint encodes EVM receivers right-aligned.
   //
   // Note: when Base later receives the packet from Tron, origin.sender for the Tron LZ
-  // Prover (0x-prefixed hex20) comes through LEFT-aligned — bytes32(bytes20(tronAddr)).
-  // That is what the Base LayerZeroProver whitelist stores. See deploy-base-tron.ts.
+  // Prover comes through RIGHT-aligned — bytes32(uint160(addr)) — same as any EVM chain,
+  // since Tron is EVM-compatible. The Base LayerZeroProver whitelist stores right-aligned.
   const sourceChainProver = ethers.zeroPadValue(BASE_LZ_PROVER, 32)
 
   // LZ type-3 options: [type=3][workerId=1(EXECUTOR)][size=17][optType=1(lzReceive)][gas uint128]

@@ -10,15 +10,15 @@ import { ethers } from 'ethers'
 import 'dotenv/config'
 
 const BASE_PORTAL       = '0x31A1576A284B2509CdbA9cEc36BD9B67D1a754cB'
-const BASE_LZ_PROVER    = '0x25122417560665F1393847C8591e4b1e4daCbc6D'
+const BASE_LZ_PROVER    = '0x5F43d3c6140669e1FFB9A0eCbF1188B76DB4B898'
 const TRON_PORTAL_HEX20 = '0x76eedca4f0a7aa6d04db86005d0de0efba73e99e'
 
 // Tron Shasta chain ID (destination of the intent)
 const TRON_SHASTA_CHAIN_ID = 2494104990
 
 // Values from the last create-base-intent run
-const INTENT_SALT     = '0xdb559d6a07b5d27ca42bb84c1cf3fc56139000d1961f45fd5b2778149253be05'
-const INTENT_DEADLINE = 1774238153n
+const INTENT_SALT     = '0x2a30d08513e9dec28c1844f1adb4fbfd88390e3f90e94e943530fc988957a85a'
+const INTENT_DEADLINE = 1774291540n
 const CREATOR_HEX20   = '0xffe05fc55f42a9ae9eb97731c1ca1e0aa9030fde'
 
 const WITHDRAW_ABI = [

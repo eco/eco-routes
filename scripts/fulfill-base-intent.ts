@@ -11,13 +11,13 @@ import 'dotenv/config'
 
 // ── Deployed addresses ──────────────────────────────────────────────────────
 const BASE_PORTAL        = '0x31A1576A284B2509CdbA9cEc36BD9B67D1a754cB'
-const BASE_LZ_PROVER     = '0x25122417560665F1393847C8591e4b1e4daCbc6D'
-const TRON_LZ_PROVER_HEX20 = '0x732e4c4a3d81627e0d343889af186cfc96b76c0b'
+const BASE_LZ_PROVER     = '0x5F43d3c6140669e1FFB9A0eCbF1188B76DB4B898'
+const TRON_LZ_PROVER_HEX20 = '0x0d8ac908e4a836b98d8188d8736505fb40062ccc'
 
 // ── Intent values (from create-tron-intent output) ─────────────────────────
-const INTENT_HASH  = '0xf086ffeef54297f11bc06632f7e6a72e5545bf7a32196e6f37302a3d00710e0a'
-const INTENT_SALT  = '0x76a4cb19d0eb7923a0b09efe2752a973dc824c0b3be68530882ec74f84b6db96'
-const INTENT_DEADLINE = 1774189847n  // unix seconds from create-tron-intent output
+const INTENT_HASH  = '0x027a6d08d74c889a66f64a12bb8c5f4ca03f73db75fb81c293ff9ae4b834c662'
+const INTENT_SALT  = '0x0c20b3323cb6b3550279f1374641c9b42c7ddee4b45eed1bd6b1da3add72bc47'
+const INTENT_DEADLINE = 1774292977n  // unix seconds from create-tron-intent output
 
 // Creator (deployer) hex20 on Tron = same private key, Base address format
 const CREATOR_HEX20      = '0xffe05fc55f42a9ae9eb97731c1ca1e0aa9030fde'
@@ -100,10 +100,9 @@ async function main() {
   // sent from Base. EVM LZ endpoints always encode the receiver right-aligned, and Tron's
   // endpoint accepts the same format.
   //
-  // Note: this is the ROUTING address (where to deliver the packet on Tron), not the
-  // sender-identity encoding. When Tron later sends a packet to Base, origin.sender for a
-  // Tron address is LEFT-aligned (bytes32(bytes20(addr))). That asymmetry explains why the
-  // two LayerZeroProver whitelist entries differ — see deploy-base-tron.ts comments.
+  // Note: this is the ROUTING address (where to deliver the packet on Tron). When Tron later
+  // sends a packet to Base, origin.sender is also RIGHT-aligned — Tron is EVM-compatible and
+  // encodes addresses as bytes32(uint160(addr)). Both whitelist entries use right-aligned.
   const sourceChainProver = ethers.zeroPadValue(TRON_LZ_PROVER_HEX20, 32)
 
   // LZ type-3 options: [type=3][workerId=1(EXECUTOR)][size=17][optType=1(lzReceive)][gas uint128]

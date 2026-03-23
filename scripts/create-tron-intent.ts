@@ -11,7 +11,7 @@ import { ethers } from 'ethers'
 import 'dotenv/config'
 
 const TRON_PORTAL_BASE58 = 'TLp4t7Lv41iLXEqTuB4fkq7WKqUVxZxRo9'
-const TRON_LZ_PROVER_HEX20 = '0x732e4c4a3d81627e0d343889af186cfc96b76c0b'
+const TRON_LZ_PROVER_HEX20 = '0x0d8ac908e4a836b98d8188d8736505fb40062ccc'
 const TRON_PORTAL_HEX20 = '0x76eedca4f0a7aa6d04db86005d0de0efba73e99e'
 
 // Base Sepolia chain ID — destination for the intent
@@ -102,7 +102,7 @@ async function main() {
   console.log(`  Creator:     ${deployerTronAddr} (${deployerHex20})`)
   console.log(`  Prover:      ${TRON_LZ_PROVER_HEX20}`)
   console.log(`  Destination: Base Sepolia (${BASE_SEPOLIA_CHAIN_ID})`)
-  console.log(`  Deadline:    ${new Date(deadline * 1000).toISOString()} (+5 min)`)
+  console.log(`  Deadline:    ${new Date(deadline * 1000).toISOString()} (+24h)`)
   console.log(`  Salt:        ${salt}`)
 
   // Encode calldata with ethers.js and pass rawParameter to TronWeb

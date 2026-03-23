@@ -11,7 +11,7 @@ import { ethers } from 'ethers'
 import 'dotenv/config'
 
 const BASE_PORTAL       = '0x31A1576A284B2509CdbA9cEc36BD9B67D1a754cB'
-const BASE_LZ_PROVER    = '0x25122417560665F1393847C8591e4b1e4daCbc6D'
+const BASE_LZ_PROVER    = '0x5F43d3c6140669e1FFB9A0eCbF1188B76DB4B898'
 const TRON_PORTAL_HEX20 = '0x76eedca4f0a7aa6d04db86005d0de0efba73e99e'
 
 // Tron Shasta chain ID — destination for the intent
