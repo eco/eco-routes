@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
+import {IVault} from "../../contracts/interfaces/IVault.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {FakePermit} from "../../contracts/test/FakePermit.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
@@ -85,7 +86,9 @@ contract TokenSecurityTest is BaseTest {
 
         // IntentWithdrawn should revert due to malicious token
         vm.prank(claimant);
-        vm.expectRevert(BadERC20.TransferNotAllowed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IVault.TokenTransferFailed.selector, address(maliciousToken))
+        );
         intentSource.withdraw(intent.destination, routeHash, intent.reward);
     }
 

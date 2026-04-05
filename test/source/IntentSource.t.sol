@@ -631,7 +631,9 @@ contract IntentSourceTest is BaseTest {
 
         // Should revert due to malicious token preventing transfer
         vm.prank(claimant);
-        vm.expectRevert(BadERC20.TransferNotAllowed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(IVault.TokenTransferFailed.selector, address(maliciousToken))
+        );
         intentSource.withdraw(intent.destination, routeHash, intent.reward);
     }
 

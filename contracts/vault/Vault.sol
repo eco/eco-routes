@@ -90,7 +90,7 @@ contract Vault is IVault {
             );
 
             if (amount > 0) {
-                token.safeTransfer(claimant, amount);
+                _transferToken(token, claimant, amount);
             }
         }
 
@@ -117,7 +117,7 @@ contract Vault is IVault {
             uint256 amount = token.balanceOf(address(this));
 
             if (amount > 0) {
-                token.safeTransfer(refundee, amount);
+                _transferToken(token, refundee, amount);
             }
         }
 
@@ -145,7 +145,7 @@ contract Vault is IVault {
             revert ZeroRecoverTokenBalance(token);
         }
 
-        tokenContract.safeTransfer(refundee, balance);
+        _transferToken(tokenContract, refundee, balance);
     }
 
     /**
@@ -223,5 +223,27 @@ contract Vault is IVault {
         }
 
         return rewardAmount - token.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Transfers ERC20 tokens out of the vault using a low-level call.
+     * @dev Uses a raw call instead of SafeERC20.safeTransfer so that tokens whose
+     *      `transfer()` returns false despite moving funds (e.g. Tron USDT compiled
+     *      with solc 0.4.x) are handled correctly.  The balance check ensures that
+     *      genuine failures — where tokens do not actually move — still revert.
+     * @param token ERC20 token to transfer
+     * @param to Recipient address
+     * @param amount Amount to transfer
+     */
+    function _transferToken(IERC20 token, address to, uint256 amount) internal {
+        uint256 before = token.balanceOf(address(this));
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool success, ) = address(token).call(
+            abi.encodeCall(IERC20.transfer, (to, amount))
+        );
+        // Revert if the call itself reverted, or if no tokens left the vault.
+        if (!success || token.balanceOf(address(this)) >= before) {
+            revert TokenTransferFailed(address(token));
+        }
     }
 }

@@ -16,6 +16,7 @@ interface ILocalProver is IProver {
 
     error InvalidClaimant();
     error NativeTransferFailed();
+    error TokenTransferFailed(address token);
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
