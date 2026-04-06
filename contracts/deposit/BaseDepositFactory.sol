@@ -37,7 +37,6 @@ abstract contract BaseDepositFactory {
     error InvalidPortalAddress();
     error InvalidProverAddress();
     error InvalidDeadlineDuration();
-    error InvalidDestinationPortal();
     error InvalidDestinationAddress();
     error InvalidDepositor();
 
