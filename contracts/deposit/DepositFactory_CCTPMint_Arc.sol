@@ -50,6 +50,12 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
     /// @notice Gateway contract address on Arc
     address public immutable GATEWAY_ADDRESS;
 
+    /// @notice Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000)
+    uint256 public immutable MAX_FEE_BPS;
+
+    /// @notice Denominator for fee basis point calculations
+    uint256 public constant FEE_DENOMINATOR = 100_000;
+
     // ============ Errors ============
 
     error InvalidCCTPTokenMessenger();
@@ -72,6 +78,7 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
      * @param _arcProverAddress LocalProver contract address on Arc
      * @param _arcUsdc USDC ERC20 address on Arc
      * @param _gatewayAddress Gateway contract address on Arc
+     * @param _maxFeeBps Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000, e.g. 13 = 1.3 bps)
      */
     constructor(
         address _sourceToken,
@@ -83,7 +90,8 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
         uint64 _arcChainId,
         address _arcProverAddress,
         address _arcUsdc,
-        address _gatewayAddress
+        address _gatewayAddress,
+        uint256 _maxFeeBps
     ) BaseDepositFactory(address(new DepositAddress_CCTPMint_Arc())) {
         // Validation
         // Note: _destinationDomain is intentionally not validated because CCTP domain 0
@@ -109,6 +117,7 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
         ARC_PROVER_ADDRESS = _arcProverAddress;
         ARC_USDC = _arcUsdc;
         GATEWAY_ADDRESS = _gatewayAddress;
+        MAX_FEE_BPS = _maxFeeBps;
     }
 
     // ============ External Functions ============
@@ -125,6 +134,7 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
      * @return arcProverAddress LocalProver address on Arc
      * @return arcUsdc USDC ERC20 address on Arc
      * @return gatewayAddress Gateway address on Arc
+     * @return maxFeeBps Maximum fee in basis points for CCTP fast-deposit
      */
     function getConfiguration()
         external
@@ -139,7 +149,8 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
             uint64 arcChainId,
             address arcProverAddress,
             address arcUsdc,
-            address gatewayAddress
+            address gatewayAddress,
+            uint256 maxFeeBps
         )
     {
         return (
@@ -152,7 +163,8 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            MAX_FEE_BPS
         );
     }
 

@@ -42,7 +42,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -59,7 +60,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             uint64 arcChainId,
             address arcProverAddress,
             address arcUsdc,
-            address gatewayAddress
+            address gatewayAddress,
+            uint256 maxFeeBps
         ) = factory.getConfiguration();
 
         assertEq(sourceToken, SOURCE_TOKEN);
@@ -72,6 +74,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         assertEq(arcProverAddress, ARC_PROVER_ADDRESS);
         assertEq(arcUsdc, ARC_USDC);
         assertEq(gatewayAddress, GATEWAY_ADDRESS);
+        assertEq(maxFeeBps, 13);
     }
 
     function test_constructor_deploysImplementation() public view {
@@ -92,7 +95,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -108,7 +112,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -124,7 +129,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -140,7 +146,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -156,7 +163,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -172,7 +180,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             0, // Invalid
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -188,7 +197,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             address(0), // Invalid
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -204,7 +214,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             address(0), // Invalid
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -220,7 +231,8 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            address(0) // Invalid
+            address(0), // Invalid
+            13 // 1.3 bps CCTP fast-deposit fee
         );
     }
 
@@ -255,6 +267,16 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
         assertTrue(predicted1 != predicted2);
     }
 
+    function test_getDepositAddress_revertsIfZeroDestinationAddress() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationAddress.selector);
+        factory.getDepositAddress(address(0), DEPOSITOR_1);
+    }
+
+    function test_getDepositAddress_revertsIfZeroDepositor() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDepositor.selector);
+        factory.getDepositAddress(USER_DESTINATION_1, address(0));
+    }
+
     // ============ deploy Tests ============
 
     function test_deploy_createsContractAtPredictedAddress() public {
@@ -287,8 +309,13 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     }
 
     function test_deploy_revertsIfZeroDestinationAddress() public {
-        vm.expectRevert(BaseDepositAddress.InvalidDestinationAddress.selector);
+        vm.expectRevert(BaseDepositFactory.InvalidDestinationAddress.selector);
         factory.deploy(address(0), DEPOSITOR_1);
+    }
+
+    function test_deploy_revertsIfZeroDepositor() public {
+        vm.expectRevert(BaseDepositFactory.InvalidDepositor.selector);
+        factory.deploy(USER_DESTINATION_1, address(0));
     }
 
     function test_deploy_revertsIfAlreadyDeployed() public {
