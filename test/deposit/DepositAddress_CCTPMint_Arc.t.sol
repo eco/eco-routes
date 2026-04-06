@@ -33,6 +33,8 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
     address constant ATTACKER = address(0x6666);
 
     uint256 private constant NATIVE_USDC_SCALING = 1e12;
+    uint256 private constant MAX_FEE_BPS = 13;
+    uint256 private constant FEE_DENOMINATOR = 100_000;
 
     function setUp() public {
         token = new TestERC20("Test USDC", "USDC");
@@ -48,7 +50,8 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            MAX_FEE_BPS
         );
 
         address deployed = factory.deploy(USER_DESTINATION, DEPOSITOR);
@@ -244,25 +247,29 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
                 assertEq(creator, DEPOSITOR, "Intent 2 creator should be depositor");
                 assertEq(proverAddr, ARC_PROVER_ADDRESS, "Intent 2 prover should be Arc prover");
 
+                // Compute expected net amount after CCTP fee deduction (rounded up)
+                uint256 maxFee = (amount * MAX_FEE_BPS + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
+                uint256 netAmount = amount - maxFee;
+
                 // Verify route
                 Route memory route = abi.decode(routeBytes, (Route));
                 assertEq(route.portal, address(portal), "Intent 2 route portal should be portal");
-                assertEq(route.nativeAmount, amount * NATIVE_USDC_SCALING, "Intent 2 route nativeAmount should be scaled");
+                assertEq(route.nativeAmount, netAmount * NATIVE_USDC_SCALING, "Intent 2 route nativeAmount should be scaled net amount");
                 assertEq(route.tokens.length, 0, "Intent 2 route should have empty tokens array");
                 assertEq(route.calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
 
-                // Verify call 0: approve Gateway for USDC
+                // Verify call 0: approve Gateway for USDC (net amount)
                 assertEq(route.calls[0].target, ARC_USDC, "Call 0 target should be ARC_USDC");
                 assertEq(route.calls[0].value, 0, "Call 0 value should be 0");
 
                 bytes memory expectedApproveData = abi.encodeWithSignature(
                     "approve(address,uint256)",
                     GATEWAY_ADDRESS,
-                    amount
+                    netAmount
                 );
-                assertEq(route.calls[0].data, expectedApproveData, "Call 0 data should encode approve");
+                assertEq(route.calls[0].data, expectedApproveData, "Call 0 data should encode approve with net amount");
 
-                // Verify call 1: Gateway.depositFor
+                // Verify call 1: Gateway.depositFor (net amount)
                 assertEq(route.calls[1].target, GATEWAY_ADDRESS, "Call 1 target should be Gateway");
                 assertEq(route.calls[1].value, 0, "Call 1 value should be 0");
 
@@ -270,12 +277,12 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
                     "depositFor(address,address,uint256)",
                     ARC_USDC,
                     address(uint160(uint256(bytes32(uint256(uint160(USER_DESTINATION)))))),
-                    amount
+                    netAmount
                 );
-                assertEq(route.calls[1].data, expectedDepositForData, "Call 1 data should encode depositFor");
+                assertEq(route.calls[1].data, expectedDepositForData, "Call 1 data should encode depositFor with net amount");
 
                 // Verify reward
-                assertEq(rewardNativeAmount, amount * NATIVE_USDC_SCALING, "Intent 2 reward nativeAmount should be scaled");
+                assertEq(rewardNativeAmount, netAmount * NATIVE_USDC_SCALING, "Intent 2 reward nativeAmount should be scaled net amount");
                 assertEq(rewardTokens.length, 0, "Intent 2 reward should have empty tokens array");
 
                 break;
@@ -408,12 +415,13 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
                         (uint256, uint32, bytes32, address, bytes32, uint256, uint32)
                     );
 
+                    uint256 expectedMaxFee = (amount * MAX_FEE_BPS + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
                     assertEq(cctpAmount, amount, "CCTP amount should match deposit");
                     assertEq(destDomain, DESTINATION_DOMAIN, "CCTP destination domain should match");
                     assertEq(burnToken, address(token), "CCTP burn token should be source USDC");
                     assertEq(destinationCaller, bytes32(0), "CCTP destination caller should be zero (anyone)");
-                    assertEq(maxFee, 0, "CCTP maxFee should be 0 (standard = free)");
-                    assertEq(minFinalityThreshold, 2000, "CCTP minFinalityThreshold should be 2000");
+                    assertEq(maxFee, expectedMaxFee, "CCTP maxFee should be 1.3 bps of amount");
+                    assertEq(minFinalityThreshold, 0, "CCTP minFinalityThreshold should be 0 (fast finality)");
 
                     // mintRecipient should be vault2 encoded as bytes32
                     // We can verify it is non-zero (vault addresses are always non-zero)
@@ -764,7 +772,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
     // ============ Fuzz Tests ============
 
     function testFuzz_createIntent_succeeds(uint256 amount) public {
-        vm.assume(amount > 0 && amount <= type(uint128).max);
+        vm.assume(amount >= 100_000 && amount <= type(uint128).max);
 
         token.mint(address(depositAddress), amount);
         bytes32 intentHash = depositAddress.createIntent();

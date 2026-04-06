@@ -219,6 +219,16 @@ contract DepositFactoryTest is Test {
         assertTrue(predicted1 != predicted2);
     }
 
+    function test_getDepositAddress_revertsIfZeroDestinationAddress() public {
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDestinationAddress.selector);
+        factory.getDepositAddress(bytes32(0), DEPOSITOR_1);
+    }
+
+    function test_getDepositAddress_revertsIfZeroDepositor() public {
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDepositor.selector);
+        factory.getDepositAddress(USER_DESTINATION_1, address(0));
+    }
+
     // ============ deploy Tests ============
 
     function test_deploy_createsContractAtPredictedAddress() public {
@@ -252,6 +262,11 @@ contract DepositFactoryTest is Test {
     function test_deploy_revertsIfZeroDestinationAddress() public {
         vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDestinationAddress.selector);
         factory.deploy(bytes32(0), DEPOSITOR_1);
+    }
+
+    function test_deploy_revertsIfZeroDepositor() public {
+        vm.expectRevert(DepositFactory_USDCTransfer_Solana.InvalidDepositor.selector);
+        factory.deploy(RECIPIENT_ATA_1, address(0));
     }
 
     function test_deploy_revertsIfAlreadyDeployed() public {

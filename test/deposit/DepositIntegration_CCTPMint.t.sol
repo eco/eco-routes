@@ -12,6 +12,18 @@ import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
 /**
+ * @title MockGateway
+ * @notice Mock Gateway contract for testing depositFor calls in the CCTP flow
+ */
+contract MockGateway {
+    event DepositFor(address token, address recipient, uint256 amount);
+
+    function depositFor(address token, address recipient, uint256 amount) external {
+        emit DepositFor(token, recipient, amount);
+    }
+}
+
+/**
  * @title DepositIntegration_CCTPMintTest
  * @notice Integration tests for the CCTP+Gateway dual-intent deposit flow.
  *         Exercises the end-to-end lifecycle: factory deployment, deterministic addressing,
@@ -85,7 +97,8 @@ contract DepositIntegration_CCTPMintTest is Test {
             ARC_CHAIN_ID,
             ARC_PROVER_ADDRESS,
             ARC_USDC,
-            GATEWAY_ADDRESS
+            GATEWAY_ADDRESS,
+            13 // 1.3 bps CCTP fast-deposit fee
         );
 
         // Fund solver
@@ -361,5 +374,160 @@ contract DepositIntegration_CCTPMintTest is Test {
         assertTrue(createIntentGas > 0);
         assertTrue(deployGas < 500_000); // Should be < 500k for minimal proxy
         assertTrue(createIntentGas < 1_000_000); // Should be < 1M for dual-intent creation
+    }
+
+    // ============ CCTP → Vault2 → Intent 2 Fulfillment Flow ============
+
+    /**
+     * @notice Tests the full two-intent CCTP flow:
+     *         1. createIntent() publishes Intent 2 (Gateway deposit on Arc) and Intent 1 (CCTP burn),
+     *            with Intent 2's vault address as the CCTP mintRecipient.
+     *         2. Simulates CCTP minting by funding vault2 with native ETH (representing native USDC on Arc).
+     *         3. Solver calls LocalProver.flashFulfill() for Intent 2, triggering Gateway.depositFor.
+     *         4. Verifies Intent 2 is fulfilled and the solver is recorded as claimant.
+     *
+     * @dev Uses ARC_CHAIN_ID = block.chainid so the Arc LocalProver can prove Intent 2 locally.
+     *      The MockGateway emits DepositFor without transferring tokens, allowing the route
+     *      calls (approve + depositFor) to succeed in a test environment.
+     */
+    function test_integration_cctpMintsToVault2AndSolverFulfillsIntent2() public {
+        // --- Setup: factory with ARC_CHAIN_ID = block.chainid for local provability ---
+        uint64 localChainId = uint64(block.chainid);
+
+        MockGateway mockGateway = new MockGateway();
+        TestERC20 arcUsdc = new TestERC20("Arc USDC", "AUSDC");
+        LocalProver arcProver = new LocalProver(address(portal));
+
+        DepositFactory_CCTPMint_Arc localFactory = new DepositFactory_CCTPMint_Arc(
+            address(token),
+            address(portal),
+            address(prover),        // source chain LocalProver
+            INTENT_DEADLINE_DURATION,
+            DESTINATION_DOMAIN,
+            address(0xABCD),        // CCTP TokenMessenger (mock address)
+            localChainId,           // ARC_CHAIN_ID = block.chainid for local testing
+            address(arcProver),     // Arc LocalProver (real, on same test chain)
+            address(arcUsdc),
+            address(mockGateway),
+            0                       // maxFeeBps (0 = no fee cap for testing)
+        );
+
+        // --- Deploy deposit address and fund with source USDC ---
+        address depositAddr = localFactory.deploy(USER_DESTINATION, DEPOSITOR);
+        DepositAddress_CCTPMint_Arc da = DepositAddress_CCTPMint_Arc(depositAddr);
+
+        uint256 depositAmount = 10_000 * 1e6; // 10,000 USDC (6 decimals)
+        uint256 nativeReward = depositAmount * 1e12; // scaled to 18-decimal native USDC on Arc
+
+        token.mint(depositAddr, depositAmount);
+
+        // --- Create dual intents; capture Intent 2's route and reward from events ---
+        vm.recordLogs();
+        da.createIntent();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 intentPublishedSig = keccak256(
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+        );
+
+        // The first IntentPublished event is Intent 2 (Gateway deposit on Arc)
+        Route memory route2;
+        Reward memory reward2;
+        bytes32 intent2Hash;
+
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == intentPublishedSig) {
+                intent2Hash = logs[i].topics[1];
+                address creator = address(uint160(uint256(logs[i].topics[2])));
+                address proverAddr = address(uint160(uint256(logs[i].topics[3])));
+
+                (
+                    ,
+                    bytes memory routeBytes,
+                    uint64 rewardDeadline,
+                    uint256 rewardNativeAmount,
+                    TokenAmount[] memory rewardTokens
+                ) = abi.decode(
+                    logs[i].data,
+                    (uint64, bytes, uint64, uint256, TokenAmount[])
+                );
+
+                route2 = abi.decode(routeBytes, (Route));
+                reward2 = Reward({
+                    deadline: rewardDeadline,
+                    creator: creator,
+                    prover: proverAddr,
+                    nativeAmount: rewardNativeAmount,
+                    tokens: rewardTokens
+                });
+
+                break; // first IntentPublished = Intent 2
+            }
+        }
+
+        assertTrue(intent2Hash != bytes32(0), "Intent 2 hash should be captured");
+        assertEq(reward2.nativeAmount, nativeReward, "Intent 2 reward should be scaled native USDC");
+
+        // --- Derive vault2 address ---
+        // vault2 is the reward vault for Intent 2; CCTP mints native USDC here on Arc
+        address vault2 = portal.intentVaultAddress(localChainId, abi.encode(route2), reward2);
+        assertTrue(vault2 != address(0), "vault2 address should be non-zero");
+
+        // --- Simulate CCTP mint: fund vault2 with native ETH (= native USDC on Arc) ---
+        vm.deal(vault2, nativeReward);
+        assertEq(address(vault2).balance, nativeReward, "vault2 should hold native USDC after CCTP mint");
+
+        // --- Solver fulfills Intent 2 via Arc LocalProver.flashFulfill ---
+        address solver = address(0x5555);
+        vm.deal(solver, 0);
+
+        vm.prank(solver);
+        vm.recordLogs();
+        arcProver.flashFulfill(
+            route2,
+            reward2,
+            bytes32(uint256(uint160(solver)))
+        );
+        Vm.Log[] memory fulfillLogs = vm.getRecordedLogs();
+
+        // --- Verify vault2 is drained ---
+        assertEq(address(vault2).balance, 0, "vault2 should be empty after fulfillment");
+
+        // --- Verify Gateway.depositFor was called with correct parameters ---
+        bool foundDepositFor = false;
+        for (uint256 i = 0; i < fulfillLogs.length; i++) {
+            if (fulfillLogs[i].topics[0] == keccak256("DepositFor(address,address,uint256)")) {
+                (address tokenArg, address recipient, uint256 amount) = abi.decode(
+                    fulfillLogs[i].data,
+                    (address, address, uint256)
+                );
+                assertEq(tokenArg, address(arcUsdc), "depositFor token should be arcUsdc");
+                assertEq(recipient, USER_DESTINATION, "depositFor recipient should be user's destination address");
+                assertEq(amount, depositAmount, "depositFor amount should match the 6-decimal deposit amount");
+                foundDepositFor = true;
+                break;
+            }
+        }
+        assertTrue(foundDepositFor, "Gateway.depositFor should have been called");
+
+        // --- Verify Intent 2 is fulfilled and solver is the claimant ---
+        bytes32 claimant = portal.claimants(intent2Hash);
+        assertEq(
+            claimant,
+            bytes32(uint256(uint160(solver))),
+            "Solver should be recorded as claimant for Intent 2"
+        );
+
+        // Verify via Arc LocalProver's provenIntents
+        assertEq(
+            arcProver.provenIntents(intent2Hash).claimant,
+            solver,
+            "Arc prover should recognise solver as claimant"
+        );
+        assertEq(
+            arcProver.provenIntents(intent2Hash).destination,
+            localChainId,
+            "Arc prover should record correct destination chain"
+        );
     }
 }
