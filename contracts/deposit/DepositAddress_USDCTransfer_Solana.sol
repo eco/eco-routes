@@ -74,7 +74,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
      * @param amount Amount of tokens to bridge (must be <= type(uint64).max)
      * @return intentHash Hash of the created intent
      */
-    function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
+    function _executeIntent(uint256 amount, uint256 nonce) internal override returns (bytes32 intentHash) {
         // Validate amount fits in uint64 for Solana compatibility
         if (amount > type(uint64).max) {
             revert AmountTooLarge(amount, type(uint64).max);
@@ -100,7 +100,8 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
             destPortal,
             portalPDA,
             deadlineDuration,
-            executorATA
+            executorATA,
+            nonce
         );
 
         // Construct Reward
@@ -155,11 +156,12 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
         bytes32 destPortal,
         bytes32 portalPDA,
         uint64 deadlineDuration,
-        bytes32 executorATA
+        bytes32 executorATA,
+        uint256 nonce
     ) internal view returns (bytes memory) {
-        // Generate unique salt
+        // Generate unique salt — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, nonce)
         );
 
         // Calculate deadline

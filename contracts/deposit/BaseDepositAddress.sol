@@ -26,6 +26,10 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     /// @notice Initialization flag
     bool private initialized;
 
+    /// @notice Per-deposit-address nonce, incremented on every createIntent() call
+    /// @dev Mixed into the route salt to guarantee uniqueness even within the same block
+    uint256 private _nonce;
+
     // ============ Errors ============
 
     error AlreadyInitialized();
@@ -78,8 +82,8 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
         uint256 amount = IERC20(sourceToken).balanceOf(address(this));
         if (amount == 0) revert ZeroAmount();
 
-        // Execute variant-specific intent creation
-        intentHash = _executeIntent(amount);
+        // Execute variant-specific intent creation, passing the incremented nonce directly
+        intentHash = _executeIntent(amount, ++_nonce);
 
         return intentHash;
     }
@@ -104,7 +108,8 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
      * @notice Execute variant-specific intent creation logic
      * @dev Must be implemented by derived contracts to construct and publish their intent
      * @param amount Amount of tokens to bridge
+     * @param nonce Current nonce value for unique salt construction
      * @return intentHash Hash of the created intent
      */
-    function _executeIntent(uint256 amount) internal virtual returns (bytes32 intentHash);
+    function _executeIntent(uint256 amount, uint256 nonce) internal virtual returns (bytes32 intentHash);
 }

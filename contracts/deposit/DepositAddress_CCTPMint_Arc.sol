@@ -74,7 +74,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @param amount Amount of tokens to bridge
      * @return intentHash Hash of the CCTP burn intent (Intent 1)
      */
-    function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
+    function _executeIntent(uint256 amount, uint256 nonce) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
             address sourceToken,
@@ -90,9 +90,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             uint256 maxFeeBps
         ) = FACTORY.getConfiguration();
 
-        // Generate unique salt (same for both intents)
+        // Generate unique salt (same for both intents) — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, nonce)
         );
 
         // Calculate deadline (same for both intents)
