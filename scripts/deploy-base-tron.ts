@@ -26,8 +26,6 @@ import 'dotenv/config'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** ERC-2470 SingletonFactory — used for Portal deployment on Base */
-const ERC2470_FACTORY = '0xce0042B868300000d44A59004Da54A005ffdcf9f'
 /** CREATE3 deployer — used for LayerZeroProver deployment on Base */
 const CREATE3_DEPLOYER = '0xC6BAd1EbAF366288dA6FB5689119eDd695a66814'
 const MIN_GAS_LIMIT = 200_000
@@ -42,10 +40,6 @@ const TRON_MAINNET_CHAIN_ID = 728126428
 const TRON_SHASTA_CHAIN_ID = 2494104990
 const TRON_NILE_CHAIN_ID = 3448148188
 
-const ERC2470_ABI = [
-  'function deploy(bytes calldata _initCode, bytes32 _salt) returns (address payable createdContract)',
-]
-
 const CREATE3_ABI = [
   'function deploy(bytes memory bytecode, bytes32 salt) external payable returns (address deployedAddress_)',
   'function deployedAddress(bytes memory bytecode, address sender, bytes32 salt) external view returns (address)',
@@ -54,7 +48,7 @@ const CREATE3_ABI = [
 // ─── Utility functions ────────────────────────────────────────────────────────
 
 function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function loadArtifact(contractName: string): { abi: any[]; bytecode: string } {
@@ -800,7 +794,7 @@ async function main(): Promise<void> {
 if (require.main === module) {
   main().catch((err) => {
     console.error(err)
-    process.exit(1)
+    process.exitCode = 1
   })
 }
 

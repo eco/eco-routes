@@ -134,7 +134,7 @@ async function configureEvm(
 
 async function configureTron(privateKey: string, rpcUrl: string, evmEid: number, chainName: string): Promise<void> {
   const tw = new TronWeb({ fullHost: rpcUrl, privateKey })
-  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   const tronEndpointB58 = tw.address.fromHex('41' + TRON_ENDPOINT.slice(2)) as string
 
@@ -246,4 +246,4 @@ async function main() {
   console.log(`  Tron LZ Prover: ${TRON_LZ_PROVER}`)
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+main().catch(err => { console.error(err); process.exitCode = 1 })

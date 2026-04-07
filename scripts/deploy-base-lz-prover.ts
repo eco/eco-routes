@@ -139,4 +139,4 @@ async function main() {
   console.log(`  LZ_PROVER_${chainName.toUpperCase().replace(/\s+/g, '_')}=${predictedAddr}`)
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+main().catch(err => { console.error(err); process.exitCode = 1 })

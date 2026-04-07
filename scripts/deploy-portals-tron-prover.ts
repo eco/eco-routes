@@ -61,7 +61,7 @@ const CREATE3_ABI = [
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function loadArtifact(contractName: string): { abi: any[]; bytecode: string } {
@@ -297,7 +297,7 @@ async function main(): Promise<void> {
   const tronDeployer = new TronDeployer(tronRpcUrl, privateKey, tronFactory)
 
   const baseLZEndpoint = process.env.BASE_LZ_ENDPOINT || ''
-  const baseDelegate   = process.env.BASE_LZ_DELEGATE || baseDeployer.address
+
 
   const tronEndpointRaw  = process.env.TRON_LZ_ENDPOINT || ''
   const tronDelegateRaw  = process.env.TRON_LZ_DELEGATE || tronDeployer.address
@@ -386,5 +386,5 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(err)
-  process.exit(1)
+  process.exitCode = 1
 })

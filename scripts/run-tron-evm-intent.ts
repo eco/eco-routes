@@ -124,7 +124,7 @@ const TRON_ERC20_APPROVE_SIG = 'approve(address,uint256)'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 function getEvmExplorer(chainId: bigint): string {
   const explorers: Record<string, string> = {
@@ -333,7 +333,6 @@ async function pollForProof(
   console.log(`${'─'.repeat(60)}`)
 
   const tronProverB58 = tw.address.fromHex('41' + tronProverHex.slice(2)) as string
-  const abiCoder = ethers.AbiCoder.defaultAbiCoder()
   const polls = Math.ceil((timeoutMin * 60) / intervalSec)
 
   for (let i = 1; i <= polls; i++) {
@@ -473,4 +472,4 @@ async function main() {
   console.log(`${'═'.repeat(60)}\n`)
 }
 
-main().catch((err) => { console.error(err); process.exit(1) })
+main().catch((err) => { console.error(err); process.exitCode = 1 })

@@ -124,7 +124,7 @@ const TRON_ERC20_APPROVE_SIG = 'approve(address,uint256)'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 function getEvmExplorer(chainId: bigint): string {
   const explorers: Record<string, string> = {
@@ -474,4 +474,4 @@ async function main() {
   console.log(`${'═'.repeat(60)}\n`)
 }
 
-main().catch((err) => { console.error(err); process.exit(1) })
+main().catch((err) => { console.error(err); process.exitCode = 1 })
