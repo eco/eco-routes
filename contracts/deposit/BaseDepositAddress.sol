@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -12,7 +11,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  *      Derived contracts must implement variant-specific intent execution
  */
 abstract contract BaseDepositAddress is ReentrancyGuard {
-    using SafeERC20 for IERC20;
 
     // ============ Storage ============
 
@@ -84,8 +82,6 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
 
         // Execute variant-specific intent creation, passing the incremented nonce directly
         intentHash = _executeIntent(amount, ++_nonce);
-
-        return intentHash;
     }
 
     // ============ Internal Functions ============
