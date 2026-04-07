@@ -195,6 +195,21 @@ contract DepositAddressTest is Test {
         // or testing through integration tests
     }
 
+    function test_createIntent_sameBlockSameAmountProducesDistinctHashes() public {
+        uint256 amount = 10_000 * 1e6;
+
+        // First call
+        token.mint(address(depositAddress), amount);
+        bytes32 hash1 = depositAddress.createIntent();
+
+        // Second call in the same block with the same amount
+        token.mint(address(depositAddress), amount);
+        bytes32 hash2 = depositAddress.createIntent();
+
+        // Nonce must break the collision
+        assertTrue(hash1 != hash2);
+    }
+
     // ============ Fuzz Tests ============
 
     function testFuzz_createIntent_succeeds(uint256 amount) public {
