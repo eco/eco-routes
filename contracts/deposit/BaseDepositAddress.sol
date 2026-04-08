@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -12,7 +11,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  *      Derived contracts must implement variant-specific intent execution
  */
 abstract contract BaseDepositAddress is ReentrancyGuard {
-    using SafeERC20 for IERC20;
 
     // ============ Storage ============
 
@@ -62,8 +60,14 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
 
     /**
      * @notice Create a cross-chain intent for deposited tokens
-     * @dev Template method: validates common requirements, delegates to variant-specific execution
-     *      Uses the entire balance of source tokens held by this contract
+     * @dev Template method: validates common requirements, delegates to variant-specific execution.
+     *      Uses the entire balance of source tokens held by this contract.
+     *
+     * @dev PERMISSIONLESS: this function has no access control. Any caller can trigger intent
+     *      creation as soon as tokens are present in the contract. This is by design — the
+     *      off-chain backend calls it on the depositor's behalf — but depositors must be aware
+     *      that funds sent to this address will be immediately swept into an intent by anyone.
+     *      Only send tokens here when you are ready for the intent to be published.
      * @return intentHash Hash of the created intent
      */
     function createIntent() external nonReentrant returns (bytes32 intentHash) {
@@ -78,8 +82,6 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
 
         // Execute variant-specific intent creation, passing the incremented nonce directly
         intentHash = _executeIntent(amount, ++_nonce);
-
-        return intentHash;
     }
 
     // ============ Internal Functions ============
