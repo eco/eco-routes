@@ -22,10 +22,12 @@ abstract contract BaseDepositFactory {
     /**
      * @notice Emitted when a new deposit contract is deployed
      * @param destinationAddress User's destination address on target chain
+     * @param depositor Address to receive refunds if intent fails
      * @param depositContract Address of deployed deposit contract
      */
     event DepositContractDeployed(
         address indexed destinationAddress,
+        address indexed depositor,
         address indexed depositContract
     );
 
@@ -35,8 +37,8 @@ abstract contract BaseDepositFactory {
     error InvalidPortalAddress();
     error InvalidProverAddress();
     error InvalidDeadlineDuration();
-    error InvalidDestinationPortal();
     error InvalidDestinationAddress();
+    error InvalidDepositor();
 
     // ============ Constructor ============
 
@@ -60,6 +62,9 @@ abstract contract BaseDepositFactory {
         address destinationAddress,
         address depositor
     ) external returns (address deployed) {
+        if (destinationAddress == address(0)) revert InvalidDestinationAddress();
+        if (depositor == address(0)) revert InvalidDepositor();
+
         // Deploy using CREATE2 with deterministic salt
         bytes32 salt = _getSalt(destinationAddress, depositor);
         deployed = DEPOSIT_IMPLEMENTATION.clone(salt);
@@ -67,12 +72,14 @@ abstract contract BaseDepositFactory {
         // Initialize the deployed contract
         _initializeDeployedContract(deployed, destinationAddress, depositor);
 
-        emit DepositContractDeployed(destinationAddress, deployed);
-        return deployed;
+        emit DepositContractDeployed(destinationAddress, depositor, deployed);
     }
 
     /**
      * @notice Predict the deterministic address for a deposit contract
+     * @dev Uses the standard EVM CREATE2 prefix (0xff). These contracts are intended for
+     *      deployment on fully EVM-compatible chains only. Chains with a non-standard CREATE2
+     *      prefix (e.g. TRON, which uses 0x41) will produce incorrect address predictions.
      * @param destinationAddress User's destination address on target chain
      * @param depositor Address to receive refunds if intent fails
      * @return predicted Deterministic address of the deposit contract
@@ -81,6 +88,9 @@ abstract contract BaseDepositFactory {
         address destinationAddress,
         address depositor
     ) public view returns (address predicted) {
+        if (destinationAddress == address(0)) revert InvalidDestinationAddress();
+        if (depositor == address(0)) revert InvalidDepositor();
+
         bytes32 salt = _getSalt(destinationAddress, depositor);
         return DEPOSIT_IMPLEMENTATION.predict(salt, bytes1(0xff));
     }

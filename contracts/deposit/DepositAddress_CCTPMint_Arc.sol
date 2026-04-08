@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
@@ -22,6 +23,7 @@ import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CC
  *      Intent 2: Solver approves Gateway for USDC and calls Gateway.depositFor to credit the user.
  */
 contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
+    using SafeERC20 for IERC20;
 
     // ============ Constants ============
 
@@ -74,7 +76,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @param amount Amount of tokens to bridge
      * @return intentHash Hash of the CCTP burn intent (Intent 1)
      */
-    function _executeIntent(uint256 amount) internal override returns (bytes32 intentHash) {
+    function _executeIntent(uint256 amount, uint256 nonce) internal override returns (bytes32 intentHash) {
         // Get configuration from factory
         (
             address sourceToken,
@@ -90,9 +92,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             uint256 maxFeeBps
         ) = FACTORY.getConfiguration();
 
-        // Generate unique salt (same for both intents)
+        // Generate unique salt (same for both intents) — nonce ensures uniqueness within the same block
         bytes32 salt = keccak256(
-            abi.encodePacked(address(this), destinationAddress, block.timestamp)
+            abi.encodePacked(address(this), destinationAddress, block.timestamp, nonce)
         );
 
         // Calculate deadline (same for both intents)
@@ -133,10 +135,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         );
 
         // Approve Portal to spend tokens and publish+fund Intent 1
-        IERC20(sourceToken).approve(portalAddress, amount);
+        IERC20(sourceToken).forceApprove(portalAddress, amount);
         (intentHash, ) = portalContract.publishAndFund(intent1, false);
-
-        return intentHash;
     }
 
     /**
