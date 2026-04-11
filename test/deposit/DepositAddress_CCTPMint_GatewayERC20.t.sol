@@ -768,6 +768,199 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         assertTrue(intentHash != bytes32(0));
     }
 
+    // ============ createIntentWithApproval Tests ============
+
+    function test_createIntentWithApproval_revertsIfNotInitialized() public {
+        DepositAddress_CCTPMint_GatewayERC20 uninit = new DepositAddress_CCTPMint_GatewayERC20();
+
+        vm.expectRevert(BaseDepositAddress.NotInitialized.selector);
+        uninit.createIntentWithApproval(DEPOSITOR);
+    }
+
+    function test_createIntentWithApproval_revertsIfFunderIsZero() public {
+        vm.expectRevert(BaseDepositAddress.InvalidFunder.selector);
+        depositAddress.createIntentWithApproval(address(0));
+    }
+
+    function test_createIntentWithApproval_revertsIfNoApproval() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+        // No approval given
+
+        vm.expectRevert(BaseDepositAddress.ZeroAmount.selector);
+        depositAddress.createIntentWithApproval(DEPOSITOR);
+    }
+
+    function test_createIntentWithApproval_succeeds() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        bytes32 intentHash = depositAddress.createIntentWithApproval(DEPOSITOR);
+        assertTrue(intentHash != bytes32(0));
+    }
+
+    function test_createIntentWithApproval_usesFullAllowance() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        depositAddress.createIntentWithApproval(DEPOSITOR);
+
+        // Full allowance used, balance should be zero
+        assertEq(token.balanceOf(DEPOSITOR), 0);
+    }
+
+    function test_createIntentWithApproval_cappedByBalance() public {
+        uint256 balance = 5_000 * 1e6;
+        uint256 allowance = 10_000 * 1e6;
+
+        token.mint(DEPOSITOR, balance);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), allowance);
+
+        bytes32 intentHash = depositAddress.createIntentWithApproval(DEPOSITOR);
+        assertTrue(intentHash != bytes32(0));
+
+        // Only balance was transferred, not the full allowance
+        assertEq(token.balanceOf(DEPOSITOR), 0);
+    }
+
+    function test_createIntentWithApproval_drainsToContract() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        depositAddress.createIntentWithApproval(DEPOSITOR);
+
+        // Funder drained, deposit address also drained (tokens forwarded to portal vault)
+        assertEq(token.balanceOf(DEPOSITOR), 0);
+        assertEq(token.balanceOf(address(depositAddress)), 0);
+    }
+
+    function test_createIntentWithApproval_emitsTwoIntentPublishedEvents() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        vm.recordLogs();
+        depositAddress.createIntentWithApproval(DEPOSITOR);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 intentPublishedSig = keccak256(
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+        );
+
+        uint256 intentPublishedCount = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == intentPublishedSig) {
+                intentPublishedCount++;
+            }
+        }
+
+        assertEq(intentPublishedCount, 2, "Should emit exactly two IntentPublished events");
+    }
+
+    function test_createIntentWithApproval_intentIsFunded() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        bytes32 intentHash = depositAddress.createIntentWithApproval(DEPOSITOR);
+
+        IIntentSource.Status status = portal.getRewardStatus(intentHash);
+        assertEq(
+            uint256(status),
+            uint256(IIntentSource.Status.Funded),
+            "Intent should be funded"
+        );
+    }
+
+    function test_createIntentWithApproval_permissionless() public {
+        uint256 amount = 10_000 * 1e6;
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        // Called by ATTACKER, not DEPOSITOR — should still work
+        vm.prank(ATTACKER);
+        bytes32 intentHash = depositAddress.createIntentWithApproval(DEPOSITOR);
+
+        assertTrue(intentHash != bytes32(0));
+    }
+
+    function test_createIntentWithApproval_integration_fullFlow() public {
+        address intUser = address(0xAAAA);
+        address intDepositor = address(0xBBBB);
+
+        // 1. Deploy deposit contract
+        address deployed = factory.deploy(intUser, intDepositor);
+        DepositAddress_CCTPMint_GatewayERC20 da = DepositAddress_CCTPMint_GatewayERC20(deployed);
+
+        // 2. Funder gets tokens and approves deposit address
+        uint256 depositAmount = 10_000 * 1e6;
+        token.mint(intDepositor, depositAmount);
+
+        vm.prank(intDepositor);
+        token.approve(deployed, depositAmount);
+
+        // 3. Create intent with approval
+        vm.recordLogs();
+        bytes32 intentHash = da.createIntentWithApproval(intDepositor);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertTrue(intentHash != bytes32(0));
+
+        // 4. Verify tokens moved
+        assertEq(token.balanceOf(intDepositor), 0);
+        assertEq(token.balanceOf(deployed), 0);
+
+        // 5. Verify intent was funded
+        IIntentSource.Status status = portal.getRewardStatus(intentHash);
+        assertEq(
+            uint256(status),
+            uint256(IIntentSource.Status.Funded),
+            "Intent should be funded"
+        );
+
+        // 6. Verify two IntentPublished events
+        bytes32 intentPublishedSig = keccak256(
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+        );
+
+        uint256 intentPublishedCount = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] == intentPublishedSig) {
+                intentPublishedCount++;
+            }
+        }
+        assertEq(intentPublishedCount, 2, "Should have emitted two IntentPublished events");
+    }
+
+    function testFuzz_createIntentWithApproval_succeeds(uint256 amount) public {
+        vm.assume(amount >= 100_000 && amount <= type(uint128).max);
+
+        token.mint(DEPOSITOR, amount);
+
+        vm.prank(DEPOSITOR);
+        token.approve(address(depositAddress), amount);
+
+        bytes32 intentHash = depositAddress.createIntentWithApproval(DEPOSITOR);
+        assertTrue(intentHash != bytes32(0));
+    }
+
     // ============ Helpers ============
 
     /// @dev Slices bytes from the given offset to the end
