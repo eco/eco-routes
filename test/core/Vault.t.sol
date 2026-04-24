@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {Vault} from "../../contracts/vault/Vault.sol";
+import {VaultTron} from "../../contracts/vault/VaultTron.sol";
 import {IVault} from "../../contracts/interfaces/IVault.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {IPermit} from "../../contracts/interfaces/IPermit.sol";
@@ -883,14 +884,47 @@ contract VaultTest is Test {
             tokens: tokens
         });
 
-        // vault.withdraw uses a raw call so it succeeds even though
+        // Base Vault uses SafeERC20 and will revert when TronUSDTMock.transfer()
+        // returns false — Tron USDT compatibility is handled by VaultTron instead.
+        vm.prank(portal);
+        vm.expectRevert();
+        vault.withdraw(reward, claimant);
+    }
+
+    function test_withdraw_succeeds_withTetherToken_usingVaultTron() public {
+        // Deploy the mock that reproduces StandardTokenWithFees.transfer()
+        // returning false (no explicit return statement in solc 0.4.18).
+        TronUSDTMock tether = new TronUSDTMock(10_000_000);
+
+        // Deploy a VaultTron clone (Tron-aware vault) for this test.
+        // vm.prank sets msg.sender for the constructor so portal is set correctly.
+        vm.prank(portal);
+        IVault vaultTron = IVault(address(new VaultTron()).clone(bytes32(uint256(1))));
+
+        // Fund via transferFrom (returns true) — mirrors publishAndFund on-chain.
+        tether.approve(address(this), 100_000);
+        tether.transferFrom(address(this), address(vaultTron), 100_000);
+        assertEq(tether.balanceOf(address(vaultTron)), 100_000);
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(tether), amount: 100_000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0,
+            tokens: tokens
+        });
+
+        // VaultTron uses a raw call so it succeeds even though
         // TronUSDTMock.transfer() returns false (reproducing the Tron USDT bug).
         // The balance check in _transferToken confirms tokens actually moved.
         vm.prank(portal);
-        vault.withdraw(reward, claimant);
+        vaultTron.withdraw(reward, claimant);
 
         // Tokens left the vault and arrived at the claimant.
-        assertEq(tether.balanceOf(address(vault)), 0);
+        assertEq(tether.balanceOf(address(vaultTron)), 0);
         assertEq(tether.balanceOf(claimant), 100_000);
     }
 }

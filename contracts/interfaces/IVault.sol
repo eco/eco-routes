@@ -20,9 +20,6 @@ interface IVault {
     /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
 
-    /// @notice Thrown when an ERC20 token transfer fails (call reverted or tokens did not move)
-    error TokenTransferFailed(address token);
-
     /**
      * @notice Funds the vault with reward tokens and native currency
      * @param reward The reward structure containing tokens and amounts

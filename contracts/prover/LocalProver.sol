@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Inbox} from "../Inbox.sol";
 import {Semver} from "../libs/Semver.sol";
@@ -22,6 +23,7 @@ import {Intent, Route, Reward, TokenAmount} from "../types/Intent.sol";
 contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     using SafeCast for uint256;
     using AddressConverter for bytes32;
+    using SafeERC20 for IERC20;
 
     /**
      * @notice Address of the Portal contract (IntentSource + Inbox functionality)
@@ -217,15 +219,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             IERC20 rewardToken = IERC20(reward.tokens[i].token);
             uint256 balance = rewardToken.balanceOf(address(this));
             if (balance > 0) {
-                // Raw call so tokens that return false on success (e.g. Tron USDT)
-                // are handled correctly. Balance check catches genuine failures.
-                // solhint-disable-next-line avoid-low-level-calls
-                (bool ok, ) = address(rewardToken).call(
-                    abi.encodeCall(IERC20.transfer, (claimantAddress, balance))
-                );
-                if (!ok || rewardToken.balanceOf(address(this)) >= balance) {
-                    revert TokenTransferFailed(address(rewardToken));
-                }
+                _transferToken(rewardToken, claimantAddress, balance);
             }
         }
 
@@ -239,6 +233,21 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         emit FlashFulfilled(intentHash, claimant, remainingNative);
 
         return results;
+    }
+
+    /**
+     * @notice Transfers ERC20 tokens to the claimant.
+     * @dev Virtual so subclasses can override for non-standard tokens (e.g. Tron USDT).
+     * @param token ERC20 token to transfer
+     * @param to Recipient address
+     * @param amount Amount to transfer
+     */
+    function _transferToken(
+        IERC20 token,
+        address to,
+        uint256 amount
+    ) internal virtual {
+        token.safeTransfer(to, amount);
     }
 
     /**
