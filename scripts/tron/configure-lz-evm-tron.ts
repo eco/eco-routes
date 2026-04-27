@@ -85,6 +85,7 @@ function tronRpcUrl(chainId: number): string {
 // DVNs common to all Tron ↔ EVM mainnet routes.
 const MAINNET_PREFERRED_DVN_NAMES = ['LayerZero Labs', 'Nethermind', 'Deutsche Telekom']
 const MAINNET_OPTIONAL_THRESHOLD  = 2
+const TESTNET_DVN_NAME            = 'LayerZero Labs'
 
 function isMainnet(eid: number): boolean {
   return eid < 40000
@@ -198,10 +199,14 @@ function resolveConfig(evmChainId: number, tronChainId: number): ResolvedLzConfi
     dvnNames = preferred.map(d => d.name)
     dvnSetup = `${MAINNET_OPTIONAL_THRESHOLD}-of-${preferred.length} optional`
   } else {
-    evmRequiredDvns = commonDvns.map(d => d.evmAddress); evmOptionalDvns = []; evmOptionalThreshold = 0
-    tronRequiredDvns = commonDvns.map(d => d.tronAddress); tronOptionalDvns = []; tronOptionalThreshold = 0
-    dvnNames = commonDvns.map(d => d.name)
-    dvnSetup = 'all required'
+    const testnet = commonDvns.filter(d => d.name === TESTNET_DVN_NAME)
+    if (testnet.length === 0) {
+      throw new Error(`Testnet DVN '${TESTNET_DVN_NAME}' not found on this route`)
+    }
+    evmRequiredDvns = testnet.map(d => d.evmAddress); evmOptionalDvns = []; evmOptionalThreshold = 0
+    tronRequiredDvns = testnet.map(d => d.tronAddress); tronOptionalDvns = []; tronOptionalThreshold = 0
+    dvnNames = testnet.map(d => d.name)
+    dvnSetup = 'required'
   }
 
   return {
