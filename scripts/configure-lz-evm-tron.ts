@@ -30,9 +30,9 @@ import 'dotenv/config'
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
-const EVM_LZ_PROVER      = process.env.EVM_LZ_PROVER      || '0xA23ab6E17d0168FACc16a614579198FD58E7bC41'
-const TRON_LZ_PROVER     = process.env.TRON_LZ_PROVER     || 'TYy7Lab93ZR3TkkpiS9AFruTM2UkRqJti9'
-const TRON_LZ_PROVER_HEX = process.env.TRON_LZ_PROVER_HEX || '0xfc462a59bc1df059914624a0e86e220f84426325'
+const EVM_LZ_PROVER      = process.env.EVM_LZ_PROVER      || '0xf64eaca0D1cF874ea34b8E73127f0Fe535c6be41'
+const TRON_LZ_PROVER     = process.env.TRON_LZ_PROVER     || 'TYeFezmGQGEJU9JzykGebuNVvtmXQPTupz'
+const TRON_LZ_PROVER_HEX = process.env.TRON_LZ_PROVER_HEX || '0xf8b5348d6e1e4c47de4abc2d9946963a7a37f2c8'
 const TRON_EID           = parseInt(process.env.TRON_EID || '30420')
 
 // Tron LZ contracts — default to mainnet, override via env for testnet
