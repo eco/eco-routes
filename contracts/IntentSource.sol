@@ -30,13 +30,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     using Clones for address;
     using Math for uint256;
 
-    /// @dev CREATE2 prefix for deterministic address calculation (0xff standard, 0x41 TRON)
-    bytes1 private immutable CREATE2_PREFIX;
-
-    /// @dev Tron Mainnet chain ID
-    uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
-    /// @dev Tron Testnet (Shasta) chain ID
-    uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
+    /// @dev CREATE2 prefix for deterministic address calculation (standard EVM)
+    bytes1 private constant CREATE2_PREFIX = bytes1(0xff);
 
     /// @dev Implementation contract address for vault cloning
     address private immutable VAULT_IMPLEMENTATION;
@@ -45,16 +40,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Initializes the IntentSource contract
-     * @dev Sets CREATE2 prefix based on chain ID and deploys vault implementation
-     *      Uses TRON-specific prefix (0x41) for TRON networks, standard prefix (0xff) otherwise
+     * @dev Deploys vault implementation
      */
     constructor() {
-        // TRON support
-        CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
-            block.chainid == TRON_TESTNET_CHAIN_ID
-            ? bytes1(0x41) // TRON chain custom CREATE2 prefix
-            : bytes1(0xff);
-
         VAULT_IMPLEMENTATION = address(new Vault());
     }
 

@@ -28,7 +28,7 @@ library TronTransfer {
         (bool ok, ) = address(token).call(
             abi.encodeCall(IERC20.transfer, (to, amount))
         );
-        if (!ok || token.balanceOf(address(this)) >= before) {
+        if (!ok || token.balanceOf(address(this)) != before - amount) {
             revert TokenTransferFailed(address(token));
         }
     }
