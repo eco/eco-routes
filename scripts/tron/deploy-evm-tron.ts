@@ -762,21 +762,23 @@ class DeployOrchestrator {
       console.log(`Reusing Tron LZProver:   ${this.existingTronLZProver}`)
     console.log()
 
-    // ── Step 1: Deploy Portals on all EVM chains ──────────────────────────────
+    // ── Step 1: Deploy Portals on all EVM chains (parallel) ───────────────────
     console.log('=== Step 1: EVM Portals ===')
     const evmPortals: Record<string, string> = {}
-    for (const deployer of this.evmDeployers) {
-      if (this.isDryRun) {
-        const addr = await deployer.predictPortalAddress(this.portalSalt)
-        console.log(`  [${deployer.cfg.name}] [DRY RUN] Portal would be: ${addr}`)
-        evmPortals[deployer.cfg.key] = addr
-      } else {
-        evmPortals[deployer.cfg.key] = await deployer.deployPortal(
-          this.portalSalt,
-          this.existingEvmPortal,
-        )
-      }
-    }
+    await Promise.all(
+      this.evmDeployers.map(async (deployer) => {
+        if (this.isDryRun) {
+          const addr = await deployer.predictPortalAddress(this.portalSalt)
+          console.log(`  [${deployer.cfg.name}] [DRY RUN] Portal would be: ${addr}`)
+          evmPortals[deployer.cfg.key] = addr
+        } else {
+          evmPortals[deployer.cfg.key] = await deployer.deployPortal(
+            this.portalSalt,
+            this.existingEvmPortal,
+          )
+        }
+      }),
+    )
 
     // ── Step 2: Deploy Portal on Tron ─────────────────────────────────────────
     console.log('\n=== Step 2: Tron Portal ===')
@@ -792,14 +794,16 @@ class DeployOrchestrator {
       )
     }
 
-    // ── Step 3: Predict all EVM LZProver addresses (CREATE3, view-only) ───────
+    // ── Step 3: Predict all EVM LZProver addresses (CREATE3, view-only, parallel)
     console.log('\n=== Step 3: Predict EVM LZProver addresses ===')
     const evmLZProverAddrs: Record<string, string> = {}
-    for (const deployer of this.evmDeployers) {
-      const addr = await deployer.predictLZProverAddress(this.lzSalt)
-      console.log(`  [${deployer.cfg.name}] LZProver: ${addr}`)
-      evmLZProverAddrs[deployer.cfg.key] = addr
-    }
+    await Promise.all(
+      this.evmDeployers.map(async (deployer) => {
+        const addr = await deployer.predictLZProverAddress(this.lzSalt)
+        console.log(`  [${deployer.cfg.name}] LZProver: ${addr}`)
+        evmLZProverAddrs[deployer.cfg.key] = addr
+      }),
+    )
 
     // ── Step 4: Compute Tron LZProver (whitelist = all EVM provers) ───────────
     console.log('\n=== Step 4: Construct Tron LZProver ===')
@@ -846,59 +850,57 @@ class DeployOrchestrator {
 
     const tronLZProverBytes32 = ethers.zeroPadValue(tronLZProverAddr, 32)
 
-    // ── Steps 6 + 7: For each chain — deploy EVM LZProver then verify both sides
+    // ── Steps 6 + 7: For each chain — deploy EVM LZProver then verify (parallel)
     const evmLZProverFinals: Record<string, string> = {}
 
-    for (const deployer of this.evmDeployers) {
-      const selfBytes32 = ethers.zeroPadValue(
-        evmLZProverAddrs[deployer.cfg.key],
-        32,
-      )
-      // Whitelist: Tron prover + self (enables Tron→EVM proofs + local proving)
-      const evmWhitelist = [tronLZProverBytes32, selfBytes32]
-
-      console.log(`\n=== Step 6: [${deployer.cfg.name}] Deploy LZProver ===`)
-      console.log(
-        `  Tron prover (right-aligned): ${tronLZProverBytes32}`,
-      )
-      console.log(
-        `  Self        (right-aligned): ${selfBytes32}`,
-      )
-
-      if (this.isDryRun) {
-        console.log(
-          `  [DRY RUN] Would deploy at: ${evmLZProverAddrs[deployer.cfg.key]}`,
-        )
-        evmLZProverFinals[deployer.cfg.key] =
-          evmLZProverAddrs[deployer.cfg.key]
-      } else {
-        const deployed = await deployer.deployLZProver(
-          this.lzSalt,
-          evmPortals[deployer.cfg.key],
-          evmWhitelist,
+    await Promise.all(
+      this.evmDeployers.map(async (deployer) => {
+        const selfBytes32 = ethers.zeroPadValue(
           evmLZProverAddrs[deployer.cfg.key],
+          32,
         )
-        if (deployed.toLowerCase() !== evmLZProverAddrs[deployer.cfg.key].toLowerCase()) {
-          throw new Error(
-            `[${deployer.cfg.name}] LZProver address mismatch! ` +
-              `Expected: ${evmLZProverAddrs[deployer.cfg.key]}, Got: ${deployed}`,
-          )
-        }
-        evmLZProverFinals[deployer.cfg.key] = deployed
+        // Whitelist: Tron prover + self (enables Tron→EVM proofs + local proving)
+        const evmWhitelist = [tronLZProverBytes32, selfBytes32]
 
-        console.log(`\n=== Step 7: [${deployer.cfg.name}] Verify whitelists ===`)
-        // EVM side: has Tron prover in whitelist?
-        await deployer.verifyLZProverWhitelist(deployed, tronLZProverBytes32, this.tronEid)
-        // Tron side: has this EVM prover in whitelist?
-        await this.tronDeployer.verifyLZProverWhitelist(tronLZProverAddr, [
-          {
-            name: deployer.cfg.name,
-            bytes32: ethers.zeroPadValue(deployed, 32),
-            eid: deployer.cfg.lzEid,
-          },
-        ])
-      }
-    }
+        console.log(`\n=== Step 6: [${deployer.cfg.name}] Deploy LZProver ===`)
+        console.log(`  Tron prover (right-aligned): ${tronLZProverBytes32}`)
+        console.log(`  Self        (right-aligned): ${selfBytes32}`)
+
+        if (this.isDryRun) {
+          console.log(
+            `  [DRY RUN] Would deploy at: ${evmLZProverAddrs[deployer.cfg.key]}`,
+          )
+          evmLZProverFinals[deployer.cfg.key] =
+            evmLZProverAddrs[deployer.cfg.key]
+        } else {
+          const deployed = await deployer.deployLZProver(
+            this.lzSalt,
+            evmPortals[deployer.cfg.key],
+            evmWhitelist,
+            evmLZProverAddrs[deployer.cfg.key],
+          )
+          if (deployed.toLowerCase() !== evmLZProverAddrs[deployer.cfg.key].toLowerCase()) {
+            throw new Error(
+              `[${deployer.cfg.name}] LZProver address mismatch! ` +
+                `Expected: ${evmLZProverAddrs[deployer.cfg.key]}, Got: ${deployed}`,
+            )
+          }
+          evmLZProverFinals[deployer.cfg.key] = deployed
+
+          console.log(`\n=== Step 7: [${deployer.cfg.name}] Verify whitelists ===`)
+          // EVM side: has Tron prover in whitelist?
+          await deployer.verifyLZProverWhitelist(deployed, tronLZProverBytes32, this.tronEid)
+          // Tron side: has this EVM prover in whitelist?
+          await this.tronDeployer.verifyLZProverWhitelist(tronLZProverAddr, [
+            {
+              name: deployer.cfg.name,
+              bytes32: ethers.zeroPadValue(deployed, 32),
+              eid: deployer.cfg.lzEid,
+            },
+          ])
+        }
+      }),
+    )
 
     // ── Summary ───────────────────────────────────────────────────────────────
     console.log('\n=== Deployment Summary ===')

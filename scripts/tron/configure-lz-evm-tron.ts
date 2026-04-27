@@ -334,80 +334,87 @@ async function configureTron(privateKey: string, rpcUrl: string, cfg: ResolvedLz
   console.log(`  RecvLib:  ${cfg.tronRecvLib}`)
   console.log(`  DVNs:     ${cfg.dvnNames.join(', ')} (${cfg.dvnSetup})`)
 
-  const sendAndWait = async (label: string, funcSig: string, params: any[]) => {
-    console.log(`\n  ${label}...`)
+  // Fire a transaction and return its txId without waiting for confirmation
+  const fire = async (label: string, funcSig: string, params: any[]): Promise<string> => {
+    console.log(`  ${label}...`)
     const result = await tw.transactionBuilder.triggerSmartContract(
       tronEndpointB58, funcSig,
       { feeLimit: 500_000_000, callValue: 0 },
       params,
     )
-    const signed    = await tw.trx.sign(result.transaction)
-    const broadcast = await tw.trx.sendRawTransaction(signed)
-    if (!broadcast.result) throw new Error(`Broadcast failed: ${JSON.stringify(broadcast)}`)
-    console.log(`    txId: ${broadcast.txid}`)
-    for (let i = 0; i < 60; i++) {
-      await sleep(3000)
-      const info: any = await tw.trx.getTransactionInfo(broadcast.txid)
-      if (info?.id) {
-        if (info.receipt?.result !== 'SUCCESS') {
-          if (info.contractResult?.[0] === 'd0ecb66b') { console.log('    (already set — skipped)'); return }
-          throw new Error(`Tx failed: ${JSON.stringify(info)}`)
-        }
-        return
-      }
-    }
-    throw new Error(`Timed out waiting for ${broadcast.txid}`)
+    const signed = await tw.trx.sign(result.transaction)
+    const resp   = await tw.trx.sendRawTransaction(signed)
+    if (!resp.result) throw new Error(`Broadcast failed: ${JSON.stringify(resp)}`)
+    return resp.txid
   }
 
-  const sendSetConfig = async (label: string, lib: string, configParams: { eid: number; configType: number; config: string }[]) => {
-    console.log(`\n  ${label}...`)
+  const fireSetConfig = async (label: string, lib: string, configParams: { eid: number; configType: number; config: string }[]): Promise<string> => {
+    console.log(`  ${label}...`)
     const fullCalldata = TRON_ENDPOINT_IFACE.encodeFunctionData('setConfig', [
       TRON_LZ_PROVER_HEX,
       lib,
       configParams.map(p => [p.eid, p.configType, p.config]),
     ])
-    const rawParameter = fullCalldata.slice(10)
     const result = await tw.transactionBuilder.triggerSmartContract(
       tronEndpointB58,
       'setConfig(address,address,(uint32,uint32,bytes)[])',
-      { feeLimit: 500_000_000, callValue: 0, rawParameter },
+      { feeLimit: 500_000_000, callValue: 0, rawParameter: fullCalldata.slice(10) },
       [],
     )
-    const signed    = await tw.trx.sign(result.transaction)
-    const broadcast = await tw.trx.sendRawTransaction(signed)
-    if (!broadcast.result) throw new Error(`Broadcast failed: ${JSON.stringify(broadcast)}`)
-    console.log(`    txId: ${broadcast.txid}`)
+    const signed = await tw.trx.sign(result.transaction)
+    const resp   = await tw.trx.sendRawTransaction(signed)
+    if (!resp.result) throw new Error(`Broadcast failed: ${JSON.stringify(resp)}`)
+    return resp.txid
+  }
+
+  // Poll for confirmation; alreadySetOk=true treats 0xd0ecb66b revert as a skip
+  const confirm = async (txId: string, alreadySetOk = true): Promise<void> => {
     for (let i = 0; i < 60; i++) {
       await sleep(3000)
-      const info: any = await tw.trx.getTransactionInfo(broadcast.txid)
+      const info: any = await tw.trx.getTransactionInfo(txId)
       if (info?.id) {
-        if (info.receipt?.result !== 'SUCCESS') throw new Error(`Tx failed: ${JSON.stringify(info)}`)
+        if (info.receipt?.result !== 'SUCCESS') {
+          if (alreadySetOk && info.contractResult?.[0] === 'd0ecb66b') {
+            console.log(`    txId: ${txId} (already set — skipped)`)
+            return
+          }
+          throw new Error(`Tx failed: ${JSON.stringify(info)}`)
+        }
+        console.log(`    txId: ${txId}`)
         return
       }
     }
-    throw new Error(`Timed out waiting for ${broadcast.txid}`)
+    throw new Error(`Timed out waiting for ${txId}`)
   }
 
-  await sendAndWait('[1/4] setSendLibrary', 'setSendLibrary(address,uint32,address)', [
-    { type: 'address', value: TRON_LZ_PROVER },
-    { type: 'uint32',  value: cfg.evmEid },
-    { type: 'address', value: cfg.tronSendLib },
+  // Round 1: setSendLibrary + setReceiveLibrary in parallel
+  console.log('\n  [Round 1/2] setSendLibrary + setReceiveLibrary')
+  const [txId1, txId2] = await Promise.all([
+    fire('[1/4] setSendLibrary', 'setSendLibrary(address,uint32,address)', [
+      { type: 'address', value: TRON_LZ_PROVER },
+      { type: 'uint32',  value: cfg.evmEid },
+      { type: 'address', value: cfg.tronSendLib },
+    ]),
+    fire('[2/4] setReceiveLibrary', 'setReceiveLibrary(address,uint32,address,uint256)', [
+      { type: 'address', value: TRON_LZ_PROVER },
+      { type: 'uint32',  value: cfg.evmEid },
+      { type: 'address', value: cfg.tronRecvLib },
+      { type: 'uint256', value: 0 },
+    ]),
   ])
+  await Promise.all([confirm(txId1), confirm(txId2)])
 
-  await sendAndWait('[2/4] setReceiveLibrary', 'setReceiveLibrary(address,uint32,address,uint256)', [
-    { type: 'address', value: TRON_LZ_PROVER },
-    { type: 'uint32',  value: cfg.evmEid },
-    { type: 'address', value: cfg.tronRecvLib },
-    { type: 'uint256', value: 0 },
+  // Round 2: setConfig ULN send + setConfig ULN recv in parallel
+  console.log('\n  [Round 2/2] setConfig ULN send + setConfig ULN recv')
+  const [txId3, txId4] = await Promise.all([
+    fireSetConfig('[3/4] setConfig ULN send', cfg.tronSendLib, [
+      { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
+    ]),
+    fireSetConfig('[4/4] setConfig ULN recv', cfg.tronRecvLib, [
+      { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
+    ]),
   ])
-
-  await sendSetConfig('[3/4] setConfig ULN send', cfg.tronSendLib, [
-    { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
-  ])
-
-  await sendSetConfig('[4/4] setConfig ULN recv', cfg.tronRecvLib, [
-    { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
-  ])
+  await Promise.all([confirm(txId3, false), confirm(txId4, false)])
 
   console.log(`\n  ✓ Tron configuration complete`)
 }
@@ -442,8 +449,10 @@ async function main() {
   const tronRpc   = tronRpcUrl(tronChainId)
   const chainName = cfg.evmEid < 40000 ? 'EVM' : 'EVM (testnet)'
 
-  await configureEvm(pk, evmRpc, cfg, chainName)
-  await configureTron(pk, tronRpc, cfg, chainName)
+  await Promise.all([
+    configureEvm(pk, evmRpc, cfg, chainName),
+    configureTron(pk, tronRpc, cfg, chainName),
+  ])
 
   console.log('\n=== All done ===')
   console.log(`  EVM LZ Prover:  ${EVM_LZ_PROVER}`)
