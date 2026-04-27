@@ -100,7 +100,7 @@ const TRON_LZ_PROVER_HEX = process.env.TRON_LZ_PROVER_HEX || '0xf8b5348d6e1e4c47
 // ─── Deployment JSON lookup ────────────────────────────────────────────────────
 
 function loadDeployments(): any {
-  const p = path.join(__dirname, '..', 'docs', 'lzDeployments.json')
+  const p = path.join(__dirname, '../..', 'docs', 'lzDeployments.json')
   return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
