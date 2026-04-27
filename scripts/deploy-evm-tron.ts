@@ -527,7 +527,7 @@ class TronDeployer {
       return predicted
     }
 
-    const { initCode, addr20hex: actual } = this.computeLZProver(
+    const { initCode } = this.computeLZProver(
       lzSalt,
       endpointHex20,
       delegateHex20,
