@@ -16,22 +16,23 @@ import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
 import {OriginSettler} from "./ERC7683/OriginSettler.sol";
-import {Vault} from "./vault/Vault.sol";
+import {VaultTron} from "./vault/VaultTron.sol";
 import {Clones} from "./vault/Clones.sol";
 
 /**
- * @title IntentSource
- * @notice Abstract contract for managing cross-chain intents and their associated rewards on the source chain
- * @dev Base contract containing all core intent functionality for EVM chains
+ * @title IntentSourceTron
+ * @notice IntentSource variant for Tron chains. Identical to IntentSource except it
+ *         deploys VaultTron clones instead of Vault clones, enabling support for
+ *         non-standard ERC20 tokens such as Tron USDT.
  */
-abstract contract IntentSource is OriginSettler, IIntentSource {
+abstract contract IntentSourceTron is OriginSettler, IIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for address;
     using Clones for address;
     using Math for uint256;
 
-    /// @dev CREATE2 prefix for deterministic address calculation (standard EVM)
-    bytes1 private constant CREATE2_PREFIX = bytes1(0xff);
+    /// @dev CREATE2 prefix for deterministic address calculation (Tron)
+    bytes1 private constant CREATE2_PREFIX = bytes1(0x41);
 
     /// @dev Implementation contract address for vault cloning
     address private immutable VAULT_IMPLEMENTATION;
@@ -39,11 +40,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     mapping(bytes32 => Status) private rewardStatuses;
 
     /**
-     * @notice Initializes the IntentSource contract
-     * @dev Deploys vault implementation
+     * @notice Initializes the IntentSourceTron contract
+     * @dev Deploys VaultTron implementation
      */
     constructor() {
-        VAULT_IMPLEMENTATION = address(new Vault());
+        VAULT_IMPLEMENTATION = address(new VaultTron());
     }
 
     /**
@@ -638,7 +639,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Funds vault with native tokens (ETH)
+     * @notice Funds vault with native tokens (ETH/TRX)
      * @param vault Address of the vault to fund
      * @param rewardAmount Required native token amount
      * @return funded True if vault has sufficient native balance after funding attempt

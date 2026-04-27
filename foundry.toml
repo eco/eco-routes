@@ -11,3 +11,6 @@ retries = 2
 evm_version = "paris"
 cbor_metadata = false
 bytecode_hash = "none"
+# Tron contracts use solc 0.4.25 (incompatible with global 0.8.27).
+# They are deployed via scripts; tests use contracts/test/TronUSDTMock.sol instead.
+skip = ["contracts/tron/**"]

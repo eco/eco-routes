@@ -90,7 +90,7 @@ contract Vault is IVault {
             );
 
             if (amount > 0) {
-                token.safeTransfer(claimant, amount);
+                _transferToken(token, claimant, amount);
             }
         }
 
@@ -117,7 +117,7 @@ contract Vault is IVault {
             uint256 amount = token.balanceOf(address(this));
 
             if (amount > 0) {
-                token.safeTransfer(refundee, amount);
+                _transferToken(token, refundee, amount);
             }
         }
 
@@ -145,7 +145,7 @@ contract Vault is IVault {
             revert ZeroRecoverTokenBalance(token);
         }
 
-        tokenContract.safeTransfer(refundee, balance);
+        _transferToken(tokenContract, refundee, balance);
     }
 
     /**
@@ -223,5 +223,20 @@ contract Vault is IVault {
         }
 
         return rewardAmount - token.balanceOf(address(this));
+    }
+
+    /**
+     * @notice Transfers ERC20 tokens out of the vault.
+     * @dev Virtual so subclasses can override for non-standard tokens (e.g. Tron USDT).
+     * @param token ERC20 token to transfer
+     * @param to Recipient address
+     * @param amount Amount to transfer
+     */
+    function _transferToken(
+        IERC20 token,
+        address to,
+        uint256 amount
+    ) internal virtual {
+        token.safeTransfer(to, amount);
     }
 }

@@ -83,7 +83,7 @@ contract TokenSecurityTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
 
-        // IntentWithdrawn should revert due to malicious token
+        // withdraw reverts because SafeERC20 bubbles up BadERC20.TransferNotAllowed()
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
         intentSource.withdraw(intent.destination, routeHash, intent.reward);
