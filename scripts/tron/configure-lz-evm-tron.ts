@@ -80,6 +80,16 @@ function tronRpcUrl(chainId: number): string {
   return url
 }
 
+// ─── Mainnet DVN preference ───────────────────────────────────────────────────
+// On mainnet, use a 2-of-3 optional DVN setup with the three most reputable
+// DVNs common to all Tron ↔ EVM mainnet routes.
+const MAINNET_PREFERRED_DVN_NAMES = ['LayerZero Labs', 'Nethermind', 'Deutsche Telekom']
+const MAINNET_OPTIONAL_THRESHOLD  = 2
+
+function isMainnet(eid: number): boolean {
+  return eid < 40000
+}
+
 // ─── Prover addresses (override via env for testnet/staging) ──────────────────
 
 const EVM_LZ_PROVER      = process.env.EVM_LZ_PROVER      || '0xf64eaca0D1cF874ea34b8E73127f0Fe535c6be41'
@@ -141,12 +151,17 @@ interface ResolvedLzConfig {
   evmSendLib: string
   evmRecvLib: string
   evmExecutor: string
-  evmDvns: string[]
+  evmRequiredDvns: string[]
+  evmOptionalDvns: string[]
+  evmOptionalThreshold: number
   tronEndpoint: string
   tronSendLib: string
   tronRecvLib: string
-  tronDvns: string[]
+  tronRequiredDvns: string[]
+  tronOptionalDvns: string[]
+  tronOptionalThreshold: number
   dvnNames: string[]
+  dvnSetup: string
 }
 
 function resolveConfig(evmChainId: number, tronChainId: number): ResolvedLzConfig {
@@ -155,7 +170,7 @@ function resolveConfig(evmChainId: number, tronChainId: number): ResolvedLzConfi
   if (!evmEid)  throw new Error(`No LZ EID mapping for EVM chain ID ${evmChainId}`)
   if (!tronEid) throw new Error(`No LZ EID mapping for Tron chain ID ${tronChainId}`)
 
-  const data     = loadDeployments()
+  const data      = loadDeployments()
   const evmChain  = findChainByEid(data, evmEid)
   const tronChain = findChainByEid(data, tronEid)
   const evmDep    = getV2Deployment(evmChain, evmEid)
@@ -166,6 +181,29 @@ function resolveConfig(evmChainId: number, tronChainId: number): ResolvedLzConfi
     throw new Error(`No common non-deprecated DVNs found between EID ${evmEid} and EID ${tronEid}`)
   }
 
+  // Mainnet: 2-of-3 optional with the preferred DVN set
+  // Testnet: all common DVNs as required (Shasta only has LZ Labs)
+  let evmRequiredDvns: string[], evmOptionalDvns: string[], evmOptionalThreshold: number
+  let tronRequiredDvns: string[], tronOptionalDvns: string[], tronOptionalThreshold: number
+  let dvnNames: string[], dvnSetup: string
+
+  if (isMainnet(evmEid) && isMainnet(tronEid)) {
+    const preferred = commonDvns.filter(d => MAINNET_PREFERRED_DVN_NAMES.includes(d.name))
+    if (preferred.length < MAINNET_PREFERRED_DVN_NAMES.length) {
+      const missing = MAINNET_PREFERRED_DVN_NAMES.filter(n => !preferred.find(d => d.name === n))
+      throw new Error(`Mainnet preferred DVNs not all available on this route. Missing: ${missing.join(', ')}`)
+    }
+    evmRequiredDvns = []; evmOptionalDvns = preferred.map(d => d.evmAddress); evmOptionalThreshold = MAINNET_OPTIONAL_THRESHOLD
+    tronRequiredDvns = []; tronOptionalDvns = preferred.map(d => d.tronAddress); tronOptionalThreshold = MAINNET_OPTIONAL_THRESHOLD
+    dvnNames = preferred.map(d => d.name)
+    dvnSetup = `${MAINNET_OPTIONAL_THRESHOLD}-of-${preferred.length} optional`
+  } else {
+    evmRequiredDvns = commonDvns.map(d => d.evmAddress); evmOptionalDvns = []; evmOptionalThreshold = 0
+    tronRequiredDvns = commonDvns.map(d => d.tronAddress); tronOptionalDvns = []; tronOptionalThreshold = 0
+    dvnNames = commonDvns.map(d => d.name)
+    dvnSetup = 'all required'
+  }
+
   return {
     evmEid,
     tronEid,
@@ -173,12 +211,17 @@ function resolveConfig(evmChainId: number, tronChainId: number): ResolvedLzConfi
     evmSendLib:   evmDep.sendUln302.address,
     evmRecvLib:   evmDep.receiveUln302.address,
     evmExecutor:  evmDep.executor.address,
-    evmDvns:      commonDvns.map(d => d.evmAddress),
+    evmRequiredDvns,
+    evmOptionalDvns,
+    evmOptionalThreshold,
     tronEndpoint: tronDep.endpointV2.address,
     tronSendLib:  tronDep.sendUln302.address,
     tronRecvLib:  tronDep.receiveUln302.address,
-    tronDvns:     commonDvns.map(d => d.tronAddress),
-    dvnNames:     commonDvns.map(d => d.name),
+    tronRequiredDvns,
+    tronOptionalDvns,
+    tronOptionalThreshold,
+    dvnNames,
+    dvnSetup,
   }
 }
 
@@ -206,11 +249,17 @@ function encodeExecutorConfig(maxMessageSize: number, executor: string): string 
   )
 }
 
-function encodeUlnConfig(confirmations: number, dvns: string[]): string {
-  const sorted = [...dvns].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+function encodeUlnConfig(
+  confirmations: number,
+  requiredDvns: string[],
+  optionalDvns: string[],
+  optionalThreshold: number,
+): string {
+  const sortReq = [...requiredDvns].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+  const sortOpt = [...optionalDvns].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
   return ethers.AbiCoder.defaultAbiCoder().encode(
     ['tuple(uint64 confirmations, uint8 requiredDVNCount, uint8 optionalDVNCount, uint8 optionalDVNThreshold, address[] requiredDVNs, address[] optionalDVNs)'],
-    [[confirmations, sorted.length, 0, 0, sorted, []]],
+    [[confirmations, sortReq.length, sortOpt.length, optionalThreshold, sortReq, sortOpt]],
   )
 }
 
@@ -228,7 +277,7 @@ async function configureEvm(privateKey: string, rpcUrl: string, cfg: ResolvedLzC
   console.log(`  SendLib:  ${cfg.evmSendLib}`)
   console.log(`  RecvLib:  ${cfg.evmRecvLib}`)
   console.log(`  Executor: ${cfg.evmExecutor}`)
-  console.log(`  DVNs:     ${cfg.dvnNames.join(', ')}`)
+  console.log(`  DVNs:     ${cfg.dvnNames.join(', ')} (${cfg.dvnSetup})`)
 
   const trySet = async (label: string, fn: () => Promise<any>) => {
     console.log(`\n  ${label}...`)
@@ -250,7 +299,7 @@ async function configureEvm(privateKey: string, rpcUrl: string, cfg: ResolvedLzC
 
   let tx: any
   console.log('  [3/5] setConfig ULN send...')
-  tx = await endpoint.setConfig(EVM_LZ_PROVER, cfg.evmSendLib, [{ eid: cfg.tronEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.evmDvns) }])
+  tx = await endpoint.setConfig(EVM_LZ_PROVER, cfg.evmSendLib, [{ eid: cfg.tronEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.evmRequiredDvns, cfg.evmOptionalDvns, cfg.evmOptionalThreshold) }])
   await tx.wait(); console.log(`    tx: ${tx.hash}`)
 
   console.log('  [4/5] setConfig Executor...')
@@ -258,7 +307,7 @@ async function configureEvm(privateKey: string, rpcUrl: string, cfg: ResolvedLzC
   await tx.wait(); console.log(`    tx: ${tx.hash}`)
 
   console.log('  [5/5] setConfig ULN recv...')
-  tx = await endpoint.setConfig(EVM_LZ_PROVER, cfg.evmRecvLib, [{ eid: cfg.tronEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.evmDvns) }])
+  tx = await endpoint.setConfig(EVM_LZ_PROVER, cfg.evmRecvLib, [{ eid: cfg.tronEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.evmRequiredDvns, cfg.evmOptionalDvns, cfg.evmOptionalThreshold) }])
   await tx.wait(); console.log(`    tx: ${tx.hash}`)
 
   console.log(`\n  ✓ ${chainName} configuration complete`)
@@ -278,7 +327,7 @@ async function configureTron(privateKey: string, rpcUrl: string, cfg: ResolvedLz
   console.log(`  Endpoint: ${tronEndpointB58}`)
   console.log(`  SendLib:  ${cfg.tronSendLib}`)
   console.log(`  RecvLib:  ${cfg.tronRecvLib}`)
-  console.log(`  DVNs:     ${cfg.dvnNames.join(', ')}`)
+  console.log(`  DVNs:     ${cfg.dvnNames.join(', ')} (${cfg.dvnSetup})`)
 
   const sendAndWait = async (label: string, funcSig: string, params: any[]) => {
     console.log(`\n  ${label}...`)
@@ -348,11 +397,11 @@ async function configureTron(privateKey: string, rpcUrl: string, cfg: ResolvedLz
   ])
 
   await sendSetConfig('[3/4] setConfig ULN send', cfg.tronSendLib, [
-    { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronDvns) },
+    { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
   ])
 
   await sendSetConfig('[4/4] setConfig ULN recv', cfg.tronRecvLib, [
-    { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronDvns) },
+    { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
   ])
 
   console.log(`\n  ✓ Tron configuration complete`)
@@ -382,7 +431,7 @@ async function main() {
   const cfg = resolveConfig(evmChainId, tronChainId)
   console.log(`  EVM EID:  ${cfg.evmEid}`)
   console.log(`  Tron EID: ${cfg.tronEid}`)
-  console.log(`  DVNs (${cfg.dvnNames.length}): ${cfg.dvnNames.join(', ')}`)
+  console.log(`  DVNs (${cfg.dvnNames.length}, ${cfg.dvnSetup}): ${cfg.dvnNames.join(', ')}`)
 
   const evmRpc    = evmRpcUrl(evmChainId, alchemyKey)
   const tronRpc   = tronRpcUrl(tronChainId)
