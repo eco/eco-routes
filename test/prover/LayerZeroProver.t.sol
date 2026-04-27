@@ -9,7 +9,7 @@ import {Portal} from "../../contracts/Portal.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 
 contract MockLayerZeroEndpoint {
-    mapping(uint32 => mapping(bytes32 => address)) public delegates;
+    mapping(address => address) public delegates;
 
     function send(
         ILayerZeroEndpointV2.MessagingParams calldata params,
@@ -38,9 +38,7 @@ contract MockLayerZeroEndpoint {
     }
 
     function setDelegate(address delegate) external {
-        delegates[uint32(block.chainid)][
-            bytes32(uint256(uint160(msg.sender)))
-        ] = delegate;
+        delegates[msg.sender] = delegate;
     }
 }
 
@@ -501,6 +499,34 @@ contract LayerZeroProverTest is BaseTest {
         address indexed claimant,
         uint64 destination
     );
+
+    // ── revokeDelegation ──────────────────────────────────────────────────────
+
+    function test_revokeDelegation_succeeds() public {
+        // address(this) is the delegate set in setUp
+        vm.expectEmit(true, false, false, false, address(lzProver));
+        emit LayerZeroProver.DelegationRevoked(address(this));
+
+        lzProver.revokeDelegation();
+
+        assertEq(endpoint.delegates(address(lzProver)), address(lzProver));
+    }
+
+    function test_revokeDelegation_revertsIfNotDelegate() public {
+        address nonDelegate = makeAddr("nonDelegate");
+        vm.prank(nonDelegate);
+        vm.expectRevert(LayerZeroProver.NotDelegate.selector);
+        lzProver.revokeDelegation();
+    }
+
+    function test_revokeDelegation_locksSubsequentCalls() public {
+        // Revoke once — delegate is now address(lzProver)
+        lzProver.revokeDelegation();
+
+        // Original delegate can no longer call it
+        vm.expectRevert(LayerZeroProver.NotDelegate.selector);
+        lzProver.revokeDelegation();
+    }
 
     function _formatMessageWithChainId(
         uint256 chainId,

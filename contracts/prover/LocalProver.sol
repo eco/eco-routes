@@ -219,7 +219,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             IERC20 rewardToken = IERC20(reward.tokens[i].token);
             uint256 balance = rewardToken.balanceOf(address(this));
             if (balance > 0) {
-                rewardToken.safeTransfer(claimantAddress, balance);
+                _transferToken(rewardToken, claimantAddress, balance);
             }
         }
 
@@ -233,6 +233,21 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         emit FlashFulfilled(intentHash, claimant, remainingNative);
 
         return results;
+    }
+
+    /**
+     * @notice Transfers ERC20 tokens to the claimant.
+     * @dev Virtual so subclasses can override for non-standard tokens (e.g. Tron USDT).
+     * @param token ERC20 token to transfer
+     * @param to Recipient address
+     * @param amount Amount to transfer
+     */
+    function _transferToken(
+        IERC20 token,
+        address to,
+        uint256 amount
+    ) internal virtual {
+        token.safeTransfer(to, amount);
     }
 
     /**

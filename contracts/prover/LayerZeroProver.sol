@@ -49,6 +49,17 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     error InvalidExecutor(address executor);
 
     /**
+     * @notice Caller is not the current delegate
+     */
+    error NotDelegate();
+
+    /**
+     * @notice Emitted when delegation is permanently revoked
+     * @param delegate The address that was the delegate before revocation
+     */
+    event DelegationRevoked(address indexed delegate);
+
+    /**
      * @param endpoint Address of local LayerZero endpoint
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
@@ -71,6 +82,21 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // The delegate is authorized to configure LayerZero settings on behalf of this contract
         // This includes setting configs, managing paths, and other administrative functions
         ILayerZeroEndpointV2(endpoint).setDelegate(delegate);
+    }
+
+    /**
+     * @notice Permanently revokes the endpoint delegate by setting it to address(this).
+     * @dev Since this contract cannot send external transactions, setting the delegate
+     *      to address(this) makes all privileged endpoint actions (setConfig, setSendLibrary,
+     *      skip, etc.) permanently uncallable. Can only be called by the current delegate.
+     *      This action is irreversible.
+     */
+    function revokeDelegation() external {
+        if (msg.sender != ILayerZeroEndpointV2(ENDPOINT).delegates(address(this))) {
+            revert NotDelegate();
+        }
+        ILayerZeroEndpointV2(ENDPOINT).setDelegate(address(this));
+        emit DelegationRevoked(msg.sender);
     }
 
     /**
