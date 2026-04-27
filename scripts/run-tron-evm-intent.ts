@@ -3,7 +3,7 @@
  *
  * Full lifecycle for a Tron → EVM intent:
  *   1. Approve + PublishAndFund intent on Tron (source): reward = 0.1 USDT locked on Tron
- *   2. Approve USDC + FulfillAndProve on EVM (destination): sends 0.1 USDC to creator, LZ proof → Tron
+ *   2. Approve USDC + FulfillAndProve on EVM (destination): sends 0.05 USDC to creator, LZ proof → Tron
  *   3. Poll Tron prover until proof arrives
  *   4. Withdraw USDT reward on Tron
  *
@@ -14,14 +14,14 @@
  *
  * Optional env vars (defaults to standard deployed addresses):
  *   TRON_RPC_URL          (default: https://api.trongrid.io)
- *   TRON_PORTAL_BASE58    (default: TCwhEAaWQhN9sCSn2RshG5bb1aciukpWjr)
- *   TRON_PORTAL_HEX20     (default: 0x209f1b776a365c95fddf00876b3dbe300fd08de2)
- *   TRON_LZ_PROVER_HEX20  (default: 0xfc462a59bc1df059914624a0e86e220f84426325)
+ *   TRON_PORTAL_BASE58    (default: TT6jKgnBXoj7vZ7m2Yioq5mxTfrDpgir44)
+ *   TRON_PORTAL_HEX20     (default: 0xbbe65c636a745ccb12fb0a8376f5ed089a86983a)
+ *   TRON_LZ_PROVER_HEX20  (default: 0xf8b5348d6e1e4c47de4abc2d9946963a7a37f2c8)
  *   EVM_PORTAL            (default: 0x399Dbd5DF04f83103F77A58cBa2B7c4d3cdede97)
- *   EVM_LZ_PROVER         (default: 0xA23ab6E17d0168FACc16a614579198FD58E7bC41)
+ *   EVM_LZ_PROVER         (default: 0xf64eaca0D1cF874ea34b8E73127f0Fe535c6be41)
  *   TRON_EID              (default: 30420)
- *   TRON_USDT_HEX20       (default: 0xa614f803b6fd780986a42c78ec9c7f77e6ded13 — Tron mainnet USDT)
- *   EVM_USDC              (default: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 — Base USDC)
+ *   TRON_USDT_HEX20       (default: 0xa614f803b6fd780986a42c78ec9c7f77e6ded13c — Tron mainnet USDT)
+ *   EVM_USDC              (default: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 — Arbitrum native USDC)
  *   EVM_CHAIN_NAME        (default: EVM) — used for display only
  *   POLL_INTERVAL_SEC     (default: 30)  — seconds between proof polls
  *   POLL_TIMEOUT_MIN      (default: 60)  — minutes before giving up
@@ -39,7 +39,8 @@ import 'dotenv/config'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TRON_EXPLORER  = 'https://tronscan.org/#/transaction'
-const REWARD_AMOUNT  = 100_000n  // 0.1 USDT / USDC (6 decimals)
+const REWARD_AMOUNT  = 100_000n  // 0.1 USDT (6 decimals) — locked on Tron as reward
+const ROUTE_AMOUNT   =  50_000n  // 0.05 USDT (6 decimals) — solver provides on EVM
 
 // ─── ABIs ─────────────────────────────────────────────────────────────────────
 
@@ -76,11 +77,11 @@ const TRON_PUBLISH_AND_FUND_ABI = [
 
 const TRON_WITHDRAW_ABI = [
   {
-    type: 'function', name: 'withdraw',
+    type: 'function', name: 'batchWithdraw',
     inputs: [
-      { name: 'destination', type: 'uint64' },
-      { name: 'routeHash', type: 'bytes32' },
-      { name: 'reward', type: 'tuple', components: [
+      { name: 'destinations', type: 'uint64[]' },
+      { name: 'routeHashes', type: 'bytes32[]' },
+      { name: 'rewards', type: 'tuple[]', components: [
         { name: 'deadline', type: 'uint64' },
         { name: 'creator', type: 'address' },
         { name: 'prover', type: 'address' },
@@ -118,7 +119,7 @@ const TRON_PUBLISH_AND_FUND_SIG =
   'publishAndFund((uint64,(bytes32,uint64,address,uint256,(address,uint256)[],(address,bytes,uint256)[]),(uint64,address,address,uint256,(address,uint256)[])),bool)'
 
 const TRON_WITHDRAW_SIG =
-  'withdraw(uint64,bytes32,(uint64,address,address,uint256,(address,uint256)[]))'
+  'batchWithdraw(uint64[],bytes32[],(uint64,address,address,uint256,(address,uint256)[])[])'
 
 const TRON_ERC20_APPROVE_SIG = 'approve(address,uint256)'
 
@@ -176,7 +177,7 @@ async function tronSendAndWait(
   throw new Error(`Timed out waiting for ${broadcast.txid}`)
 }
 
-// ─── Step 1: Approve USDT + PublishAndFund intent on Tron ─────────────────────
+// ─── Step 1: Approve USDC + PublishAndFund intent on Tron ─────────────────────
 
 async function createIntent(
   tw: TronWeb,
@@ -190,7 +191,7 @@ async function createIntent(
   chainName: string,
 ): Promise<{ intentHash: string; salt: string; deadline: number; creatorHex: string; txId: string }> {
   console.log(`\n${'─'.repeat(60)}`)
-  console.log(`STEP 1 — Approve USDT + PublishAndFund intent on Tron → ${chainName}`)
+  console.log(`STEP 1 — Approve USDC + PublishAndFund intent on Tron → ${chainName}`)
   console.log(`${'─'.repeat(60)}`)
 
   const deployerTronAddr = tw.address.fromPrivateKey(tw.defaultPrivateKey as string) as string
@@ -199,31 +200,31 @@ async function createIntent(
   const deadline = Math.floor(Date.now() / 1000) + 24 * 60 * 60
   const salt = ethers.keccak256(ethers.toUtf8Bytes(`eco-routes-tron-${chainName}-${Date.now()}`))
 
-  // Encode EVM-side route.calls: Executor (who receives route.tokens) transfers USDC to creator
-  const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, REWARD_AMOUNT])
+  // Encode EVM-side route.calls: Executor transfers 0.05 USDT to creator
+  const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, ROUTE_AMOUNT])
 
   const intent = [
     evmChainId,
-    // route: what solver must do on EVM — provide 0.1 USDC, Executor transfers it to creator
+    // route: what solver must do on EVM — provide 0.05 USDT, Executor transfers it to creator
     [
       salt, deadline, evmPortalHex, 0,
-      [{ token: evmUsdcAddr, amount: REWARD_AMOUNT }],          // route.tokens: solver pre-approves USDC to EVM portal
-      [{ target: evmUsdcAddr, data: transferData, value: 0 }],  // route.calls: Executor sends USDC to creator
+      [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],          // route.tokens: solver pre-approves USDT to EVM portal
+      [{ target: evmUsdcAddr, data: transferData, value: 0 }], // route.calls: Executor sends USDT to creator
     ],
-    // reward: 0.1 USDT locked on Tron for the solver
+    // reward: 0.1 USDC locked on Tron for the solver
     [deadline, creatorHex, tronProverHex, 0, [{ token: tronUsdtHex, amount: REWARD_AMOUNT }]],
   ]
 
   console.log(`  Creator:   ${deployerTronAddr} (${creatorHex})`)
   console.log(`  Deadline:  ${new Date(deadline * 1000).toISOString()}`)
   console.log(`  Reward:    0.1 USDT (${tronUsdtHex}) locked on Tron`)
-  console.log(`  Want:      0.1 USDC (${evmUsdcAddr}) sent to creator on ${chainName}`)
+  console.log(`  Want:      0.05 USDC (${evmUsdcAddr}) sent to creator on ${chainName}`)
 
-  // 1a. Approve Tron USDT to portal (needed for publishAndFund to pull tokens into vault)
-  console.log(`  Approving 0.1 USDT to Tron portal...`)
-  const tronUsdtB58 = tw.address.fromHex('41' + tronUsdtHex.slice(2)) as string
+  // 1a. Approve Tron USDC to portal (needed for publishAndFund to pull tokens into vault)
+  console.log(`  Approving 0.1 USDC to Tron portal...`)
+  const tronUsdcB58 = tw.address.fromHex('41' + tronUsdtHex.slice(2)) as string
   const approveCalldata = ERC20_IFACE.encodeFunctionData('approve', [tronPortalHex, REWARD_AMOUNT])
-  await tronSendAndWait(tw, tronUsdtB58, TRON_ERC20_APPROVE_SIG, approveCalldata.slice(10))
+  await tronSendAndWait(tw, tronUsdcB58, TRON_ERC20_APPROVE_SIG, approveCalldata.slice(10))
   console.log(`  Approved.`)
 
   // 1b. PublishAndFund
@@ -244,7 +245,7 @@ async function createIntent(
   return { intentHash, salt, deadline, creatorHex, txId: txid }
 }
 
-// ─── Step 2: Approve USDC + FulfillAndProve on EVM ────────────────────────────
+// ─── Step 2: Approve USDT + FulfillAndProve on EVM ────────────────────────────
 
 async function fulfillAndProveOnEvm(
   wallet: ethers.Wallet,
@@ -268,14 +269,14 @@ async function fulfillAndProveOnEvm(
   const provider = wallet.provider!
 
   // Encode the same transfer call that was put in route.calls at publish time
-  const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, REWARD_AMOUNT])
+  const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, ROUTE_AMOUNT])
 
   const route = {
     salt,
     deadline: BigInt(deadline),
     portal: evmPortal,
     nativeAmount: 0n,
-    tokens: [{ token: evmUsdcAddr, amount: REWARD_AMOUNT }],
+    tokens: [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],
     calls:  [{ target: evmUsdcAddr, data: transferData, value: 0n }],
   }
   const reward = {
@@ -300,10 +301,10 @@ async function fulfillAndProveOnEvm(
   const fee: bigint = await proverContract.fetchFee(tronEid, encodedProofs, lzData)
   console.log(`  LZ fee: ${ethers.formatEther(fee)} ETH`)
 
-  // Approve USDC to portal so the portal can pull it into the Executor
-  console.log(`  Approving 0.1 USDC to EVM portal...`)
-  const usdc = new ethers.Contract(evmUsdcAddr, ERC20_ABI, wallet)
-  const approveTx = await usdc.approve(evmPortal, REWARD_AMOUNT)
+  // Approve USDT to portal so the portal can pull it into the Executor
+  console.log(`  Approving 0.05 USDC to EVM portal...`)
+  const usdt = new ethers.Contract(evmUsdcAddr, ERC20_ABI, wallet)
+  const approveTx = await usdt.approve(evmPortal, ROUTE_AMOUNT)
   await approveTx.wait()
   console.log(`  Approved.`)
 
@@ -356,7 +357,7 @@ async function pollForProof(
   throw new Error(`Proof did not arrive within ${timeoutMin} minutes`)
 }
 
-// ─── Step 4: Withdraw USDT on Tron ────────────────────────────────────────────
+// ─── Step 4: Withdraw USDC on Tron ────────────────────────────────────────────
 
 async function withdrawOnTron(
   tw: TronWeb,
@@ -377,13 +378,13 @@ async function withdrawOnTron(
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
   // Reconstruct the exact same route that was published
-  const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, REWARD_AMOUNT])
+  const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, ROUTE_AMOUNT])
   const route = {
     salt,
     deadline: BigInt(deadline),
     portal: evmPortalHex,
     nativeAmount: 0n,
-    tokens: [{ token: evmUsdcAddr, amount: REWARD_AMOUNT }] as any[],
+    tokens: [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }] as any[],
     calls:  [{ target: evmUsdcAddr, data: transferData, value: 0n }] as any[],
   }
   const routeHash = ethers.keccak256(
@@ -393,10 +394,10 @@ async function withdrawOnTron(
     ),
   )
 
-  // Reward includes the USDT token
+  // Reward: USDC on Tron
   const reward = [BigInt(deadline), creatorHex, tronProverHex, 0, [{ token: tronUsdtHex, amount: REWARD_AMOUNT }]]
   const iface = new ethers.Interface(TRON_WITHDRAW_ABI)
-  const calldata = iface.encodeFunctionData('withdraw', [evmChainId, routeHash, reward])
+  const calldata = iface.encodeFunctionData('batchWithdraw', [[evmChainId], [routeHash], [reward]])
 
   console.log(`  sending...`)
   const { txid } = await tronSendAndWait(tw, tronPortalB58, TRON_WITHDRAW_SIG, calldata.slice(10))
@@ -415,13 +416,13 @@ async function main() {
   const evmChainIdStr = process.env.EVM_CHAIN_ID || '';  if (!evmChainIdStr) throw new Error('EVM_CHAIN_ID required')
 
   const tronRpc       = process.env.TRON_RPC_URL         || 'https://api.trongrid.io'
-  const tronPortalHex = process.env.TRON_PORTAL_HEX20    || '0x209f1b776a365c95fddf00876b3dbe300fd08de2'
-  const tronProverHex = process.env.TRON_LZ_PROVER_HEX20 || '0xfc462a59bc1df059914624a0e86e220f84426325'
+  const tronPortalHex = process.env.TRON_PORTAL_HEX20    || '0xbbe65c636a745ccb12fb0a8376f5ed089a86983a'
+  const tronProverHex = process.env.TRON_LZ_PROVER_HEX20 || '0xf8b5348d6e1e4c47de4abc2d9946963a7a37f2c8'
   const evmPortal     = process.env.EVM_PORTAL            || '0x399Dbd5DF04f83103F77A58cBa2B7c4d3cdede97'
-  const evmProver     = process.env.EVM_LZ_PROVER         || '0xA23ab6E17d0168FACc16a614579198FD58E7bC41'
+  const evmProver     = process.env.EVM_LZ_PROVER         || '0xf64eaca0D1cF874ea34b8E73127f0Fe535c6be41'
   const tronEid       = BigInt(process.env.TRON_EID       || '30420')
   const tronUsdtHex   = process.env.TRON_USDT_HEX20      || '0xa614f803b6fd780986a42c78ec9c7f77e6ded13c'
-  const evmUsdcAddr   = process.env.EVM_USDC              || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+  const evmUsdcAddr   = process.env.EVM_USDC              || '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
   const chainName     = process.env.EVM_CHAIN_NAME        || 'EVM'
   const pollInterval  = parseInt(process.env.POLL_INTERVAL_SEC || '30')
   const pollTimeout   = parseInt(process.env.POLL_TIMEOUT_MIN  || '60')
@@ -437,7 +438,7 @@ async function main() {
 
   console.log(`\n${'═'.repeat(60)}`)
   console.log(`  Tron → EVM  |  Tron → ${chainName}`)
-  console.log(`  Reward: 0.1 USDT on Tron | Want: 0.1 USDC on ${chainName}`)
+  console.log(`  Reward: 0.1 USDT on Tron | Want: 0.05 USDC on ${chainName}`)
   console.log(`${'═'.repeat(60)}`)
 
   const { intentHash, salt, deadline, creatorHex, txId: createTxId } = await createIntent(
@@ -463,7 +464,7 @@ async function main() {
   console.log(`${'═'.repeat(60)}`)
   console.log(`  Route:       Tron → ${chainName}`)
   console.log(`  Reward:      0.1 USDT on Tron → solver`)
-  console.log(`  Transferred: 0.1 USDC on ${chainName} → creator (${creatorHex})`)
+  console.log(`  Transferred: 0.05 USDC on ${chainName} → creator (${creatorHex})`)
   console.log(`  Intent hash: ${intentHash}`)
   console.log(``)
   console.log(`  Create:      ${TRON_EXPLORER}/${createTxId}`)
