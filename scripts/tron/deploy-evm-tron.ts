@@ -13,7 +13,6 @@
  *   {CHAIN}_RPC_URL             per chain: ARBITRUM_RPC_URL, BASE_RPC_URL,
  *                               OPTIMISM_RPC_URL, POLYGON_RPC_URL, MAINNET_RPC_URL
  *   TRON_MAINNET_RPC_URL        Tron full-node RPC
- *   TRON_LAYERZERO_ENDPOINT     LayerZero endpoint address on Tron (base58 or hex)
  *   SALT                        salt string (or bytes32 hex)
  *
  * Skip-deployment env vars (if set, contract is reused):
@@ -22,6 +21,7 @@
  *   TRON_LZ_PROVER              existing Tron LayerZeroProver address
  *
  * Optional env vars:
+ *   TRON_LAYERZERO_ENDPOINT     Override Tron LZ endpoint (auto-resolved from lzDeployments.json)
  *   LAYERZERO_ENDPOINT          LZ V2 endpoint on EVM chains
  *                               (default: 0x1a44076050125825900e736c501f859c50fE728c)
  *   LAYERZERO_DELEGATE          LZ delegate on EVM chains (default: deployer address)
@@ -155,6 +155,17 @@ interface EvmChainConfig {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function lzEndpointForTronEid(tronEid: number): string {
+  const data = JSON.parse(fs.readFileSync(path.join(__dirname, '../..', 'docs', 'lzDeployments.json'), 'utf8'))
+  for (const key of Object.keys(data)) {
+    const chain = data[key]
+    if (!Array.isArray(chain.deployments)) continue
+    const dep = chain.deployments.find((d: any) => Number(d.eid) === tronEid && d.version === 2)
+    if (dep?.endpointV2?.address) return dep.endpointV2.address
+  }
+  throw new Error(`No v2 endpointV2 found for Tron EID ${tronEid} in docs/lzDeployments.json`)
 }
 
 function loadArtifact(contractName: string): { abi: any[]; bytecode: string } {
@@ -722,16 +733,12 @@ class DeployOrchestrator {
 
     this.tronDeployer = new TronDeployer(tronRpcUrl, privateKey, tronFactory)
 
-    const tronEndpointRaw = process.env.TRON_LAYERZERO_ENDPOINT || ''
-    if (!tronEndpointRaw && !this.isDryRun) {
-      throw new Error('TRON_LAYERZERO_ENDPOINT required')
-    }
+    const tronEidForLookup = useTronShasta ? TRON_SHASTA_EID : TRON_MAINNET_EID
+    const tronEndpointRaw = process.env.TRON_LAYERZERO_ENDPOINT || lzEndpointForTronEid(tronEidForLookup)
     const tronDelegateRaw =
       process.env.TRON_LZ_DELEGATE || this.tronDeployer.address
 
-    this.tronLZEndpointHex20 = tronEndpointRaw
-      ? tronAddrToHex20(this.tronDeployer.tronWeb, tronEndpointRaw)
-      : '0x' + '00'.repeat(20)
+    this.tronLZEndpointHex20 = tronAddrToHex20(this.tronDeployer.tronWeb, tronEndpointRaw)
     this.tronDelegateHex20 = tronDelegateRaw
       ? tronAddrToHex20(this.tronDeployer.tronWeb, tronDelegateRaw)
       : '0x' + '00'.repeat(20)
