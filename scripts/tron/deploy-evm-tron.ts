@@ -22,7 +22,7 @@
  *
  * Optional env vars:
  *   TRON_LAYERZERO_ENDPOINT     Override Tron LZ endpoint (auto-resolved from lzDeployments.json)
- *   LAYERZERO_ENDPOINT          LZ V2 endpoint on EVM chains
+ *   LAYERZERO_ENDPOINT          Override EVM LZ endpoint (auto-resolved from lzDeployments.json)
  *                               (default: 0x1a44076050125825900e736c501f859c50fE728c)
  *   LAYERZERO_DELEGATE          LZ delegate on EVM chains (default: deployer address)
  *   TRON_LZ_DELEGATE            LZ delegate on Tron (default: deployer address)
@@ -120,9 +120,6 @@ const TRON_SHASTA_CREATE2_FACTORY = 'TSh1WRYebthHLcfJ7eFqTyps97jMgbh96g'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** LZ V2 endpoint — same address on all supported EVM chains */
-const DEFAULT_EVM_LZ_ENDPOINT = '0x1a44076050125825900e736c501f859c50fE728c'
-
 /** CREATE3 deployer on EVM chains */
 const DEFAULT_CREATE3_DEPLOYER = '0xC6BAd1EbAF366288dA6FB5689119eDd695a66814'
 
@@ -157,15 +154,15 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function lzEndpointForTronEid(tronEid: number): string {
+function lzEndpointForEid(eid: number): string {
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, '../..', 'docs', 'lzDeployments.json'), 'utf8'))
   for (const key of Object.keys(data)) {
     const chain = data[key]
     if (!Array.isArray(chain.deployments)) continue
-    const dep = chain.deployments.find((d: any) => Number(d.eid) === tronEid && d.version === 2)
+    const dep = chain.deployments.find((d: any) => Number(d.eid) === eid && d.version === 2)
     if (dep?.endpointV2?.address) return dep.endpointV2.address
   }
-  throw new Error(`No v2 endpointV2 found for Tron EID ${tronEid} in docs/lzDeployments.json`)
+  throw new Error(`No v2 endpointV2 found for EID ${eid} in docs/lzDeployments.json`)
 }
 
 function loadArtifact(contractName: string): { abi: any[]; bytecode: string } {
@@ -689,8 +686,6 @@ class DeployOrchestrator {
 
     const create3Deployer =
       process.env.EVM_CREATE3_DEPLOYER || DEFAULT_CREATE3_DEPLOYER
-    const evmLZEndpoint =
-      process.env.LAYERZERO_ENDPOINT || DEFAULT_EVM_LZ_ENDPOINT
 
     // ── Build per-chain deployers ────────────────────────────────────────────
     this.evmDeployers = chainKeys.map((key) => {
@@ -704,7 +699,7 @@ class DeployOrchestrator {
         name: def.name,
         lzEid: def.lzEid,
         rpcUrl,
-        lzEndpoint: evmLZEndpoint,
+        lzEndpoint: process.env.LAYERZERO_ENDPOINT || lzEndpointForEid(def.lzEid),
         delegate: '', // filled after wallet is created
         create3Deployer,
       }
@@ -734,7 +729,7 @@ class DeployOrchestrator {
     this.tronDeployer = new TronDeployer(tronRpcUrl, privateKey, tronFactory)
 
     const tronEidForLookup = useTronShasta ? TRON_SHASTA_EID : TRON_MAINNET_EID
-    const tronEndpointRaw = process.env.TRON_LAYERZERO_ENDPOINT || lzEndpointForTronEid(tronEidForLookup)
+    const tronEndpointRaw = process.env.TRON_LAYERZERO_ENDPOINT || lzEndpointForEid(tronEidForLookup)
     const tronDelegateRaw =
       process.env.TRON_LZ_DELEGATE || this.tronDeployer.address
 
