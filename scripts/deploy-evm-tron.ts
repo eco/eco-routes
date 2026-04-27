@@ -464,10 +464,10 @@ class TronDeployer {
       return hex20
     }
 
-    const { abi, bytecode } = loadArtifact('Portal')
+    const { abi, bytecode } = loadArtifact('PortalTron')
     const bytecodeHex = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode
 
-    console.log('  [Tron] Deploying Portal via createSmartContract...')
+    console.log('  [Tron] Deploying PortalTron via createSmartContract...')
     const deployerHex = this.tronWeb.defaultAddress.hex as string
     const tx = await this.tronWeb.transactionBuilder.createSmartContract(
       {
