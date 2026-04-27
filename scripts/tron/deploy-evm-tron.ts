@@ -160,7 +160,7 @@ function sleep(ms: number) {
 function loadArtifact(contractName: string): { abi: any[]; bytecode: string } {
   const artifactPath = path.join(
     __dirname,
-    '..',
+    '../..',
     'out',
     `${contractName}.sol`,
     `${contractName}.json`,
