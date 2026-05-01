@@ -81,10 +81,11 @@ function tronRpcUrl(chainId: number): string {
 }
 
 // ─── Mainnet DVN preference ───────────────────────────────────────────────────
-// On mainnet, use a 2-of-3 optional DVN setup with the three most reputable
-// DVNs common to all Tron ↔ EVM mainnet routes.
-const MAINNET_PREFERRED_DVN_NAMES = ['LayerZero Labs', 'Nethermind', 'Deutsche Telekom']
-const MAINNET_OPTIONAL_THRESHOLD  = 2
+// On mainnet, use 1 required (LayerZero Labs) + 1-of-2 optional (Nethermind,
+// Deutsche Telekom). Every message needs LZ Labs plus at least one of the other two.
+const MAINNET_REQUIRED_DVN_NAME   = 'LayerZero Labs'
+const MAINNET_OPTIONAL_DVN_NAMES  = ['Nethermind', 'Deutsche Telekom']
+const MAINNET_OPTIONAL_THRESHOLD  = 1
 const TESTNET_DVN_NAME            = 'LayerZero Labs'
 
 function isMainnet(eid: number): boolean {
@@ -127,19 +128,43 @@ interface DVNPair {
   tronAddress: string
 }
 
-function resolveCommonDVNs(evmChain: any, tronChain: any): DVNPair[] {
-  // canonicalName → address for EVM chain (non-deprecated, first wins)
-  const evmByName: Record<string, string> = {}
-  for (const [addr, info] of Object.entries(evmChain.dvns || {}) as [string, any][]) {
-    if (!info.deprecated && info.canonicalName && !evmByName[info.canonicalName]) {
-      evmByName[info.canonicalName] = addr
+/**
+ * Build a canonicalName → address map for one side, preferring non-deprecated entries.
+ * If a deprecated DVN has a non-deprecated sibling with the same canonical name, the
+ * deprecated entry is skipped and a warning is printed. lzReadCompatible DVNs are
+ * always excluded (they are for LZ Read queries, not standard cross-chain messaging).
+ */
+function buildActiveDvnMap(dvns: Record<string, any>, side: string): Record<string, string> {
+  const activeByName: Record<string, string>     = {}
+  const deprecatedByName: Record<string, string> = {}
+
+  for (const [addr, info] of Object.entries(dvns) as [string, any][]) {
+    if (!info.canonicalName || info.lzReadCompatible) continue
+    if (info.deprecated) {
+      if (!deprecatedByName[info.canonicalName]) deprecatedByName[info.canonicalName] = addr
+    } else {
+      if (!activeByName[info.canonicalName]) activeByName[info.canonicalName] = addr
     }
   }
 
+  // Warn when a deprecated entry is superseded by an active one
+  for (const name of Object.keys(deprecatedByName)) {
+    if (activeByName[name]) {
+      console.log(`  [DVN] ${side}: skipping deprecated ${deprecatedByName[name]} (${name}), using ${activeByName[name]} instead`)
+    }
+  }
+
+  return activeByName
+}
+
+function resolveCommonDVNs(evmChain: any, tronChain: any): DVNPair[] {
+  const evmByName  = buildActiveDvnMap(evmChain.dvns  || {}, 'EVM')
+  const tronByName = buildActiveDvnMap(tronChain.dvns || {}, 'Tron')
+
   const pairs: DVNPair[] = []
-  for (const [addr, info] of Object.entries(tronChain.dvns || {}) as [string, any][]) {
-    if (!info.deprecated && info.canonicalName && evmByName[info.canonicalName]) {
-      pairs.push({ name: info.canonicalName, evmAddress: evmByName[info.canonicalName], tronAddress: addr })
+  for (const [name, tronAddr] of Object.entries(tronByName)) {
+    if (evmByName[name]) {
+      pairs.push({ name, evmAddress: evmByName[name], tronAddress: tronAddr })
     }
   }
   return pairs
@@ -189,15 +214,18 @@ function resolveConfig(evmChainId: number, tronChainId: number): ResolvedLzConfi
   let dvnNames: string[], dvnSetup: string
 
   if (isMainnet(evmEid) && isMainnet(tronEid)) {
-    const preferred = commonDvns.filter(d => MAINNET_PREFERRED_DVN_NAMES.includes(d.name))
-    if (preferred.length < MAINNET_PREFERRED_DVN_NAMES.length) {
-      const missing = MAINNET_PREFERRED_DVN_NAMES.filter(n => !preferred.find(d => d.name === n))
+    const allNames = [MAINNET_REQUIRED_DVN_NAME, ...MAINNET_OPTIONAL_DVN_NAMES]
+    const preferred = commonDvns.filter(d => allNames.includes(d.name))
+    const missing = allNames.filter(n => !preferred.find(d => d.name === n))
+    if (missing.length > 0) {
       throw new Error(`Mainnet preferred DVNs not all available on this route. Missing: ${missing.join(', ')}`)
     }
-    evmRequiredDvns = []; evmOptionalDvns = preferred.map(d => d.evmAddress); evmOptionalThreshold = MAINNET_OPTIONAL_THRESHOLD
-    tronRequiredDvns = []; tronOptionalDvns = preferred.map(d => d.tronAddress); tronOptionalThreshold = MAINNET_OPTIONAL_THRESHOLD
+    const required = preferred.filter(d => d.name === MAINNET_REQUIRED_DVN_NAME)
+    const optional = preferred.filter(d => MAINNET_OPTIONAL_DVN_NAMES.includes(d.name))
+    evmRequiredDvns = required.map(d => d.evmAddress); evmOptionalDvns = optional.map(d => d.evmAddress); evmOptionalThreshold = MAINNET_OPTIONAL_THRESHOLD
+    tronRequiredDvns = required.map(d => d.tronAddress); tronOptionalDvns = optional.map(d => d.tronAddress); tronOptionalThreshold = MAINNET_OPTIONAL_THRESHOLD
     dvnNames = preferred.map(d => d.name)
-    dvnSetup = `${MAINNET_OPTIONAL_THRESHOLD}-of-${preferred.length} optional`
+    dvnSetup = `1 required (${MAINNET_REQUIRED_DVN_NAME}) + ${MAINNET_OPTIONAL_THRESHOLD}-of-${optional.length} optional`
   } else {
     const testnet = commonDvns.filter(d => d.name === TESTNET_DVN_NAME)
     if (testnet.length === 0) {
@@ -262,9 +290,12 @@ function encodeUlnConfig(
 ): string {
   const sortReq = [...requiredDvns].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
   const sortOpt = [...optionalDvns].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+  // In LZ V2, requiredDVNCount=0 means "inherit the library default" (which may be LZDeadDVN).
+  // Use type(uint8).max = 255 as the sentinel to explicitly override with zero required DVNs.
+  const requiredDVNCount = sortReq.length === 0 ? 255 : sortReq.length
   return ethers.AbiCoder.defaultAbiCoder().encode(
     ['tuple(uint64 confirmations, uint8 requiredDVNCount, uint8 optionalDVNCount, uint8 optionalDVNThreshold, address[] requiredDVNs, address[] optionalDVNs)'],
-    [[confirmations, sortReq.length, sortOpt.length, optionalThreshold, sortReq, sortOpt]],
+    [[confirmations, requiredDVNCount, sortOpt.length, optionalThreshold, sortReq, sortOpt]],
   )
 }
 
@@ -321,7 +352,12 @@ async function configureEvm(privateKey: string, rpcUrl: string, cfg: ResolvedLzC
 // ─── Tron config ──────────────────────────────────────────────────────────────
 
 async function configureTron(privateKey: string, rpcUrl: string, cfg: ResolvedLzConfig, chainName: string): Promise<void> {
-  const tw = new TronWeb({ fullHost: rpcUrl, privateKey })
+  const tronGridKey = process.env.TRONGRID_API_KEY || ''
+  const tw = new TronWeb({
+    fullHost: rpcUrl,
+    privateKey,
+    ...(tronGridKey ? { headers: { 'TRON-PRO-API-KEY': tronGridKey } } : {}),
+  })
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   const tronEndpointB58 = tw.address.fromHex('41' + cfg.tronEndpoint.slice(2)) as string
@@ -367,14 +403,20 @@ async function configureTron(privateKey: string, rpcUrl: string, cfg: ResolvedLz
     return resp.txid
   }
 
-  // Poll for confirmation; alreadySetOk=true treats 0xd0ecb66b revert as a skip
+  // Revert selectors that mean "already configured to this value — no-op"
+  const ALREADY_SET_SELECTORS = new Set([
+    'd0ecb66b', // Tron LZ endpoint: lib/peer already set
+    'c4c52593', // Tron LZ SendUln302: ULN config unchanged
+  ])
+
+  // Poll for confirmation; alreadySetOk=true treats known "already set" reverts as a skip
   const confirm = async (txId: string, alreadySetOk = true): Promise<void> => {
     for (let i = 0; i < 60; i++) {
       await sleep(3000)
       const info: any = await tw.trx.getTransactionInfo(txId)
       if (info?.id) {
         if (info.receipt?.result !== 'SUCCESS') {
-          if (alreadySetOk && info.contractResult?.[0] === 'd0ecb66b') {
+          if (alreadySetOk && ALREADY_SET_SELECTORS.has(info.contractResult?.[0])) {
             console.log(`    txId: ${txId} (already set — skipped)`)
             return
           }
@@ -414,7 +456,7 @@ async function configureTron(privateKey: string, rpcUrl: string, cfg: ResolvedLz
       { eid: cfg.evmEid, configType: CONFIG_TYPE_ULN, config: encodeUlnConfig(2, cfg.tronRequiredDvns, cfg.tronOptionalDvns, cfg.tronOptionalThreshold) },
     ]),
   ])
-  await Promise.all([confirm(txId3, false), confirm(txId4, false)])
+  await Promise.all([confirm(txId3), confirm(txId4)])
 
   console.log(`\n  ✓ Tron configuration complete`)
 }

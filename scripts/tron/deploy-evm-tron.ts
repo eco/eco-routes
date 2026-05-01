@@ -124,7 +124,7 @@ const TRON_SHASTA_CREATE2_FACTORY = 'TSh1WRYebthHLcfJ7eFqTyps97jMgbh96g'
 const DEFAULT_CREATE3_DEPLOYER = '0xC6BAd1EbAF366288dA6FB5689119eDd695a66814'
 
 /** Create2Factory_Tron on Tron mainnet */
-const TRON_MAINNET_CREATE2_FACTORY = 'TBA' // TODO: fill in mainnet factory address
+const TRON_MAINNET_CREATE2_FACTORY = 'TRoohco2jc4Cmfbh92CWcfNtdBmBDj3fzy'
 
 const MIN_GAS_LIMIT = 200_000
 

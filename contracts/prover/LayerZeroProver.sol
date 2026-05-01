@@ -18,7 +18,6 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     struct UnpackedData {
         bytes32 sourceChainProver; // Address of prover on source chain
-        bytes options; // LayerZero message options
         uint256 gasLimit; // Gas limit for execution
     }
 
@@ -26,6 +25,14 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @notice Constant indicating this contract uses LayerZero for proving
      */
     string public constant PROOF_TYPE = "LayerZero";
+
+    /**
+     * @notice Additional gas allocated per intent in the batch.
+     * @dev Derived from worst-case measured cost of a cold SSTORE + event emission
+     *      in _processIntentProofs (~25k measured), doubled for safety margin.
+     *      The total gas floor for a batch is MIN_GAS_LIMIT + n * GAS_PER_INTENT.
+     */
+    uint256 public constant GAS_PER_INTENT = 50_000;
 
     /**
      * @notice Address of local LayerZero endpoint
@@ -203,19 +210,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
     /**
      * @notice Decodes the raw cross-chain message data into a structured format
-     * @dev Parses ABI-encoded parameters into the UnpackedData struct and enforces minimum gas limit
+     * @dev Parses ABI-encoded parameters into the UnpackedData struct. The gas limit
+     *      is used as a caller-supplied floor; the actual gas used for the LZ message
+     *      is max(gasLimit, MIN_GAS_LIMIT + n * GAS_PER_INTENT) computed in
+     *      _formatLayerZeroMessage, so underfunding is not possible regardless of the
+     *      value supplied here.
      * @param data Raw message data containing source chain information
-     * @return unpacked Structured representation of the decoded parameters with validated gas limit
+     * @return unpacked Structured representation of the decoded parameters
      */
     function _unpackData(
         bytes calldata data
-    ) internal view returns (UnpackedData memory unpacked) {
+    ) internal pure returns (UnpackedData memory unpacked) {
         unpacked = abi.decode(data, (UnpackedData));
-
-        // Enforce minimum gas limit to prevent underfunded transactions
-        if (unpacked.gasLimit < MIN_GAS_LIMIT) {
-            unpacked.gasLimit = MIN_GAS_LIMIT;
-        }
     }
 
     /**
@@ -256,7 +262,11 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
     /**
      * @notice Formats data for LayerZero message dispatch with encoded proofs
-     * @dev Prepares all parameters needed for the Endpoint send call
+     * @dev Prepares all parameters needed for the Endpoint send call.
+     *      The gas supplied to the destination executor is always at least
+     *      MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT, ensuring lzReceive
+     *      cannot OOG regardless of batch size. The caller's gasLimit is used
+     *      only if it exceeds this floor.
      * @param domainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param unpacked Struct containing decoded data from data parameter
@@ -268,7 +278,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         UnpackedData memory unpacked
     )
         internal
-        pure
+        view
         returns (ILayerZeroEndpointV2.MessagingParams memory params)
     {
         // Use domain ID directly as endpoint ID with overflow check
@@ -282,13 +292,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
         params.message = encodedProofs;
 
-        // Use provided options or create default options with gas limit
-        params.options = unpacked.options.length > 0
-            ? unpacked.options
-            : abi.encodePacked(
-                uint16(3), // option type for gas limit
-                unpacked.gasLimit // gas amount
-            );
+        // Compute a gas floor proportional to the number of intents in the batch.
+        // Each intent requires a cold SSTORE + event emission in _processIntentProofs.
+        // The 8-byte header is subtracted before dividing by 64 (bytes per intent pair).
+        uint256 numIntents = encodedProofs.length > 8
+            ? (encodedProofs.length - 8) / 64
+            : 0;
+        uint256 gasFloor = MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT;
+        uint256 gasToUse = unpacked.gasLimit > gasFloor
+            ? unpacked.gasLimit
+            : gasFloor;
+
+        params.options = abi.encodePacked(uint16(3), gasToUse);
         params.payInLzToken = false;
     }
 }

@@ -42,6 +42,102 @@ contract MockLayerZeroEndpoint {
     }
 }
 
+/**
+ * @dev Extended mock that (a) records the `options` field from every `send()` call
+ *      and (b) supports low-gas message delivery to reproduce the OOG wedge, and
+ *      (c) exposes a delegate-gated `skip()` to prove post-revocation unrecoverability.
+ */
+contract RecordingMockLayerZeroEndpoint {
+    mapping(address => address) public delegates;
+    bytes public lastOptions;
+
+    // Mirrors LZ V2's lazyInboundNonce: path key => highest successfully delivered nonce.
+    // key = keccak256(abi.encode(srcEid, sender, receiver))
+    mapping(bytes32 => uint64) public lazyInboundNonce;
+
+    function setDelegate(address delegate) external {
+        delegates[msg.sender] = delegate;
+    }
+
+    function send(
+        ILayerZeroEndpointV2.MessagingParams calldata params,
+        address /* refundAddress */
+    ) external payable returns (ILayerZeroEndpointV2.MessagingReceipt memory) {
+        lastOptions = params.options;
+        return
+            ILayerZeroEndpointV2.MessagingReceipt({
+                guid: keccak256(abi.encode(params, block.timestamp)),
+                nonce: 1,
+                fee: ILayerZeroEndpointV2.MessagingFee({
+                    nativeFee: msg.value,
+                    lzTokenFee: 0
+                })
+            });
+    }
+
+    function quote(
+        ILayerZeroEndpointV2.MessagingParams calldata,
+        address
+    ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
+        return
+            ILayerZeroEndpointV2.MessagingFee({
+                nativeFee: 0.001 ether,
+                lzTokenFee: 0
+            });
+    }
+
+    /**
+     * @dev Simulate a LZ executor delivering a message with a capped gas budget.
+     *      Enforces ordered delivery: origin.nonce must be lazyInboundNonce[path] + 1.
+     *      On success the nonce is advanced; on OOG it stays stuck, blocking all subsequent
+     *      messages on the same (srcEid, sender, receiver) path.
+     */
+    function deliverWithGas(
+        address target,
+        ILayerZeroReceiver.Origin calldata origin,
+        bytes calldata message,
+        uint256 gasLimit
+    ) external returns (bool success) {
+        bytes32 pathKey = keccak256(
+            abi.encode(origin.srcEid, origin.sender, target)
+        );
+        require(
+            origin.nonce == lazyInboundNonce[pathKey] + 1,
+            "RecordingMock: out-of-order delivery"
+        );
+
+        bytes memory callData = abi.encodeWithSelector(
+            ILayerZeroReceiver.lzReceive.selector,
+            origin,
+            bytes32(0),
+            message,
+            address(0),
+            new bytes(0)
+        );
+        // solhint-disable-next-line avoid-low-level-calls
+        (success, ) = target.call{gas: gasLimit}(callData);
+
+        if (success) {
+            lazyInboundNonce[pathKey] = origin.nonce;
+        }
+        // On OOG/revert, lazyInboundNonce stays at origin.nonce - 1.
+        // The nonce slot is permanently stuck until skip() is called by the delegate.
+    }
+
+    /**
+     * @dev Delegate-gated skip — mirrors real LZ endpoint access control.
+     *      Only the registered delegate for `oapp` may call this.
+     */
+    function skip(
+        address oapp,
+        uint32 /* srcEid */,
+        bytes32 /* sender */,
+        uint64 /* nonce */
+    ) external view {
+        require(delegates[oapp] == msg.sender, "RecordingMock: not delegate");
+    }
+}
+
 contract LayerZeroProverTest is BaseTest {
     LayerZeroProver public lzProver;
     MockLayerZeroEndpoint public endpoint;
@@ -111,13 +207,11 @@ contract LayerZeroProverTest is BaseTest {
 
     function _encodeProverData(
         bytes32 sourceChainProver,
-        bytes memory options,
         uint256 gasLimit
     ) internal pure returns (bytes memory) {
         LayerZeroProver.UnpackedData memory unpacked = LayerZeroProver
             .UnpackedData({
                 sourceChainProver: sourceChainProver,
-                options: options,
                 gasLimit: gasLimit
             });
 
@@ -142,7 +236,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(
@@ -160,7 +254,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        bytes memory data = _encodeProverData(SOURCE_PROVER, "", 200000);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 200000);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(
@@ -255,11 +349,7 @@ contract LayerZeroProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
         uint256 customGasLimit = 300000;
-        bytes memory data = _encodeProverData(
-            SOURCE_PROVER,
-            "",
-            customGasLimit
-        );
+        bytes memory data = _encodeProverData(SOURCE_PROVER, customGasLimit);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(
@@ -287,11 +377,7 @@ contract LayerZeroProverTest is BaseTest {
 
         // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
         uint256 belowMinGasLimit = 50000; // Below 200k minimum
-        bytes memory data = _encodeProverData(
-            SOURCE_PROVER,
-            "",
-            belowMinGasLimit
-        );
+        bytes memory data = _encodeProverData(SOURCE_PROVER, belowMinGasLimit);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         uint256 fee = lzProver.fetchFee(
@@ -310,7 +396,7 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
-        bytes memory zeroGasData = _encodeProverData(SOURCE_PROVER, "", 0);
+        bytes memory zeroGasData = _encodeProverData(SOURCE_PROVER, 0);
 
         uint256 zeroGasFee = lzProver.fetchFee(
             uint64(SOURCE_CHAIN_ID),
@@ -552,5 +638,298 @@ contract LayerZeroProverTest is BaseTest {
             }
         }
         return abi.encodePacked(uint64(chainId), packed);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DoS / OOG wedge security tests
+    //
+    // These tests cover three components of the LZ OOG wedge attack:
+    //
+    //  1. prove() with an empty intentHashes array still dispatches a LZ message,
+    //     advancing the nonce without recording any proofs.
+    //
+    //  2. When the caller supplies non-empty `options` bytes, they are forwarded
+    //     verbatim to the endpoint — the MIN_GAS_LIMIT clamp in _unpackData() is
+    //     completely bypassed.
+    //
+    //  3. If the executor honours those low-gas options, lzReceive() OOGs, leaving
+    //     the nonce permanently unprocessed and blocking all subsequent messages on
+    //     the same (srcEid, sender) path.
+    //
+    //  4. After revokeDelegation(), no external party can call skip/clear on the
+    //     endpoint, making a stuck nonce permanently unrecoverable.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev Deploy a prover wired to a RecordingMockLayerZeroEndpoint.
+    function _deployWithRecordingEndpoint()
+        internal
+        returns (RecordingMockLayerZeroEndpoint recEndpoint, LayerZeroProver recProver)
+    {
+        recEndpoint = new RecordingMockLayerZeroEndpoint();
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = SOURCE_PROVER;
+        recProver = new LayerZeroProver(
+            address(recEndpoint),
+            address(this), // delegate
+            address(portal),
+            provers,
+            200_000
+        );
+    }
+
+    /**
+     * @notice prove() with zero intent hashes dispatches a LZ message.
+     * @dev An attacker can call Inbox.prove() with an empty array. The Inbox
+     *      constructs an 8-byte payload (chain-ID only) and forwards it to the
+     *      prover, which sends it to the LZ endpoint — advancing the nonce
+     *      without proving anything.
+     */
+    function test_dos_emptyBatch_dispatchesMessage() public {
+        // 8-byte header only — zero intent/claimant pairs
+        bytes memory emptyProofs = abi.encodePacked(uint64(block.chainid));
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 200_000);
+
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            emptyProofs,
+            data
+        );
+        vm.deal(address(portal), fee);
+        vm.prank(address(portal));
+        // Must NOT revert — message is dispatched with zero intent pairs.
+        lzProver.prove{value: fee}(
+            address(portal),
+            uint64(SOURCE_CHAIN_ID),
+            emptyProofs,
+            data
+        );
+    }
+
+    /**
+     * @notice lzReceive() OOGs when the executor honours the low-gas options, and all
+     *         subsequent messages on the same path are then permanently blocked.
+     * @dev The LZ executor calls lzReceive with the gas specified in options. If that gas
+     *      is insufficient, lzReceive OOGs (low-level call returns false). The endpoint
+     *      enforces ordered nonce delivery, so nonce N+1 cannot be processed until nonce N
+     *      succeeds or is explicitly skipped via the delegate.
+     */
+    function test_dos_lzReceive_oogsWithLowGas() public {
+        (
+            RecordingMockLayerZeroEndpoint recEndpoint,
+            LayerZeroProver recProver
+        ) = _deployWithRecordingEndpoint();
+
+        // ── Nonce 1: wedge message delivered with insufficient gas ────────────
+
+        bytes32[] memory intentHashes1 = new bytes32[](1);
+        intentHashes1[0] = keccak256("wedge-intent");
+        bytes32[] memory claimants1 = new bytes32[](1);
+        claimants1[0] = bytes32(uint256(uint160(address(this))));
+
+        ILayerZeroReceiver.Origin memory origin1 = ILayerZeroReceiver.Origin({
+            srcEid: uint32(SOURCE_CHAIN_ID),
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+
+        bytes memory message1 = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes1,
+            claimants1
+        );
+
+        // Deliver with only 1 000 gas — far below what lzReceive needs for storage writes.
+        bool success1 = recEndpoint.deliverWithGas(
+            address(recProver),
+            origin1,
+            message1,
+            1_000
+        );
+
+        assertFalse(success1, "lzReceive must OOG with insufficient gas");
+        assertEq(
+            recProver.provenIntents(intentHashes1[0]).claimant,
+            address(0),
+            "no proof should be stored after OOG delivery"
+        );
+
+        // ── Nonce 2: follow-up message on the same path is now blocked ────────
+        // Because nonce 1 OOG'd and lazyInboundNonce was never advanced, the endpoint
+        // rejects nonce 2 with an out-of-order error — even with ample gas.
+
+        bytes32[] memory intentHashes2 = new bytes32[](1);
+        intentHashes2[0] = keccak256("follow-up-intent");
+        bytes32[] memory claimants2 = new bytes32[](1);
+        claimants2[0] = bytes32(uint256(uint160(address(this))));
+
+        ILayerZeroReceiver.Origin memory origin2 = ILayerZeroReceiver.Origin({
+            srcEid: uint32(SOURCE_CHAIN_ID),
+            sender: SOURCE_PROVER,
+            nonce: 2
+        });
+
+        bytes memory message2 = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes2,
+            claimants2
+        );
+
+        vm.expectRevert("RecordingMock: out-of-order delivery");
+        recEndpoint.deliverWithGas(
+            address(recProver),
+            origin2,
+            message2,
+            500_000
+        );
+
+        // The follow-up intent is also unproven — the entire path is wedged.
+        assertEq(
+            recProver.provenIntents(intentHashes2[0]).claimant,
+            address(0),
+            "follow-up intent must not be proven while nonce 1 is stuck"
+        );
+    }
+
+    /**
+     * @notice Regression: large batch with gasLimit=0 no longer wedges the path.
+     * @dev Before the fix, options gas was always MIN_GAS_LIMIT (200k). A 10-intent batch
+     *      costs ~250k gas to process, so delivery would OOG and the nonce would be stuck.
+     *      After the fix, gas is MIN_GAS_LIMIT + n*GAS_PER_INTENT, delivery succeeds, and
+     *      subsequent messages on the same path are unblocked.
+     */
+    function test_fix_largeBatch_gasFloorPreventsWedge() public {
+        (
+            RecordingMockLayerZeroEndpoint recEndpoint,
+            LayerZeroProver recProver
+        ) = _deployWithRecordingEndpoint();
+
+        uint256 numIntents = 10;
+        bytes32[] memory intentHashes = new bytes32[](numIntents);
+        bytes32[] memory claimants   = new bytes32[](numIntents);
+        for (uint256 i = 0; i < numIntents; i++) {
+            intentHashes[i] = keccak256(abi.encodePacked("fix-intent", i));
+            claimants[i]    = bytes32(uint256(uint160(address(this))));
+        }
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        // Caller sets gasLimit to 0; old code would have clamped to MIN_GAS_LIMIT (200k)
+        // and OOG'd on delivery. New code computes the floor from batch size.
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 0);
+
+        uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        vm.deal(address(portal), fee);
+        vm.prank(address(portal));
+        recProver.prove{value: fee}(
+            address(portal),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
+
+        // Decode the gas limit baked into the options that were sent to the endpoint.
+        // Options encoding: abi.encodePacked(uint16(3), uint256(gas)) = 34 bytes.
+        bytes memory opts = recEndpoint.lastOptions();
+        uint256 gasInOptions;
+        assembly {
+            gasInOptions := mload(add(opts, 34))
+        }
+
+        uint256 expectedFloor = recProver.MIN_GAS_LIMIT() +
+            numIntents * recProver.GAS_PER_INTENT();
+        assertEq(gasInOptions, expectedFloor, "options gas must equal computed floor");
+
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(SOURCE_CHAIN_ID),
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+
+        // ── Show the old gas (MIN_GAS_LIMIT only) OOGs for this batch ───────
+        bool failedWithOldGas = recEndpoint.deliverWithGas(
+            address(recProver),
+            origin,
+            encodedProofs,
+            recProver.MIN_GAS_LIMIT() // 200k — would have been the old floor
+        );
+        assertFalse(failedWithOldGas, "old MIN_GAS_LIMIT must be insufficient for 10 intents");
+
+        // ── Deliver with the new gas floor — must succeed ────────────────────
+        bool success = recEndpoint.deliverWithGas(
+            address(recProver),
+            origin,
+            encodedProofs,
+            gasInOptions
+        );
+        assertTrue(success, "delivery must succeed with the computed gas floor");
+
+        // All 10 proofs recorded.
+        for (uint256 i = 0; i < numIntents; i++) {
+            assertEq(
+                recProver.provenIntents(intentHashes[i]).claimant,
+                address(this),
+                "proof must be stored"
+            );
+        }
+
+        // ── Path is not wedged: nonce 2 delivers without issue ───────────────
+        bytes32[] memory intentHashes2 = new bytes32[](1);
+        intentHashes2[0] = keccak256("fix-follow-up");
+        bytes32[] memory claimants2 = new bytes32[](1);
+        claimants2[0] = bytes32(uint256(uint160(address(this))));
+
+        ILayerZeroReceiver.Origin memory origin2 = ILayerZeroReceiver.Origin({
+            srcEid: uint32(SOURCE_CHAIN_ID),
+            sender: SOURCE_PROVER,
+            nonce: 2
+        });
+
+        bytes memory encodedProofs2 = encodeProofs(intentHashes2, claimants2);
+        bool success2 = recEndpoint.deliverWithGas(
+            address(recProver),
+            origin2,
+            encodedProofs2,
+            recProver.MIN_GAS_LIMIT() + recProver.GAS_PER_INTENT()
+        );
+        assertTrue(success2, "follow-up message must be deliverable - path is not wedged");
+    }
+
+    /**
+     * @notice After revokeDelegation(), no one can call skip/clear to recover a stuck nonce.
+     * @dev revokeDelegation() sets the endpoint delegate to address(lzProver). Since the
+     *      prover has no function that calls endpoint.skip() or endpoint.clear(), the
+     *      delegate slot is permanently occupied by an account that cannot act on it.
+     *      Any previous operator loses the ability to perform recovery operations.
+     */
+    function test_dos_postRevokeDelegation_skipImpossible() public {
+        (
+            RecordingMockLayerZeroEndpoint recEndpoint,
+            LayerZeroProver recProver
+        ) = _deployWithRecordingEndpoint();
+
+        // address(this) is the current delegate — revoke it.
+        recProver.revokeDelegation();
+
+        // Delegate is now the prover itself.
+        assertEq(
+            recEndpoint.delegates(address(recProver)),
+            address(recProver),
+            "delegate must be lzProver after revocation"
+        );
+
+        // The original operator is no longer the delegate and cannot call skip.
+        vm.expectRevert("RecordingMock: not delegate");
+        recEndpoint.skip(
+            address(recProver),
+            uint32(SOURCE_CHAIN_ID),
+            SOURCE_PROVER,
+            1
+        );
+
+        // address(recProver) is the delegate but exposes no function to call skip —
+        // no recovery path exists for a wedged nonce.
+        assertTrue(
+            recEndpoint.delegates(address(recProver)) == address(recProver),
+            "lzProver is its own delegate with no skip capability"
+        );
     }
 }

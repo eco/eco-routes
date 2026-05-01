@@ -148,8 +148,8 @@ async function tronSendAndWait(
   const signed    = await tw.trx.sign(result.transaction)
   const broadcast = await tw.trx.sendRawTransaction(signed)
   if (!broadcast.result) throw new Error(`Broadcast failed: ${JSON.stringify(broadcast)}`)
-  for (let i = 0; i < 20; i++) {
-    await sleep(3000)
+  for (let i = 0; i < 60; i++) {
+    await sleep(5000)
     const info: any = await tw.trx.getTransactionInfo(broadcast.txid)
     if (info?.id) {
       if (info.receipt?.result !== 'SUCCESS') throw new Error(`Tx failed: ${JSON.stringify(info)}`)
@@ -314,7 +314,7 @@ async function fulfillAndProveOnTron(
   console.log(`  sending fulfillAndProve...`)
   const result = await tw.transactionBuilder.triggerSmartContract(
     tronPortalB58, FULFILL_AND_PROVE_SIG,
-    { feeLimit: 500_000_000, callValue: Number(fee + fee / 10n), rawParameter: calldata.slice(10) },
+    { feeLimit: 1_000_000_000, callValue: Number(fee + fee / 10n), rawParameter: calldata.slice(10) },
     [],
   )
   if (!result.result?.result) throw new Error(`triggerSmartContract failed: ${JSON.stringify(result)}`)
@@ -435,7 +435,12 @@ async function main() {
   const evmEid   = BigInt(evmEidStr)
   const provider = new ethers.JsonRpcProvider(rpcUrl)
   const wallet   = new ethers.Wallet('0x' + pk, provider)
-  const tw       = new TronWeb({ fullHost: tronRpc, privateKey: pk })
+  const tronGridKey = process.env.TRONGRID_API_KEY || process.env.TRONGRID_API_TOKEN || ''
+  const tw       = new TronWeb({
+    fullHost: tronRpc,
+    privateKey: pk,
+    ...(tronGridKey ? { headers: { 'TRON-PRO-API-KEY': tronGridKey } } : {}),
+  })
   // Compute base58 from hex20 via TronWeb — avoids validator failures from env-var strings
   const tronPortalB58 = tw.address.fromHex('41' + tronPortalHex.slice(2)) as string
   const network  = await provider.getNetwork()
