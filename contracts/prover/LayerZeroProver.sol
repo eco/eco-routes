@@ -303,7 +303,19 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             ? unpacked.gasLimit
             : gasFloor;
 
-        params.options = abi.encodePacked(uint16(3), gasToUse);
+        // LZ V2 type-3 executor option (22 bytes):
+        //   uint16(3)         — options format version (type 3)
+        //   uint8(1)          — worker ID: executor
+        //   uint16(17)        — option data length: 1 (option type byte) + 16 (uint128 gas)
+        //   uint8(1)          — executor option type: lzReceive gas
+        //   uint128(gasToUse) — gas forwarded to lzReceive on the destination chain
+        params.options = abi.encodePacked(
+            uint16(3),          // options version: type 3
+            uint8(1),           // worker: executor
+            uint16(17),         // data length: 1 + 16 bytes
+            uint8(1),           // executor option: lzReceive
+            uint128(gasToUse)   // gas limit
+        );
         params.payInLzToken = false;
     }
 }

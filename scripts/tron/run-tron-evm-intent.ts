@@ -10,31 +10,86 @@
  * Required env vars:
  *   PRIVATE_KEY   - hex private key (with or without 0x)
  *   EVM_RPC_URL   - RPC endpoint for the destination EVM chain
- *   EVM_CHAIN_ID  - chain ID of the destination EVM chain (e.g. 10=Optimism, 8453=Base)
  *
  * Optional env vars (defaults to standard deployed addresses):
- *   TRON_RPC_URL          (default: https://api.trongrid.io)
- *   TRON_PORTAL_BASE58    (default: TT6jKgnBXoj7vZ7m2Yioq5mxTfrDpgir44)
+ *   TRON_RPC_URL          (default: https://api.trongrid.io — mainnet)
  *   TRON_PORTAL_HEX20     (default: 0xbbe65c636a745ccb12fb0a8376f5ed089a86983a)
  *   TRON_LZ_PROVER_HEX20  (default: 0xf8b5348d6e1e4c47de4abc2d9946963a7a37f2c8)
  *   EVM_PORTAL            (default: 0x399Dbd5DF04f83103F77A58cBa2B7c4d3cdede97)
  *   EVM_LZ_PROVER         (default: 0xf64eaca0D1cF874ea34b8E73127f0Fe535c6be41)
- *   TRON_EID              (default: 30420)
- *   TRON_USDT_HEX20       (default: 0xa614f803b6fd780986a42c78ec9c7f77e6ded13c — Tron mainnet USDT)
- *   EVM_USDC              (default: 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 — Arbitrum native USDC)
- *   EVM_CHAIN_NAME        (default: EVM) — used for display only
  *   POLL_INTERVAL_SEC     (default: 30)  — seconds between proof polls
  *   POLL_TIMEOUT_MIN      (default: 60)  — minutes before giving up
  *
+ * Chain IDs are detected automatically from the RPC endpoints at startup.
+ * EIDs are resolved from docs/lzDeployments.json using those chain IDs.
+ * Token addresses are resolved from the hardcoded maps below.
+ *
  * Usage:
- *   set -a && source .env.tron && set +a
- *   EVM_RPC_URL=https://mainnet.base.org EVM_CHAIN_ID=8453 EVM_CHAIN_NAME=Base \
- *     npx ts-node scripts/run-tron-evm-intent.ts
+ *   set -a && source .env && set +a
+ *   EVM_RPC_URL=https://mainnet.base.org \
+ *     npx ts-node scripts/tron/run-tron-evm-intent.ts
  */
 
+import * as fs from 'fs'
+import * as path from 'path'
 import { TronWeb } from 'tronweb'
 import { ethers } from 'ethers'
 import 'dotenv/config'
+
+// ─── Token addresses ──────────────────────────────────────────────────────────
+
+// USDC (or equivalent stablecoin) by EVM chain ID
+const EVM_USDC_BY_CHAIN: Record<number, string> = {
+  1:        '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // Ethereum mainnet
+  10:       '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', // Optimism
+  137:      '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon
+  8453:     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base
+  42161:    '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum One
+  84532:    '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
+  11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Ethereum Sepolia
+}
+
+// USDT hex20 address by Tron chain ID
+const TRON_USDT_HEX_BY_CHAIN: Record<number, string> = {
+  728126428:  '0xa614f803b6fd780986a42c78ec9c7f77e6ded13c', // Tron mainnet   (TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t)
+  2494104990: '0xc060ca2c712ba701f9663750ff447fb7b48e42f1', // Tron Shasta    (TTWQgxc52wHxuuG9sy2D7XFkNcSSzKK7ZB)
+}
+
+// Human-readable names for display
+const EVM_CHAIN_NAMES: Record<number, string> = {
+  1:        'Ethereum',
+  10:       'Optimism',
+  137:      'Polygon',
+  8453:     'Base',
+  42161:    'Arbitrum',
+  84532:    'Base Sepolia',
+  11155111: 'Ethereum Sepolia',
+}
+
+// ─── LZ EID resolution ────────────────────────────────────────────────────────
+
+function loadLzDeployments(): any {
+  const p = path.join(__dirname, '../..', 'docs', 'lzDeployments.json')
+  return JSON.parse(fs.readFileSync(p, 'utf8'))
+}
+
+function eidFromNativeChainId(nativeChainId: number): number {
+  const data = loadLzDeployments()
+  for (const key of Object.keys(data)) {
+    const chain = data[key]
+    if (Number(chain.chainDetails?.nativeChainId) !== nativeChainId) continue
+    const dep = chain.deployments?.find((d: any) => d.version === 2)
+    if (dep?.eid) return Number(dep.eid)
+  }
+  throw new Error(`No LZ v2 EID found for native chain ID ${nativeChainId}`)
+}
+
+// Tron chain ID inferred from the RPC host — no on-chain query needed
+function tronChainIdFromRpcUrl(url: string): number {
+  if (url.includes('shasta')) return 2494104990  // Tron Shasta testnet
+  if (url.includes('nile'))   return 3448148188   // Tron Nile testnet
+  return 728126428                                // Tron mainnet
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -116,7 +171,7 @@ const ERC20_IFACE        = new ethers.Interface(ERC20_ABI)
 const ERC20_TRANSFER_IFACE = new ethers.Interface(['function transfer(address to, uint256 amount) returns (bool)'])
 
 const TRON_PUBLISH_AND_FUND_SIG =
-  'publishAndFund((uint64,(bytes32,uint64,address,uint256,(address,uint256)[],(address,bytes,uint256)[]),(uint64,address,address,uint256,(address,uint256)[])),bool)'
+  'publishAndFund((uint64,(bytes32,uint64,address,uint256,(address,uint256)[],(address,bytes,uint256)[]),(uint64,address,address,uint256,(address,uint256)[]))),bool)'
 
 const TRON_WITHDRAW_SIG =
   'batchWithdraw(uint64[],bytes32[],(uint64,address,address,uint256,(address,uint256)[])[])'
@@ -141,12 +196,9 @@ function getEvmExplorer(chainId: bigint): string {
 function buildLzData(abiCoder: ethers.AbiCoder, receiverHex: string): string {
   const sourceChainProver = ethers.zeroPadValue(receiverHex, 32)
   const gasLimit = 200_000n
-  const lzOptions =
-    '0x' + '0003' + '01' + '0011' + '01' +
-    gasLimit.toString(16).padStart(32, '0')
   return abiCoder.encode(
-    ['tuple(bytes32 sourceChainProver, bytes options, uint256 gasLimit)'],
-    [{ sourceChainProver, options: lzOptions, gasLimit }],
+    ['tuple(bytes32 sourceChainProver, uint256 gasLimit)'],
+    [{ sourceChainProver, gasLimit }],
   )
 }
 
@@ -177,7 +229,7 @@ async function tronSendAndWait(
   throw new Error(`Timed out waiting for ${broadcast.txid}`)
 }
 
-// ─── Step 1: Approve USDC + PublishAndFund intent on Tron ─────────────────────
+// ─── Step 1: Approve USDT + PublishAndFund intent on Tron ─────────────────────
 
 async function createIntent(
   tw: TronWeb,
@@ -200,18 +252,18 @@ async function createIntent(
   const deadline = Math.floor(Date.now() / 1000) + 24 * 60 * 60
   const salt = ethers.keccak256(ethers.toUtf8Bytes(`eco-routes-tron-${chainName}-${Date.now()}`))
 
-  // Encode EVM-side route.calls: Executor transfers 0.05 USDT to creator
+  // Encode EVM-side route.calls: Executor transfers 0.05 USDC to creator
   const transferData = ERC20_TRANSFER_IFACE.encodeFunctionData('transfer', [creatorHex, ROUTE_AMOUNT])
 
   const intent = [
     evmChainId,
-    // route: what solver must do on EVM — provide 0.05 USDT, Executor transfers it to creator
+    // route: what solver must do on EVM — provide 0.05 USDC, Executor transfers it to creator
     [
       salt, deadline, evmPortalHex, 0,
-      [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],          // route.tokens: solver pre-approves USDT to EVM portal
-      [{ target: evmUsdcAddr, data: transferData, value: 0 }], // route.calls: Executor sends USDT to creator
+      [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],          // route.tokens: solver pre-approves USDC to EVM portal
+      [{ target: evmUsdcAddr, data: transferData, value: 0 }], // route.calls: Executor sends USDC to creator
     ],
-    // reward: 0.1 USDC locked on Tron for the solver
+    // reward: 0.1 USDT locked on Tron for the solver
     [deadline, creatorHex, tronProverHex, 0, [{ token: tronUsdtHex, amount: REWARD_AMOUNT }]],
   ]
 
@@ -220,7 +272,7 @@ async function createIntent(
   console.log(`  Reward:    0.1 USDT (${tronUsdtHex}) locked on Tron`)
   console.log(`  Want:      0.05 USDC (${evmUsdcAddr}) sent to creator on ${chainName}`)
 
-  // 1a. Approve Tron USDC to portal (needed for publishAndFund to pull tokens into vault)
+  // 1a. Approve Tron USDT to portal (needed for publishAndFund to pull tokens into vault)
   console.log(`  Approving 0.1 USDC to Tron portal...`)
   const tronUsdcB58 = tw.address.fromHex('41' + tronUsdtHex.slice(2)) as string
   const approveCalldata = ERC20_IFACE.encodeFunctionData('approve', [tronPortalHex, REWARD_AMOUNT])
@@ -245,7 +297,7 @@ async function createIntent(
   return { intentHash, salt, deadline, creatorHex, txId: txid }
 }
 
-// ─── Step 2: Approve USDT + FulfillAndProve on EVM ────────────────────────────
+// ─── Step 2: Approve USDC + FulfillAndProve on EVM ────────────────────────────
 
 async function fulfillAndProveOnEvm(
   wallet: ethers.Wallet,
@@ -301,10 +353,10 @@ async function fulfillAndProveOnEvm(
   const fee: bigint = await proverContract.fetchFee(tronEid, encodedProofs, lzData)
   console.log(`  LZ fee: ${ethers.formatEther(fee)} ETH`)
 
-  // Approve USDT to portal so the portal can pull it into the Executor
+  // Approve USDC to portal so the portal can pull it into the Executor
   console.log(`  Approving 0.05 USDC to EVM portal...`)
-  const usdt = new ethers.Contract(evmUsdcAddr, ERC20_ABI, wallet)
-  const approveTx = await usdt.approve(evmPortal, ROUTE_AMOUNT)
+  const usdc = new ethers.Contract(evmUsdcAddr, ERC20_ABI, wallet)
+  const approveTx = await usdc.approve(evmPortal, ROUTE_AMOUNT)
   await approveTx.wait()
   console.log(`  Approved.`)
 
@@ -313,7 +365,7 @@ async function fulfillAndProveOnEvm(
   const tx = await portal.fulfillAndProve(
     intentHash, route, rewardHash, claimant,
     evmProver, tronEid, lzData,
-    { value: fee + fee / 10n },
+    { value: fee * 2n }, // 2× buffer — overage is refunded by LZ endpoint
   )
   await tx.wait()
   console.log(`  done.`)
@@ -357,7 +409,7 @@ async function pollForProof(
   throw new Error(`Proof did not arrive within ${timeoutMin} minutes`)
 }
 
-// ─── Step 4: Withdraw USDC on Tron ────────────────────────────────────────────
+// ─── Step 4: Withdraw USDT on Tron ────────────────────────────────────────────
 
 async function withdrawOnTron(
   tw: TronWeb,
@@ -394,7 +446,7 @@ async function withdrawOnTron(
     ),
   )
 
-  // Reward: USDC on Tron
+  // Reward: USDT on Tron
   const reward = [BigInt(deadline), creatorHex, tronProverHex, 0, [{ token: tronUsdtHex, amount: REWARD_AMOUNT }]]
   const iface = new ethers.Interface(TRON_WITHDRAW_ABI)
   const calldata = iface.encodeFunctionData('batchWithdraw', [[evmChainId], [routeHash], [reward]])
@@ -412,22 +464,17 @@ async function main() {
   if (pk.startsWith('0x')) pk = pk.slice(2)
   if (!pk) throw new Error('PRIVATE_KEY required')
 
-  const rpcUrl        = process.env.EVM_RPC_URL || '';   if (!rpcUrl) throw new Error('EVM_RPC_URL required')
-  const evmChainIdStr = process.env.EVM_CHAIN_ID || '';  if (!evmChainIdStr) throw new Error('EVM_CHAIN_ID required')
+  const rpcUrl = process.env.EVM_RPC_URL || ''
+  if (!rpcUrl) throw new Error('EVM_RPC_URL required')
 
   const tronRpc       = process.env.TRON_RPC_URL         || 'https://api.trongrid.io'
   const tronPortalHex = process.env.TRON_PORTAL_HEX20    || '0xbbe65c636a745ccb12fb0a8376f5ed089a86983a'
   const tronProverHex = process.env.TRON_LZ_PROVER_HEX20 || '0xf8b5348d6e1e4c47de4abc2d9946963a7a37f2c8'
   const evmPortal     = process.env.EVM_PORTAL            || '0x399Dbd5DF04f83103F77A58cBa2B7c4d3cdede97'
   const evmProver     = process.env.EVM_LZ_PROVER         || '0xf64eaca0D1cF874ea34b8E73127f0Fe535c6be41'
-  const tronEid       = BigInt(process.env.TRON_EID       || '30420')
-  const tronUsdtHex   = process.env.TRON_USDT_HEX20      || '0xa614f803b6fd780986a42c78ec9c7f77e6ded13c'
-  const evmUsdcAddr   = process.env.EVM_USDC              || '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
-  const chainName     = process.env.EVM_CHAIN_NAME        || 'EVM'
   const pollInterval  = parseInt(process.env.POLL_INTERVAL_SEC || '30')
   const pollTimeout   = parseInt(process.env.POLL_TIMEOUT_MIN  || '60')
 
-  const evmChainId = Number(evmChainIdStr)
   const provider   = new ethers.JsonRpcProvider(rpcUrl)
   const wallet     = new ethers.Wallet('0x' + pk, provider)
   const tronGridKey = process.env.TRONGRID_API_KEY || process.env.TRONGRID_API_TOKEN || ''
@@ -438,8 +485,23 @@ async function main() {
   })
   // Compute base58 from hex20 via TronWeb — avoids validator failures from env-var strings
   const tronPortalB58 = tw.address.fromHex('41' + tronPortalHex.slice(2)) as string
-  const network    = await provider.getNetwork()
-  const explorer   = getEvmExplorer(network.chainId)
+
+  // Detect chain IDs from the connected endpoints
+  const network     = await provider.getNetwork()
+  const evmChainId  = Number(network.chainId)
+  const tronChainId = tronChainIdFromRpcUrl(tronRpc)
+
+  // Resolve LZ EIDs from lzDeployments.json
+  const tronEid = BigInt(eidFromNativeChainId(tronChainId))
+
+  // Resolve token addresses from the hardcoded maps
+  const evmUsdcAddr = EVM_USDC_BY_CHAIN[evmChainId]
+  if (!evmUsdcAddr) throw new Error(`No USDC address configured for EVM chain ID ${evmChainId}`)
+  const tronUsdtHex = TRON_USDT_HEX_BY_CHAIN[tronChainId]
+  if (!tronUsdtHex) throw new Error(`No USDT address configured for Tron chain ID ${tronChainId}`)
+
+  const chainName = EVM_CHAIN_NAMES[evmChainId] ?? `chain-${evmChainId}`
+  const explorer  = getEvmExplorer(network.chainId)
 
   console.log(`\n${'═'.repeat(60)}`)
   console.log(`  Tron → EVM  |  Tron → ${chainName}`)

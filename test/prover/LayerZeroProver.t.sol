@@ -827,16 +827,17 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         // Decode the gas limit baked into the options that were sent to the endpoint.
-        // Options encoding: abi.encodePacked(uint16(3), uint256(gas)) = 34 bytes.
+        // LZ V2 type-3 format: version(2)+worker(1)+len(2)+type(1)+gas(16) = 22 bytes.
+        // The uint128 gas occupies bytes [6..21], upper half of a 32-byte mload at offset 6.
         bytes memory opts = recEndpoint.lastOptions();
-        uint256 gasInOptions;
+        uint128 gasInOptions;
         assembly {
-            gasInOptions := mload(add(opts, 34))
+            gasInOptions := shr(128, mload(add(add(opts, 0x20), 6)))
         }
 
         uint256 expectedFloor = recProver.MIN_GAS_LIMIT() +
             numIntents * recProver.GAS_PER_INTENT();
-        assertEq(gasInOptions, expectedFloor, "options gas must equal computed floor");
+        assertEq(uint256(gasInOptions), expectedFloor, "options gas must equal computed floor");
 
         ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
             srcEid: uint32(SOURCE_CHAIN_ID),
@@ -891,6 +892,66 @@ contract LayerZeroProverTest is BaseTest {
             recProver.MIN_GAS_LIMIT() + recProver.GAS_PER_INTENT()
         );
         assertTrue(success2, "follow-up message must be deliverable - path is not wedged");
+    }
+
+    /**
+     * @notice Options bytes produced by _formatLayerZeroMessage conform to LZ V2 type-3 format.
+     * @dev LZ V2 type-3 executor gas option (22 bytes):
+     *        [0..1]  uint16(3)   — options version
+     *        [2]     uint8(1)    — worker ID: executor
+     *        [3..4]  uint16(17)  — option data length (1 type byte + 16 gas bytes)
+     *        [5]     uint8(1)    — executor option type: lzReceive
+     *        [6..21] uint128     — gas forwarded to lzReceive on destination
+     *      The LZ SendLib parser validates this structure; any deviation causes a revert on send.
+     */
+    function test_optionsEncoding_correctLzV2Format() public {
+        (
+            RecordingMockLayerZeroEndpoint recEndpoint,
+            LayerZeroProver recProver
+        ) = _deployWithRecordingEndpoint();
+
+        uint256 numIntents = 3;
+        bytes32[] memory intentHashes = new bytes32[](numIntents);
+        bytes32[] memory claimants = new bytes32[](numIntents);
+        for (uint256 i = 0; i < numIntents; i++) {
+            intentHashes[i] = keccak256(abi.encodePacked("opts-intent", i));
+            claimants[i] = bytes32(uint256(uint160(address(this))));
+        }
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 0); // gasLimit=0 → floor applies
+
+        uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        vm.deal(address(portal), fee);
+        vm.prank(address(portal));
+        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+
+        bytes memory opts = recEndpoint.lastOptions();
+
+        // Total: 2 + 1 + 2 + 1 + 16 = 22 bytes
+        assertEq(opts.length, 22, "options must be 22 bytes");
+
+        // [0..1] options version = 3
+        uint16 version = (uint16(uint8(opts[0])) << 8) | uint16(uint8(opts[1]));
+        assertEq(version, 3, "options version must be 3 (type-3)");
+
+        // [2] worker ID = 1 (executor)
+        assertEq(uint8(opts[2]), 1, "worker must be 1 (executor)");
+
+        // [3..4] option data length = 17 (1 type byte + 16 gas bytes)
+        uint16 optLen = (uint16(uint8(opts[3])) << 8) | uint16(uint8(opts[4]));
+        assertEq(optLen, 17, "option data length must be 17");
+
+        // [5] executor option type = 1 (lzReceive gas)
+        assertEq(uint8(opts[5]), 1, "executor option type must be 1 (lzReceive)");
+
+        // [6..21] gas as uint128 — upper 16 bytes of a 32-byte mload at byte offset 6
+        uint128 gasInOptions;
+        assembly {
+            gasInOptions := shr(128, mload(add(add(opts, 0x20), 6)))
+        }
+        uint256 expectedGas = recProver.MIN_GAS_LIMIT() + numIntents * recProver.GAS_PER_INTENT();
+        assertEq(uint256(gasInOptions), expectedGas, "gas must equal MIN_GAS_LIMIT + n*GAS_PER_INTENT");
     }
 
     /**
