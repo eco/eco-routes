@@ -18,7 +18,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     struct UnpackedData {
         bytes32 sourceChainProver; // Address of prover on source chain
-        uint256 gasLimit; // Gas limit for execution
+        uint128 gasLimit; // Gas limit for execution
     }
 
     /**
@@ -298,23 +298,22 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         uint256 numIntents = encodedProofs.length > 8
             ? (encodedProofs.length - 8) / 64
             : 0;
-        uint256 gasFloor = MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT;
-        uint256 gasToUse = unpacked.gasLimit > gasFloor
-            ? unpacked.gasLimit
-            : gasFloor;
+        // gasFloor is bounded by message size and the fixed constants — never overflows uint128.
+        uint128 gasFloor = uint128(MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT);
+        uint128 gasToUse = unpacked.gasLimit > gasFloor ? unpacked.gasLimit : gasFloor;
 
         // LZ V2 type-3 executor option (22 bytes):
-        //   uint16(3)         — options format version (type 3)
-        //   uint8(1)          — worker ID: executor
-        //   uint16(17)        — option data length: 1 (option type byte) + 16 (uint128 gas)
-        //   uint8(1)          — executor option type: lzReceive gas
-        //   uint128(gasToUse) — gas forwarded to lzReceive on the destination chain
+        //   uint16(3)    — options format version (type 3)
+        //   uint8(1)     — worker ID: executor
+        //   uint16(17)   — option data length: 1 (option type byte) + 16 (uint128 gas)
+        //   uint8(1)     — executor option type: lzReceive gas
+        //   uint128(gas) — gas forwarded to lzReceive on the destination chain
         params.options = abi.encodePacked(
-            uint16(3),          // options version: type 3
-            uint8(1),           // worker: executor
-            uint16(17),         // data length: 1 + 16 bytes
-            uint8(1),           // executor option: lzReceive
-            uint128(gasToUse)   // gas limit
+            uint16(3),   // options version: type 3
+            uint8(1),    // worker: executor
+            uint16(17),  // data length: 1 + 16 bytes
+            uint8(1),    // executor option: lzReceive
+            gasToUse     // already uint128
         );
         params.payInLzToken = false;
     }

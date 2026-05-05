@@ -207,7 +207,7 @@ contract LayerZeroProverTest is BaseTest {
 
     function _encodeProverData(
         bytes32 sourceChainProver,
-        uint256 gasLimit
+        uint128 gasLimit
     ) internal pure returns (bytes memory) {
         LayerZeroProver.UnpackedData memory unpacked = LayerZeroProver
             .UnpackedData({
@@ -348,7 +348,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](1);
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
-        uint256 customGasLimit = 300000;
+        uint128 customGasLimit = 300000;
         bytes memory data = _encodeProverData(SOURCE_PROVER, customGasLimit);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
@@ -376,7 +376,7 @@ contract LayerZeroProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(address(this))));
 
         // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
-        uint256 belowMinGasLimit = 50000; // Below 200k minimum
+        uint128 belowMinGasLimit = 50000; // Below 200k minimum
         bytes memory data = _encodeProverData(SOURCE_PROVER, belowMinGasLimit);
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
@@ -706,12 +706,19 @@ contract LayerZeroProverTest is BaseTest {
     }
 
     /**
-     * @notice lzReceive() OOGs when the executor honours the low-gas options, and all
-     *         subsequent messages on the same path are then permanently blocked.
+     * @notice lzReceive() OOGs when the executor honours low-gas options; the individual
+     *         message is undeliverable and the proof is not recorded.
      * @dev The LZ executor calls lzReceive with the gas specified in options. If that gas
-     *      is insufficient, lzReceive OOGs (low-level call returns false). The endpoint
-     *      enforces ordered nonce delivery, so nonce N+1 cannot be processed until nonce N
-     *      succeeds or is explicitly skipped via the delegate.
+     *      is insufficient, lzReceive OOGs and the proof is lost for that message.
+     *
+     *      NOTE: The RecordingMockLayerZeroEndpoint used here enforces ordered nonce delivery
+     *      (nonce N+1 rejected until nonce N succeeds). This matches the behaviour of the
+     *      real LZ V2 EndpointV2 when an OApp uses sequential nonce tracking (nextNonce > 0).
+     *
+     *      This OApp returns nextNonce=0 and allowInitializePath=true for whitelisted senders,
+     *      which enables *unordered* delivery in the real endpoint — nonce 2 would be accepted
+     *      even if nonce 1 OOG'd. The path is therefore NOT permanently blocked in production;
+     *      only the individual OOG'd message is undeliverable without manual recovery.
      */
     function test_dos_lzReceive_oogsWithLowGas() public {
         (
@@ -753,9 +760,10 @@ contract LayerZeroProverTest is BaseTest {
             "no proof should be stored after OOG delivery"
         );
 
-        // ── Nonce 2: follow-up message on the same path is now blocked ────────
-        // Because nonce 1 OOG'd and lazyInboundNonce was never advanced, the endpoint
-        // rejects nonce 2 with an out-of-order error — even with ample gas.
+        // ── Nonce 2: follow-up message is blocked in the mock (ordered delivery) ──
+        // The RecordingMock enforces ordered nonces, so it rejects nonce 2 while nonce 1
+        // is stuck. In the real LZ V2 endpoint this OApp uses unordered delivery
+        // (nextNonce=0, allowInitializePath=true), so nonce 2 would succeed in production.
 
         bytes32[] memory intentHashes2 = new bytes32[](1);
         intentHashes2[0] = keccak256("follow-up-intent");
@@ -782,11 +790,12 @@ contract LayerZeroProverTest is BaseTest {
             500_000
         );
 
-        // The follow-up intent is also unproven — the entire path is wedged.
+        // The follow-up intent is unproven because the mock blocked delivery.
+        // In production (real endpoint, unordered mode) this message would have been accepted.
         assertEq(
             recProver.provenIntents(intentHashes2[0]).claimant,
             address(0),
-            "follow-up intent must not be proven while nonce 1 is stuck"
+            "follow-up intent not proven in mock (ordered delivery rejected nonce 2)"
         );
     }
 
@@ -952,6 +961,46 @@ contract LayerZeroProverTest is BaseTest {
         }
         uint256 expectedGas = recProver.MIN_GAS_LIMIT() + numIntents * recProver.GAS_PER_INTENT();
         assertEq(uint256(gasInOptions), expectedGas, "gas must equal MIN_GAS_LIMIT + n*GAS_PER_INTENT");
+    }
+
+    /**
+     * @notice A caller-supplied gasLimit that truncates to 0 in uint128 still produces
+     *         a valid message because the gas floor always applies.
+     * @dev gasLimit is typed as uint128 in UnpackedData, so abi.decode truncates any
+     *      out-of-range value. The floor (MIN_GAS_LIMIT + n*GAS_PER_INTENT) is then
+     *      applied, ensuring the encoded gas is always sufficient regardless of input.
+     */
+    function test_gasLimitTruncation_floorApplies() public {
+        (
+            RecordingMockLayerZeroEndpoint recEndpoint,
+            LayerZeroProver recProver
+        ) = _deployWithRecordingEndpoint();
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = keccak256("overflow-intent");
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        // Pass gasLimit = 0 (simulates what a truncated 2^128 would produce after decode).
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 0);
+
+        // fetchFee must succeed — floor is applied, no revert.
+        uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        vm.deal(address(portal), fee);
+        vm.prank(address(portal));
+        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+
+        // Gas in options must equal the floor (MIN_GAS_LIMIT + 1*GAS_PER_INTENT).
+        bytes memory opts = recEndpoint.lastOptions();
+        uint128 gasInOptions;
+        assembly { gasInOptions := shr(128, mload(add(add(opts, 0x20), 6))) }
+        assertEq(
+            uint256(gasInOptions),
+            recProver.MIN_GAS_LIMIT() + recProver.GAS_PER_INTENT(),
+            "floor must apply when gasLimit truncates to zero"
+        );
     }
 
     /**
