@@ -8,11 +8,6 @@ contract AddressConverterTest is BaseTest {
     using AddressConverter for address;
     using AddressConverter for bytes32;
 
-    // External wrapper so vm.expectRevert sees the revert in a subcall
-    function _toAddress(bytes32 b) external pure returns (address) {
-        return b.toAddress();
-    }
-
     function setUp() public override {
         super.setUp();
     }
@@ -78,7 +73,7 @@ contract AddressConverterTest is BaseTest {
                 testBytes
             )
         );
-        this._toAddress(testBytes);
+        testBytes.toAddress();
     }
 
     function testConversionPreservesData() public {
@@ -141,7 +136,7 @@ contract AddressConverterTest is BaseTest {
                 maxBytes
             )
         );
-        this._toAddress(maxBytes);
+        maxBytes.toAddress();
     }
 
     function testConversionDoesNotOverflow() public {
@@ -154,6 +149,6 @@ contract AddressConverterTest is BaseTest {
                 largeBytes
             )
         );
-        this._toAddress(largeBytes);
+        largeBytes.toAddress();
     }
 }

@@ -387,10 +387,11 @@ describe('LayerZeroProver Test', (): void => {
       const intentHashes = [intentHash]
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await layerZeroProver.getAddress()
+      const metadata = '0x'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
-        [[ethers.zeroPadValue(sourceChainProver, 32), gasLimit]],
+        ['tuple(bytes32,bytes,uint256)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), metadata, gasLimit]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -415,10 +416,11 @@ describe('LayerZeroProver Test', (): void => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await solver.getAddress()
+      const metadata = '0x'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
-        [[ethers.zeroPadValue(sourceChainProver, 32), gasLimit]],
+        ['tuple(bytes32,bytes,uint256)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), metadata, gasLimit]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -498,10 +500,11 @@ describe('LayerZeroProver Test', (): void => {
       const intentHashes = [intentHash]
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await inbox.getAddress()
+      const metadata = '0x'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
-        [[ethers.zeroPadValue(sourceChainProver, 32), gasLimit]],
+        ['tuple(bytes32,bytes,uint256)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), metadata, gasLimit]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -532,10 +535,11 @@ describe('LayerZeroProver Test', (): void => {
       const intentHashes: string[] = []
       const claimants: string[] = []
       const sourceChainProver = await inbox.getAddress()
+      const metadata = '0x1234'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
-        [[ethers.zeroPadValue(sourceChainProver, 32), gasLimit]],
+        ['tuple(bytes32,bytes,uint256)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), metadata, gasLimit]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -565,10 +569,11 @@ describe('LayerZeroProver Test', (): void => {
       const intentHashes = [ethers.keccak256('0x1234')]
       const claimants = [ethers.zeroPadValue(await claimant.getAddress(), 32)]
       const sourceChainProver = await solver.getAddress()
+      const metadata = '0x1234'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
-        [[ethers.zeroPadValue(sourceChainProver, 32), gasLimit]],
+        ['tuple(bytes32,bytes,uint256)'],
+        [[ethers.zeroPadValue(sourceChainProver, 32), metadata, gasLimit]],
       )
 
       const encodedProofs = prepareEncodedProofs(intentHashes, claimants)
@@ -708,12 +713,14 @@ describe('LayerZeroProver Test', (): void => {
       const isFunded = await intentSource.isIntentFunded(intent)
       expect(isFunded).to.be.true
 
+      const metadata = '0x'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
+        ['tuple(bytes32,bytes,uint256)'],
         [
           [
             ethers.zeroPadValue(await inbox.getAddress(), 32),
+            metadata,
             gasLimit,
           ],
         ],
@@ -791,12 +798,14 @@ describe('LayerZeroProver Test', (): void => {
       const sourceChainID = 12345
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
       const timeStamp = (await time.latest()) + 1000
+      const metadata = '0x'
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['tuple(bytes32,uint128)'],
+        ['tuple(bytes32,bytes,uint256)'],
         [
           [
             ethers.zeroPadValue(await inbox.getAddress(), 32),
+            metadata,
             gasLimit,
           ],
         ],

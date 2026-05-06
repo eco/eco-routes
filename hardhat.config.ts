@@ -22,14 +22,6 @@ const config: HardhatUserConfig = {
           },
         },
       },
-      {
-        version: '0.4.25',
-        settings: {
-          optimizer: {
-            enabled: false,
-          },
-        },
-      },
     ],
     settings: {
       metadata: {

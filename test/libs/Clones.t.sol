@@ -49,11 +49,6 @@ contract ClonesTest is BaseTest {
     bytes32 public constant DIFFERENT_SALT = keccak256("different");
     bytes1 public constant CREATE2_PREFIX = hex"ff";
 
-    // External wrapper so vm.expectRevert sees the revert in a subcall
-    function _clone(address impl, bytes32 salt) external returns (address) {
-        return Clones.clone(impl, salt);
-    }
-
     function setUp() public override {
         super.setUp();
         implementation = new MockImplementation();
@@ -85,7 +80,7 @@ contract ClonesTest is BaseTest {
 
         // Second deployment with same salt should revert due to CREATE2 collision
         vm.expectRevert();
-        this._clone(address(implementation), TEST_SALT);
+        Clones.clone(address(implementation), TEST_SALT);
 
         // But the first clone should still be valid
         assertNotEq(clone1, address(0));
