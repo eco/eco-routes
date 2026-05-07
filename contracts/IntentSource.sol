@@ -16,7 +16,6 @@ import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
 import {OriginSettler} from "./ERC7683/OriginSettler.sol";
-import {Vault} from "./vault/Vault.sol";
 import {Clones} from "./vault/Clones.sol";
 
 /**
@@ -30,8 +29,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     using Clones for address;
     using Math for uint256;
 
-    /// @dev CREATE2 prefix for deterministic address calculation (standard EVM)
-    bytes1 private constant CREATE2_PREFIX = bytes1(0xff);
+    /// @dev CREATE2 prefix for deterministic address calculation (0xff for EVM, 0x41 for Tron)
+    bytes1 private immutable CREATE2_PREFIX;
 
     /// @dev Implementation contract address for vault cloning
     address private immutable VAULT_IMPLEMENTATION;
@@ -40,10 +39,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Initializes the IntentSource contract
-     * @dev Deploys vault implementation
+     * @param vaultImplementation Address of the vault implementation used for cloning
+     * @param create2Prefix CREATE2 prefix byte for the target chain (0xff for EVM, 0x41 for Tron)
      */
-    constructor() {
-        VAULT_IMPLEMENTATION = address(new Vault());
+    constructor(address vaultImplementation, bytes1 create2Prefix) {
+        VAULT_IMPLEMENTATION = vaultImplementation;
+        CREATE2_PREFIX = create2Prefix;
     }
 
     /**
