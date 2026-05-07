@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ILayerZeroReceiver} from "../interfaces/layerzero/ILayerZeroReceiver.sol";
 import {ILayerZeroEndpointV2} from "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
@@ -12,6 +13,7 @@ import {Semver} from "../libs/Semver.sol";
  * @dev Processes proof messages from LayerZero endpoint and records proven intents
  */
 contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
+    using SafeCast for uint256;
     /**
      * @notice Struct for unpacked data from _data parameter
      * @dev Contains fields decoded from the _data parameter
@@ -99,7 +101,10 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      *      This action is irreversible.
      */
     function revokeDelegation() external {
-        if (msg.sender != ILayerZeroEndpointV2(ENDPOINT).delegates(address(this))) {
+        if (
+            msg.sender !=
+            ILayerZeroEndpointV2(ENDPOINT).delegates(address(this))
+        ) {
             revert NotDelegate();
         }
         ILayerZeroEndpointV2(ENDPOINT).setDelegate(address(this));
@@ -298,9 +303,10 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         uint256 numIntents = encodedProofs.length > 8
             ? (encodedProofs.length - 8) / 64
             : 0;
-        // gasFloor is bounded by message size and the fixed constants — never overflows uint128.
-        uint128 gasFloor = uint128(MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT);
-        uint128 gasToUse = unpacked.gasLimit > gasFloor ? unpacked.gasLimit : gasFloor;
+        uint128 gasFloor = (MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT).toUint128();
+        uint128 gasToUse = unpacked.gasLimit > gasFloor
+            ? unpacked.gasLimit
+            : gasFloor;
 
         // LZ V2 type-3 executor option (22 bytes):
         //   uint16(3)    — options format version (type 3)
@@ -309,11 +315,11 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         //   uint8(1)     — executor option type: lzReceive gas
         //   uint128(gas) — gas forwarded to lzReceive on the destination chain
         params.options = abi.encodePacked(
-            uint16(3),   // options version: type 3
-            uint8(1),    // worker: executor
-            uint16(17),  // data length: 1 + 16 bytes
-            uint8(1),    // executor option: lzReceive
-            gasToUse     // already uint128
+            uint16(3), // options version: type 3
+            uint8(1), // worker: executor
+            uint16(17), // data length: 1 + 16 bytes
+            uint8(1), // executor option: lzReceive
+            gasToUse // already uint128
         );
         params.payInLzToken = false;
     }
