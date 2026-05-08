@@ -53,6 +53,9 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
     /// @notice Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000)
     uint256 public immutable MAX_FEE_BPS;
 
+    /// @notice Flat Eco-protocol fee subtracted from intent1 route (denominated in source-token base units, e.g. USDC 6dp). Becomes solver profit.
+    uint256 public immutable FLAT_FEE;
+
     /// @notice Denominator for fee basis point calculations
     uint256 public constant FEE_DENOMINATOR = 100_000;
 
@@ -78,7 +81,14 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
      * @param _destinationProverAddress LocalProver contract address on destination chain
      * @param _destinationUsdc USDC ERC20 address on destination chain
      * @param _gatewayAddress Gateway contract address on destination chain
-     * @param _maxFeeBps Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000, e.g. 13 = 1.3 bps)
+     * @param _maxFeeBps Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000, e.g. 13 = 1.3 bps).
+     *                   Intentionally unvalidated; the deployer is responsible for setting a sane value.
+     *                   Values >= FEE_DENOMINATOR will cause `_executeIntent` to revert (netAmount underflow);
+     *                   extremely large values combined with a large deposit can overflow `routeAmount * _maxFeeBps`.
+     * @param _flatFee Flat Eco-protocol fee subtracted from intent1 route (source-token base units). Solver collects this as profit.
+     *                 `_flatFee = 0` is a supported initial-deployment configuration (preserves pre-feature behavior).
+     *                 Intentionally unvalidated; the deployer is responsible for setting a value below the smallest
+     *                 expected deposit to keep the `AmountBelowFlatFee` revert path unreachable in normal operation.
      */
     constructor(
         address _sourceToken,
@@ -91,7 +101,8 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
         address _destinationProverAddress,
         address _destinationUsdc,
         address _gatewayAddress,
-        uint256 _maxFeeBps
+        uint256 _maxFeeBps,
+        uint256 _flatFee
     ) BaseDepositFactory(address(new DepositAddress_CCTPMint_GatewayERC20())) {
         // Validation
         // Note: _destinationDomain is intentionally not validated because CCTP domain 0
@@ -118,6 +129,7 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
         DESTINATION_USDC = _destinationUsdc;
         GATEWAY_ADDRESS = _gatewayAddress;
         MAX_FEE_BPS = _maxFeeBps;
+        FLAT_FEE = _flatFee;
     }
 
     // ============ External Functions ============
@@ -135,6 +147,7 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
      * @return destinationUsdc USDC ERC20 address on destination chain
      * @return gatewayAddress Gateway address on destination chain
      * @return maxFeeBps Maximum fee in basis points for CCTP fast-deposit
+     * @return flatFee Flat Eco-protocol fee subtracted from intent1 route (source-token base units)
      */
     function getConfiguration()
         external
@@ -150,7 +163,8 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
             address destinationProverAddress,
             address destinationUsdc,
             address gatewayAddress,
-            uint256 maxFeeBps
+            uint256 maxFeeBps,
+            uint256 flatFee
         )
     {
         return (
@@ -164,7 +178,8 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            MAX_FEE_BPS
+            MAX_FEE_BPS,
+            FLAT_FEE
         );
     }
 

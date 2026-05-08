@@ -34,6 +34,11 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
     /// @notice Reference to the factory that deployed this contract
     DepositFactory private immutable FACTORY;
 
+    // ============ Errors ============
+
+    /// @notice Reverted when the deposited balance is at or below the configured Eco-protocol flat fee
+    error AmountBelowFlatFee();
+
     // ============ Constructor ============
 
     /**
@@ -60,7 +65,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
      * @return Address of the source token
      */
     function _getSourceToken() internal view override returns (address) {
-        (address sourceToken, , , , , , , , , , ) = FACTORY.getConfiguration();
+        (address sourceToken, , , , , , , , , , , ) = FACTORY.getConfiguration();
         return sourceToken;
     }
 
@@ -85,7 +90,8 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             address destinationProverAddress,
             address destinationUsdc,
             address gatewayAddress,
-            uint256 maxFeeBps
+            uint256 maxFeeBps,
+            uint256 flatFee
         ) = FACTORY.getConfiguration();
 
         // Generate unique salt (same for both intents)
@@ -96,12 +102,18 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         // Calculate deadline (same for both intents)
         uint64 deadline = uint64(block.timestamp + deadlineDuration);
 
-        // Compute CCTP fast-deposit fee (rounded up) and net amount received on destination
-        uint256 maxFee = (amount * maxFeeBps + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
-        uint256 netAmount = amount - maxFee;
+        // Apply Eco-protocol flat fee on intent1 + compute CCTP maxFee/netAmount in one helper.
+        // routeAmount = amount - flatFee  (intent1's route + CCTP burn input)
+        // netAmount   = routeAmount - maxFee (intent2's reward and route; what arrives post-CCTP)
+        (uint256 routeAmount, uint256 maxFee, uint256 netAmount) =
+            _computeFees(amount, flatFee, maxFeeBps);
 
         // ---- Step 1: Construct and publish Intent 2 (Gateway deposit on destination) ----
-        Intent memory intent2 = _constructGatewayIntent(
+        // Hoisted into a helper so `_executeIntent` keeps its local-variable count below the
+        // 16-stack-slot Yul limit imposed by the 12-field config + fee locals.
+        Portal portalContract = Portal(portalAddress);
+        address vault2 = _publishGatewayIntent(
+            portalContract,
             destinationChainId,
             portalAddress,
             destinationProverAddress,
@@ -112,11 +124,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             deadline
         );
 
-        // Publish Intent 2 and get its vault address
-        Portal portalContract = Portal(portalAddress);
-        (, address vault2) = portalContract.publish(intent2);
-
         // ---- Step 2: Construct, fund, and publish Intent 1 (CCTP burn on source chain) ----
+        // Intent 1 reward equals `amount` (full deposited balance, pulled by Portal during publishAndFund),
+        // while the route obligation drops by `flatFee` so the solver's bridging input is `routeAmount`.
         Intent memory intent1 = _constructCCTPIntent(
             sourceToken,
             portalAddress,
@@ -125,12 +135,13 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             destinationDomain,
             vault2,
             amount,
+            routeAmount,
             maxFee,
             salt,
             deadline
         );
 
-        // Approve Portal to spend tokens and publish+fund Intent 1
+        // Approve Portal to spend the full reward amount; Portal pulls reward tokens during publishAndFund
         IERC20(sourceToken).approve(portalAddress, amount);
         (intentHash, ) = portalContract.publishAndFund(intent1, false);
 
@@ -138,16 +149,72 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
     }
 
     /**
+     * @notice Compute the flat-fee-adjusted route amount plus CCTP maxFee in a single helper
+     * @dev Reverts with `AmountBelowFlatFee` if `amount <= flatFee`.
+     *      `maxFee` rounds up so the user never overpays Circle's CCTP fast-deposit fee.
+     * @param amount Full deposit amount
+     * @param flatFee Eco-protocol flat fee subtracted from intent1's route
+     * @param maxFeeBps CCTP fast-deposit fee in basis points (denominator: FEE_DENOMINATOR)
+     * @return routeAmount amount - flatFee (intent1's route amount, also the CCTP burn input)
+     * @return maxFee CCTP fast-deposit fee, computed on routeAmount, rounded up
+     * @return netAmount routeAmount - maxFee (intent2's reward and route amount; what arrives post-CCTP)
+     */
+    function _computeFees(
+        uint256 amount,
+        uint256 flatFee,
+        uint256 maxFeeBps
+    )
+        private
+        pure
+        returns (uint256 routeAmount, uint256 maxFee, uint256 netAmount)
+    {
+        if (amount <= flatFee) revert AmountBelowFlatFee();
+        routeAmount = amount - flatFee;
+        maxFee = (routeAmount * maxFeeBps + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
+        netAmount = routeAmount - maxFee;
+    }
+
+    /**
+     * @notice Construct Intent 2 (Gateway deposit on destination) and publish it via the Portal
+     * @dev Returning only the vault address keeps `_executeIntent`'s local-variable count low
+     *      (12 config fields + fee locals would otherwise tip the 16-slot Yul limit).
+     * @param netAmount Intent2 reward and route amount (= routeAmount - maxFee, post-CCTP)
+     */
+    function _publishGatewayIntent(
+        Portal portalContract,
+        uint64 destinationChainId,
+        address portalAddress,
+        address destinationProverAddress,
+        address destinationUsdc,
+        address gatewayAddress,
+        uint256 netAmount,
+        bytes32 salt,
+        uint64 deadline
+    ) private returns (address vault2) {
+        Intent memory intent2 = _constructGatewayIntent(
+            destinationChainId,
+            portalAddress,
+            destinationProverAddress,
+            destinationUsdc,
+            gatewayAddress,
+            netAmount,
+            salt,
+            deadline
+        );
+        (, vault2) = portalContract.publish(intent2);
+    }
+
+    /**
      * @notice Construct the Gateway deposit intent (Intent 2) for destination chain
      * @dev This intent is fulfilled on the destination: solver approves Gateway for USDC and calls depositFor.
      *      Unlike the Arc variant, USDC is a standard ERC20 on the destination so no decimal scaling is needed.
-     *      route.tokens and reward.tokens contain the ERC20 USDC amounts directly.
+     *      Intent2 reward and route are symmetric (both equal `netAmount`); the flat fee is taken on intent1 only.
      * @param destinationChainId Destination chain ID
      * @param portalAddress Portal address (same on all chains)
      * @param destinationProverAddress LocalProver address on destination chain
      * @param destinationUsdc USDC ERC20 address on destination chain
      * @param gatewayAddress Gateway contract address on destination chain
-     * @param netAmount Amount of USDC after CCTP fee deduction (6 decimals)
+     * @param netAmount Reward and route amount (= routeAmount - CCTP maxFee)
      * @param salt Unique salt for the intent
      * @param deadline Deadline timestamp for the intent
      * @return intent Complete Intent struct for the Gateway deposit
@@ -166,7 +233,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         TokenAmount[] memory routeTokens = new TokenAmount[](1);
         routeTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
 
-        // Route calls: approve Gateway + depositFor (both use destination USDC amounts)
+        // Route calls: approve Gateway + depositFor (both denominated in netAmount)
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
             target: destinationUsdc,
@@ -198,7 +265,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             calls: calls
         });
 
-        // Reward tokens: ERC20 USDC on destination
+        // Reward tokens: ERC20 USDC on destination (full netAmount; solver collects this)
         TokenAmount[] memory rewardTokens = new TokenAmount[](1);
         rewardTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
 
@@ -222,15 +289,19 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
     /**
      * @notice Construct the CCTP burn intent (Intent 1) for source chain
      * @dev This intent is fulfilled locally: solver calls TokenMessengerV2.depositForBurn
-     *      to burn USDC and mint to Intent 2's vault on the destination
+     *      to burn USDC and mint to Intent 2's vault on the destination.
+     *      `rewardAmount` and `routeAmount` differ by the Eco-protocol `flatFee`:
+     *      the Portal pulls `rewardAmount` from this contract during publishAndFund (solver collects it),
+     *      while the solver bridges only `routeAmount` via CCTP. The delta is solver profit.
      * @param sourceToken Source USDC token address
      * @param portalAddress Portal address on source chain
      * @param proverAddress LocalProver address on source chain
      * @param cctpTokenMessenger CCTP TokenMessengerV2 address
      * @param destinationDomain CCTP destination domain ID
      * @param vault2 Intent 2's vault address (CCTP mintRecipient)
-     * @param amount Amount of USDC (6 decimals)
-     * @param maxFee Maximum CCTP fast-deposit fee (deducted on destination)
+     * @param rewardAmount Amount the Portal pulls from this contract as the intent reward (full deposit)
+     * @param routeAmount Amount the solver bridges via CCTP (rewardAmount - flatFee)
+     * @param maxFee Maximum CCTP fast-deposit fee (deducted on destination, computed on routeAmount)
      * @param salt Unique salt for the intent
      * @param deadline Deadline timestamp for the intent
      * @return intent Complete Intent struct for the CCTP burn
@@ -242,7 +313,8 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         address cctpTokenMessenger,
         uint32 destinationDomain,
         address vault2,
-        uint256 amount,
+        uint256 rewardAmount,
+        uint256 routeAmount,
         uint256 maxFee,
         bytes32 salt,
         uint64 deadline
@@ -250,18 +322,18 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         // Use current chain ID for local intent
         uint64 destChain = uint64(block.chainid);
 
-        // Route tokens: source USDC
+        // Route tokens: source USDC (solver's bridging obligation, post-flatFee)
         TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = TokenAmount({token: sourceToken, amount: amount});
+        routeTokens[0] = TokenAmount({token: sourceToken, amount: routeAmount});
 
-        // Route calls: approve TokenMessenger + CCTP depositForBurn
+        // Route calls: approve TokenMessenger + CCTP depositForBurn (both denominated in routeAmount)
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
             target: sourceToken,
             data: abi.encodeWithSignature(
                 "approve(address,uint256)",
                 cctpTokenMessenger,
-                amount
+                routeAmount
             ),
             value: 0
         });
@@ -269,12 +341,12 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             target: cctpTokenMessenger,
             data: abi.encodeWithSignature(
                 "depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)",
-                amount,
+                routeAmount,
                 destinationDomain,
                 bytes32(uint256(uint160(vault2))), // mintRecipient = Intent 2 vault
                 sourceToken,
                 bytes32(0), // destinationCaller (anyone)
-                maxFee, // maxFee for CCTP fast-deposit
+                maxFee, // maxFee for CCTP fast-deposit (computed on routeAmount)
                 0 // minFinalityThreshold (fast finality)
             ),
             value: 0
@@ -290,9 +362,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             calls: calls
         });
 
-        // Reward tokens: source USDC
+        // Reward tokens: source USDC (full deposit; solver collects this from Portal)
         TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: sourceToken, amount: amount});
+        rewardTokens[0] = TokenAmount({token: sourceToken, amount: rewardAmount});
 
         // Construct reward
         Reward memory reward = Reward({

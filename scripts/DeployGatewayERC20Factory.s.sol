@@ -37,13 +37,18 @@ contract DeployGatewayERC20Factory is Script {
     address constant DESTINATION_USDC = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
     address constant GATEWAY_ADDRESS = 0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE;
     uint256 constant MAX_FEE_BPS = 13; // 1.3 bps
+    uint256 constant FLAT_FEE = 0; // Eco-protocol flat fee on intent1 (source-token base units; zero for initial production deployment)
 
     function run() external {
         address sourceToken = vm.envAddress("SOURCE_TOKEN");
         bytes32 rootSalt = vm.envBytes32("SALT");
         address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
 
-        bytes32 salt = _contractSalt(rootSalt, "GATEWAY_ERC20_FACTORY_V2");
+        // V3 salt bump: V2 predates the flat fee. V3 introduces FLAT_FEE in the constructor
+        // signature. CREATE3 derives the address from (deployer, salt) only, so we MUST bump
+        // the salt to deploy the new ABI to a fresh address; otherwise mainnet chains would
+        // mix pre-flatFee and post-flatFee factories under the same address.
+        bytes32 salt = _contractSalt(rootSalt, "GATEWAY_ERC20_FACTORY_V3");
 
         // Build creation bytecode (creationCode + abi-encoded constructor args)
         bytes memory bytecode = abi.encodePacked(
@@ -59,7 +64,8 @@ contract DeployGatewayERC20Factory is Script {
                 DESTINATION_PROVER,
                 DESTINATION_USDC,
                 GATEWAY_ADDRESS,
-                MAX_FEE_BPS
+                MAX_FEE_BPS,
+                FLAT_FEE
             )
         );
 
@@ -103,13 +109,17 @@ contract DeployGatewayERC20Factory is Script {
             ,
             ,
             address _gateway,
+            ,
+            uint256 _flatFee
         ) = factory.getConfiguration();
 
         require(_sourceToken == sourceToken, "sourceToken mismatch");
         require(_portalAddress == PORTAL_ADDRESS, "portal mismatch");
         require(_destChainId == DESTINATION_CHAIN_ID, "destChainId mismatch");
         require(_gateway == GATEWAY_ADDRESS, "gateway mismatch");
+        require(_flatFee == FLAT_FEE, "flatFee mismatch");
 
+        console.log("Flat Fee:", _flatFee);
         console.log("Configuration verified");
     }
 
@@ -117,7 +127,7 @@ contract DeployGatewayERC20Factory is Script {
     function predictAddress() external {
         bytes32 rootSalt = vm.envBytes32("SALT");
         address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
-        bytes32 salt = _contractSalt(rootSalt, "GATEWAY_ERC20_FACTORY_V2");
+        bytes32 salt = _contractSalt(rootSalt, "GATEWAY_ERC20_FACTORY_V3");
 
         address predicted = create3Deployer.deployedAddress(
             bytes(""),

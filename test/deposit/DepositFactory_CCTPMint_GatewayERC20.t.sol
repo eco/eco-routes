@@ -22,6 +22,7 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
     address constant DESTINATION_PROVER_ADDRESS = address(0xBBBB);
     address constant DESTINATION_USDC = address(0xCCCC);
     address constant GATEWAY_ADDRESS = address(0xDDDD);
+    uint256 constant FLAT_FEE = 500_000;
 
     // Test user addresses
     address constant USER_DESTINATION_1 = address(0x1111);
@@ -43,7 +44,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -61,7 +63,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             address destinationProverAddress,
             address destinationUsdc,
             address gatewayAddress,
-            uint256 maxFeeBps
+            uint256 maxFeeBps,
+            uint256 flatFee
         ) = factory.getConfiguration();
 
         assertEq(sourceToken, SOURCE_TOKEN);
@@ -75,6 +78,7 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
         assertEq(destinationUsdc, DESTINATION_USDC);
         assertEq(gatewayAddress, GATEWAY_ADDRESS);
         assertEq(maxFeeBps, 13);
+        assertEq(flatFee, FLAT_FEE);
     }
 
     function test_constructor_deploysImplementation() public view {
@@ -96,7 +100,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -113,7 +118,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -130,7 +136,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -147,7 +154,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -164,7 +172,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -181,7 +190,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -198,7 +208,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             address(0), // Invalid
             DESTINATION_USDC,
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -215,7 +226,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             address(0), // Invalid
             GATEWAY_ADDRESS,
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
@@ -232,7 +244,8 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
             DESTINATION_PROVER_ADDRESS,
             DESTINATION_USDC,
             address(0), // Invalid
-            13 // 1.3 bps CCTP fast-deposit fee
+            13, // 1.3 bps CCTP fast-deposit fee
+            FLAT_FEE
         );
     }
 
