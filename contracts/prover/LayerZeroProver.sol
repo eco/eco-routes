@@ -52,12 +52,6 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     error DelegateCannotBeZeroAddress();
 
     /**
-     * @notice Invalid executor address
-     * @param executor The invalid executor address
-     */
-    error InvalidExecutor(address executor);
-
-    /**
      * @notice Caller is not the current delegate
      */
     error NotDelegate();
