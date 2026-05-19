@@ -16,7 +16,6 @@ import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
 import {OriginSettler} from "./ERC7683/OriginSettler.sol";
-import {Vault} from "./vault/Vault.sol";
 import {Clones} from "./vault/Clones.sol";
 
 /**
@@ -30,13 +29,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     using Clones for address;
     using Math for uint256;
 
-    /// @dev CREATE2 prefix for deterministic address calculation (0xff standard, 0x41 TRON)
+    /// @dev CREATE2 prefix for deterministic address calculation (0xff for EVM, 0x41 for Tron)
     bytes1 private immutable CREATE2_PREFIX;
-
-    /// @dev Tron Mainnet chain ID
-    uint256 private immutable TRON_MAINNET_CHAIN_ID = 728126428;
-    /// @dev Tron Testnet (Shasta) chain ID
-    uint256 private immutable TRON_TESTNET_CHAIN_ID = 2494104990;
 
     /// @dev Implementation contract address for vault cloning
     address private immutable VAULT_IMPLEMENTATION;
@@ -45,17 +39,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Initializes the IntentSource contract
-     * @dev Sets CREATE2 prefix based on chain ID and deploys vault implementation
-     *      Uses TRON-specific prefix (0x41) for TRON networks, standard prefix (0xff) otherwise
+     * @param vaultImplementation Address of the vault implementation used for cloning
+     * @param create2Prefix CREATE2 prefix byte for the target chain (0xff for EVM, 0x41 for Tron)
      */
-    constructor() {
-        // TRON support
-        CREATE2_PREFIX = block.chainid == TRON_MAINNET_CHAIN_ID ||
-            block.chainid == TRON_TESTNET_CHAIN_ID
-            ? bytes1(0x41) // TRON chain custom CREATE2 prefix
-            : bytes1(0xff);
-
-        VAULT_IMPLEMENTATION = address(new Vault());
+    constructor(address vaultImplementation, bytes1 create2Prefix) {
+        VAULT_IMPLEMENTATION = vaultImplementation;
+        CREATE2_PREFIX = create2Prefix;
     }
 
     /**
