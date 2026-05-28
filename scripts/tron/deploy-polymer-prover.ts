@@ -1,24 +1,27 @@
 /**
  * deploy-polymer-prover.ts
  *
- * Deploys PolymerProver to one or more EVM chains and optionally Tron via CREATE3.
- * All EVM deployments share the same deterministic address (same salt + deployer).
+ * Deploys PolymerProver to one or more EVM chains and optionally Tron.
+ * - EVM: uses CREATE3 — all EVM deployments share the same address regardless of bytecode.
+ * - Tron: uses CREATE2 — address is deterministic from factory + salt + initCode hash.
  *
  * Whitelist logic:
  *   EVM provers : [bytes32(tronProverAddr), bytes32(evmProverAddr)]
  *   Tron prover : [bytes32(evmProverAddr)]
  *
- * Per-chain env vars (replace {CHAIN} with upper-case chain ID, e.g. BASE, OP):
+ * Per-chain EVM env vars (replace {CHAIN} with upper-case chain ID, e.g. BASE, OP):
  *   {CHAIN}_RPC_URL                     RPC endpoint
+ *                                        For 'base', falls back to Alchemy via ALCHEMY_API_KEY
  *   {CHAIN}_PORTAL_CONTRACT             Portal address
+ *                                        For 'base', falls back to PORTAL_CONTRACT
  *   {CHAIN}_POLYMER_CROSS_L2_PROVER_V2  CrossL2ProverV2 address
+ *                                        For 'base', falls back to POLYMER_CROSS_L2_PROVER_V2
  *   {CHAIN}_POLYMER_PROVER              (optional) skip deploy, reuse this address
  *
  * Tron env vars:
  *   TRON_RPC_URL
  *   TRON_PORTAL_CONTRACT
  *   TRON_POLYMER_CROSS_L2_PROVER_V2
- *   TRON_CREATE3_DEPLOYER
  *   TRON_POLYMER_PROVER                 (optional) skip deploy, reuse this address
  *
  * Shared env vars:
@@ -56,6 +59,14 @@ const CREATE3_ABI = [
   'function deployedAddress(bytes memory bytecode, address sender, bytes32 salt) external view returns (address)',
 ]
 
+/** Create2Factory_Tron on Tron mainnet */
+const TRON_MAINNET_CREATE2_FACTORY = 'TSh1WRYebthHLcfJ7eFqTyps97jMgbh96g'
+/** Create2Factory_Tron on Tron Shasta testnet */
+const TRON_SHASTA_CREATE2_FACTORY = 'TRoohco2jc4Cmfbh92CWcfNtdBmBDj3fzy'
+
+// Standard CREATE2 factory interface (EIP-2470 / Nick's factory style)
+const CREATE2_DEPLOY_SIG = 'deploy(bytes,bytes32)'
+
 const CONSTRUCTOR_TYPES = ['address', 'address', 'uint256', 'bytes32[]']
 
 const abiCoder = ethers.AbiCoder.defaultAbiCoder()
@@ -63,12 +74,12 @@ const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type EvmChain = {
-  id: string        // short key passed to --chains, e.g. 'base', 'op'
-  label: string     // display label
+  id: string
+  label: string
   rpcUrl: string
   portal: string
   crossL2Prover: string
-  reuseAddr: string // hex20, empty = deploy fresh
+  reuseAddr: string  // hex20, empty = deploy fresh
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -129,20 +140,31 @@ function buildInitCode(
   )
 }
 
-/** Read required per-chain env vars and return an EvmChain config. */
+/** Resolve env vars for an EVM chain. 'base' has fallbacks for legacy unprefixed vars. */
 function resolveEvmChain(id: string): EvmChain {
   const upper = id.toUpperCase()
-  const require = (key: string): string => {
-    const v = process.env[key]
-    if (!v) throw new Error(`Missing env var: ${key} (required for chain '${id}')`)
-    return v
+
+  let rpcUrl = process.env[`${upper}_RPC_URL`]
+  if (!rpcUrl && id === 'base') {
+    const alchemyKey = process.env.ALCHEMY_API_KEY
+    if (alchemyKey) rpcUrl = `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`
   }
+  if (!rpcUrl) throw new Error(`Missing env var: ${upper}_RPC_URL (required for chain '${id}')`)
+
+  const portal = process.env[`${upper}_PORTAL_CONTRACT`]
+    ?? (id === 'base' ? process.env.PORTAL_CONTRACT : undefined)
+  if (!portal) throw new Error(`Missing env var: ${upper}_PORTAL_CONTRACT (required for chain '${id}')`)
+
+  const crossL2Prover = process.env[`${upper}_POLYMER_CROSS_L2_PROVER_V2`]
+    ?? (id === 'base' ? process.env.POLYMER_CROSS_L2_PROVER_V2 : undefined)
+  if (!crossL2Prover) throw new Error(`Missing env var: ${upper}_POLYMER_CROSS_L2_PROVER_V2 (required for chain '${id}')`)
+
   return {
     id,
     label: id.charAt(0).toUpperCase() + id.slice(1),
-    rpcUrl: require(`${upper}_RPC_URL`),
-    portal: require(`${upper}_PORTAL_CONTRACT`),
-    crossL2Prover: require(`${upper}_POLYMER_CROSS_L2_PROVER_V2`),
+    rpcUrl,
+    portal,
+    crossL2Prover,
     reuseAddr: process.env[`${upper}_POLYMER_PROVER`] ?? '',
   }
 }
@@ -192,7 +214,6 @@ async function deployEvmChain(
     return
   }
 
-  // Whitelist: tron prover + this EVM prover address (same on all EVM chains)
   const whitelist: string[] = []
   if (opts.tronProverAddr20) whitelist.push(hex20ToBytes32(opts.tronProverAddr20))
   whitelist.push(hex20ToBytes32(opts.evmProverAddr))
@@ -211,30 +232,36 @@ async function deployEvmChain(
 
 // ─── Tron ─────────────────────────────────────────────────────────────────────
 
-async function predictTronAddress(
+/**
+ * Predict the CREATE2 address on Tron.
+ * Formula: keccak256(0xff ++ factory20 ++ salt32 ++ keccak256(initCode))[12:]
+ * Returns both hex20 and base58 forms.
+ */
+function predictCreate2TronAddress(
   tw: TronWeb,
-  factoryBase58: string,
-  deployerHex20: string,
+  factoryHex20: string,
   salt: string,
-): Promise<{ addr20hex: string; addrBase58: string }> {
-  const rawParameter = abiCoder.encode(
-    ['bytes', 'address', 'bytes32'],
-    ['0x', deployerHex20, salt],
-  ).slice(2)
-
-  const result: any = await tw.transactionBuilder.triggerConstantContract(
-    factoryBase58,
-    'deployedAddress(bytes,address,bytes32)',
-    { rawParameter },
-    [],
-    tw.defaultAddress.hex,
+  initCode: string,
+): { addr20hex: string; addrBase58: string } {
+  const initCodeHash = ethers.keccak256(initCode)
+  // Tron's CREATE2 uses 0x41 (Tron address prefix) instead of Ethereum's 0xff
+  const hash = ethers.keccak256(
+    ethers.concat([
+      new Uint8Array([0x41]),
+      ethers.getBytes(factoryHex20),
+      ethers.getBytes(salt),
+      ethers.getBytes(initCodeHash),
+    ]),
   )
-
-  const addr20hex = '0x' + result.constant_result[0].slice(-40)
+  const addr20hex = '0x' + hash.slice(-40)
   const addrBase58 = tw.address.fromHex('41' + addr20hex.slice(2)) as string
   return { addr20hex, addrBase58 }
 }
 
+/**
+ * Deploy the Tron PolymerProver via the CREATE2 factory.
+ * Returns the actual deployed address read from the transaction receipt.
+ */
 async function deployTronChain(
   tw: TronWeb,
   opts: {
@@ -244,35 +271,19 @@ async function deployTronChain(
     crossL2ProverV2: string
     evmProverAddr: string
     maxLogDataSize: number
-    addrBase58: string
-    dryRun: boolean
   },
-): Promise<void> {
+): Promise<{ addr20hex: string; addrBase58: string }> {
   const tag = '[Tron]'
-
-  if (opts.dryRun) {
-    console.log(`  ${tag} [dry-run] skipping deployment`)
-    return
-  }
-
-  const existingCode = await tw.trx.getContract(opts.addrBase58).catch(() => null)
-  if (existingCode?.bytecode) {
-    console.log(`  ${tag} Already deployed at ${opts.addrBase58}`)
-    return
-  }
 
   const portal20 = tronAddrToHex20(tw, opts.portal)
   const crossL2Prover20 = tronAddrToHex20(tw, opts.crossL2ProverV2)
-
-  // Whitelist: just the shared EVM prover address
   const whitelist = opts.evmProverAddr ? [hex20ToBytes32(opts.evmProverAddr)] : []
-
   const initCode = buildInitCode(portal20, crossL2Prover20, opts.maxLogDataSize, whitelist)
 
   const rawParameter = abiCoder.encode(['bytes', 'bytes32'], [initCode, opts.salt]).slice(2)
   const result = await tw.transactionBuilder.triggerSmartContract(
     opts.factoryBase58,
-    'deploy(bytes,bytes32)',
+    CREATE2_DEPLOY_SIG,
     { feeLimit: 2_000_000_000, callValue: 0, rawParameter },
     [],
   )
@@ -287,8 +298,11 @@ async function deployTronChain(
     const info: any = await tw.trx.getTransactionInfo(broadcast.txid)
     if (info?.id) {
       if (info.receipt?.result !== 'SUCCESS') throw new Error(`${tag} Reverted: ${JSON.stringify(info)}`)
-      console.log(`  ${tag} Deployed: ${opts.addrBase58}`)
-      return
+      // Read actual deployed address from contractResult (return value of deploy())
+      const addr20hex = '0x' + (info.contractResult?.[0] as string).slice(-40)
+      const addrBase58 = tw.address.fromHex('41' + addr20hex.slice(2)) as string
+      console.log(`  ${tag} Deployed: ${addrBase58}  (${addr20hex})`)
+      return { addr20hex, addrBase58 }
     }
   }
   throw new Error(`${tag} Timed out — txid: ${broadcast.txid}`)
@@ -322,51 +336,51 @@ async function main() {
   // ── Resolve EVM chain configs ─────────────────────────────────────────────
   const evmChains: EvmChain[] = evmIds.map(resolveEvmChain)
 
-  // ── Step 1: predict addresses ─────────────────────────────────────────────
+  // ── Step 1: predict EVM address (CREATE3 — independent of bytecode) ───────
   console.log('\n── Address Prediction ────────────────────────────────────────')
 
-  // All EVM chains share one address — predict once from any chain's provider
   let evmProverAddr = ''
   if (evmChains.length > 0) {
     const firstReuse = evmChains.find((c) => c.reuseAddr)
     if (firstReuse) {
       evmProverAddr = firstReuse.reuseAddr
+      console.log(`  [EVM]   PolymerProver: ${evmProverAddr}  [reuse]`)
     } else {
       const wallet = new ethers.Wallet(privateKey)
       const provider = new ethers.JsonRpcProvider(evmChains[0].rpcUrl)
       evmProverAddr = await predictEvmAddress(create3Deployer, wallet.address, polymerSalt, provider)
+      console.log(`  [EVM]   PolymerProver: ${evmProverAddr}  (shared across: ${evmIds.join(', ')})`)
     }
-    console.log(`  [EVM]   PolymerProver: ${evmProverAddr}  (shared across: ${evmIds.join(', ')})`)
   }
 
+  // Tron address is NOT predicted — it will be read from the tx receipt after deployment.
+  // (If TRON_POLYMER_PROVER is set, we skip deployment and reuse that address instead.)
+  const tronReuseRaw = process.env.TRON_POLYMER_PROVER ?? ''
   let tronAddr20 = ''
-  let tronAddrBase58 = process.env.TRON_POLYMER_PROVER ?? ''
+  let tronAddrBase58 = ''
   let tw: TronWeb | null = null
 
   if (doTron) {
     const tronRpc = process.env.TRON_RPC_URL
     if (!tronRpc) throw new Error('TRON_RPC_URL not set')
-    const tronCreate3 = process.env.TRON_CREATE3_DEPLOYER
-    if (!tronCreate3) throw new Error('TRON_CREATE3_DEPLOYER not set')
-
     tw = new TronWeb({ fullHost: tronRpc, privateKey: privateKey.slice(2) })
 
-    if (tronAddrBase58) {
-      tronAddr20 = tronAddrToHex20(tw, tronAddrBase58)
+    if (tronReuseRaw) {
+      tronAddr20 = tronAddrToHex20(tw, tronReuseRaw)
+      tronAddrBase58 = tronReuseRaw.startsWith('T')
+        ? tronReuseRaw
+        : (tw.address.fromHex('41' + tronAddr20.slice(2)) as string)
+      console.log(`  [Tron]  PolymerProver: ${tronAddrBase58}  (${tronAddr20})  [reuse]`)
     } else {
-      const deployerHex20 = tronAddrToHex20(tw, tw.address.fromPrivateKey(privateKey.slice(2)) as string)
-      const predicted = await predictTronAddress(tw, tronCreate3, deployerHex20, polymerSalt)
-      tronAddr20 = predicted.addr20hex
-      tronAddrBase58 = predicted.addrBase58
+      console.log(`  [Tron]  PolymerProver: <will deploy first — address from receipt>`)
     }
-    console.log(`  [Tron]  PolymerProver: ${tronAddrBase58}  (${tronAddr20})`)
   }
 
-  // ── Step 2: print whitelists ──────────────────────────────────────────────
+  // ── Step 2: print planned whitelists ─────────────────────────────────────
   console.log('\n── Whitelists ────────────────────────────────────────────────')
   if (evmChains.length > 0) {
     const evmWl = [
-      ...(tronAddr20 ? [`bytes32(${tronAddr20})`] : []),
+      ...(tronAddr20 ? [`bytes32(${tronAddr20})`] : ['bytes32(<tron — deploying first>)']),
       `bytes32(${evmProverAddr})`,
     ]
     console.log(`  [EVM]   ${JSON.stringify(evmWl)}`)
@@ -376,9 +390,39 @@ async function main() {
     console.log(`  [Tron]  ${JSON.stringify(tronWl)}`)
   }
 
-  // ── Step 3: deploy ────────────────────────────────────────────────────────
+  if (dryRun) {
+    console.log('\n  [dry-run] No transactions were sent.')
+    console.log(`  Salt (bytes32)      : ${polymerSalt}`)
+    console.log(`  maxLogDataSize      : ${maxLogDataSize}`)
+    return
+  }
+
+  // ── Step 3: deploy Tron FIRST — capture actual address from receipt ───────
   console.log('\n── Deployment ────────────────────────────────────────────────')
 
+  if (doTron && tw) {
+    if (tronReuseRaw) {
+      console.log(`  [Tron]  Reusing: ${tronAddrBase58}`)
+    } else {
+      const tronPortal = process.env.TRON_PORTAL_CONTRACT
+      if (!tronPortal) throw new Error('TRON_PORTAL_CONTRACT not set')
+      const tronCrossL2 = process.env.TRON_POLYMER_CROSS_L2_PROVER_V2
+      if (!tronCrossL2) throw new Error('TRON_POLYMER_CROSS_L2_PROVER_V2 not set')
+
+      const result = await deployTronChain(tw, {
+        factoryBase58: TRON_MAINNET_CREATE2_FACTORY,
+        salt: polymerSalt,
+        portal: tronPortal,
+        crossL2ProverV2: tronCrossL2,
+        evmProverAddr,
+        maxLogDataSize,
+      })
+      tronAddr20 = result.addr20hex
+      tronAddrBase58 = result.addrBase58
+    }
+  }
+
+  // ── Step 4: deploy EVM chains (using actual Tron address in whitelist) ────
   for (const chain of evmChains) {
     await deployEvmChain(chain, {
       privateKey,
@@ -387,26 +431,7 @@ async function main() {
       maxLogDataSize,
       salt: polymerSalt,
       create3Deployer,
-      dryRun,
-    })
-  }
-
-  if (doTron && tw) {
-    const tronCreate3 = process.env.TRON_CREATE3_DEPLOYER!
-    const tronPortal = process.env.TRON_PORTAL_CONTRACT
-    if (!tronPortal) throw new Error('TRON_PORTAL_CONTRACT not set')
-    const tronCrossL2 = process.env.TRON_POLYMER_CROSS_L2_PROVER_V2
-    if (!tronCrossL2) throw new Error('TRON_POLYMER_CROSS_L2_PROVER_V2 not set')
-
-    await deployTronChain(tw, {
-      factoryBase58: tronCreate3,
-      salt: polymerSalt,
-      portal: tronPortal,
-      crossL2ProverV2: tronCrossL2,
-      evmProverAddr,
-      maxLogDataSize,
-      addrBase58: tronAddrBase58,
-      dryRun,
+      dryRun: false,
     })
   }
 
@@ -420,7 +445,6 @@ async function main() {
   }
   console.log(`  Salt (bytes32)      : ${polymerSalt}`)
   console.log(`  maxLogDataSize      : ${maxLogDataSize}`)
-  if (dryRun) console.log('\n  [dry-run] No transactions were sent.')
 }
 
 main().catch((err) => {
