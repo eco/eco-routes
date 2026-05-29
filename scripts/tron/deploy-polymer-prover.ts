@@ -60,9 +60,9 @@ const CREATE3_ABI = [
 ]
 
 /** Create2Factory_Tron on Tron mainnet */
-const TRON_MAINNET_CREATE2_FACTORY = 'TSh1WRYebthHLcfJ7eFqTyps97jMgbh96g'
+const TRON_MAINNET_CREATE2_FACTORY = 'TRoohco2jc4Cmfbh92CWcfNtdBmBDj3fzy'
 /** Create2Factory_Tron on Tron Shasta testnet */
-const TRON_SHASTA_CREATE2_FACTORY = 'TRoohco2jc4Cmfbh92CWcfNtdBmBDj3fzy'
+const TRON_SHASTA_CREATE2_FACTORY = 'TSh1WRYebthHLcfJ7eFqTyps97jMgbh96g'
 
 // Standard CREATE2 factory interface (EIP-2470 / Nick's factory style)
 const CREATE2_DEPLOY_SIG = 'deploy(bytes,bytes32)'
@@ -363,7 +363,12 @@ async function main() {
   if (doTron) {
     const tronRpc = process.env.TRON_RPC_URL
     if (!tronRpc) throw new Error('TRON_RPC_URL not set')
-    tw = new TronWeb({ fullHost: tronRpc, privateKey: privateKey.slice(2) })
+    const tronGridKey = process.env.TRONGRID_API_KEY || ''
+    tw = new TronWeb({
+      fullHost: tronRpc,
+      privateKey: privateKey.slice(2),
+      ...(tronGridKey ? { headers: { 'TRON-PRO-API-KEY': tronGridKey } } : {}),
+    })
 
     if (tronReuseRaw) {
       tronAddr20 = tronAddrToHex20(tw, tronReuseRaw)

@@ -171,12 +171,40 @@ const ERC20_IFACE        = new ethers.Interface(ERC20_ABI)
 const ERC20_TRANSFER_IFACE = new ethers.Interface(['function transfer(address to, uint256 amount) returns (bool)'])
 
 const TRON_PUBLISH_AND_FUND_SIG =
-  'publishAndFund((uint64,(bytes32,uint64,address,uint256,(address,uint256)[],(address,bytes,uint256)[]),(uint64,address,address,uint256,(address,uint256)[]))),bool)'
+  'publishAndFund((uint64,(bytes32,uint64,address,uint256,(address,uint256)[],(address,bytes,uint256)[]),(uint64,address,address,uint256,(address,uint256)[])),bool)'
 
 const TRON_WITHDRAW_SIG =
   'batchWithdraw(uint64[],bytes32[],(uint64,address,address,uint256,(address,uint256)[])[])'
 
 const TRON_ERC20_APPROVE_SIG = 'approve(address,uint256)'
+
+// ─── Metrics ─────────────────────────────────────────────────────────────────
+
+interface StepMetrics {
+  name: string
+  durationMs: number
+  evmTxs: { label: string; gasUsed: bigint; gasPrice: bigint; costEth: string }[]
+  tronTxs: { label: string; energyUsed: number; energyFee: number; netFee: number }[]
+}
+
+function tronTxMetrics(label: string, info: any) {
+  return {
+    label,
+    energyUsed: info.receipt?.energy_usage_total ?? 0,
+    energyFee:  info.receipt?.energy_fee ?? 0,
+    netFee:     info.fee ?? 0,
+  }
+}
+
+function evmTxMetrics(label: string, receipt: any) {
+  const gasPrice = receipt.gasPrice ?? receipt.effectiveGasPrice ?? 0n
+  return {
+    label,
+    gasUsed:  receipt.gasUsed,
+    gasPrice,
+    costEth:  ethers.formatEther(receipt.gasUsed * gasPrice),
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -241,10 +269,13 @@ async function createIntent(
   evmUsdcAddr: string,
   evmChainId: number,
   chainName: string,
-): Promise<{ intentHash: string; salt: string; deadline: number; creatorHex: string; txId: string }> {
+): Promise<{ intentHash: string; salt: string; deadline: number; creatorHex: string; txId: string; metrics: StepMetrics }> {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`STEP 1 — Approve USDC + PublishAndFund intent on Tron → ${chainName}`)
   console.log(`${'─'.repeat(60)}`)
+
+  const t0 = Date.now()
+  const metrics: StepMetrics = { name: 'Step 1: Create intent (Tron)', durationMs: 0, evmTxs: [], tronTxs: [] }
 
   const deployerTronAddr = tw.address.fromPrivateKey(tw.defaultPrivateKey as string) as string
   const creatorHex = '0x' + (tw.address.toHex(deployerTronAddr) as string).slice(2)
@@ -276,7 +307,8 @@ async function createIntent(
   console.log(`  Approving 0.1 USDC to Tron portal...`)
   const tronUsdcB58 = tw.address.fromHex('41' + tronUsdtHex.slice(2)) as string
   const approveCalldata = ERC20_IFACE.encodeFunctionData('approve', [tronPortalHex, REWARD_AMOUNT])
-  await tronSendAndWait(tw, tronUsdcB58, TRON_ERC20_APPROVE_SIG, approveCalldata.slice(10))
+  const { info: approveInfo } = await tronSendAndWait(tw, tronUsdcB58, TRON_ERC20_APPROVE_SIG, approveCalldata.slice(10))
+  metrics.tronTxs.push(tronTxMetrics('approve USDT', approveInfo))
   console.log(`  Approved.`)
 
   // 1b. PublishAndFund
@@ -285,6 +317,7 @@ async function createIntent(
   const calldata = iface.encodeFunctionData('publishAndFund', [intent, false])
 
   const { txid, info } = await tronSendAndWait(tw, tronPortalB58, TRON_PUBLISH_AND_FUND_SIG, calldata.slice(10))
+  metrics.tronTxs.push(tronTxMetrics('publishAndFund', info))
 
   const topic = ethers.id('IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])')
   let intentHash = ''
@@ -293,8 +326,9 @@ async function createIntent(
   }
   if (!intentHash) throw new Error('IntentPublished event not found')
 
+  metrics.durationMs = Date.now() - t0
   console.log(`  done. Intent hash: ${intentHash}`)
-  return { intentHash, salt, deadline, creatorHex, txId: txid }
+  return { intentHash, salt, deadline, creatorHex, txId: txid, metrics }
 }
 
 // ─── Step 2: Approve USDC + FulfillAndProve on EVM ────────────────────────────
@@ -312,10 +346,13 @@ async function fulfillAndProveOnEvm(
   salt: string,
   deadline: number,
   creatorHex: string,
-): Promise<{ txHash: string }> {
+): Promise<{ txHash: string; metrics: StepMetrics }> {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`STEP 2 — Approve USDC + FulfillAndProve on EVM`)
   console.log(`${'─'.repeat(60)}`)
+
+  const t0 = Date.now()
+  const metrics: StepMetrics = { name: 'Step 2: Fulfill + prove (EVM)', durationMs: 0, evmTxs: [], tronTxs: [] }
 
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
   const provider = wallet.provider!
@@ -357,7 +394,7 @@ async function fulfillAndProveOnEvm(
   console.log(`  Approving 0.05 USDC to EVM portal...`)
   const usdc = new ethers.Contract(evmUsdcAddr, ERC20_ABI, wallet)
   const approveTx = await usdc.approve(evmPortal, ROUTE_AMOUNT)
-  await approveTx.wait()
+  metrics.evmTxs.push(evmTxMetrics('approve USDC', await approveTx.wait()))
   console.log(`  Approved.`)
 
   console.log(`  sending fulfillAndProve...`)
@@ -365,11 +402,12 @@ async function fulfillAndProveOnEvm(
   const tx = await portal.fulfillAndProve(
     intentHash, route, rewardHash, claimant,
     evmProver, tronEid, lzData,
-    { value: fee * 2n }, // 2× buffer — overage is refunded by LZ endpoint
+    { value: fee * 2n }, // 2x buffer — overage is refunded by LZ endpoint
   )
-  await tx.wait()
+  metrics.evmTxs.push(evmTxMetrics('fulfillAndProve', await tx.wait()))
+  metrics.durationMs = Date.now() - t0
   console.log(`  done.`)
-  return { txHash: tx.hash }
+  return { txHash: tx.hash, metrics }
 }
 
 // ─── Step 3: Poll Tron prover for proof ───────────────────────────────────────
@@ -380,11 +418,12 @@ async function pollForProof(
   intentHash: string,
   intervalSec: number,
   timeoutMin: number,
-): Promise<void> {
+): Promise<StepMetrics> {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`STEP 3 — Polling Tron prover for proof (timeout: ${timeoutMin}m)`)
   console.log(`${'─'.repeat(60)}`)
 
+  const t0 = Date.now()
   const tronProverB58 = tw.address.fromHex('41' + tronProverHex.slice(2)) as string
   const polls = Math.ceil((timeoutMin * 60) / intervalSec)
 
@@ -401,7 +440,7 @@ async function pollForProof(
     const claimantWord = raw.slice(0, 64)
     if (claimantWord && claimantWord !== '0'.repeat(64)) {
       console.log(`  Proof arrived!`)
-      return
+      return { name: 'Step 3: Wait for LZ proof (Tron)', durationMs: Date.now() - t0, evmTxs: [], tronTxs: [] }
     }
     console.log(`  [${i}/${polls}] waiting ${intervalSec}s...`)
     await sleep(intervalSec * 1000)
@@ -422,10 +461,13 @@ async function withdrawOnTron(
   salt: string,
   deadline: number,
   creatorHex: string,
-): Promise<{ txId: string }> {
+): Promise<{ txId: string; metrics: StepMetrics }> {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`STEP 4 — Withdraw USDT on Tron`)
   console.log(`${'─'.repeat(60)}`)
+
+  const t0 = Date.now()
+  const metrics: StepMetrics = { name: 'Step 4: Withdraw USDT (Tron)', durationMs: 0, evmTxs: [], tronTxs: [] }
 
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
 
@@ -452,9 +494,11 @@ async function withdrawOnTron(
   const calldata = iface.encodeFunctionData('batchWithdraw', [[evmChainId], [routeHash], [reward]])
 
   console.log(`  sending...`)
-  const { txid } = await tronSendAndWait(tw, tronPortalB58, TRON_WITHDRAW_SIG, calldata.slice(10))
+  const { txid, info } = await tronSendAndWait(tw, tronPortalB58, TRON_WITHDRAW_SIG, calldata.slice(10))
+  metrics.tronTxs.push(tronTxMetrics('batchWithdraw', info))
+  metrics.durationMs = Date.now() - t0
   console.log(`  done.`)
-  return { txId: txid }
+  return { txId: txid, metrics }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -508,23 +552,27 @@ async function main() {
   console.log(`  Reward: 0.1 USDT on Tron | Want: 0.05 USDC on ${chainName}`)
   console.log(`${'═'.repeat(60)}`)
 
-  const { intentHash, salt, deadline, creatorHex, txId: createTxId } = await createIntent(
+  const totalStart = Date.now()
+
+  const { intentHash, salt, deadline, creatorHex, txId: createTxId, metrics: m1 } = await createIntent(
     tw, tronPortalB58, tronPortalHex, tronProverHex,
     tronUsdtHex, evmPortal, evmUsdcAddr, evmChainId, chainName,
   )
 
-  const { txHash: fulfillTxHash } = await fulfillAndProveOnEvm(
+  const { txHash: fulfillTxHash, metrics: m2 } = await fulfillAndProveOnEvm(
     wallet, evmPortal, evmProver, evmUsdcAddr,
     tronPortalHex, tronProverHex, tronUsdtHex,
     tronEid, intentHash, salt, deadline, creatorHex,
   )
 
-  await pollForProof(tw, tronProverHex, intentHash, pollInterval, pollTimeout)
+  const m3 = await pollForProof(tw, tronProverHex, intentHash, pollInterval, pollTimeout)
 
-  const { txId: withdrawTxId } = await withdrawOnTron(
+  const { txId: withdrawTxId, metrics: m4 } = await withdrawOnTron(
     tw, tronPortalB58, tronProverHex, tronUsdtHex,
     evmPortal, evmUsdcAddr, evmChainId, salt, deadline, creatorHex,
   )
+
+  const totalMs = Date.now() - totalStart
 
   console.log(`\n${'═'.repeat(60)}`)
   console.log(`  SUMMARY`)
@@ -537,6 +585,35 @@ async function main() {
   console.log(`  Create:      ${TRON_EXPLORER}/${createTxId}`)
   console.log(`  Fulfill:     ${explorer}/tx/${fulfillTxHash}`)
   console.log(`  Withdraw:    ${TRON_EXPLORER}/${withdrawTxId}`)
+
+  const fmtMs = (ms: number) => {
+    if (ms < 60_000) return `${(ms/1000).toFixed(1)}s`
+    const m = Math.floor(ms / 60_000)
+    const s = ((ms % 60_000) / 1000).toFixed(0).padStart(2, '0')
+    return `${m}m ${s}s`
+  }
+  console.log(`\n${'═'.repeat(60)}`)
+  console.log(`  METRICS`)
+  console.log(`${'═'.repeat(60)}`)
+  console.log(`  Total time: ${fmtMs(totalMs)}`)
+  console.log(``)
+  for (const m of [m1, m2, m3, m4]) {
+    console.log(`  ${m.name}  (${fmtMs(m.durationMs)})`)
+    for (const t of m.evmTxs) {
+      console.log(`    [EVM] ${t.label}`)
+      console.log(`          gas: ${t.gasUsed.toLocaleString()}  price: ${ethers.formatUnits(t.gasPrice, 'gwei')} gwei  cost: ${t.costEth} ETH`)
+    }
+    for (const t of m.tronTxs) {
+      const energyFeetrx = (t.energyFee / 1_000_000).toFixed(6)
+      const netFeetrx    = (t.netFee    / 1_000_000).toFixed(6)
+      const bwFeeSun     = t.netFee - t.energyFee
+      const bwFeeTrx     = (bwFeeSun / 1_000_000).toFixed(6)
+      const bwAmount     = Math.round(bwFeeSun / 1_000)
+      console.log(`    [TRX] ${t.label}`)
+      console.log(`          energy: ${t.energyUsed.toLocaleString()}  energyFee: ${energyFeetrx} TRX`)
+      console.log(`          bandwidth: ${bwAmount} units  bandwidthFee: ${bwFeeTrx} TRX  totalFee: ${netFeetrx} TRX`)
+    }
+  }
   console.log(`${'═'.repeat(60)}\n`)
 }
 
