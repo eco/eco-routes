@@ -62,9 +62,6 @@ const EVM_CHAIN_NAMES: Record<number, string> = {
 const REWARD_AMOUNT = 100_000n  // 0.1 USDC  (6 decimals)
 const ROUTE_AMOUNT  = 100_000n  // 0.1 USDT  (6 decimals)
 
-/** Recipient of the USDT transfer on Tron (hex20) */
-const TRON_RECIPIENT_HEX20 = '0xffe05fc55f42a9ae9eb97731c1ca1e0aa9030fde' // TZJA6m9Jy9FGhhs7wFffag8dAYsEZdQ7Xh
-
 const TRON_EXPLORER = 'https://tronscan.org/#/transaction'
 
 // ─── Pricing assumptions (for USD cost estimates) ─────────────────────────────
@@ -270,6 +267,7 @@ async function createIntentOnEvm(
   tronUsdtHex: string,
   tronChainId: number,
   chainName: string,
+  tronRecipient: string,
 ): Promise<{ intentHash: string; routeHash: string; salt: string; deadline: number; txHash: string; metrics: StepMetrics }> {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`STEP 1 — Approve USDC + PublishAndFund on ${chainName}`)
@@ -283,7 +281,7 @@ async function createIntentOnEvm(
   const salt     = ethers.keccak256(ethers.toUtf8Bytes(`eco-polymer-${Date.now()}`))
   const creator  = wallet.address.toLowerCase()
 
-  const transferData = TRANSFER_IFACE.encodeFunctionData('transfer', [TRON_RECIPIENT_HEX20, ROUTE_AMOUNT])
+  const transferData = TRANSFER_IFACE.encodeFunctionData('transfer', [tronRecipient, ROUTE_AMOUNT])
 
   const route = {
     salt,
@@ -305,7 +303,7 @@ async function createIntentOnEvm(
   console.log(`  Wallet:   ${wallet.address}`)
   console.log(`  Deadline: ${new Date(deadline * 1000).toISOString()}`)
   console.log(`  Reward:   0.1 USDC locked on ${chainName}`)
-  console.log(`  Want:     0.1 USDT → TZJA6m9Jy9FGhhs7wFffag8dAYsEZdQ7Xh on Tron`)
+  console.log(`  Want:     0.1 USDT → ${tronRecipient} on Tron`)
 
   console.log(`  Approving 0.1 USDC to portal...`)
   const usdc = new ethers.Contract(evmUsdcAddr, ERC20_ABI, wallet)
@@ -365,6 +363,7 @@ async function fulfillAndProveOnTron(
   salt: string,
   deadline: number,
   creatorHex: string,
+  tronRecipient: string,
 ): Promise<{ txid: string; blockNumber: number; globalLogIndex: number; recipientSlotNew: boolean; metrics: StepMetrics }> {
   console.log(`\n${'─'.repeat(60)}`)
   console.log(`STEP 2 — Approve USDT + FulfillAndProve on Tron`)
@@ -376,14 +375,14 @@ async function fulfillAndProveOnTron(
   const abiCoder  = ethers.AbiCoder.defaultAbiCoder()
   const tronUsdtB58 = tw.address.fromHex('41' + tronUsdtHex.slice(2)) as string
 
-  const recipientBalance = await tronUsdtBalanceOf(tw, tronUsdtB58, TRON_RECIPIENT_HEX20)
+  const recipientBalance = await tronUsdtBalanceOf(tw, tronUsdtB58, tronRecipient)
   const recipientSlotNew = recipientBalance === 0n
   console.log(`  Recipient USDT balance: ${recipientBalance} → slot ${recipientSlotNew ? 'NEW' : 'existing'}`)
 
   const deployerAddr  = tw.address.fromPrivateKey(tw.defaultPrivateKey as string) as string
   const deployerHex20 = '0x' + (tw.address.toHex(deployerAddr) as string).slice(2)
 
-  const transferData = TRANSFER_IFACE.encodeFunctionData('transfer', [TRON_RECIPIENT_HEX20, ROUTE_AMOUNT])
+  const transferData = TRANSFER_IFACE.encodeFunctionData('transfer', [tronRecipient, ROUTE_AMOUNT])
 
   const route = {
     salt,
@@ -668,9 +667,10 @@ async function main() {
   // uses a different registry ID — override with POLYMER_SRC_CHAIN_ID if needed.
   const polymerSrcChainId = parseInt(process.env.POLYMER_SRC_CHAIN_ID ?? String(tronChainId), 10)
 
-  const chainName = EVM_CHAIN_NAMES[evmChainId] ?? `chain-${evmChainId}`
-  const explorer  = evmExplorer(evmChainIdBig)
-  const creator   = wallet.address.toLowerCase()
+  const chainName    = EVM_CHAIN_NAMES[evmChainId] ?? `chain-${evmChainId}`
+  const explorer     = evmExplorer(evmChainIdBig)
+  const creator      = wallet.address.toLowerCase()
+  const tronRecipient = creator  // deployer receives USDT on Tron (same 20-byte key)
 
   // Resolve Tron portal hex20 (accept either hex20 or base58 via env)
   let tronPortalHex = process.env.TRON_PORTAL_HEX20 ?? ''
@@ -689,7 +689,7 @@ async function main() {
   console.log(`\n${'═'.repeat(60)}`)
   console.log(`  EVM → Tron  |  Polymer Prover  |  ${chainName} → Tron`)
   console.log(`  Reward:  0.1 USDC locked on ${chainName}`)
-  console.log(`  Want:    0.1 USDT → TZJA6m9Jy9FGhhs7wFffag8dAYsEZdQ7Xh on Tron`)
+  console.log(`  Want:    0.1 USDT → ${tronRecipient} on Tron`)
   console.log(`  Wallet:  ${wallet.address}`)
   console.log(`${'═'.repeat(60)}`)
 
@@ -699,7 +699,7 @@ async function main() {
   const { intentHash, routeHash, salt, deadline, txHash: createTx, metrics: m1 } =
     await createIntentOnEvm(
       wallet, evmPortal, evmPolymerProver, evmUsdcAddr,
-      tronPortalHex, tronUsdtHex, tronChainId, chainName,
+      tronPortalHex, tronUsdtHex, tronChainId, chainName, tronRecipient,
     )
 
   // ── Step 2 ──
@@ -707,7 +707,7 @@ async function main() {
     await fulfillAndProveOnTron(
       tw, tronPortalB58, tronPortalHex, tronProverHex,
       tronUsdtHex, evmPolymerProver, evmUsdcAddr, evmChainId,
-      intentHash, salt, deadline, creator,
+      intentHash, salt, deadline, creator, tronRecipient,
     )
 
   // ── Step 3 ──
