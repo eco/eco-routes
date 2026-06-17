@@ -63,6 +63,17 @@ const ROUTE_AMOUNT  = 100_000n  // 0.1 USDC  (6 decimals) — transferred on Bas
 
 const TRON_EXPLORER = 'https://tronscan.org/#/transaction'
 
+// ─── Pricing assumptions (for USD cost estimates) ─────────────────────────────
+const TRX_USD            = 0.32          // TRX price in USD
+const ETH_USD            = 2_000         // ETH price in USD
+const ENERGY_RENTAL      = 3.7 / 100_000 // TRX per energy unit (3.7 TRX per 100k)
+const POLYMER_API_USD    = 0.01          // Polymer proof API cost (fixed)
+// USDT base energies — factor affects only USDT calls; non-USDT energy is fixed
+const USDT_BASE_EXISTING = 7_673         // USDT op base energy, existing slot (balanceOf > 0)
+const USDT_BASE_NEW      = 22_664        // USDT op base energy, new slot (balanceOf = 0)
+// Tron→EVM USDT total base: approve(existing) + vault(always new) + solver receive(always existing)
+const TRON_EVM_USDT_BASE = USDT_BASE_EXISTING + USDT_BASE_NEW + USDT_BASE_EXISTING // 38_010
+
 /** Keccak256 topic[0] of IntentFulfilledFromSource(uint64,bytes) */
 const INTENT_FULFILLED_TOPIC = ethers.id('IntentFulfilledFromSource(uint64,bytes)')
 
@@ -175,22 +186,24 @@ async function tronSendAndWait(
 ): Promise<{ txid: string; info: any }> {
   const result = await tw.transactionBuilder.triggerSmartContract(
     contractB58, funcSig,
-    { feeLimit: 1_000_000_000, callValue, rawParameter },
+    { feeLimit: 500_000_000, callValue, rawParameter },
     [],
   )
   if (!result.result?.result) throw new Error(`triggerSmartContract failed: ${JSON.stringify(result)}`)
   const signed    = await tw.trx.sign(result.transaction)
   const broadcast = await tw.trx.sendRawTransaction(signed)
   if (!broadcast.result) throw new Error(`Broadcast failed: ${JSON.stringify(broadcast)}`)
+  const txid = broadcast.txid ?? (broadcast as any).transaction?.txID
+  if (!txid) throw new Error(`No txid in broadcast response: ${JSON.stringify(broadcast)}`)
   for (let i = 0; i < 60; i++) {
-    await sleep(3000)
-    const info: any = await tw.trx.getTransactionInfo(broadcast.txid)
+    await sleep(5000)
+    const info: any = await tw.trx.getTransactionInfo(txid)
     if (info?.id) {
       if (info.receipt?.result !== 'SUCCESS') throw new Error(`Tx reverted: ${JSON.stringify(info)}`)
-      return { txid: broadcast.txid, info }
+      return { txid, info }
     }
   }
-  throw new Error(`Timed out waiting for ${broadcast.txid}`)
+  throw new Error(`Timed out waiting for ${txid}`)
 }
 
 // ─── Step 1: Create and fund intent on Tron ───────────────────────────────────
@@ -272,11 +285,13 @@ async function createIntentOnTron(
   console.log(`  intentHash: ${intentHash}`)
 
   // Approve USDT to portal
-  console.log(`  Approving 0.1 USDT to Tron portal...`)
-  const { info: approveInfo } = await tronSendAndWait(
+  console.log(`  Approving USDT to Tron portal...`)
+  const { txid: approveTxid, info: approveInfo } = await tronSendAndWait(
     tw, tronUsdtB58, 'approve(address,uint256)',
-    new ethers.Interface(['function approve(address,uint256)']).encodeFunctionData('approve', [tronPortalHex, REWARD_AMOUNT]).slice(10),
+    new ethers.Interface(['function approve(address,uint256)']).encodeFunctionData('approve', [tronPortalHex, REWARD_AMOUNT + 1n]).slice(10),
   )
+  console.log(`  Approve txid: ${approveTxid}`)
+  console.log(`  Approve receipt result: ${approveInfo.receipt?.result}`)
   metrics.tronTxs.push({
     label: 'approve USDT',
     energyUsed: approveInfo.receipt?.energy_usage_total ?? 0,
@@ -285,13 +300,35 @@ async function createIntentOnTron(
     bandwidthUsed: approveInfo.receipt?.net_usage ?? 0,
   })
 
-  // PublishAndFund on Tron
-  console.log(`  Sending publishAndFund on Tron...`)
-  const intent     = { destination: evmChainId, route, reward }
-  const calldata   = PUBLISH_AND_FUND_IFACE.encodeFunctionData('publishAndFund', [intent, false])
-  const { txid, info: fundInfo } = await tronSendAndWait(
-    tw, tronPortalB58, PUBLISH_AND_FUND_SIG, calldata.slice(10),
+  // Verify on-chain allowance before proceeding — catches phantom txid scenarios
+  // where sendRawTransaction reported success but the TX never landed.
+  console.log(`  Verifying on-chain allowance...`)
+  const allowanceResult: any = await (tw.transactionBuilder as any).triggerConstantContract(
+    tronUsdtB58, 'allowance(address,address)',
+    { rawParameter: abiCoder.encode(['address', 'address'], [deployerHex20, tronPortalHex]).slice(2) },
+    [],
+    deployerAddr,
   )
+  const allowanceHex = allowanceResult?.constant_result?.[0] ?? '0'
+  const onChainAllowance = BigInt('0x' + (allowanceHex || '0'))
+  console.log(`  On-chain allowance: ${onChainAllowance} (need ${REWARD_AMOUNT})`)
+  if (onChainAllowance < REWARD_AMOUNT) {
+    throw new Error(
+      `Approve TX ${approveTxid} confirmed but allowance is ${onChainAllowance}, ` +
+      `expected >= ${REWARD_AMOUNT}. TX may not have landed on-chain.`,
+    )
+  }
+  // TronGrid is load-balanced — the node that confirmed the approve may differ from
+  // the one that simulates publishAndFund. Wait ~3 blocks so all nodes catch up.
+  console.log(`  Allowance confirmed. Waiting for TronGrid node sync (~9s)...`)
+  await sleep(9_000)
+
+  // PublishAndFund on Tron — retry on CONTRACT_VALIDATE_ERROR in case a lagging
+  // TronGrid node still simulates against pre-approve state.
+  console.log(`  Sending publishAndFund on Tron...`)
+  const intent   = { destination: evmChainId, route, reward }
+  const calldata = PUBLISH_AND_FUND_IFACE.encodeFunctionData('publishAndFund', [intent, false])
+  const { txid, info: fundInfo } = await tronSendAndWait(tw, tronPortalB58, PUBLISH_AND_FUND_SIG, calldata.slice(10))
   metrics.tronTxs.push({
     label: 'publishAndFund',
     energyUsed: fundInfo.receipt?.energy_usage_total ?? 0,
@@ -678,11 +715,15 @@ async function main() {
   console.log(`  Total time: ${fmtMs(totalMs)}`)
   console.log(``)
 
+  let totalUsd = 0
+
   for (const m of [m1, m2, m3, m4, m5]) {
     console.log(`  ${m.name}  (${fmtMs(m.durationMs)})`)
     for (const t of m.evmTxs) {
+      const usd = parseFloat(t.costEth) * ETH_USD
+      totalUsd += usd
       console.log(`    [EVM] ${t.label}`)
-      console.log(`          gas: ${t.gasUsed.toLocaleString()}  price: ${ethers.formatUnits(t.gasPrice, 'gwei')} gwei  cost: ${t.costEth} ETH`)
+      console.log(`          gas: ${t.gasUsed.toLocaleString()}  price: ${ethers.formatUnits(t.gasPrice, 'gwei')} gwei  cost: ${t.costEth} ETH  ≈ $${usd.toFixed(4)}`)
     }
     for (const t of m.tronTxs) {
       const energyFeetrx    = (t.energyFee / 1_000_000).toFixed(6)
@@ -690,10 +731,49 @@ async function main() {
       const bwFeeSun        = t.netFee - t.energyFee
       const bwFeeTrx        = (bwFeeSun / 1_000_000).toFixed(6)
       const bwAmount        = Math.round(bwFeeSun / 1_000)
+      const rentalTrx       = t.energyUsed * ENERGY_RENTAL
+      const usd             = (rentalTrx + bwFeeSun / 1_000_000) * TRX_USD
+      totalUsd += usd
       console.log(`    [TRX] ${t.label}`)
-      console.log(`          energy: ${t.energyUsed.toLocaleString()}  energyFee: ${energyFeetrx} TRX`)
-      console.log(`          bandwidth: ${bwAmount} units  bandwidthFee: ${bwFeeTrx} TRX  totalFee: ${netFeetrx} TRX`)
+      console.log(`          energy: ${t.energyUsed.toLocaleString()}  energyFee: ${energyFeetrx} TRX  rental: ${rentalTrx.toFixed(4)} TRX`)
+      console.log(`          bandwidth: ${bwAmount} units  bandwidthFee: ${bwFeeTrx} TRX  totalFee: ${netFeetrx} TRX  ≈ $${usd.toFixed(4)}`)
     }
+  }
+  totalUsd += POLYMER_API_USD
+
+  console.log(``)
+  console.log(`  Polymer API fee:       $${POLYMER_API_USD.toFixed(2)}`)
+  console.log(`  Total cost (rental):   $${totalUsd.toFixed(4)}`)
+  console.log(`${'═'.repeat(60)}`)
+
+  // ─── Cost range analysis ──────────────────────────────────────────────────────
+  // No variable slots: approve=existing, vault=always new, solver receive=always existing
+  // validate() has no USDT ops — its energy is entirely in fixedNonUsdt
+  const tronTxsAll     = [...m1.tronTxs, ...m4.tronTxs, ...m5.tronTxs]
+  const detectedFactor = tronTxsAll[0].energyUsed / USDT_BASE_EXISTING - 1  // from approve
+  const totalObsEnergy = tronTxsAll.reduce((s, t) => s + t.energyUsed, 0)
+  const totalObsBwSun  = tronTxsAll.reduce((s, t) => s + (t.netFee - t.energyFee), 0)
+
+  const fixedNonUsdt = totalObsEnergy - Math.round(TRON_EVM_USDT_BASE * (1 + detectedFactor))
+
+  const calcCost = (f: number): number => {
+    const energy = fixedNonUsdt + Math.round(TRON_EVM_USDT_BASE * (1 + f))
+    return (energy * ENERGY_RENTAL + totalObsBwSun / 1_000_000) * TRX_USD + POLYMER_API_USD
+  }
+
+  console.log(`\n${'═'.repeat(60)}`)
+  console.log(`  COST RANGE`)
+  console.log(`  This run: factor ${detectedFactor.toFixed(2)} (max 3.4) · all slots fixed`)
+  console.log(`  Assumptions: rental 3.7 TRX/100k · approval always existing · vault always new`)
+  console.log(`    · solver receive always existing · bandwidth 1 TRX/1,000 · Polymer API $0.01`)
+  console.log(`    · TRX $${TRX_USD} · ETH $${ETH_USD}`)
+  const atBest  = detectedFactor <= 0.05
+  const atWorst = Math.abs(detectedFactor - 3.4) < 0.05
+  console.log(`${'═'.repeat(60)}`)
+  console.log(`  Best  (factor 0.0):  $${calcCost(0).toFixed(2)}${atBest ? '  ← this run' : ''}`)
+  console.log(`  Worst (factor 3.4):  $${calcCost(3.4).toFixed(2)}${atWorst ? '  ← this run' : ''}`)
+  if (!atBest && !atWorst) {
+    console.log(`  This run (factor ${detectedFactor.toFixed(2)}):  $${calcCost(detectedFactor).toFixed(2)}  ← this run`)
   }
   console.log(`${'═'.repeat(60)}\n`)
 }
