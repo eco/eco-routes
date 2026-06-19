@@ -21,7 +21,7 @@
  *   POLL_TIMEOUT_MIN      (default: 60)  — minutes before giving up
  *
  * Chain IDs are detected automatically from the RPC endpoints at startup.
- * EIDs are resolved from docs/lzDeployments.json using those chain IDs.
+ * EIDs are resolved from lzdeployconfigs.json using those chain IDs.
  * Token addresses are resolved from the hardcoded maps below.
  *
  * Usage:
@@ -45,6 +45,8 @@ const EVM_USDC_BY_CHAIN: Record<number, string> = {
   137:      '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // Polygon
   8453:     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Base
   42161:    '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Arbitrum One
+  999:      '0xb88339CB7199b77E23DB6E890353E22632Ba630f', // HyperEVM (USDC)
+  9745:     '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', // Plasma (USDT0)
   84532:    '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia
   11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Ethereum Sepolia
 }
@@ -62,26 +64,24 @@ const EVM_CHAIN_NAMES: Record<number, string> = {
   137:      'Polygon',
   8453:     'Base',
   42161:    'Arbitrum',
+  999:      'HyperEVM',
+  9745:     'Plasma',
   84532:    'Base Sepolia',
   11155111: 'Ethereum Sepolia',
 }
 
 // ─── LZ EID resolution ────────────────────────────────────────────────────────
 
-function loadLzDeployments(): any {
-  const p = path.join(__dirname, '../..', 'docs', 'lzDeployments.json')
+function loadDeployConfigs(): any {
+  const p = path.join(__dirname, 'lzdeployconfigs.json')
   return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
-function eidFromNativeChainId(nativeChainId: number): number {
-  const data = loadLzDeployments()
-  for (const key of Object.keys(data)) {
-    const chain = data[key]
-    if (Number(chain.chainDetails?.nativeChainId) !== nativeChainId) continue
-    const dep = chain.deployments?.find((d: any) => d.version === 2)
-    if (dep?.eid) return Number(dep.eid)
-  }
-  throw new Error(`No LZ v2 EID found for native chain ID ${nativeChainId}`)
+function eidFromChainId(chainId: number): number {
+  const { mainnet, testnet } = loadDeployConfigs()
+  const cfg = [...mainnet, ...testnet].find((c: any) => Number(c.chainId) === chainId)
+  if (!cfg?.lzEid) throw new Error(`No lzEid found for chain ID ${chainId} in lzdeployconfigs.json`)
+  return Number(cfg.lzEid)
 }
 
 // Tron chain ID inferred from the RPC host — no on-chain query needed
@@ -173,6 +173,8 @@ function getEvmExplorer(chainId: bigint): string {
     '137':   'https://polygonscan.com',
     '8453':  'https://basescan.org',
     '42161': 'https://arbiscan.io',
+    '999':   'https://hyperevmscan.io',
+    '9745':  'https://plasmascan.to',
   }
   return explorers[chainId.toString()] ?? 'https://etherscan.io'
 }
@@ -505,8 +507,8 @@ async function main() {
   const tronChainId = tronChainIdFromRpcUrl(tronRpc)
   TRON_CHAIN_ID     = tronChainId
 
-  // Resolve LZ EIDs from lzDeployments.json
-  const evmEid = BigInt(eidFromNativeChainId(evmChainId))
+  // Resolve LZ EIDs from lzdeployconfigs.json
+  const evmEid = BigInt(eidFromChainId(evmChainId))
 
   // Resolve token addresses from the hardcoded maps
   const evmUsdcAddr = EVM_USDC_BY_CHAIN[evmChainId]
