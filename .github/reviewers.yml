@@ -1,0 +1,19 @@
+reviewers:
+  defaults:
+    - repository-owners
+  groups:
+    repository-owners:
+      - carlosfebres
+      - re1ro
+      - nknavkal
+      - fish-sammy
+files:
+  '**':
+    - repository-owners
+options:
+  ignore_draft: true
+  ignored_keywords:
+    - DO NOT REVIEW
+  enable_group_assignment: false
+  number_of_reviewers: 1
+  last_files_match_only: false

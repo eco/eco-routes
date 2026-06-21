@@ -72,4 +72,11 @@ interface ILayerZeroEndpointV2 {
      * @param delegate Address of the delegate
      */
     function setDelegate(address delegate) external;
+
+    /**
+     * @notice Returns the current delegate for an OApp
+     * @param oapp Address of the OApp
+     * @return Address of the current delegate
+     */
+    function delegates(address oapp) external view returns (address);
 }
