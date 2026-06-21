@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ILayerZeroReceiver} from "../interfaces/layerzero/ILayerZeroReceiver.sol";
 import {ILayerZeroEndpointV2} from "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
 import {MessageBridgeProver} from "./MessageBridgeProver.sol";
@@ -12,20 +13,28 @@ import {Semver} from "../libs/Semver.sol";
  * @dev Processes proof messages from LayerZero endpoint and records proven intents
  */
 contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
+    using SafeCast for uint256;
     /**
      * @notice Struct for unpacked data from _data parameter
      * @dev Contains fields decoded from the _data parameter
      */
     struct UnpackedData {
         bytes32 sourceChainProver; // Address of prover on source chain
-        bytes options; // LayerZero message options
-        uint256 gasLimit; // Gas limit for execution
+        uint128 gasLimit; // Gas limit for execution
     }
 
     /**
      * @notice Constant indicating this contract uses LayerZero for proving
      */
     string public constant PROOF_TYPE = "LayerZero";
+
+    /**
+     * @notice Additional gas allocated per intent in the batch.
+     * @dev Derived from worst-case measured cost of a cold SSTORE + event emission
+     *      in _processIntentProofs (~25k measured), doubled for safety margin.
+     *      The total gas floor for a batch is MIN_GAS_LIMIT + n * GAS_PER_INTENT.
+     */
+    uint256 public constant GAS_PER_INTENT = 50_000;
 
     /**
      * @notice Address of local LayerZero endpoint
@@ -43,10 +52,15 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     error DelegateCannotBeZeroAddress();
 
     /**
-     * @notice Invalid executor address
-     * @param executor The invalid executor address
+     * @notice Caller is not the current delegate
      */
-    error InvalidExecutor(address executor);
+    error NotDelegate();
+
+    /**
+     * @notice Emitted when delegation is permanently revoked
+     * @param delegate The address that was the delegate before revocation
+     */
+    event DelegationRevoked(address indexed delegate);
 
     /**
      * @param endpoint Address of local LayerZero endpoint
@@ -71,6 +85,24 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         // The delegate is authorized to configure LayerZero settings on behalf of this contract
         // This includes setting configs, managing paths, and other administrative functions
         ILayerZeroEndpointV2(endpoint).setDelegate(delegate);
+    }
+
+    /**
+     * @notice Permanently revokes the endpoint delegate by setting it to address(this).
+     * @dev Since this contract cannot send external transactions, setting the delegate
+     *      to address(this) makes all privileged endpoint actions (setConfig, setSendLibrary,
+     *      skip, etc.) permanently uncallable. Can only be called by the current delegate.
+     *      This action is irreversible.
+     */
+    function revokeDelegation() external {
+        if (
+            msg.sender !=
+            ILayerZeroEndpointV2(ENDPOINT).delegates(address(this))
+        ) {
+            revert NotDelegate();
+        }
+        ILayerZeroEndpointV2(ENDPOINT).setDelegate(address(this));
+        emit DelegationRevoked(msg.sender);
     }
 
     /**
@@ -177,19 +209,18 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
     /**
      * @notice Decodes the raw cross-chain message data into a structured format
-     * @dev Parses ABI-encoded parameters into the UnpackedData struct and enforces minimum gas limit
+     * @dev Parses ABI-encoded parameters into the UnpackedData struct. The gas limit
+     *      is used as a caller-supplied floor; the actual gas used for the LZ message
+     *      is max(gasLimit, MIN_GAS_LIMIT + n * GAS_PER_INTENT) computed in
+     *      _formatLayerZeroMessage, so underfunding is not possible regardless of the
+     *      value supplied here.
      * @param data Raw message data containing source chain information
-     * @return unpacked Structured representation of the decoded parameters with validated gas limit
+     * @return unpacked Structured representation of the decoded parameters
      */
     function _unpackData(
         bytes calldata data
-    ) internal view returns (UnpackedData memory unpacked) {
+    ) internal pure returns (UnpackedData memory unpacked) {
         unpacked = abi.decode(data, (UnpackedData));
-
-        // Enforce minimum gas limit to prevent underfunded transactions
-        if (unpacked.gasLimit < MIN_GAS_LIMIT) {
-            unpacked.gasLimit = MIN_GAS_LIMIT;
-        }
     }
 
     /**
@@ -230,7 +261,11 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
     /**
      * @notice Formats data for LayerZero message dispatch with encoded proofs
-     * @dev Prepares all parameters needed for the Endpoint send call
+     * @dev Prepares all parameters needed for the Endpoint send call.
+     *      The gas supplied to the destination executor is always at least
+     *      MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT, ensuring lzReceive
+     *      cannot OOG regardless of batch size. The caller's gasLimit is used
+     *      only if it exceeds this floor.
      * @param domainID Domain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param unpacked Struct containing decoded data from data parameter
@@ -242,7 +277,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         UnpackedData memory unpacked
     )
         internal
-        pure
+        view
         returns (ILayerZeroEndpointV2.MessagingParams memory params)
     {
         // Use domain ID directly as endpoint ID with overflow check
@@ -256,13 +291,30 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
 
         params.message = encodedProofs;
 
-        // Use provided options or create default options with gas limit
-        params.options = unpacked.options.length > 0
-            ? unpacked.options
-            : abi.encodePacked(
-                uint16(3), // option type for gas limit
-                unpacked.gasLimit // gas amount
-            );
+        // Compute a gas floor proportional to the number of intents in the batch.
+        // Each intent requires a cold SSTORE + event emission in _processIntentProofs.
+        // The 8-byte header is subtracted before dividing by 64 (bytes per intent pair).
+        uint256 numIntents = encodedProofs.length > 8
+            ? (encodedProofs.length - 8) / 64
+            : 0;
+        uint128 gasFloor = (MIN_GAS_LIMIT + numIntents * GAS_PER_INTENT).toUint128();
+        uint128 gasToUse = unpacked.gasLimit > gasFloor
+            ? unpacked.gasLimit
+            : gasFloor;
+
+        // LZ V2 type-3 executor option (22 bytes):
+        //   uint16(3)    — options format version (type 3)
+        //   uint8(1)     — worker ID: executor
+        //   uint16(17)   — option data length: 1 (option type byte) + 16 (uint128 gas)
+        //   uint8(1)     — executor option type: lzReceive gas
+        //   uint128(gas) — gas forwarded to lzReceive on the destination chain
+        params.options = abi.encodePacked(
+            uint16(3), // options version: type 3
+            uint8(1), // worker: executor
+            uint16(17), // data length: 1 + 16 bytes
+            uint8(1), // executor option: lzReceive
+            gasToUse // already uint128
+        );
         params.payInLzToken = false;
     }
 }

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Inbox} from "../Inbox.sol";
 import {Semver} from "../libs/Semver.sol";
-import {IProver} from "../interfaces/IProver.sol";
 import {ILocalProver} from "../interfaces/ILocalProver.sol";
 import {IPortal} from "../interfaces/IPortal.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
@@ -21,7 +19,6 @@ import {Intent, Route, Reward, TokenAmount} from "../types/Intent.sol";
  *      Uses ReentrancyGuard to prevent cross-intent reentrancy attacks.
  */
 contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
-    using SafeCast for uint256;
     using AddressConverter for bytes32;
     using SafeERC20 for IERC20;
 
@@ -53,12 +50,16 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     /**
      * @notice Fetches a ProofData from the Portal's claimants mapping
      * @dev For same-chain intents, proofs are created immediately upon fulfillment.
-     *      During flashFulfill, returns LocalProver as claimant to enable withdrawal.
-     *      After fulfill, returns actual solver from _actualClaimants mapping.
+     *      After fulfill, returns the actual solver read from Inbox(address(_PORTAL)).claimants(intentHash).
+     *      During an active flashFulfill call, returns LocalProver as claimant for the duration of
+     *      that call only (gated by _flashFulfillInProgress == intentHash) to allow vault withdrawal.
      *
-     *      Griefing protection: If Portal.claimants is set but _actualClaimants is not,
-     *      or if Portal.claimants contains an invalid EVM address, returns address(0)
-     *      to treat the intent as unfulfilled and allow refunds after deadline.
+     *      Griefing protection: two cases cause provenIntents to return ProofData(address(0), 0)
+     *      so the intent is treated as unfulfilled and refunds remain reachable after the deadline.
+     *      The first is when Portal.claimants is set to LocalProver itself, which happens if someone
+     *      calls Portal.fulfill with LocalProver as the claimant outside of flashFulfill.
+     *      The second is when Portal.claimants contains a non-EVM bytes32 value that fails
+     *      AddressConverter.isValidAddress.
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
@@ -219,7 +220,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             IERC20 rewardToken = IERC20(reward.tokens[i].token);
             uint256 balance = rewardToken.balanceOf(address(this));
             if (balance > 0) {
-                rewardToken.safeTransfer(claimantAddress, balance);
+                _transferToken(rewardToken, claimantAddress, balance);
             }
         }
 
@@ -233,6 +234,21 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         emit FlashFulfilled(intentHash, claimant, remainingNative);
 
         return results;
+    }
+
+    /**
+     * @notice Transfers ERC20 tokens to the claimant.
+     * @dev Virtual so subclasses can override for non-standard tokens (e.g. Tron USDT).
+     * @param token ERC20 token to transfer
+     * @param to Recipient address
+     * @param amount Amount to transfer
+     */
+    function _transferToken(
+        IERC20 token,
+        address to,
+        uint256 amount
+    ) internal virtual {
+        token.safeTransfer(to, amount);
     }
 
     /**

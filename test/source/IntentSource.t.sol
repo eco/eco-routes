@@ -4,7 +4,6 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-import {IVault} from "../../contracts/interfaces/IVault.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
@@ -629,7 +628,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         _addProof(intentHash, CHAIN_ID, claimant);
 
-        // Should revert due to malicious token preventing transfer
+        // withdraw reverts because SafeERC20 bubbles up BadERC20.TransferNotAllowed()
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
         intentSource.withdraw(intent.destination, routeHash, intent.reward);

@@ -6,6 +6,7 @@ import {Semver} from "./libs/Semver.sol";
 
 import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
+import {Vault} from "./vault/Vault.sol";
 
 /**
  * @title Portal
@@ -17,5 +18,5 @@ contract Portal is IntentSource, Inbox, Semver {
      * @notice Initializes the Portal contract
      * @dev Creates a unified entry point combining source and destination chain functionality
      */
-    constructor() {}
+    constructor() IntentSource(address(new Vault()), bytes1(0xff)) {}
 }
