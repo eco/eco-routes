@@ -34,6 +34,9 @@ You **must**:
   not a PR or a pushed branch.
 - Wait for explicit human confirmation before proceeding.
 
-Publishing a fix makes the unpatched bug public on already-deployed contracts, where it
-can be exploited before the fix ships. Treat private disclosure as a hard constraint.
-Full policy: [`SECURITY.md`](./SECURITY.md).
+The exposure happens at the **push** to a public remote, not at the merge — and a later
+revert or branch deletion does not undo it. So do not push the fix anywhere public, even
+a draft branch; a fix for deployed code is developed only in the private advisory fork.
+Publishing it makes the unpatched bug public on already-deployed contracts, where it can
+be exploited before the fix ships. Treat private disclosure as a hard constraint. Full
+policy: [`SECURITY.md`](./SECURITY.md).
