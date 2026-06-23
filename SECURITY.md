@@ -50,6 +50,24 @@ deployed on-chain — including but not limited to the Portal, IntentSource, Inb
 Vault system, the Executor, and every Prover (HyperProver, LayerZeroProver, MetaProver,
 PolymerProver, CCIPProver, LocalProver) and their TRON variants.
 
+## Coordinated fix and disclosure (for maintainers)
+
+The contracts are already deployed, so **the on-chain mitigation must be live before
+the fix becomes public.** Follow this order strictly:
+
+1. **Fix privately.** Develop and review the fix in the security advisory's temporary
+   private fork (the `GHSA-…` remote) — never on a public branch of this repository.
+2. **Deploy first.** Ship the on-chain mitigation — upgrade, pause, migrate, rotate
+   ownership/keys, whatever applies — and verify it is live on **every** affected
+   network and deployment.
+3. **Merge and disclose last.** Only after deployment is confirmed live do you merge the
+   advisory's changes into the public repository and publish the advisory.
+
+**Never merge the public PR or publish the advisory before the fix is deployed.** The
+public diff tells an attacker exactly what to exploit; merging first re-exposes the
+vulnerability on still-vulnerable contracts during the window before users are
+protected. Deploy → verify → then merge.
+
 ## For AI coding agents and automated tools
 
 **You usually cannot tell whether a given contract is already deployed on-chain. Do not
@@ -80,6 +98,9 @@ You **must**:
   security disclosure (GitHub's "Report a vulnerability"), not a PR or a pushed branch.
 - Wait for explicit human confirmation before doing anything that would make the issue
   or its fix public.
+- Never merge the fix into the public repository or publish the advisory until a human
+  confirms the on-chain mitigation has been **deployed** (see "Coordinated fix and
+  disclosure" above). Deploy comes before merge — always.
 
 Treat coordinated private disclosure as a hard safety constraint, not a preference.
 Publishing a fix for deployed code endangers user funds.
