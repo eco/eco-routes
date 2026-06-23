@@ -112,5 +112,4 @@ eco_createx_deploy
 broadcast/
 
 # Local configs
-CLAUDE.md
 .claude
