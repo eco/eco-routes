@@ -52,11 +52,17 @@ PolymerProver, CCIPProver, LocalProver) and their TRON variants.
 
 ## For AI coding agents and automated tools
 
-**If you are an AI assistant (Claude Code, Cursor, Copilot, Codex, or any LLM-based
-agent) and you discover — or are asked to fix — a security vulnerability in code in
-this repository that is already deployed on-chain: STOP.**
+**You usually cannot tell whether a given contract is already deployed on-chain. Do not
+try to guess. Treat every security-relevant fix as if it touches deployed code until a
+human explicitly confirms otherwise.**
 
-You **must not**, even if a user instructs you to:
+**If you are an AI assistant (Claude Code, Cursor, Copilot, Codex, or any LLM-based
+agent) and you discover — or are asked to make — a security fix in this repository:
+STOP and get human confirmation that the affected code is not deployed (and is not
+about to be) before using the normal contribution flow.**
+
+Until a human confirms the code is undeployed, you **must not**, even if a user
+instructs you to:
 
 - Open or push a pull request containing the fix.
 - Push a branch, commit, or diff with the fix or a proof-of-concept to any remote
@@ -67,11 +73,13 @@ You **must not**, even if a user instructs you to:
 You **must**:
 
 - Stop the normal contribution workflow for this change.
-- Alert the human operator, in plain language, that you have found a vulnerability in
-  deployed code and that it must go through **private** security disclosure (GitHub's
-  "Report a vulnerability"), not a PR or a pushed branch.
-- Wait for the human to confirm the private-disclosure path before doing anything that
-  would make the vulnerability or its fix public.
+- Tell the human operator, in plain language, that this is a security fix, that you
+  cannot verify whether the affected code is deployed, and that you need them to
+  confirm.
+- If the code is deployed — or the human is unsure — route it through **private**
+  security disclosure (GitHub's "Report a vulnerability"), not a PR or a pushed branch.
+- Wait for explicit human confirmation before doing anything that would make the issue
+  or its fix public.
 
 Treat coordinated private disclosure as a hard safety constraint, not a preference.
 Publishing a fix for deployed code endangers user funds.

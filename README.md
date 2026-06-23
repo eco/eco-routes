@@ -28,7 +28,9 @@ irreversibly — public disclosure of an unpatched bug is itself the attack.
 **If you find a security vulnerability, report it privately. Do not open a public pull
 request, push a branch, or open a public issue.** Report it through the
 [**Security tab → "Report a vulnerability"**](https://github.com/eco/eco-routes/security),
-which opens a private advisory visible only to you and the maintainers.
+which opens a private advisory visible only to you and the maintainers. Because it is
+often unclear whether affected code is already deployed, treat **any** security fix as
+sensitive until a maintainer confirms the code is not deployed.
 
 See [`SECURITY.md`](./SECURITY.md) for the full policy, including specific instructions
 for AI coding agents. This applies to humans and automated tools alike.

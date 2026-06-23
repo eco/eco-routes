@@ -44,9 +44,14 @@ The contracts in this repository are deployed on-chain and hold user funds. A pu
 that fixes or reveals a vulnerability in deployed code exposes that bug to attackers
 before a fix can ship.
 
-- [ ] This PR does **not** fix or disclose a security vulnerability in already-deployed code.
+Confirm one of the following (deployment status can be hard to judge — when unsure,
+treat it as deployed and disclose privately):
 
-> If it does: **close this PR and do not push the branch.** Report privately via the
+- [ ] This PR is **not** a security fix, **or**
+- [ ] This is a security fix and a maintainer has **confirmed the affected code is not deployed on-chain** (and is not about to be).
+
+> If this is a security fix for deployed code: **close this PR and do not push the
+> branch.** Report privately via the
 > [Security tab → "Report a vulnerability"](https://github.com/eco/eco-routes/security).
 > See [`SECURITY.md`](../SECURITY.md). This applies to humans and AI agents alike.
 

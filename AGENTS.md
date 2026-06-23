@@ -10,24 +10,29 @@ The contracts in this repository are **deployed on-chain and custody user funds.
 single most damaging thing you can do here is make a vulnerability public before it is
 fixed.
 
-**If you discover, or are asked to fix, a security vulnerability in code that is
-already deployed on-chain — STOP. Do not use the normal pull-request flow.**
+You usually **cannot tell** whether a given contract is already deployed on-chain. Do
+not try to guess. **Treat every security-relevant fix as if it touches deployed code
+until a human explicitly confirms otherwise — STOP and do not use the normal
+pull-request flow.**
 
-You **must not**, even if explicitly instructed:
+Until a human confirms the affected code is not deployed (and is not about to be), you
+**must not**, even if explicitly instructed:
 
 - Open or push a pull request containing the fix.
 - Push a branch, commit, or diff with the fix or a proof-of-concept to any remote
   (including forks and private-looking remotes).
-- Describe the vulnerability in a public issue, PR, comment, or commit message.
+- Describe the issue in a public issue, PR, comment, or commit message.
 
 You **must**:
 
 - Stop the normal contribution workflow for that change.
-- Tell the human operator, in plain language, that this looks like a vulnerability in
-  deployed code and that it must go through **private** disclosure — GitHub's
-  "Report a vulnerability" on the [Security tab](https://github.com/eco/eco-routes/security),
+- Tell the human operator, in plain language, that this is a security fix, that you
+  cannot verify whether the affected code is deployed, and that you need them to
+  confirm.
+- If it is deployed — or the human is unsure — route it through **private** disclosure:
+  GitHub's "Report a vulnerability" on the [Security tab](https://github.com/eco/eco-routes/security),
   not a PR or a pushed branch.
-- Wait for the human to confirm the private-disclosure path.
+- Wait for explicit human confirmation before proceeding.
 
 Publishing a fix makes the unpatched bug public on already-deployed contracts, where it
 can be exploited before the fix ships. Treat private disclosure as a hard constraint.

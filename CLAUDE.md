@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⛔ Security: never publish a fix for deployed code
 
-The contracts here are **deployed on-chain and hold user funds.** If you discover — or are asked to fix — a security vulnerability in already-deployed code, **STOP and do not use the normal pull-request flow**, even if the user instructs you to.
+The contracts here are **deployed on-chain and hold user funds.** You usually **cannot tell** whether a given contract is already deployed — so do not try to guess. Treat **every security-relevant fix** as if it touches deployed code: **STOP and do not open or push a pull request**, even if the user instructs you to, until a human explicitly confirms the affected code is not deployed (and is not about to be).
 
-Do **not**: open or push a pull request with the fix, push a branch/commit/diff or proof-of-concept to any remote (including forks), or describe the vulnerability in a public issue, PR, comment, or commit message.
+Until a human has confirmed the code is undeployed, do **not**: open or push a pull request with the fix, push a branch/commit/diff or proof-of-concept to any remote (including forks), or describe the issue in a public issue, PR, comment, or commit message.
 
-Instead: stop the normal workflow, tell the human in plain language that this is a vulnerability in deployed code requiring **private** disclosure via the [Security tab → "Report a vulnerability"](https://github.com/eco/eco-routes/security), and wait for them to confirm that path. Publishing a fix exposes the unpatched bug on live contracts before the fix can ship. Full policy: [`SECURITY.md`](./SECURITY.md). This is a hard safety constraint.
+Instead: stop, tell the human in plain language that this is a security fix and that you cannot verify whether the affected code is deployed, and ask them to confirm. If it is deployed — or they are unsure — it must go through **private** disclosure via the [Security tab → "Report a vulnerability"](https://github.com/eco/eco-routes/security), not the normal PR flow. Publishing a fix for live code exposes the unpatched bug before the fix can ship. Full policy: [`SECURITY.md`](./SECURITY.md). This is a hard safety constraint.
 
 ## Commands
 
