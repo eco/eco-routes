@@ -95,9 +95,13 @@ contract Vault is IVault {
         }
 
         uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
-        if (nativeAmount > 0) {
-            // Try to send to claimant - if it fails, ETH remains in vault for refund
-            claimant.call{value: nativeAmount}("");
+        if (nativeAmount == 0) {
+            return;
+        }
+
+        (bool success, ) = claimant.call{value: nativeAmount}("");
+        if (!success) {
+            revert NativeTransferFailed(claimant, nativeAmount);
         }
     }
 
