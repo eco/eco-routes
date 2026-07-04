@@ -81,11 +81,11 @@ interface IInbox {
     error IntentNotFulfilled(bytes32 intentHash);
 
     /**
-     * @notice The intent has NOTHING to fulfill — both `Route.minOut` and `Reward.tokens` are empty.
+     * @notice The intent has NOTHING to fulfill — both `Route.minTokens` and `Reward.tokens` are empty.
      * @dev Such an intent asks a solver to deliver nothing for no reward, so no honest fulfill exists; the
      *      only legitimate way to run its committed `runtime(payload)` is the owner-gated
      *      {IIntentSource-executeAsOwner}. Rejecting it in {IInbox-fulfill} closes the deposit-address
-     *      griefing vector (H2): a third party front-runs an owner-cook (empty-reward, empty-minOut)
+     *      griefing vector (H2): a third party front-runs an owner-cook (empty-reward, empty-minTokens)
      *      intent to record a permanent fulfillment on the prover, which would lock the Account against
      *      re-fulfill/refund/executeAsOwner — bricking a REUSABLE deposit address for every later deposit.
      */

@@ -53,6 +53,13 @@ contract InboxAdvancedTest is BaseTest {
         vm.stopPrank();
     }
 
+    /// @notice A single zero-value reward leg so a delivery-via-calls intent is not "nothing to fulfill"
+    ///         (H2: {IInbox-NothingToFulfill} rejects an empty-minTokens AND empty-reward intent).
+    function _rw0() internal view returns (RewardToken[] memory rw) {
+        rw = new RewardToken[](1);
+        rw[0] = RewardToken({token: address(tokenA), rate: 0, flat: 0});
+    }
+
     // ===== MESSAGE ROUTING TESTS =====
 
     function testMessageRoutingWithMultipleRecipients() public {
@@ -104,7 +111,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0),
+                tokens: _rw0(),
                 hooks: ""
             })
         });
@@ -164,7 +171,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0),
+                tokens: _rw0(),
                 hooks: ""
             })
         });
@@ -229,7 +236,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0),
+                tokens: _rw0(),
                 hooks: ""
             })
         });
@@ -478,7 +485,7 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0),
+                tokens: _rw0(),
                 hooks: ""
             })
         });
@@ -610,7 +617,7 @@ contract InboxAdvancedTest is BaseTest {
                     deadline: uint64(expiry),
                     keeper: keeper,
                     prover: address(prover),
-                    tokens: new RewardToken[](0),
+                    tokens: _rw0(),
                     hooks: ""
                 })
             });
