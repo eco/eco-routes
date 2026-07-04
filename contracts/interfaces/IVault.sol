@@ -21,24 +21,32 @@ interface IVault {
     error NativeTransferFailed(address to, uint256 amount);
 
     /**
-     * @notice Funds the vault with reward tokens and native currency
-     * @param reward The reward structure containing tokens and amounts
+     * @notice Funds the vault with reward legs
+     * @param reward The reward structure containing the legs
+     * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
      * @param funder Address providing the funding
      * @param permit Optional permit contract for token transfers
-     * @return fullyFunded True if vault was successfully fully funded
+     * @return fullyFunded True if every leg reached its target
      */
     function fundFor(
         Reward calldata reward,
+        uint256[] calldata targets,
         address funder,
         IPermit permit
     ) external payable returns (bool fullyFunded);
 
     /**
-     * @notice Withdraws rewards from the vault to the claimant
+     * @notice Withdraws the owed reward to the claimant and sweeps the residual to the creator
+     * @dev Consults `reward.prover.previewRelease(reward, fulfilled)` for the per-leg amounts
      * @param reward The reward structure to withdraw
-     * @param claimant Address that will receive the rewards
+     * @param claimant Address that will receive the owed reward
+     * @param fulfilled Core-verified per-leg delivered amounts (paired prefix)
      */
-    function withdraw(Reward calldata reward, address claimant) external;
+    function withdraw(
+        Reward calldata reward,
+        address claimant,
+        uint256[] calldata fulfilled
+    ) external;
 
     /**
      * @notice Refunds rewards to a specified address

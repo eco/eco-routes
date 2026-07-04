@@ -19,4 +19,15 @@ contract Portal is IntentSource, Inbox, Semver {
      * @dev Creates a unified entry point combining source and destination chain functionality
      */
     constructor() IntentSource(address(new Vault()), bytes1(0xff)) {}
+
+    /**
+     * @notice Deterministic address of the intent's per-intent Vault (composition-root wiring).
+     * @dev Lets the destination-side {Inbox} address the same CREATE2 vault the source-side
+     *      {IntentSource} escrow uses, so unconsumed solver input lands with the intent.
+     */
+    function _predictVault(
+        bytes32 intentHash
+    ) internal view override returns (address) {
+        return _getVault(intentHash);
+    }
 }

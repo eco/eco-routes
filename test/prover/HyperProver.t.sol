@@ -2,8 +2,8 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {HyperProver} from "../../contracts/prover/HyperProver.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {HyperPolicy} from "../../contracts/prover/HyperPolicy.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
@@ -13,7 +13,7 @@ contract HyperProverTest is BaseTest {
     using AddressConverter for bytes32;
     using AddressConverter for address;
 
-    HyperProver internal hyperProver;
+    HyperPolicy internal hyperProver;
     TestMailbox internal mailbox;
 
     address internal whitelistedProver;
@@ -75,8 +75,8 @@ contract HyperProverTest is BaseTest {
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(whitelistedProver)));
 
-        // Deploy HyperProver
-        hyperProver = new HyperProver(
+        // Deploy HyperPolicy
+        hyperProver = new HyperPolicy(
             address(mailbox),
             address(portal),
             provers
@@ -101,7 +101,7 @@ contract HyperProverTest is BaseTest {
         bytes memory metadata,
         address hookAddr
     ) internal pure returns (bytes memory) {
-        HyperProver.UnpackedData memory unpacked = HyperProver.UnpackedData({
+        HyperPolicy.UnpackedData memory unpacked = HyperPolicy.UnpackedData({
             sourceChainProver: sourceChainProver,
             metadata: metadata,
             hookAddr: hookAddr
@@ -131,7 +131,7 @@ contract HyperProverTest is BaseTest {
     }
 
     function testImplementsIProverInterface() public view {
-        assertTrue(hyperProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(hyperProver.supportsInterface(type(IPolicy).interfaceId));
     }
 
     function testOnlyInboxCanCallProve() public {
@@ -186,7 +186,11 @@ contract HyperProverTest is BaseTest {
         _record(intentHashes, claimants);
 
         _expectEmit();
-        emit IProver.IntentProven(intentHash, claimant, uint64(block.chainid));
+        emit IPolicy.IntentProven(
+            intentHash,
+            uint64(block.chainid),
+            bytes32(uint256(uint160(claimant)))
+        );
 
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
@@ -229,10 +233,10 @@ contract HyperProverTest is BaseTest {
 
         // Check that all intents were proven
         for (uint256 i = 0; i < 3; i++) {
-            IProver.ProofData memory proof = hyperProver.provenIntents(
+            IPolicy.ProofData memory proof = hyperProver.provenIntents(
                 intentHashes[i]
             );
-            assertEq(proof.claimant, claimant);
+            assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         }
     }
 
@@ -304,10 +308,10 @@ contract HyperProverTest is BaseTest {
             messageBody
         );
 
-        IProver.ProofData memory proof = hyperProver.provenIntents(
+        IPolicy.ProofData memory proof = hyperProver.provenIntents(
             intentHashes[0]
         );
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destination, CHAIN_ID);
     }
 
@@ -342,7 +346,7 @@ contract HyperProverTest is BaseTest {
         // Manually create the encoded message with abi.encode to simulate mismatched arrays
         bytes memory messageBody = abi.encode(intentHashes, claimants);
 
-        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        vm.expectRevert(IPolicy.ArrayLengthMismatch.selector);
         vm.prank(address(mailbox));
         hyperProver.handle(
             1,
@@ -374,7 +378,7 @@ contract HyperProverTest is BaseTest {
 
         // Second call should emit IntentAlreadyProven event
         _expectEmit();
-        emit IProver.IntentAlreadyProven(intentHash);
+        emit IPolicy.IntentAlreadyProven(intentHash);
 
         vm.prank(address(mailbox));
         hyperProver.handle(
@@ -407,8 +411,8 @@ contract HyperProverTest is BaseTest {
         );
 
         // Verify intent is proven (with chain ID = 31337 from the prove call)
-        IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != address(0));
+        IPolicy.ProofData memory proof = hyperProver.provenIntents(intentHash);
+        assertTrue(proof.fulfillmentHash != bytes32(0));
         assertEq(proof.destination, uint96(block.chainid)); // 31337
 
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
@@ -423,7 +427,7 @@ contract HyperProverTest is BaseTest {
 
         // Verify proof was cleared
         proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.fulfillmentHash, bytes32(0));
     }
 
     function testChallengeIntentProofWithCorrectChain() public {
@@ -453,8 +457,8 @@ contract HyperProverTest is BaseTest {
         );
 
         // Verify intent is proven
-        IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != address(0));
+        IPolicy.ProofData memory proof = hyperProver.provenIntents(intentHash);
+        assertTrue(proof.fulfillmentHash != bytes32(0));
         assertEq(proof.destination, uint96(block.chainid));
 
         // Challenge with correct chain (destination matches proof) should do nothing
@@ -467,7 +471,7 @@ contract HyperProverTest is BaseTest {
 
         // Verify proof is still there
         proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
     }
 
     function testProvenIntentsStorage() public {
@@ -506,13 +510,13 @@ contract HyperProverTest is BaseTest {
         );
 
         // Now check the storage
-        IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        IPolicy.ProofData memory proof = hyperProver.provenIntents(intentHash);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destination, uint96(block.chainid));
     }
 
     function testSupportsInterface() public view {
-        assertTrue(hyperProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(hyperProver.supportsInterface(type(IPolicy).interfaceId));
         assertTrue(hyperProver.supportsInterface(0x01ffc9a7)); // ERC165
     }
 
@@ -593,7 +597,7 @@ contract HyperProverTest is BaseTest {
         // Create invalid message with wrong length (not multiple of 64)
         bytes memory invalidMessage = new bytes(63); // Should be multiple of 64
 
-        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        vm.expectRevert(IPolicy.ArrayLengthMismatch.selector);
         vm.prank(address(mailbox));
         hyperProver.handle(
             1,
@@ -623,10 +627,13 @@ contract HyperProverTest is BaseTest {
             proverData
         );
 
-        IProver.ProofData memory proof = hyperProver.provenIntents(
+        IPolicy.ProofData memory proof = hyperProver.provenIntents(
             intentHashes[0]
         );
-        assertEq(proof.claimant, nonEvmClaimant);
+        assertEq(
+            proof.fulfillmentHash,
+            bytes32(uint256(uint160(nonEvmClaimant)))
+        );
     }
 
     function _formatMessageWithChainId(

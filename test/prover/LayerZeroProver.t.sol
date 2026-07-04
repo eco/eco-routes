@@ -2,11 +2,11 @@
 pragma solidity ^0.8.26;
 
 import {BaseTest} from "../BaseTest.sol";
-import {LayerZeroProver} from "../../contracts/prover/LayerZeroProver.sol";
+import {LayerZeroPolicy} from "../../contracts/prover/LayerZeroPolicy.sol";
 import {ILayerZeroEndpointV2} from "../../contracts/interfaces/layerzero/ILayerZeroEndpointV2.sol";
 import {ILayerZeroReceiver} from "../../contracts/interfaces/layerzero/ILayerZeroReceiver.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(address => address) public delegates;
@@ -139,7 +139,7 @@ contract RecordingMockLayerZeroEndpoint {
 }
 
 contract LayerZeroProverTest is BaseTest {
-    LayerZeroProver public lzProver;
+    LayerZeroPolicy public lzProver;
     MockLayerZeroEndpoint public endpoint;
 
     uint256 constant SOURCE_CHAIN_ID = 10;
@@ -196,7 +196,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory trustedProvers = new bytes32[](1);
         trustedProvers[0] = SOURCE_PROVER;
 
-        lzProver = new LayerZeroProver(
+        lzProver = new LayerZeroPolicy(
             address(endpoint),
             address(this), // delegate
             address(portal),
@@ -209,7 +209,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32 sourceChainProver,
         uint128 gasLimit
     ) internal pure returns (bytes memory) {
-        LayerZeroProver.UnpackedData memory unpacked = LayerZeroProver
+        LayerZeroPolicy.UnpackedData memory unpacked = LayerZeroPolicy
             .UnpackedData({
                 sourceChainProver: sourceChainProver,
                 gasLimit: gasLimit
@@ -224,7 +224,7 @@ contract LayerZeroProverTest is BaseTest {
      *         claimants the test already constructed for each intent hash.
      */
     function _record(
-        LayerZeroProver p,
+        LayerZeroPolicy p,
         bytes32[] memory h,
         bytes32[] memory c
     ) internal {
@@ -313,10 +313,13 @@ contract LayerZeroProverTest is BaseTest {
         vm.prank(address(endpoint));
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
 
-        LayerZeroProver.ProofData memory proofData = lzProver.provenIntents(
+        LayerZeroPolicy.ProofData memory proofData = lzProver.provenIntents(
             intentHashes[0]
         );
-        assertEq(proofData.claimant, address(this));
+        assertEq(
+            proofData.fulfillmentHash,
+            bytes32(uint256(uint160(address(this))))
+        );
         assertEq(proofData.destination, SOURCE_CHAIN_ID);
     }
 
@@ -337,8 +340,8 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory trustedProvers = new bytes32[](1);
         trustedProvers[0] = SOURCE_PROVER;
 
-        vm.expectRevert(LayerZeroProver.EndpointCannotBeZeroAddress.selector);
-        new LayerZeroProver(
+        vm.expectRevert(LayerZeroPolicy.EndpointCannotBeZeroAddress.selector);
+        new LayerZeroPolicy(
             address(0),
             address(this), // delegate
             address(portal),
@@ -438,7 +441,7 @@ contract LayerZeroProverTest is BaseTest {
     }
 
     // ============ Challenge Intent Proof Tests ============
-    // Note: Comprehensive challenge tests are in MetaProver.t.sol
+    // Note: Comprehensive challenge tests are in MetaPolicy.t.sol
     // Keeping only LayerZero-specific challenge test
 
     function testChallengeIntentProofWithWrongChain() public {
@@ -476,23 +479,26 @@ contract LayerZeroProverTest is BaseTest {
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
 
         // Verify proof exists with wrong destination
-        LayerZeroProver.ProofData memory proofBefore = lzProver.provenIntents(
+        LayerZeroPolicy.ProofData memory proofBefore = lzProver.provenIntents(
             intentHash
         );
-        assertEq(proofBefore.claimant, address(this));
+        assertEq(
+            proofBefore.fulfillmentHash,
+            bytes32(uint256(uint160(address(this))))
+        );
         assertEq(proofBefore.destination, wrongDestination);
 
         // Challenge the proof with correct destination
         vm.expectEmit(true, true, true, true);
-        emit IProver.IntentProofInvalidated(intentHash);
+        emit IPolicy.IntentProofInvalidated(intentHash);
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
         // Verify proof was cleared
-        LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(
+        LayerZeroPolicy.ProofData memory proofAfter = lzProver.provenIntents(
             intentHash
         );
-        assertEq(proofAfter.claimant, address(0));
+        assertEq(proofAfter.fulfillmentHash, bytes32(0));
         assertEq(proofAfter.destination, 0);
     }
 
@@ -534,10 +540,13 @@ contract LayerZeroProverTest is BaseTest {
         lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
 
         // Verify proof exists with correct destination
-        LayerZeroProver.ProofData memory proofBefore = lzProver.provenIntents(
+        LayerZeroPolicy.ProofData memory proofBefore = lzProver.provenIntents(
             intentHash
         );
-        assertEq(proofBefore.claimant, address(this));
+        assertEq(
+            proofBefore.fulfillmentHash,
+            bytes32(uint256(uint160(address(this))))
+        );
         assertEq(proofBefore.destination, correctDestination);
 
         // Challenge the proof with correct destination (should do nothing)
@@ -548,10 +557,13 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         // Verify proof still exists
-        LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(
+        LayerZeroPolicy.ProofData memory proofAfter = lzProver.provenIntents(
             intentHash
         );
-        assertEq(proofAfter.claimant, address(this));
+        assertEq(
+            proofAfter.fulfillmentHash,
+            bytes32(uint256(uint160(address(this))))
+        );
         assertEq(proofAfter.destination, correctDestination);
     }
 
@@ -590,23 +602,23 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge should succeed for LayerZero-specific validation
         vm.expectEmit(true, true, true, true);
-        emit IProver.IntentProofInvalidated(intentHash);
+        emit IPolicy.IntentProofInvalidated(intentHash);
 
         lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
 
         // Verify proof was cleared
-        LayerZeroProver.ProofData memory proofAfter = lzProver.provenIntents(
+        LayerZeroPolicy.ProofData memory proofAfter = lzProver.provenIntents(
             intentHash
         );
-        assertEq(proofAfter.claimant, address(0));
+        assertEq(proofAfter.fulfillmentHash, bytes32(0));
         assertEq(proofAfter.destination, 0);
     }
 
     // Helper to import the event for testing
     event IntentProven(
         bytes32 indexed intentHash,
-        address indexed claimant,
-        uint64 destination
+        uint64 indexed destination,
+        bytes32 fulfillmentHash
     );
 
     // ── revokeDelegation ──────────────────────────────────────────────────────
@@ -614,7 +626,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_revokeDelegation_succeeds() public {
         // address(this) is the delegate set in setUp
         vm.expectEmit(true, false, false, false, address(lzProver));
-        emit LayerZeroProver.DelegationRevoked(address(this));
+        emit LayerZeroPolicy.DelegationRevoked(address(this));
 
         lzProver.revokeDelegation();
 
@@ -624,7 +636,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_revokeDelegation_revertsIfNotDelegate() public {
         address nonDelegate = makeAddr("nonDelegate");
         vm.prank(nonDelegate);
-        vm.expectRevert(LayerZeroProver.NotDelegate.selector);
+        vm.expectRevert(LayerZeroPolicy.NotDelegate.selector);
         lzProver.revokeDelegation();
     }
 
@@ -633,7 +645,7 @@ contract LayerZeroProverTest is BaseTest {
         lzProver.revokeDelegation();
 
         // Original delegate can no longer call it
-        vm.expectRevert(LayerZeroProver.NotDelegate.selector);
+        vm.expectRevert(LayerZeroPolicy.NotDelegate.selector);
         lzProver.revokeDelegation();
     }
 
@@ -686,12 +698,12 @@ contract LayerZeroProverTest is BaseTest {
     /// @dev Deploy a prover wired to a RecordingMockLayerZeroEndpoint.
     function _deployWithRecordingEndpoint()
         internal
-        returns (RecordingMockLayerZeroEndpoint recEndpoint, LayerZeroProver recProver)
+        returns (RecordingMockLayerZeroEndpoint recEndpoint, LayerZeroPolicy recProver)
     {
         recEndpoint = new RecordingMockLayerZeroEndpoint();
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = SOURCE_PROVER;
-        recProver = new LayerZeroProver(
+        recProver = new LayerZeroPolicy(
             address(recEndpoint),
             address(this), // delegate
             address(portal),
@@ -747,7 +759,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_dos_lzReceive_oogsWithLowGas() public {
         (
             RecordingMockLayerZeroEndpoint recEndpoint,
-            LayerZeroProver recProver
+            LayerZeroPolicy recProver
         ) = _deployWithRecordingEndpoint();
 
         // ── Nonce 1: wedge message delivered with insufficient gas ────────────
@@ -779,8 +791,8 @@ contract LayerZeroProverTest is BaseTest {
 
         assertFalse(success1, "lzReceive must OOG with insufficient gas");
         assertEq(
-            recProver.provenIntents(intentHashes1[0]).claimant,
-            address(0),
+            recProver.provenIntents(intentHashes1[0]).fulfillmentHash,
+            bytes32(0),
             "no proof should be stored after OOG delivery"
         );
 
@@ -817,8 +829,8 @@ contract LayerZeroProverTest is BaseTest {
         // The follow-up intent is unproven because the mock blocked delivery.
         // In production (real endpoint, unordered mode) this message would have been accepted.
         assertEq(
-            recProver.provenIntents(intentHashes2[0]).claimant,
-            address(0),
+            recProver.provenIntents(intentHashes2[0]).fulfillmentHash,
+            bytes32(0),
             "follow-up intent not proven in mock (ordered delivery rejected nonce 2)"
         );
     }
@@ -833,7 +845,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_fix_largeBatch_gasFloorPreventsWedge() public {
         (
             RecordingMockLayerZeroEndpoint recEndpoint,
-            LayerZeroProver recProver
+            LayerZeroPolicy recProver
         ) = _deployWithRecordingEndpoint();
 
         uint256 numIntents = 10;
@@ -900,8 +912,8 @@ contract LayerZeroProverTest is BaseTest {
         // All 10 proofs recorded.
         for (uint256 i = 0; i < numIntents; i++) {
             assertEq(
-                recProver.provenIntents(intentHashes[i]).claimant,
-                address(this),
+                recProver.provenIntents(intentHashes[i]).fulfillmentHash,
+                bytes32(uint256(uint160(address(this)))),
                 "proof must be stored"
             );
         }
@@ -941,7 +953,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_optionsEncoding_correctLzV2Format() public {
         (
             RecordingMockLayerZeroEndpoint recEndpoint,
-            LayerZeroProver recProver
+            LayerZeroPolicy recProver
         ) = _deployWithRecordingEndpoint();
 
         uint256 numIntents = 3;
@@ -999,7 +1011,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_gasLimitTruncation_floorApplies() public {
         (
             RecordingMockLayerZeroEndpoint recEndpoint,
-            LayerZeroProver recProver
+            LayerZeroPolicy recProver
         ) = _deployWithRecordingEndpoint();
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -1040,7 +1052,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_dos_postRevokeDelegation_skipImpossible() public {
         (
             RecordingMockLayerZeroEndpoint recEndpoint,
-            LayerZeroProver recProver
+            LayerZeroPolicy recProver
         ) = _deployWithRecordingEndpoint();
 
         // address(this) is the current delegate — revoke it.

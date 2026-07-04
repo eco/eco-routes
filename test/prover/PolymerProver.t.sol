@@ -2,13 +2,13 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {PolymerPolicy} from "../../contracts/prover/PolymerPolicy.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 
 contract PolymerProverTest is BaseTest {
-    PolymerProver internal polymerProver;
+    PolymerPolicy internal polymerProver;
     TestCrossL2ProverV2 internal crossL2ProverV2;
     address internal destinationProver;
 
@@ -98,8 +98,8 @@ contract PolymerProverTest is BaseTest {
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(destinationProver)));
 
-        // Deploy PolymerProver with portal, crossL2ProverV2, maxLogDataSize, and whitelist
-        polymerProver = new PolymerProver(
+        // Deploy PolymerPolicy with portal, crossL2ProverV2, maxLogDataSize, and whitelist
+        polymerProver = new PolymerPolicy(
             address(portal),
             address(crossL2ProverV2),
             32 * 1024, // maxLogDataSize
@@ -145,11 +145,11 @@ contract PolymerProverTest is BaseTest {
     }
 
     function testImplementsIProverInterface() public view {
-        assertTrue(polymerProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(polymerProver.supportsInterface(type(IPolicy).interfaceId));
     }
 
     function testSupportsInterface() public view {
-        assertTrue(polymerProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(polymerProver.supportsInterface(type(IPolicy).interfaceId));
         assertTrue(polymerProver.supportsInterface(0x01ffc9a7)); // ERC165
     }
 
@@ -160,7 +160,7 @@ contract PolymerProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // Should revert when called by non-portal (before the message is built)
-        vm.expectRevert(PolymerProver.OnlyPortal.selector);
+        vm.expectRevert(PolymerPolicy.OnlyPortal.selector);
         polymerProver.prove(
             creator,
             uint64(block.chainid),
@@ -182,7 +182,7 @@ contract PolymerProverTest is BaseTest {
         _record(intentHashes, claimants);
 
         _expectEmit();
-        emit PolymerProver.IntentFulfilledFromSource(
+        emit PolymerPolicy.IntentFulfilledFromSource(
             uint64(block.chainid),
             encodedProofs
         );
@@ -223,7 +223,7 @@ contract PolymerProverTest is BaseTest {
         _record(intentHashes, claimants);
 
         _expectEmit();
-        emit PolymerProver.IntentFulfilledFromSource(
+        emit PolymerPolicy.IntentFulfilledFromSource(
             uint64(block.chainid),
             encodedProofs
         );
@@ -265,14 +265,18 @@ contract PolymerProverTest is BaseTest {
         bytes memory proof = abi.encodePacked(uint256(1));
 
         _expectEmit();
-        emit IProver.IntentProven(intentHash, claimant, OPTIMISM_CHAIN_ID);
+        emit IPolicy.IntentProven(
+            intentHash,
+            OPTIMISM_CHAIN_ID,
+            bytes32(uint256(uint160(claimant)))
+        );
 
         polymerProver.validate(proof);
 
-        IProver.ProofData memory proofData = polymerProver.provenIntents(
+        IPolicy.ProofData memory proofData = polymerProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(proofData.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
     }
 
@@ -306,7 +310,7 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validate(proof);
 
         _expectEmit();
-        emit IProver.IntentAlreadyProven(intentHash);
+        emit IPolicy.IntentAlreadyProven(intentHash);
 
         polymerProver.validate(proof);
     }
@@ -343,19 +347,31 @@ contract PolymerProverTest is BaseTest {
         bytes memory proof = abi.encodePacked(uint256(1));
 
         _expectEmit();
-        emit IProver.IntentProven(intentHashes[0], claimant, OPTIMISM_CHAIN_ID);
+        emit IPolicy.IntentProven(
+            intentHashes[0],
+            OPTIMISM_CHAIN_ID,
+            bytes32(uint256(uint160(claimant)))
+        );
         _expectEmit();
-        emit IProver.IntentProven(intentHashes[1], claimant, OPTIMISM_CHAIN_ID);
+        emit IPolicy.IntentProven(
+            intentHashes[1],
+            OPTIMISM_CHAIN_ID,
+            bytes32(uint256(uint160(claimant)))
+        );
         _expectEmit();
-        emit IProver.IntentProven(intentHashes[2], claimant, OPTIMISM_CHAIN_ID);
+        emit IPolicy.IntentProven(
+            intentHashes[2],
+            OPTIMISM_CHAIN_ID,
+            bytes32(uint256(uint160(claimant)))
+        );
 
         polymerProver.validate(proof);
 
         for (uint256 i = 0; i < 3; i++) {
-            IProver.ProofData memory proofData = polymerProver.provenIntents(
+            IPolicy.ProofData memory proofData = polymerProver.provenIntents(
                 intentHashes[i]
             );
-            assertEq(proofData.claimant, claimant);
+            assertEq(proofData.fulfillmentHash, bytes32(uint256(uint160(claimant))));
             assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
         }
     }
@@ -407,10 +423,13 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validateBatch(proofs);
 
         for (uint256 i = 0; i < 3; i++) {
-            IProver.ProofData memory proofData = polymerProver.provenIntents(
+            IPolicy.ProofData memory proofData = polymerProver.provenIntents(
                 intentHashes[i]
             );
-            assertEq(proofData.claimant, claimants[i]);
+            assertEq(
+                proofData.fulfillmentHash,
+                bytes32(uint256(uint160(claimants[i])))
+            );
             assertEq(proofData.destination, chainIds[i]);
         }
     }
@@ -485,19 +504,30 @@ contract PolymerProverTest is BaseTest {
         proofs[2] = abi.encodePacked(uint256(3));
 
         _expectEmit();
-        emit IProver.IntentProven(intentHashes[0], claimant, OPTIMISM_CHAIN_ID);
+        emit IPolicy.IntentProven(
+            intentHashes[0],
+            OPTIMISM_CHAIN_ID,
+            bytes32(uint256(uint160(claimant)))
+        );
         _expectEmit();
-        emit IProver.IntentProven(intentHashes[1], claimant, ARBITRUM_CHAIN_ID);
+        emit IPolicy.IntentProven(
+            intentHashes[1],
+            ARBITRUM_CHAIN_ID,
+            bytes32(uint256(uint160(claimant)))
+        );
         _expectEmit();
-        emit IProver.IntentAlreadyProven(intentHashes[0]);
+        emit IPolicy.IntentAlreadyProven(intentHashes[0]);
 
         polymerProver.validateBatch(proofs);
 
         for (uint256 i = 0; i < 2; i++) {
-            IProver.ProofData memory proofData = polymerProver.provenIntents(
+            IPolicy.ProofData memory proofData = polymerProver.provenIntents(
                 intentHashes[i]
             );
-            assertEq(proofData.claimant, claimants[i]);
+            assertEq(
+                proofData.fulfillmentHash,
+                bytes32(uint256(uint160(claimants[i])))
+            );
             assertEq(proofData.destination, chainIds[i]);
         }
     }
@@ -531,7 +561,7 @@ contract PolymerProverTest is BaseTest {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                PolymerProver.InvalidEmittingContract.selector,
+                PolymerPolicy.InvalidEmittingContract.selector,
                 creator
             )
         );
@@ -553,7 +583,7 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(PolymerProver.InvalidTopicsLength.selector);
+        vm.expectRevert(PolymerPolicy.InvalidTopicsLength.selector);
         polymerProver.validate(proof);
     }
 
@@ -584,7 +614,7 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(PolymerProver.InvalidEventSignature.selector);
+        vm.expectRevert(PolymerPolicy.InvalidEventSignature.selector);
         polymerProver.validate(proof);
     }
 
@@ -616,10 +646,10 @@ contract PolymerProverTest is BaseTest {
         bytes memory proof = abi.encodePacked(uint256(1));
         polymerProver.validate(proof);
 
-        IProver.ProofData memory proofData = polymerProver.provenIntents(
+        IPolicy.ProofData memory proofData = polymerProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(proofData.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
 
         // Challenge with different destination (intent.destination = 1 from BaseTest, proof.destination = 10)
@@ -631,7 +661,7 @@ contract PolymerProverTest is BaseTest {
 
         // Verify proof was cleared since destinations don't match
         proofData = polymerProver.provenIntents(intentHash);
-        assertEq(proofData.claimant, address(0));
+        assertEq(proofData.fulfillmentHash, bytes32(0));
     }
 
     function testChallengeIntentProofWithCorrectDestination() public {
@@ -672,10 +702,10 @@ contract PolymerProverTest is BaseTest {
         );
 
         // Verify proof is still there
-        IProver.ProofData memory proofData = polymerProver.provenIntents(
+        IPolicy.ProofData memory proofData = polymerProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(proofData.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
     }
 
@@ -700,7 +730,7 @@ contract PolymerProverTest is BaseTest {
     function testConstructorWithEmptyWhitelist() public {
         bytes32[] memory emptyProvers = new bytes32[](0);
 
-        PolymerProver newProver = new PolymerProver(
+        PolymerPolicy newProver = new PolymerPolicy(
             address(portal),
             address(crossL2ProverV2),
             32 * 1024, // maxLogDataSize

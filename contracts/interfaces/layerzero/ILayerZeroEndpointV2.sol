@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 /**
  * @title ILayerZeroEndpointV2
  * @notice Minimal interface for LayerZero V2 endpoint contract
- * @dev Only includes functions actually used by LayerZeroProver
+ * @dev Only includes functions actually used by LayerZeroPolicy
  */
 interface ILayerZeroEndpointV2 {
     /**

@@ -35,9 +35,9 @@ import { zeroAddress } from 'viem'
 // This is used for both CSV headers and TypeScript type definitions
 export const CONTRACT_TYPES = [
   'Portal',
-  'HyperProver',
-  'MetaProver',
-  'LayerZeroProver',
+  'HyperPolicy',
+  'MetaPolicy',
+  'LayerZeroPolicy',
 ] as const
 
 const execPromise = promisify(exec)
@@ -293,7 +293,7 @@ function generateAbiTypeScriptFiles(buildDir: string, logger: Logger): void {
  * without parsing JSON or writing code.
  *
  * The CSV format follows a consistent structure with:
- * - Headers: ChainID, IntentSource, Inbox, HyperProver, MetaProver
+ * - Headers: ChainID, IntentSource, Inbox, HyperPolicy, MetaPolicy
  * - One row per chain ID with all corresponding contract addresses
  * - Empty cells for contract types not deployed on a particular chain
  *

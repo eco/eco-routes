@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../types/Intent.sol";
 import {DepositFactory_CCTPMint_GatewayERC20 as DepositFactory} from "./DepositFactory_CCTPMint_GatewayERC20.sol";
 
 /**
@@ -211,7 +211,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
      *      Intent2 reward and route are symmetric (both equal `netAmount`); the flat fee is taken on intent1 only.
      * @param destinationChainId Destination chain ID
      * @param portalAddress Portal address (same on all chains)
-     * @param destinationProverAddress LocalProver address on destination chain
+     * @param destinationProverAddress LocalPolicy address on destination chain
      * @param destinationUsdc USDC ERC20 address on destination chain
      * @param gatewayAddress Gateway contract address on destination chain
      * @param netAmount Reward and route amount (= routeAmount - CCTP maxFee)
@@ -229,9 +229,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         bytes32 salt,
         uint64 deadline
     ) internal view returns (Intent memory intent) {
-        // Route tokens: ERC20 USDC on destination (no native amount needed)
-        TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
+        // Solver input floor: ERC20 USDC on destination the solver provides into execution.
+        TokenAmount[] memory minTokens = new TokenAmount[](1);
+        minTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
 
         // Route calls: approve Gateway + depositFor (both denominated in netAmount)
         Call[] memory calls = new Call[](2);
@@ -255,26 +255,29 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route
+        // Construct route (delivery is via the Gateway call; the ERC20 input funds it)
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: depositor,
+            calls: calls,
+            minTokens: minTokens
         });
 
-        // Reward tokens: ERC20 USDC on destination (full netAmount; solver collects this)
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
+        // Reward: destination USDC as a single flat leg (rate 0; solver collects this)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
+            token: destinationUsdc,
+            rate: 0,
+            flat: netAmount
+        });
 
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
             creator: depositor,
             prover: destinationProverAddress,
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 
@@ -295,7 +298,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
      *      while the solver bridges only `routeAmount` via CCTP. The delta is solver profit.
      * @param sourceToken Source USDC token address
      * @param portalAddress Portal address on source chain
-     * @param proverAddress LocalProver address on source chain
+     * @param proverAddress LocalPolicy address on source chain
      * @param cctpTokenMessenger CCTP TokenMessengerV2 address
      * @param destinationDomain CCTP destination domain ID
      * @param vault2 Intent 2's vault address (CCTP mintRecipient)
@@ -322,9 +325,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         // Use current chain ID for local intent
         uint64 destChain = uint64(block.chainid);
 
-        // Route tokens: source USDC (solver's bridging obligation, post-flatFee)
-        TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = TokenAmount({token: sourceToken, amount: routeAmount});
+        // Solver input floor: source USDC (solver's bridging obligation, post-flatFee).
+        TokenAmount[] memory minTokens = new TokenAmount[](1);
+        minTokens[0] = TokenAmount({token: sourceToken, amount: routeAmount});
 
         // Route calls: approve TokenMessenger + CCTP depositForBurn (both denominated in routeAmount)
         Call[] memory calls = new Call[](2);
@@ -352,26 +355,29 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route
+        // Construct route (CCTP burn on source; the calls consume the full source-USDC input)
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: depositor,
+            calls: calls,
+            minTokens: minTokens
         });
 
-        // Reward tokens: source USDC (full deposit; solver collects this from Portal)
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: sourceToken, amount: rewardAmount});
+        // Reward: source USDC as a single flat leg (rate 0; full deposit, solver collects from Portal)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
+            token: sourceToken,
+            rate: 0,
+            flat: rewardAmount
+        });
 
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
             creator: depositor,
             prover: proverAddress,
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 

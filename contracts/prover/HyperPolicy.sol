@@ -3,16 +3,16 @@ pragma solidity ^0.8.26;
 
 import {IMessageRecipient} from "@hyperlane-xyz/core/contracts/interfaces/IMessageRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {MessageBridgeProver} from "./MessageBridgeProver.sol";
+import {MessageBridgePolicy} from "./MessageBridgePolicy.sol";
 import {Semver} from "../libs/Semver.sol";
 import {IMailbox, IPostDispatchHook} from "@hyperlane-xyz/core/contracts/interfaces/IMailbox.sol";
 
 /**
- * @title HyperProver
+ * @title HyperPolicy
  * @notice Prover implementation using Hyperlane's cross-chain messaging system
  * @dev Processes proof messages from Hyperlane mailbox and records proven intents
  */
-contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
+contract HyperPolicy is IMessageRecipient, MessageBridgePolicy, Semver {
     using TypeCasts for bytes32;
 
     /**
@@ -56,7 +56,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         address mailbox,
         address portal,
         bytes32[] memory provers
-    ) MessageBridgeProver(portal, provers, 0) {
+    ) MessageBridgePolicy(portal, provers, 0) {
         if (mailbox == address(0)) revert MessengerContractCannotBeZeroAddress();
         MAILBOX = mailbox;
     }

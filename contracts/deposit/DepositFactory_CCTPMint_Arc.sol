@@ -13,7 +13,7 @@ import {DepositAddress_CCTPMint_Arc} from "./DepositAddress_CCTPMint_Arc.sol";
  *      Uses CREATE2 for deterministic address generation based on user's destination address.
  *
  * @dev Prover Configuration:
- *      This factory should be configured with a LocalProver address for the source chain,
+ *      This factory should be configured with a LocalPolicy address for the source chain,
  *      and an ARC_PROVER_ADDRESS for the Arc chain.
  */
 contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
@@ -25,7 +25,7 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
     /// @notice Portal contract address on source chain
     address public immutable PORTAL_ADDRESS;
 
-    /// @notice LocalProver contract address on source chain
+    /// @notice LocalPolicy contract address on source chain
     address public immutable PROVER_ADDRESS;
 
     /// @notice Intent deadline duration in seconds for both intents
@@ -40,7 +40,7 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
     /// @notice Arc chain ID
     uint64 public immutable ARC_CHAIN_ID;
 
-    /// @notice LocalProver contract address on Arc
+    /// @notice LocalPolicy contract address on Arc
     address public immutable ARC_PROVER_ADDRESS;
 
     /// @notice USDC ERC20 address on Arc (6 decimals)
@@ -69,12 +69,12 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
      * @notice Initialize the factory with route configuration
      * @param _sourceToken Source token address (USDC on source chain)
      * @param _portalAddress Portal contract address on source chain
-     * @param _proverAddress LocalProver contract address on source chain
+     * @param _proverAddress LocalPolicy contract address on source chain
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      * @param _destinationDomain CCTP destination domain ID for Arc
      * @param _cctpTokenMessenger CCTP TokenMessengerV2 contract address on source chain
      * @param _arcChainId Arc chain ID
-     * @param _arcProverAddress LocalProver contract address on Arc
+     * @param _arcProverAddress LocalPolicy contract address on Arc
      * @param _arcUsdc USDC ERC20 address on Arc
      * @param _gatewayAddress Gateway contract address on Arc
      * @param _maxFeeBps Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000, e.g. 13 = 1.3 bps)
@@ -125,12 +125,12 @@ contract DepositFactory_CCTPMint_Arc is BaseDepositFactory {
      * @notice Get complete factory configuration
      * @return sourceToken Source token address (USDC on source chain)
      * @return portalAddress Portal address on source chain
-     * @return proverAddress LocalProver address on source chain
+     * @return proverAddress LocalPolicy address on source chain
      * @return intentDeadlineDuration Deadline duration in seconds
      * @return destinationDomain CCTP destination domain ID for Arc
      * @return cctpTokenMessenger CCTP TokenMessengerV2 address on source chain
      * @return arcChainId Arc chain ID
-     * @return arcProverAddress LocalProver address on Arc
+     * @return arcProverAddress LocalPolicy address on Arc
      * @return arcUsdc USDC ERC20 address on Arc
      * @return gatewayAddress Gateway address on Arc
      * @return maxFeeBps Maximum fee in basis points for CCTP fast-deposit

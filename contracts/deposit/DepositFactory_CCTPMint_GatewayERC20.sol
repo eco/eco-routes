@@ -14,7 +14,7 @@ import {DepositAddress_CCTPMint_GatewayERC20} from "./DepositAddress_CCTPMint_Ga
  *      Unlike the Arc variant, the destination chain treats USDC as a standard ERC20 (not native token).
  *
  * @dev Prover Configuration:
- *      This factory should be configured with a LocalProver address for the source chain,
+ *      This factory should be configured with a LocalPolicy address for the source chain,
  *      and a DESTINATION_PROVER_ADDRESS for the destination chain.
  */
 contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
@@ -26,7 +26,7 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
     /// @notice Portal contract address on source chain
     address public immutable PORTAL_ADDRESS;
 
-    /// @notice LocalProver contract address on source chain
+    /// @notice LocalPolicy contract address on source chain
     address public immutable PROVER_ADDRESS;
 
     /// @notice Intent deadline duration in seconds for both intents
@@ -41,7 +41,7 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
     /// @notice Destination chain ID
     uint64 public immutable DESTINATION_CHAIN_ID;
 
-    /// @notice LocalProver contract address on destination chain
+    /// @notice LocalPolicy contract address on destination chain
     address public immutable DESTINATION_PROVER_ADDRESS;
 
     /// @notice USDC ERC20 address on destination chain
@@ -73,12 +73,12 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
      * @notice Initialize the factory with route configuration
      * @param _sourceToken Source token address (USDC on source chain)
      * @param _portalAddress Portal contract address on source chain
-     * @param _proverAddress LocalProver contract address on source chain
+     * @param _proverAddress LocalPolicy contract address on source chain
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      * @param _destinationDomain CCTP destination domain ID for the destination chain
      * @param _cctpTokenMessenger CCTP TokenMessengerV2 contract address on source chain
      * @param _destinationChainId Destination chain ID
-     * @param _destinationProverAddress LocalProver contract address on destination chain
+     * @param _destinationProverAddress LocalPolicy contract address on destination chain
      * @param _destinationUsdc USDC ERC20 address on destination chain
      * @param _gatewayAddress Gateway contract address on destination chain
      * @param _maxFeeBps Maximum fee in basis points for CCTP fast-deposit (denominator: 100_000, e.g. 13 = 1.3 bps).
@@ -138,12 +138,12 @@ contract DepositFactory_CCTPMint_GatewayERC20 is BaseDepositFactory {
      * @notice Get complete factory configuration
      * @return sourceToken Source token address (USDC on source chain)
      * @return portalAddress Portal address on source chain
-     * @return proverAddress LocalProver address on source chain
+     * @return proverAddress LocalPolicy address on source chain
      * @return intentDeadlineDuration Deadline duration in seconds
      * @return destinationDomain CCTP destination domain ID
      * @return cctpTokenMessenger CCTP TokenMessengerV2 address on source chain
      * @return destinationChainId Destination chain ID
-     * @return destinationProverAddress LocalProver address on destination chain
+     * @return destinationProverAddress LocalPolicy address on destination chain
      * @return destinationUsdc USDC ERC20 address on destination chain
      * @return gatewayAddress Gateway address on destination chain
      * @return maxFeeBps Maximum fee in basis points for CCTP fast-deposit

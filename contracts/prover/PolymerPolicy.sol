@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseProver} from "./BaseProver.sol";
+import {BasePolicy} from "./BasePolicy.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {Whitelist} from "../libs/Whitelist.sol";
 
 /**
- * @title PolymerProver
+ * @title PolymerPolicy
  * @notice Prover implementation using Polymer's cross-chain messaging system
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
-contract PolymerProver is BaseProver, Whitelist, Semver {
+contract PolymerPolicy is BasePolicy, Whitelist, Semver {
     using AddressConverter for bytes32;
     using AddressConverter for address;
 
@@ -44,7 +44,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     uint256 public MAX_LOG_DATA_SIZE;
 
     /**
-     * @notice Initializes the PolymerProver contract
+     * @notice Initializes the PolymerPolicy contract
      * @param _portal Address of the Portal contract
      * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
      * @param _maxLogDataSize Maximum allowed size for encodedProofs in IntentFulfilledFromSource event data
@@ -55,7 +55,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         address _crossL2ProverV2,
         uint256 _maxLogDataSize,
         bytes32[] memory _proverAddresses
-    ) BaseProver(_portal) Whitelist(_proverAddresses) {
+    ) BasePolicy(_portal) Whitelist(_proverAddresses) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
         if (_maxLogDataSize == 0 || _maxLogDataSize > MAX_LOG_DATA_SIZE_GUARD) {
             revert InvalidMaxLogDataSize();
@@ -132,51 +132,53 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             uint256 offset = 8 + i * 64;
 
             bytes32 intentHash;
-            bytes32 claimantBytes;
+            bytes32 fulfillmentHash;
 
             assembly {
                 let dataPtr := add(decodedData, 32)
                 intentHash := mload(add(dataPtr, offset))
-                claimantBytes := mload(add(dataPtr, add(offset, 32)))
+                fulfillmentHash := mload(add(dataPtr, add(offset, 32)))
             }
 
-            if (claimantBytes >> 160 != 0) continue;
+            // Hash-only fact: the second word is a fulfillmentHash (a full 32-byte commitment), not a
+            // claimant, so there is no EVM-address validity skip here. Claimant validity is checked at
+            // settle against the supplied preimage. A zero commitment is not a valid fact.
+            if (fulfillmentHash == bytes32(0)) continue;
 
-            address claimant = claimantBytes.toAddress();
-            processIntent(intentHash, claimant, destinationChainId);
+            processIntent(intentHash, fulfillmentHash, destinationChainId);
         }
     }
 
     // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
 
     /**
-     * @notice Processes a single intent proof
+     * @notice Processes a single intent proof (hash-only fact, first-writer-wins)
      * @param intentHash Hash of the intent being proven
-     * @param claimant Address that fulfilled the intent and should receive rewards
+     * @param fulfillmentHash Commitment to the proven `(intentHash, claimant, fulfilled[])` tuple
      * @param destination Destination chain ID for the intent
      */
     function processIntent(
         bytes32 intentHash,
-        address claimant,
+        bytes32 fulfillmentHash,
         uint64 destination
     ) internal {
         ProofData storage proof = _provenIntents[intentHash];
-        if (proof.claimant != address(0)) {
+        if (proof.fulfillmentHash != bytes32(0)) {
             emit IntentAlreadyProven(intentHash);
 
             return;
         }
-        proof.claimant = claimant;
         proof.destination = destination;
+        proof.fulfillmentHash = fulfillmentHash;
 
-        emit IntentProven(intentHash, claimant, destination);
+        emit IntentProven(intentHash, destination, fulfillmentHash);
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------
 
     /**
      * @notice Returns the proof type used by this prover
-     * @dev Implementation of IProver interface method
+     * @dev Implementation of IPolicy interface method
      * @return string The type of proof mechanism (Polymer)
      */
     function getProofType() external pure override returns (string memory) {

@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseProver} from "./BaseProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
+import {BasePolicy} from "./BasePolicy.sol";
+import {IMessageBridgePolicy} from "../interfaces/IMessageBridgePolicy.sol";
 import {Whitelist} from "../libs/Whitelist.sol";
 
 /**
- * @title MessageBridgeProver
+ * @title MessageBridgePolicy
  * @notice Abstract contract for cross-chain message-based proving mechanisms
- * @dev Extends BaseProver with functionality for message bridge provers like Hyperlane and Metalayer
+ * @dev Extends BasePolicy with functionality for message bridge provers like Hyperlane and Metalayer
  */
-abstract contract MessageBridgeProver is
-    BaseProver,
-    IMessageBridgeProver,
+abstract contract MessageBridgePolicy is
+    BasePolicy,
+    IMessageBridgePolicy,
     Whitelist
 {
     /**
@@ -29,7 +29,7 @@ abstract contract MessageBridgeProver is
     uint256 private constant DEFAULT_MIN_GAS_LIMIT = 200_000;
 
     /**
-     * @notice Initializes the MessageBridgeProver contract
+     * @notice Initializes the MessageBridgePolicy contract
      * @param portal Address of the Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param minGasLimit Minimum gas limit for cross-chain messages (200k if not specified or zero)
@@ -38,7 +38,7 @@ abstract contract MessageBridgeProver is
         address portal,
         bytes32[] memory provers,
         uint256 minGasLimit
-    ) BaseProver(portal) Whitelist(provers) {
+    ) BasePolicy(portal) Whitelist(provers) {
         MIN_GAS_LIMIT = minGasLimit > 0 ? minGasLimit : 200_000;
     }
 
@@ -139,7 +139,7 @@ abstract contract MessageBridgeProver is
 
     /**
      * @notice Abstract function to dispatch message via specific bridge
-     * @dev Must be implemented by concrete provers (HyperProver, MetaProver)
+     * @dev Must be implemented by concrete provers (HyperPolicy, MetaPolicy)
      * @param sourceChainId Chain ID of the source chain
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting

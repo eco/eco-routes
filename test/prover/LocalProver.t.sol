@@ -2,19 +2,19 @@
 pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {LocalProver} from "../../contracts/prover/LocalProver.sol";
+import {LocalPolicy} from "../../contracts/prover/LocalPolicy.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {TestProver} from "../../contracts/test/TestProver.sol";
+import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
-import {ILocalProver} from "../../contracts/interfaces/ILocalProver.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {ILocalPolicy} from "../../contracts/interfaces/ILocalPolicy.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
 
 contract LocalProverTest is Test {
-    LocalProver internal localProver;
+    LocalPolicy internal localProver;
     Portal internal portal;
-    TestProver internal secondaryProver;
+    TestPolicy internal secondaryProver;
     TestERC20 internal token;
 
     address internal creator;
@@ -43,8 +43,8 @@ contract LocalProverTest is Test {
 
         // Deploy contracts
         portal = new Portal();
-        localProver = new LocalProver(address(portal));
-        secondaryProver = new TestProver(address(portal));
+        localProver = new LocalPolicy(address(portal));
+        secondaryProver = new TestPolicy(address(portal));
         token = new TestERC20("Test Token", "TEST");
 
         // Fund accounts
@@ -69,27 +69,34 @@ contract LocalProverTest is Test {
             salt: bytes32(uint256(1)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: creator,
+            calls: calls,
+            minTokens: routeTokens
         });
 
-        TokenAmount[] memory rewardTokens;
+        // Reward legs: an optional ERC20 leg then an optional native (address(0)) leg (both flat).
+        uint256 legCount = (tokenReward > 0 ? 1 : 0) + (nativeReward > 0 ? 1 : 0);
+        RewardToken[] memory rewardTokens = new RewardToken[](legCount);
+        uint256 idx = 0;
         if (tokenReward > 0) {
-            rewardTokens = new TokenAmount[](1);
-            rewardTokens[0] = TokenAmount({
+            rewardTokens[idx++] = RewardToken({
                 token: address(token),
-                amount: tokenReward
+                rate: 0,
+                flat: tokenReward
             });
-        } else {
-            rewardTokens = new TokenAmount[](0);
+        }
+        if (nativeReward > 0) {
+            rewardTokens[idx] = RewardToken({
+                token: address(0),
+                rate: 0,
+                flat: nativeReward
+            });
         }
 
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: proverAddress,
-            nativeAmount: nativeReward,
             tokens: rewardTokens
         });
 
@@ -101,20 +108,26 @@ contract LocalProverTest is Test {
     ) internal returns (bytes32 intentHash, address vault) {
         vm.startPrank(creator);
 
-        // Approve tokens
-        if (_intent.reward.tokens.length > 0) {
-            token.approve(address(portal), _intent.reward.tokens[0].amount);
+        // Approve token legs (flat) and total the native (address(0)) legs to fund with value.
+        uint256 nativeValue = 0;
+        for (uint256 i = 0; i < _intent.reward.tokens.length; ++i) {
+            if (_intent.reward.tokens[i].token == address(0)) {
+                nativeValue += _intent.reward.tokens[i].flat;
+            } else {
+                token.approve(address(portal), _intent.reward.tokens[i].flat);
+            }
         }
 
         // Publish and fund
-        (intentHash, vault) = portal.publishAndFund{
-            value: _intent.reward.nativeAmount
-        }(_intent, false);
+        (intentHash, vault) = portal.publishAndFund{value: nativeValue}(
+            _intent,
+            false
+        );
 
         vm.stopPrank();
     }
 
-    // ============ A. Core IProver Interface Tests ============
+    // ============ A. Core IPolicy Interface Tests ============
 
     // A1. provenIntents()
     function test_provenIntents_ReturnsClaimantFromPortalForFulfilledIntent()
@@ -136,13 +149,21 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
             bytes32(uint256(uint160(solver))),
+            new uint256[](0),
             address(localProver)
         );
         vm.stopPrank();
 
-        // Should return solver from Portal's claimants
-        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, solver);
+        // Should record the hash-only fulfillment fact for the solver on this chain
+        IPolicy.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertEq(
+            proof.fulfillmentHash,
+            IntentLib.fulfillmentHash(
+                intentHash,
+                bytes32(uint256(uint160(solver))),
+                new uint256[](0)
+            )
+        );
         assertEq(proof.destination, CHAIN_ID);
     }
 
@@ -156,8 +177,8 @@ contract LocalProverTest is Test {
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
         // Don't fulfill it
-        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        IPolicy.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertEq(proof.fulfillmentHash, bytes32(0));
         assertEq(proof.destination, 0);
     }
 
@@ -194,7 +215,7 @@ contract LocalProverTest is Test {
         _publishAndFundIntent(_intent);
 
         vm.prank(solver);
-        vm.expectRevert(ILocalProver.InvalidClaimant.selector);
+        vm.expectRevert(ILocalPolicy.InvalidClaimant.selector);
         localProver.flashFulfill(_intent.route, _intent.reward, bytes32(0));
     }
 
@@ -215,6 +236,7 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
             bytes32(uint256(uint160(solver))),
+            new uint256[](0),
             address(localProver)
         );
 
@@ -250,8 +272,8 @@ contract LocalProverTest is Test {
     }
 
     function test_flashFulfill_SucceedsEvenIfClaimantRejectsETH() public {
-        // Test: Succeeds even when claimant rejects ETH (ETH remains in LocalProver)
-        // Deploy a contract that rejects ETH transfers
+        // Test: Succeeds even when the claimant rejects ETH. In v3 the settle sweeps the un-received
+        // native reward to the creator (funds conserved, not stranded).
         RejectEth rejecter = new RejectEth();
 
         Intent memory _intent = _createIntent(
@@ -263,6 +285,8 @@ contract LocalProverTest is Test {
 
         bytes32 rejecterClaimant = bytes32(uint256(uint160(address(rejecter))));
 
+        uint256 creatorBefore = creator.balance;
+
         // Should succeed even though rejecter doesn't accept ETH transfers
         vm.prank(solver);
         localProver.flashFulfill(
@@ -271,9 +295,10 @@ contract LocalProverTest is Test {
             rejecterClaimant
         );
 
-        // Verify the ETH remains in LocalProver (claimant rejected it)
+        // The rejecter received nothing; the native reward swept to the creator; nothing stuck anywhere.
         assertEq(address(rejecter).balance, 0);
-        assertEq(address(localProver).balance, REWARD_AMOUNT);
+        assertEq(creator.balance, creatorBefore + REWARD_AMOUNT);
+        assertEq(address(localProver).balance, 0);
     }
 
     // B5. Happy Path with Route Tokens
@@ -286,10 +311,11 @@ contract LocalProverTest is Test {
             amount: TOKEN_AMOUNT
         });
 
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
             token: address(token),
-            amount: TOKEN_AMOUNT
+            rate: 0,
+            flat: TOKEN_AMOUNT
         });
 
         Call[] memory calls = new Call[](0);
@@ -298,16 +324,15 @@ contract LocalProverTest is Test {
             salt: bytes32(uint256(1)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: creator,
+            calls: calls,
+            minTokens: routeTokens
         });
 
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: address(localProver),
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 
@@ -321,12 +346,24 @@ contract LocalProverTest is Test {
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
-        // FlashFulfill should succeed
+        uint256 creatorBalanceBefore = token.balanceOf(creator);
+
+        // The solver now supplies the route capital (v3 flashFulfill fulfills then settles).
+        vm.prank(solver);
+        token.approve(address(localProver), TOKEN_AMOUNT);
+
         vm.prank(solver);
         localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
-        // Verify tokens transferred to executor
-        assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
+        // The route has no calls, so the provided TOKEN_AMOUNT is unconsumed and the Portal moves it to
+        // the intent's Vault (leftover stays with the intent); the executor ends drained. flashFulfill
+        // then settles: the vault pays the claimant its flat reward (TOKEN_AMOUNT) and sweeps the residual
+        // (the unconsumed TOKEN_AMOUNT) to the creator, so the creator nets +TOKEN_AMOUNT.
+        assertEq(token.balanceOf(address(portal.executor())), 0);
+        assertEq(
+            token.balanceOf(creator),
+            creatorBalanceBefore + TOKEN_AMOUNT
+        );
     }
 
     function test_flashFulfill_SucceedsWithTokensAndNativeReward() public {
@@ -338,10 +375,16 @@ contract LocalProverTest is Test {
             amount: TOKEN_AMOUNT
         });
 
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({
+        RewardToken[] memory rewardTokens = new RewardToken[](2);
+        rewardTokens[0] = RewardToken({
             token: address(token),
-            amount: TOKEN_AMOUNT
+            rate: 0,
+            flat: TOKEN_AMOUNT
+        });
+        rewardTokens[1] = RewardToken({
+            token: address(0),
+            rate: 0,
+            flat: REWARD_AMOUNT // Native reward for solver
         });
 
         Call[] memory calls = new Call[](0);
@@ -350,16 +393,15 @@ contract LocalProverTest is Test {
             salt: bytes32(uint256(2)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: creator,
+            calls: calls,
+            minTokens: routeTokens
         });
 
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: address(localProver),
-            nativeAmount: REWARD_AMOUNT, // Native reward for solver
             tokens: rewardTokens
         });
 
@@ -369,21 +411,29 @@ contract LocalProverTest is Test {
             reward: reward
         });
 
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+        _publishAndFundIntent(_intent);
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
         // Record solver's balance before flashFulfill
         uint256 solverBalanceBefore = solver.balance;
+        uint256 creatorTokenBefore = token.balanceOf(creator);
+
+        // Solver supplies the route capital.
+        vm.prank(solver);
+        token.approve(address(localProver), TOKEN_AMOUNT);
 
         // FlashFulfill should succeed
         vm.prank(solver);
         localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
-        // Verify tokens transferred to executor
-        assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
+        // The route has no calls, so the provided token input is unconsumed and moved to the intent's
+        // Vault; settle then pays the claimant its flat token reward and sweeps the residual (the
+        // unconsumed TOKEN_AMOUNT) to the creator. The executor ends drained.
+        assertEq(token.balanceOf(address(portal.executor())), 0);
+        assertEq(token.balanceOf(creator), creatorTokenBefore + TOKEN_AMOUNT);
 
-        // Verify native transferred to solver (claimant)
+        // Verify native reward transferred to solver (claimant)
         assertEq(solver.balance, solverBalanceBefore + REWARD_AMOUNT);
     }
 
@@ -400,10 +450,11 @@ contract LocalProverTest is Test {
             amount: routeTokenAmount
         });
 
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
             token: address(token),
-            amount: rewardTokenAmount
+            rate: 0,
+            flat: rewardTokenAmount
         });
 
         Call[] memory calls = new Call[](0);
@@ -412,16 +463,15 @@ contract LocalProverTest is Test {
             salt: bytes32(uint256(4)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: creator,
+            calls: calls,
+            minTokens: routeTokens
         });
 
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: address(localProver),
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 
@@ -437,15 +487,23 @@ contract LocalProverTest is Test {
 
         // Record solver's token balance before
         uint256 solverTokenBalanceBefore = token.balanceOf(solver);
+        uint256 creatorTokenBefore = token.balanceOf(creator);
+
+        // Solver supplies the route capital (routeTokenAmount).
+        vm.prank(solver);
+        token.approve(address(localProver), routeTokenAmount);
 
         // FlashFulfill should succeed
         vm.prank(solver);
         localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
 
-        // Verify route tokens (500) transferred to executor
-        assertEq(token.balanceOf(address(portal.executor())), routeTokenAmount);
+        // The route has no calls, so the provided route input (500) is unconsumed and moved to the
+        // intent's Vault; settle then pays the claimant its flat reward (1000) and sweeps the residual
+        // (the unconsumed 500) to the creator. The executor ends drained.
+        assertEq(token.balanceOf(address(portal.executor())), 0);
+        assertEq(token.balanceOf(creator), creatorTokenBefore + routeTokenAmount);
 
-        // Verify reward tokens (500 remainder) transferred to solver
+        // Verify the solver nets the reward remainder (reward 1000 - provided 500 = +500)
         assertEq(
             token.balanceOf(solver),
             solverTokenBalanceBefore + (rewardTokenAmount - routeTokenAmount)
@@ -457,7 +515,7 @@ contract LocalProverTest is Test {
     function test_griefing_LocalProverSentinel_AllowsRefundAfterDeadline()
         public
     {
-        // Test: Attacker calls Portal.fulfill with LocalProver as claimant (Vector 1)
+        // Test: Attacker calls Portal.fulfill with LocalPolicy as claimant (Vector 1)
         // Should not permanently brick the intent - refund should work after deadline
 
         Intent memory _intent = _createIntent(
@@ -467,7 +525,7 @@ contract LocalProverTest is Test {
         );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        // Attacker fulfills with LocalProver as claimant (griefing)
+        // Attacker fulfills with LocalPolicy as claimant (griefing)
         address attacker = makeAddr("attacker");
         vm.startPrank(attacker);
         vm.deal(attacker, REWARD_AMOUNT);
@@ -479,14 +537,17 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
             localProverAsBytes32,
+            new uint256[](0),
             address(localProver)
         );
         vm.stopPrank();
 
-        // provenIntents should return address(0) (not revert)
-        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
-        assertEq(proof.destination, 0);
+        // v3 hash-only: the fulfillment IS recorded (no claimant-sentinel scrub). What prevents a
+        // griefer from permanently locking the creator's funds is the anti-lock refund after the
+        // deadline, not a zeroed proof.
+        IPolicy.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertTrue(proof.fulfillmentHash != bytes32(0));
+        assertEq(proof.destination, CHAIN_ID);
 
         // Honest solver cannot flashFulfill (already fulfilled)
         vm.startPrank(solver);
@@ -501,7 +562,7 @@ contract LocalProverTest is Test {
         // Warp past deadline
         vm.warp(_intent.reward.deadline + 1);
 
-        // Refund should succeed
+        // Refund should succeed (anti-lock)
         uint256 creatorBalanceBefore = creator.balance;
         vm.prank(user);
         portal.refund(
@@ -537,14 +598,17 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
             nonEVMBytes32,
+            new uint256[](0),
             address(localProver)
         );
         vm.stopPrank();
 
-        // provenIntents should return address(0) (not revert)
-        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
-        assertEq(proof.destination, 0);
+        // v3 hash-only: the fulfillment IS recorded (a non-EVM claimant is committed inside the hash;
+        // no scrub). Settlement to that claimant would fail (invalid EVM address), so the anti-lock
+        // refund after the deadline is what keeps the creator's funds recoverable.
+        IPolicy.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertTrue(proof.fulfillmentHash != bytes32(0));
+        assertEq(proof.destination, CHAIN_ID);
 
         // Honest solver cannot flashFulfill (already fulfilled)
         vm.startPrank(solver);
@@ -559,7 +623,7 @@ contract LocalProverTest is Test {
         // Warp past deadline
         vm.warp(_intent.reward.deadline + 1);
 
-        // Refund should succeed
+        // Refund should succeed (anti-lock)
         uint256 creatorBalanceBefore = creator.balance;
         vm.prank(user);
         portal.refund(
@@ -584,7 +648,7 @@ contract LocalProverTest is Test {
         );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        // Attacker fulfills with LocalProver as claimant (griefing)
+        // Attacker fulfills with LocalPolicy as claimant (griefing)
         address attacker = makeAddr("attacker");
         vm.startPrank(attacker);
         vm.deal(attacker, REWARD_AMOUNT);
@@ -596,6 +660,7 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
             localProverAsBytes32,
+            new uint256[](0),
             address(localProver)
         );
         vm.stopPrank();
@@ -620,7 +685,7 @@ contract LocalProverTest is Test {
         );
         (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
 
-        // Attacker fulfills with LocalProver as claimant (griefing)
+        // Attacker fulfills with LocalPolicy as claimant (griefing)
         address attacker = makeAddr("attacker");
         vm.startPrank(attacker);
         vm.deal(attacker, REWARD_AMOUNT);
@@ -632,6 +697,7 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
             localProverAsBytes32,
+            new uint256[](0),
             address(localProver)
         );
         vm.stopPrank();
@@ -659,8 +725,8 @@ contract LocalProverTest is Test {
     }
 
     function test_flashFulfill_RevertsWithLocalProverAsClaimant() public {
-        // Test that flashFulfill reverts when claimant is set to LocalProver address
-        // This prevents fund stranding attacks where funds would be stuck in LocalProver
+        // Test that flashFulfill reverts when claimant is set to LocalPolicy address
+        // This prevents fund stranding attacks where funds would be stuck in LocalPolicy
 
         Intent memory intent = _createIntent(
             address(localProver),
@@ -675,18 +741,18 @@ contract LocalProverTest is Test {
         );
 
         vm.startPrank(attacker);
-        vm.expectRevert(ILocalProver.InvalidClaimant.selector);
+        vm.expectRevert(ILocalPolicy.InvalidClaimant.selector);
         localProver.flashFulfill(
             intent.route,
             intent.reward,
-            localProverAsClaimant // Should revert - LocalProver cannot be claimant
+            localProverAsClaimant // Should revert - LocalPolicy cannot be claimant
         );
         vm.stopPrank();
     }
 
     function test_flashFulfill_RevertsWithWrongProver() public {
         // Test that flashFulfill reverts when intent uses a different prover
-        // flashFulfill is LocalProver-specific and should only work with LocalProver intents
+        // flashFulfill is LocalPolicy-specific and should only work with LocalPolicy intents
 
         Intent memory intent = _createIntent(
             address(secondaryProver),
@@ -698,7 +764,7 @@ contract LocalProverTest is Test {
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
         vm.startPrank(solver);
-        vm.expectRevert(ILocalProver.InvalidProver.selector);
+        vm.expectRevert(ILocalPolicy.InvalidProver.selector);
         localProver.flashFulfill(
             intent.route,
             intent.reward,
@@ -707,26 +773,30 @@ contract LocalProverTest is Test {
         vm.stopPrank();
     }
 
-    function test_flashFulfill_SucceedsWithDuplicateRouteTokens() public {
-        // Test: flashFulfill correctly handles duplicate tokens in route.tokens[]
-        // This verifies that safeIncreaseAllowance accumulates approvals correctly
+    function test_flashFulfill_RevertsWithDuplicateMinTokensLegs() public {
+        // TODO(minTokens): v2 verified that duplicate tokens in route.tokens[] accumulated approvals
+        // correctly (safeIncreaseAllowance). Under the v3 input-floor model `route.minTokens` MUST be
+        // STRICTLY ASCENDING by token address (which also dedupes it), so listing the same token twice is
+        // no longer legal — it is rejected at fulfill by IntentLib.requireStrictlyAscending. The
+        // accumulation behavior no longer exists, so this now asserts the rejection instead.
 
-        // Create route with same token appearing twice
-        TokenAmount[] memory routeTokens = new TokenAmount[](2);
-        routeTokens[0] = TokenAmount({
+        // Two min-tokens legs for the same token => non-ascending => rejected.
+        TokenAmount[] memory minTokensList = new TokenAmount[](2);
+        minTokensList[0] = TokenAmount({
             token: address(token),
             amount: 300 // First occurrence: 300 tokens
         });
-        routeTokens[1] = TokenAmount({
+        minTokensList[1] = TokenAmount({
             token: address(token),
-            amount: 700 // Second occurrence: 700 tokens (total: 1000)
+            amount: 700 // Duplicate token (total would be 1000)
         });
 
         // Reward contains enough tokens to cover the route
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
             token: address(token),
-            amount: TOKEN_AMOUNT // 1000 tokens total
+            rate: 0,
+            flat: TOKEN_AMOUNT // 1000 tokens total
         });
 
         Call[] memory calls = new Call[](0);
@@ -735,16 +805,15 @@ contract LocalProverTest is Test {
             salt: bytes32(uint256(1)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            nativeAmount: 0,
-            tokens: routeTokens, // Duplicate tokens here
-            calls: calls
+            creator: creator,
+            calls: calls,
+            minTokens: minTokensList // Duplicate (non-ascending) min-tokens legs here
         });
 
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + 2000),
             creator: creator,
             prover: address(localProver),
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 
@@ -758,17 +827,21 @@ contract LocalProverTest is Test {
 
         bytes32 claimantBytes = bytes32(uint256(uint160(solver)));
 
-        uint256 solverBalanceBefore = token.balanceOf(solver);
-
-        // FlashFulfill should succeed with duplicate tokens
+        // Approve the full total so the per-leg pulls succeed and we reach the ordering check inside
+        // Portal.fulfill (the revert must come from the min-tokens ordering rule, not an allowance shortfall).
         vm.prank(solver);
+        token.approve(address(localProver), TOKEN_AMOUNT);
+
+        // The duplicate (non-ascending) min-tokens legs are rejected at fulfill.
+        vm.prank(solver);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IntentLib.MinTokensNotSorted.selector,
+                address(token),
+                address(token)
+            )
+        );
         localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
-
-        // Verify all tokens (300 + 700 = 1000) transferred to executor
-        assertEq(token.balanceOf(address(portal.executor())), TOKEN_AMOUNT);
-
-        // Solver should receive no tokens since all were consumed by route
-        assertEq(token.balanceOf(solver), solverBalanceBefore);
     }
 
     // ============ Helper Functions ============

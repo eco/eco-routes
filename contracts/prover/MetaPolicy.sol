@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IMetalayerRecipient, ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {FinalityState} from "@metalayer/contracts/src/lib/MetalayerMessage.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {MessageBridgeProver} from "./MessageBridgeProver.sol";
+import {MessageBridgePolicy} from "./MessageBridgePolicy.sol";
 // Import Semver for versioning support
 import {Semver} from "../libs/Semver.sol";
 import {StandardHookMetadata} from "@hyperlane-xyz/core/contracts/hooks/libs/StandardHookMetadata.sol";
@@ -12,12 +12,12 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IMetalayerRouterExt} from "../interfaces/IMetalayerRouterExt.sol";
 
 /**
- * @title MetaProver
+ * @title MetaPolicy
  * @notice Prover implementation using Caldera Metalayer's cross-chain messaging system
  * @notice the terms "source" and "destination" are used in reference to a given intent: created on source chain, fulfilled on destination chain
  * @dev Processes proof messages from Metalayer router and records proven intents
  */
-contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
+contract MetaPolicy is IMetalayerRecipient, MessageBridgePolicy, Semver {
     using TypeCasts for bytes32;
     using TypeCasts for address;
     using SafeCast for uint256;
@@ -49,7 +49,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
     IMetalayerRouterExt public immutable ROUTER;
 
     /**
-     * @notice Initializes the MetaProver contract
+     * @notice Initializes the MetaPolicy contract
      * @param router Address of local Metalayer router
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
@@ -60,7 +60,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         address portal,
         bytes32[] memory provers,
         uint256 minGasLimit
-    ) MessageBridgeProver(portal, provers, minGasLimit) {
+    ) MessageBridgePolicy(portal, provers, minGasLimit) {
         if (router == address(0)) revert MessengerContractCannotBeZeroAddress();
 
         ROUTER = IMetalayerRouterExt(router);

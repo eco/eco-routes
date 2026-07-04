@@ -8,12 +8,17 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IVault} from "../interfaces/IVault.sol";
 import {IPermit} from "../interfaces/IPermit.sol";
-import {Reward} from "../types/Intent.sol";
+import {IPolicy} from "../interfaces/IPolicy.sol";
+import {Reward, RewardToken} from "../types/Intent.sol";
 
 /**
  * @title Vault
- * @notice Escrow contract for managing cross-chain reward payments
- * @dev Implements a lifecycle-based vault that can be funded, withdrawn from, or refunded
+ * @notice Escrow contract for managing cross-chain reward payments (v3 rate+flat legs)
+ * @dev Implements a lifecycle-based vault that can be funded, withdrawn from, or refunded. Rewards are
+ *      per-token legs; native folds in as a leg with `token == address(0)`. On withdraw the Vault
+ *      consults `reward.prover` (as a VIEW — no reentrancy surface) to turn the core-verified
+ *      `fulfilled[]` into per-leg amounts, pays each capped at its own balance to the claimant, and
+ *      sweeps the residual to the creator.
  */
 contract Vault is IVault {
     /// @notice Address of the portal contract that can call this vault
@@ -25,7 +30,6 @@ contract Vault is IVault {
     /**
      * @notice Creates a new vault instance
      * @dev Sets the deployer (IntentSource) as the authorized portal contract
-     *      Only the portal can call fund, withdraw, refund, and recover functions
      */
     constructor() {
         portal = msg.sender;
@@ -33,7 +37,6 @@ contract Vault is IVault {
 
     /**
      * @notice Restricts function access to only the portal contract
-     * @dev Ensures only the IntentSource contract can manage vault operations
      */
     modifier onlyPortal() {
         if (msg.sender != portal) {
@@ -44,29 +47,37 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Funds the vault with tokens and native currency from the reward
-     * @param reward The reward structure containing token addresses, amounts, and native value
+     * @notice Funds the vault with reward legs from the funder
+     * @dev `targets[j]` is the escrow target for reward leg `j` (computed by IntentSource from the paired
+     *      `minTokens` and the leg's rate/flat). Native (`token == address(0)`) is funded from `msg.value`;
+     *      ERC20 legs are pulled via permit then standing allowance.
+     * @param reward The reward structure containing the legs
+     * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
      * @param funder Address that will provide the funding
      * @param permit Optional permit contract for gasless token approvals
-     * @return fullyFunded True if the vault was fully funded, false otherwise
+     * @return fullyFunded True if every leg reached its target, false otherwise
      */
     function fundFor(
         Reward calldata reward,
+        uint256[] calldata targets,
         address funder,
         IPermit permit
     ) external payable onlyPortal returns (bool fullyFunded) {
-        fullyFunded = address(this).balance >= reward.nativeAmount;
+        fullyFunded = true;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
-            IERC20 token = IERC20(reward.tokens[i].token);
+            address tokenAddr = reward.tokens[i].token;
+            uint256 target = targets[i];
 
-            uint256 remaining = _fundFromPermit(
-                funder,
-                token,
-                reward.tokens[i].amount,
-                permit
-            );
+            if (tokenAddr == address(0)) {
+                // Native leg: funded from the value already delivered to the vault.
+                fullyFunded = fullyFunded && address(this).balance >= target;
+                continue;
+            }
+
+            IERC20 token = IERC20(tokenAddr);
+            uint256 remaining = _fundFromPermit(funder, token, target, permit);
             remaining = _fundFrom(funder, token, remaining);
 
             fullyFunded = fullyFunded && remaining == 0;
@@ -74,42 +85,70 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Withdraws rewards from the vault to the specified claimant
-     * @param reward The reward structure defining what to withdraw
-     * @param claimant Address that will receive the withdrawn rewards
+     * @notice Withdraws the owed reward to the claimant and sweeps the residual to the creator
+     * @dev Consults `reward.prover.previewRelease(reward, fulfilled)` (a VIEW) for the per-leg amounts,
+     *      pays each capped at its own balance to `claimant`, and returns the leftover of each leg token
+     *      to `reward.creator`.
+     * @param reward The reward structure defining the legs and the prover
+     * @param claimant Address that will receive the owed reward
+     * @param fulfilled Core-verified per-leg delivered amounts (paired prefix)
      */
     function withdraw(
         Reward calldata reward,
-        address claimant
+        address claimant,
+        uint256[] calldata fulfilled
     ) external onlyPortal {
+        uint256[] memory payNow = IPolicy(reward.prover).previewRelease(
+            reward,
+            fulfilled
+        );
+
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
-            IERC20 token = IERC20(reward.tokens[i].token);
-            uint256 amount = reward.tokens[i].amount.min(
-                token.balanceOf(address(this))
-            );
+            address tokenAddr = reward.tokens[i].token;
 
-            if (amount > 0) {
-                _transferToken(token, claimant, amount);
+            if (tokenAddr == address(0)) {
+                uint256 pay = payNow[i].min(address(this).balance);
+                if (pay > 0) {
+                    // Try to send to claimant - if it fails, ETH remains for the creator sweep below
+                    claimant.call{value: pay}("");
+                }
+                uint256 residual = address(this).balance;
+                if (residual > 0) {
+                    reward.creator.call{value: residual}("");
+                }
+                continue;
             }
-        }
 
-        uint256 nativeAmount = address(this).balance.min(reward.nativeAmount);
-        if (nativeAmount > 0) {
-            // Try to send to claimant - if it fails, ETH remains in vault for refund
-            claimant.call{value: nativeAmount}("");
+            IERC20 token = IERC20(tokenAddr);
+            uint256 balance = token.balanceOf(address(this));
+            uint256 payAmount = payNow[i].min(balance);
+            if (payAmount > 0) {
+                _transferToken(token, claimant, payAmount);
+            }
+            uint256 tokenResidual = token.balanceOf(address(this));
+            if (tokenResidual > 0) {
+                _transferToken(token, reward.creator, tokenResidual);
+            }
         }
     }
 
     /**
      * @notice Refunds all vault contents to a specified address
-     * @param reward The reward structure containing token information
+     * @param reward The reward structure containing the leg tokens
      * @param refundee Address to receive the refunded rewards
      */
-    function refund(Reward calldata reward, address refundee) external onlyPortal {
+    function refund(
+        Reward calldata reward,
+        address refundee
+    ) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
-            IERC20 token = IERC20(reward.tokens[i].token);
+            address tokenAddr = reward.tokens[i].token;
+            if (tokenAddr == address(0)) {
+                continue;
+            }
+            IERC20 token = IERC20(tokenAddr);
             uint256 amount = token.balanceOf(address(this));
 
             if (amount > 0) {
@@ -144,8 +183,8 @@ contract Vault is IVault {
      * @notice Internal function to fund vault with tokens using standard ERC20 transfers
      * @param funder Address providing the tokens
      * @param token ERC20 token contract
-     * @param remainingAmount Remaining amount needed to fully fund the reward
-     * @return uint256 Remaining amount needed to fully fund the reward
+     * @param remainingAmount Remaining amount needed to fully fund the leg
+     * @return uint256 Remaining amount needed to fully fund the leg
      */
     function _fundFrom(
         address funder,
@@ -174,9 +213,9 @@ contract Vault is IVault {
      * @notice Internal function to fund vault using permit-based transfers
      * @param funder Address providing the tokens
      * @param token ERC20 token contract
-     * @param rewardAmount Required token amount for the reward
+     * @param rewardAmount Required token amount for the leg
      * @param permit Permit contract for gasless approvals
-     * @return uint256 Remaining amount needed to fully fund the reward
+     * @return uint256 Remaining amount needed to fully fund the leg
      */
     function _fundFromPermit(
         address funder,

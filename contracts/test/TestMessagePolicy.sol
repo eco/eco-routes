@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {MessageBridgeProver} from "../prover/MessageBridgeProver.sol";
-import {IProver} from "../interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
+import {MessageBridgePolicy} from "../prover/MessageBridgePolicy.sol";
+import {IPolicy} from "../interfaces/IPolicy.sol";
+import {IMessageBridgePolicy} from "../interfaces/IMessageBridgePolicy.sol";
 
 /**
- * @title TestMessageBridgeProver
- * @notice Test implementation of MessageBridgeProver for unit testing
- * @dev Focuses on testing the MessageBridgeProver interface and whitelist functionality
+ * @title TestMessagePolicy
+ * @notice Test implementation of MessageBridgePolicy for unit testing
+ * @dev Focuses on testing the MessageBridgePolicy interface and whitelist functionality
  */
-contract TestMessageBridgeProver is MessageBridgeProver {
+contract TestMessagePolicy is MessageBridgePolicy {
     // Track dispatch state for testing
     bool public dispatched = false;
     uint256 public dispatchCallCount = 0;
@@ -24,7 +24,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
         address _portal,
         bytes32[] memory _provers,
         uint256 _gasLimit
-    ) MessageBridgeProver(_portal, _provers, _gasLimit) {}
+    ) MessageBridgePolicy(_portal, _provers, _gasLimit) {}
 
     /**
      * @notice Legacy test method for backward compatibility
@@ -75,10 +75,10 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     ) external {
         // Basic validation - the message includes 8 bytes chain ID + proof pairs
         if (_encodedProofs.length < 8) {
-            revert IMessageBridgeProver.InvalidProofMessage();
+            revert IMessageBridgePolicy.InvalidProofMessage();
         }
         if ((_encodedProofs.length - 8) % 64 != 0) {
-            revert IProver.ArrayLengthMismatch();
+            revert IPolicy.ArrayLengthMismatch();
         }
 
         // Process the intent proofs using the base implementation
@@ -119,16 +119,16 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     }
 
     /**
-     * @notice Helper to manually add proven intents for testing
+     * @notice Helper to manually add a proven intent (hash-only fact) for testing
      */
     function addProvenIntent(
         bytes32 _hash,
-        address _claimant,
+        bytes32 _fulfillmentHash,
         uint64 _destination
     ) public {
         _provenIntents[_hash] = ProofData({
-            claimant: _claimant,
-            destination: _destination
+            destination: _destination,
+            fulfillmentHash: _fulfillmentHash
         });
     }
 
@@ -148,11 +148,11 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     }
 
     /**
-     * @notice Implementation of getProofType from IProver
+     * @notice Implementation of getProofType from IPolicy
      * @return String indicating the proving mechanism used
      */
     function getProofType() external pure override returns (string memory) {
-        return "TestMessageBridgeProver";
+        return "TestMessagePolicy";
     }
 
     function version() external pure returns (string memory) {

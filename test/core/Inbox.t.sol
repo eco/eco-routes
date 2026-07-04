@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract InboxTest is BaseTest {
@@ -62,6 +62,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -80,6 +81,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -103,6 +105,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -121,6 +124,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -143,6 +147,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -154,7 +159,9 @@ contract InboxTest is BaseTest {
         uint256 ethAmount = 1 ether;
 
         // Create intent with ETH transfer to EOA
-        TokenAmount[] memory tokens = new TokenAmount[](0);
+        // Native input floor: one native leg forwarded into execution.
+        TokenAmount[] memory nativeMinTokens = new TokenAmount[](1);
+        nativeMinTokens[0] = TokenAmount({token: address(0), amount: ethAmount});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({target: recipient, data: "", value: ethAmount});
@@ -165,16 +172,15 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: ethAmount,
-                tokens: tokens,
-                calls: calls
+                creator: creator,
+                calls: calls,
+                minTokens: nativeMinTokens
             }),
             reward: Reward({
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
 
@@ -196,6 +202,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -206,7 +213,9 @@ contract InboxTest is BaseTest {
     function testRevertOnInsufficientNativeAmount() public {
         // Create intent with native amount
         uint256 ethAmount = 1 ether;
-        TokenAmount[] memory tokens = new TokenAmount[](0);
+        // Native input floor: one native leg forwarded into execution.
+        TokenAmount[] memory nativeMinTokens = new TokenAmount[](1);
+        nativeMinTokens[0] = TokenAmount({token: address(0), amount: ethAmount});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({target: recipient, data: "", value: ethAmount});
@@ -217,16 +226,15 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: ethAmount,
-                tokens: tokens,
-                calls: calls
+                creator: creator,
+                calls: calls,
+                minTokens: nativeMinTokens
             }),
             reward: Reward({
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
 
@@ -251,6 +259,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -268,6 +277,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -276,7 +286,9 @@ contract InboxTest is BaseTest {
         // Create intent with native amount
         uint256 ethAmount = 1 ether;
         uint256 extraFee = 0.1 ether;
-        TokenAmount[] memory tokens = new TokenAmount[](0);
+        // Native input floor: one native leg forwarded into execution.
+        TokenAmount[] memory nativeMinTokens = new TokenAmount[](1);
+        nativeMinTokens[0] = TokenAmount({token: address(0), amount: ethAmount});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({target: recipient, data: "", value: ethAmount});
@@ -287,16 +299,15 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: ethAmount,
-                tokens: tokens,
-                calls: calls
+                creator: creator,
+                calls: calls,
+                minTokens: nativeMinTokens
             }),
             reward: Reward({
                 deadline: uint64(expiry),
                 creator: creator,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
 
@@ -318,10 +329,11 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
-        // Verify only the route's nativeAmount was used for the call
+        // Verify only the native min-tokens leg amount was used for the call
         assertEq(recipient.balance, initialBalance + ethAmount);
         // Extra fee should be refunded to solver
         assertEq(solver.balance, solverInitialBalance - ethAmount);
@@ -347,6 +359,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             nonAddressClaimant,
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -369,6 +382,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             claimantBytes,
+            _providedFromMinTokens(intent.route),
             address(prover),
             uint64(block.chainid),
             ""
@@ -377,8 +391,17 @@ contract InboxTest is BaseTest {
         // Verify tokens were transferred
         assertEq(tokenA.balanceOf(recipient), MINT_AMOUNT);
 
-        // Verify intent was marked as fulfilled
-        assertEq(prover.destFulfillment(intentHash), claimantBytes);
+        // Verify intent was marked as fulfilled: the destination store now holds the
+        // fulfillmentHash commitment (not the raw claimant). fulfilled[] == the provided input
+        // ([MINT_AMOUNT] for the single tokenA min-tokens leg).
+        assertEq(
+            prover.destFulfillment(intentHash),
+            IntentLib.fulfillmentHash(
+                intentHash,
+                claimantBytes,
+                _providedFromMinTokens(intent.route)
+            )
+        );
     }
 
     function testInitiateProvingWithMultipleIntents() public {
@@ -411,6 +434,7 @@ contract InboxTest is BaseTest {
                 intent.route,
                 rewardHash,
                 bytes32(uint256(uint160(recipient))),
+                _providedFromMinTokens(intent.route),
                 address(prover)
             );
         }
@@ -441,6 +465,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             claimantBytes,
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -452,6 +477,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             claimantBytes,
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -473,6 +499,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -495,6 +522,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             claimantBytes,
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -514,13 +542,27 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(0),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
 
+    /**
+     * @notice Builds the per-leg `providedAmounts` for exact provision (each `= minTokens[j].amount`),
+     *         aligned with whatever order the route's `minTokens` uses.
+     */
+    function _providedFromMinTokens(
+        Route memory r
+    ) internal pure returns (uint256[] memory provided) {
+        provided = new uint256[](r.minTokens.length);
+        for (uint256 i = 0; i < r.minTokens.length; ++i) {
+            provided[i] = r.minTokens[i].amount;
+        }
+    }
+
     function _createIntent() internal view returns (Intent memory) {
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](1);
+        minTokensLegs[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
@@ -540,16 +582,15 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    nativeAmount: 0,
-                    tokens: tokens,
-                    calls: calls
+                    creator: creator,
+                    calls: calls,
+                    minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeAmount: 0,
-                    tokens: new TokenAmount[](0)
+                    tokens: new RewardToken[](0)
                 })
             });
     }
@@ -559,12 +600,27 @@ contract InboxTest is BaseTest {
         view
         returns (Intent memory)
     {
-        TokenAmount[] memory tokens = new TokenAmount[](2);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
-        tokens[1] = TokenAmount({
-            token: address(tokenB),
-            amount: MINT_AMOUNT * 2
-        });
+        // minTokens must be strictly ascending by token address, so order the two legs by address.
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](2);
+        if (uint160(address(tokenA)) < uint160(address(tokenB))) {
+            minTokensLegs[0] = TokenAmount({
+                token: address(tokenA),
+                amount: MINT_AMOUNT
+            });
+            minTokensLegs[1] = TokenAmount({
+                token: address(tokenB),
+                amount: MINT_AMOUNT * 2
+            });
+        } else {
+            minTokensLegs[0] = TokenAmount({
+                token: address(tokenB),
+                amount: MINT_AMOUNT * 2
+            });
+            minTokensLegs[1] = TokenAmount({
+                token: address(tokenA),
+                amount: MINT_AMOUNT
+            });
+        }
 
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
@@ -593,16 +649,15 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    nativeAmount: 0,
-                    tokens: tokens,
-                    calls: calls
+                    creator: creator,
+                    calls: calls,
+                    minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeAmount: 0,
-                    tokens: new TokenAmount[](0)
+                    tokens: new RewardToken[](0)
                 })
             });
     }
@@ -621,6 +676,7 @@ contract InboxTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -650,8 +706,8 @@ contract InboxTest is BaseTest {
     }
 
     function _createIntentWithCalls() internal view returns (Intent memory) {
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](1);
+        minTokensLegs[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
@@ -671,16 +727,15 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    nativeAmount: 0,
-                    tokens: tokens,
-                    calls: calls
+                    creator: creator,
+                    calls: calls,
+                    minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
                     creator: creator,
                     prover: address(prover),
-                    nativeAmount: 0,
-                    tokens: new TokenAmount[](0)
+                    tokens: new RewardToken[](0)
                 })
             });
     }

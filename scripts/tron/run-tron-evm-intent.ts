@@ -110,16 +110,15 @@ const TRON_PUBLISH_AND_FUND_ABI = [
             { name: 'salt', type: 'bytes32' },
             { name: 'deadline', type: 'uint64' },
             { name: 'portal', type: 'address' },
-            { name: 'nativeAmount', type: 'uint256' },
-            { name: 'tokens', type: 'tuple[]', components: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }] },
+            { name: 'creator', type: 'address' },
             { name: 'calls', type: 'tuple[]', components: [{ name: 'target', type: 'address' }, { name: 'data', type: 'bytes' }, { name: 'value', type: 'uint256' }] },
+            { name: 'minTokens', type: 'tuple[]', components: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }] },
           ]},
           { name: 'reward', type: 'tuple', components: [
             { name: 'deadline', type: 'uint64' },
             { name: 'creator', type: 'address' },
             { name: 'prover', type: 'address' },
-            { name: 'nativeAmount', type: 'uint256' },
-            { name: 'tokens', type: 'tuple[]', components: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }] },
+            { name: 'tokens', type: 'tuple[]', components: [{ name: 'token', type: 'address' }, { name: 'rate', type: 'uint256' }, { name: 'flat', type: 'uint256' }] },
           ]},
         ],
       },
@@ -140,8 +139,7 @@ const TRON_WITHDRAW_ABI = [
         { name: 'deadline', type: 'uint64' },
         { name: 'creator', type: 'address' },
         { name: 'prover', type: 'address' },
-        { name: 'nativeAmount', type: 'uint256' },
-        { name: 'tokens', type: 'tuple[]', components: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }] },
+        { name: 'tokens', type: 'tuple[]', components: [{ name: 'token', type: 'address' }, { name: 'rate', type: 'uint256' }, { name: 'flat', type: 'uint256' }] },
       ]},
     ],
     outputs: [], stateMutability: 'nonpayable',
@@ -151,11 +149,12 @@ const TRON_WITHDRAW_ABI = [
 const EVM_FULFILL_AND_PROVE_ABI = [
   `function fulfillAndProve(
     bytes32 intentHash,
-    tuple(bytes32 salt, uint64 deadline, address portal, uint256 nativeAmount,
-          tuple(address token, uint256 amount)[] tokens,
-          tuple(address target, bytes data, uint256 value)[] calls) route,
+    tuple(bytes32 salt, uint64 deadline, address portal, address creator,
+          tuple(address target, bytes data, uint256 value)[] calls,
+          tuple(address token, uint256 amount)[] minTokens) route,
     bytes32 rewardHash,
     bytes32 claimant,
+    uint256[] providedAmounts,
     address prover,
     uint64 sourceChainDomainID,
     bytes data
@@ -171,10 +170,10 @@ const ERC20_IFACE        = new ethers.Interface(ERC20_ABI)
 const ERC20_TRANSFER_IFACE = new ethers.Interface(['function transfer(address to, uint256 amount) returns (bool)'])
 
 const TRON_PUBLISH_AND_FUND_SIG =
-  'publishAndFund((uint64,(bytes32,uint64,address,uint256,(address,uint256)[],(address,bytes,uint256)[]),(uint64,address,address,uint256,(address,uint256)[]))),bool)'
+  'publishAndFund((uint64,(bytes32,uint64,address,address,(address,bytes,uint256)[],(address,uint256)[]),(uint64,address,address,(address,uint256,uint256)[])),bool)'
 
 const TRON_WITHDRAW_SIG =
-  'batchWithdraw(uint64[],bytes32[],(uint64,address,address,uint256,(address,uint256)[])[])'
+  'batchWithdraw(uint64[],bytes32[],(uint64,address,address,(address,uint256,uint256)[])[])'
 
 const TRON_ERC20_APPROVE_SIG = 'approve(address,uint256)'
 
@@ -257,14 +256,15 @@ async function createIntent(
 
   const intent = [
     evmChainId,
-    // route: what solver must do on EVM — provide 0.05 USDC, Executor transfers it to creator
+    // route: what solver must do on EVM — provide 0.05 USDC (minTokens), Executor transfers it to creator
+    // order: salt, deadline, portal, creator, calls, minTokens
     [
-      salt, deadline, evmPortalHex, 0,
-      [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],          // route.tokens: solver pre-approves USDC to EVM portal
+      salt, deadline, evmPortalHex, creatorHex,
       [{ target: evmUsdcAddr, data: transferData, value: 0 }], // route.calls: Executor sends USDC to creator
+      [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],          // route.minTokens: solver pre-approves USDC to EVM portal
     ],
-    // reward: 0.1 USDT locked on Tron for the solver
-    [deadline, creatorHex, tronProverHex, 0, [{ token: tronUsdtHex, amount: REWARD_AMOUNT }]],
+    // reward: 0.1 USDT locked on Tron for the solver (flat leg, no rate)
+    [deadline, creatorHex, tronProverHex, [{ token: tronUsdtHex, rate: 0, flat: REWARD_AMOUNT }]],
   ]
 
   console.log(`  Creator:   ${deployerTronAddr} (${creatorHex})`)
@@ -286,7 +286,7 @@ async function createIntent(
 
   const { txid, info } = await tronSendAndWait(tw, tronPortalB58, TRON_PUBLISH_AND_FUND_SIG, calldata.slice(10))
 
-  const topic = ethers.id('IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])')
+  const topic = ethers.id('IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])')
   let intentHash = ''
   for (const log of info.log || []) {
     if (log.topics?.[0] === topic.slice(2)) { intentHash = '0x' + log.topics[1]; break }
@@ -327,25 +327,26 @@ async function fulfillAndProveOnEvm(
     salt,
     deadline: BigInt(deadline),
     portal: evmPortal,
-    nativeAmount: 0n,
-    tokens: [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],
+    creator: creatorHex,
     calls:  [{ target: evmUsdcAddr, data: transferData, value: 0n }],
+    minTokens: [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }],
   }
   const reward = {
     deadline: BigInt(deadline),
     creator: creatorHex,
     prover: tronProver,
-    nativeAmount: 0n,
-    tokens: [{ token: tronUsdtHex, amount: REWARD_AMOUNT }],
+    tokens: [{ token: tronUsdtHex, rate: 0n, flat: REWARD_AMOUNT }],
   }
 
   const rewardHash = ethers.keccak256(
     abiCoder.encode(
-      ['tuple(uint64 deadline, address creator, address prover, uint256 nativeAmount, tuple(address token, uint256 amount)[] tokens)'],
+      ['tuple(uint64 deadline, address creator, address prover, tuple(address token, uint256 rate, uint256 flat)[] tokens)'],
       [reward],
     ),
   )
   const claimant = ethers.zeroPadValue(wallet.address, 32)
+  // providedAmounts index-aligned with route.minTokens (exact provision)
+  const providedAmounts = [ROUTE_AMOUNT]
   const encodedProofs = ethers.concat([intentHash, claimant])
   const lzData = buildLzData(abiCoder, tronProver)
 
@@ -363,7 +364,7 @@ async function fulfillAndProveOnEvm(
   console.log(`  sending fulfillAndProve...`)
   const portal = new ethers.Contract(evmPortal, EVM_FULFILL_AND_PROVE_ABI, wallet)
   const tx = await portal.fulfillAndProve(
-    intentHash, route, rewardHash, claimant,
+    intentHash, route, rewardHash, claimant, providedAmounts,
     evmProver, tronEid, lzData,
     { value: fee * 2n }, // 2× buffer — overage is refunded by LZ endpoint
   )
@@ -435,19 +436,19 @@ async function withdrawOnTron(
     salt,
     deadline: BigInt(deadline),
     portal: evmPortalHex,
-    nativeAmount: 0n,
-    tokens: [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }] as any[],
+    creator: creatorHex,
     calls:  [{ target: evmUsdcAddr, data: transferData, value: 0n }] as any[],
+    minTokens: [{ token: evmUsdcAddr, amount: ROUTE_AMOUNT }] as any[],
   }
   const routeHash = ethers.keccak256(
     abiCoder.encode(
-      ['tuple(bytes32 salt, uint64 deadline, address portal, uint256 nativeAmount, tuple(address token, uint256 amount)[] tokens, tuple(address target, bytes data, uint256 value)[] calls)'],
+      ['tuple(bytes32 salt, uint64 deadline, address portal, address creator, tuple(address target, bytes data, uint256 value)[] calls, tuple(address token, uint256 amount)[] minTokens)'],
       [route],
     ),
   )
 
-  // Reward: USDT on Tron
-  const reward = [BigInt(deadline), creatorHex, tronProverHex, 0, [{ token: tronUsdtHex, amount: REWARD_AMOUNT }]]
+  // Reward: USDT on Tron (flat leg, no rate)
+  const reward = [BigInt(deadline), creatorHex, tronProverHex, [{ token: tronUsdtHex, rate: 0, flat: REWARD_AMOUNT }]]
   const iface = new ethers.Interface(TRON_WITHDRAW_ABI)
   const calldata = iface.encodeFunctionData('batchWithdraw', [[evmChainId], [routeHash], [reward]])
 

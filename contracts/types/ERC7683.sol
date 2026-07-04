@@ -125,7 +125,7 @@ struct OrderData {
     Output[] maxSpent;
 }
 
-// EIP712 type hash
+// EIP712 type hash (referenced struct types sorted alphabetically per EIP-712)
 bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
-    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Reward(uint64 deadline,address creator,address prover,uint256 nativeAmount,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)"
+    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address creator,address prover,RewardToken[] tokens)RewardToken(address token,uint256 rate,uint256 flat)"
 );

@@ -2,10 +2,11 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
+import {RewardToken, IntentLib} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
 contract IntentSourceTest is BaseTest {
@@ -42,7 +43,9 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testCreatesProperlyWithNativeTokenRewards() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         uint256 initialBalance = creator.balance;
@@ -58,7 +61,9 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testIncrementsCounterAndLocksUpTokens() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -70,7 +75,9 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testEmitsEvents() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         bytes32 intentHash = _hashIntent(intent);
@@ -83,7 +90,6 @@ contract IntentSourceTest is BaseTest {
             intent.reward.creator,
             intent.reward.prover,
             intent.reward.deadline,
-            REWARD_NATIVE_ETH,
             intent.reward.tokens
         );
 
@@ -96,15 +102,19 @@ contract IntentSourceTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
     }
 
     function testWithdrawsToClaimantWithProof() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -119,10 +129,12 @@ contract IntentSourceTest is BaseTest {
         assertTrue(intentSource.isIntentFunded(intent));
 
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         assertFalse(intentSource.isIntentFunded(intent));
@@ -141,10 +153,12 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentWithdrawn(intentHash, claimant);
 
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
     }
 
@@ -155,18 +169,22 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
     }
 
@@ -180,15 +198,18 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentWithdrawn(intentHash, claimant);
 
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
+        // Refund after a claim is still allowed (dust recovery); settle already swept the residual, so
+        // this drains an empty vault. It must not revert.
         _expectEmit();
         emit IIntentSource.IntentRefunded(intentHash, creator);
-
         vm.prank(otherPerson);
         intentSource.refund(
             intent.destination,
@@ -233,10 +254,12 @@ contract IntentSourceTest is BaseTest {
         assertTrue(intentSource.isIntentFunded(intent));
 
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         assertFalse(intentSource.isIntentFunded(intent));
@@ -252,8 +275,8 @@ contract IntentSourceTest is BaseTest {
         _timeTravel(expiry);
 
         // Verify proof exists before challenge
-        IProver.ProofData memory proofBefore = prover.provenIntents(intentHash);
-        assertTrue(proofBefore.claimant != address(0));
+        IPolicy.ProofData memory proofBefore = prover.provenIntents(intentHash);
+        assertTrue(proofBefore.fulfillmentHash != bytes32(0));
 
         // Challenge the proof manually
         EVMIntent memory evmIntent = _convertToEVMIntent(intent);
@@ -266,8 +289,8 @@ contract IntentSourceTest is BaseTest {
         );
 
         // Verify proof was cleared after challenge
-        IProver.ProofData memory proofAfter = prover.provenIntents(intentHash);
-        assertEq(proofAfter.claimant, address(0));
+        IPolicy.ProofData memory proofAfter = prover.provenIntents(intentHash);
+        assertEq(proofAfter.fulfillmentHash, bytes32(0));
         assertTrue(intentSource.isIntentFunded(intent));
     }
 
@@ -295,21 +318,23 @@ contract IntentSourceTest is BaseTest {
     function testBatchWithdrawalFailsBeforeExpiry() public {
         _publishAndFund(intent, false);
 
-        bytes32[] memory routeHashes = new bytes32[](1);
-        Reward[] memory rewards = new Reward[](1);
-        routeHashes[0] = keccak256(abi.encode(intent.route));
-        rewards[0] = intent.reward;
-
-        uint64[] memory destinations = new uint64[](1);
-        destinations[0] = intent.destination;
-
+        // batchWithdraw was removed in v3; settle per intent instead. With no proof recorded the stored
+        // fulfillmentHash is zero, so settle reverts InvalidFulfillmentProof.
         vm.expectRevert();
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+        intentSource.settle(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
     }
 
     function testBatchWithdrawalSingleIntentBeforeExpiryToClaimant() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -323,16 +348,15 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenA.balanceOf(claimant), 0);
         assertEq(tokenB.balanceOf(claimant), 0);
 
-        bytes32[] memory routeHashes = new bytes32[](1);
-        Reward[] memory rewards = new Reward[](1);
-        routeHashes[0] = keccak256(abi.encode(intent.route));
-        rewards[0] = intent.reward;
-
-        uint64[] memory destinations = new uint64[](1);
-        destinations[0] = intent.destination;
-
+        // batchWithdraw was removed in v3; settle each intent individually.
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+        intentSource.settle(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(claimant), MINT_AMOUNT);
@@ -341,7 +365,9 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testBatchWithdrawalAfterExpiryToCreator() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -355,16 +381,16 @@ contract IntentSourceTest is BaseTest {
 
         assertTrue(intentSource.isIntentFunded(intent));
 
-        bytes32[] memory routeHashes = new bytes32[](1);
-        Reward[] memory rewards = new Reward[](1);
-        routeHashes[0] = keccak256(abi.encode(intent.route));
-        rewards[0] = intent.reward;
-
-        uint64[] memory destinations = new uint64[](1);
-        destinations[0] = intent.destination;
-
+        // batchWithdraw was removed in v3; settle each intent individually. The proof commits `creator`
+        // as the claimant, so the reward is paid to the creator.
         vm.prank(otherPerson);
-        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+        intentSource.settle(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward,
+            bytes32(uint256(uint160(creator))),
+            _defaultFulfilled()
+        );
 
         assertFalse(intentSource.isIntentFunded(intent));
         assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
@@ -448,8 +474,8 @@ contract IntentSourceTest is BaseTest {
     // Edge Cases
     function testHandlesZeroTokenAmounts() public {
         // Create intent with zero amounts
-        TokenAmount[] memory zeroRewardTokens = new TokenAmount[](1);
-        zeroRewardTokens[0] = TokenAmount({token: address(tokenA), amount: 0});
+        RewardToken[] memory zeroRewardTokens = new RewardToken[](1);
+        zeroRewardTokens[0] = RewardToken({token: address(tokenA), rate: 0, flat: 0});
 
         Reward memory newReward = reward;
         newReward.tokens = zeroRewardTokens;
@@ -502,7 +528,9 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testInsufficientNativeReward() public {
-        reward.nativeAmount = 1 ether;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: 1 ether})
+        );
         intent.reward = reward;
 
         vm.expectRevert();
@@ -514,7 +542,9 @@ contract IntentSourceTest is BaseTest {
         uint256 nativeAmount = 1 ether;
         uint256 sentAmount = 0.5 ether;
 
-        reward.nativeAmount = nativeAmount;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: nativeAmount})
+        );
         intent.reward = reward;
 
         bytes32 intentHash = _hashIntent(intent);
@@ -534,10 +564,11 @@ contract IntentSourceTest is BaseTest {
         uint256 requestedAmount = MINT_AMOUNT * 2;
 
         // Setup intent with more tokens than creator has
-        TokenAmount[] memory largeRewardTokens = new TokenAmount[](1);
-        largeRewardTokens[0] = TokenAmount({
+        RewardToken[] memory largeRewardTokens = new RewardToken[](1);
+        largeRewardTokens[0] = RewardToken({
             token: address(tokenA),
-            amount: requestedAmount
+            rate: 0,
+            flat: requestedAmount
         });
 
         Reward memory newReward = reward;
@@ -570,10 +601,11 @@ contract IntentSourceTest is BaseTest {
         uint256 requestedAmount = MINT_AMOUNT * 2;
 
         // Setup intent with more tokens than creator has
-        TokenAmount[] memory largeRewardTokens = new TokenAmount[](1);
-        largeRewardTokens[0] = TokenAmount({
+        RewardToken[] memory largeRewardTokens = new RewardToken[](1);
+        largeRewardTokens[0] = RewardToken({
             token: address(tokenA),
-            amount: requestedAmount
+            rate: 0,
+            flat: requestedAmount
         });
 
         Reward memory newReward = reward;
@@ -599,14 +631,16 @@ contract IntentSourceTest is BaseTest {
         maliciousToken.mint(creator, MINT_AMOUNT);
 
         // Create reward with malicious token
-        TokenAmount[] memory badRewardTokens = new TokenAmount[](2);
-        badRewardTokens[0] = TokenAmount({
+        RewardToken[] memory badRewardTokens = new RewardToken[](2);
+        badRewardTokens[0] = RewardToken({
             token: address(maliciousToken),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
-        badRewardTokens[1] = TokenAmount({
+        badRewardTokens[1] = RewardToken({
             token: address(tokenA),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         Reward memory newReward = reward;
@@ -631,17 +665,24 @@ contract IntentSourceTest is BaseTest {
         // withdraw reverts because SafeERC20 bubbles up BadERC20.TransferNotAllowed()
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
     }
 
     function testBalanceOverAllowanceForPartialFunding() public {
         // Create intent with more tokens than creator has
         uint256 requestedAmount = MINT_AMOUNT * 2;
 
-        TokenAmount[] memory largeRewardTokens = new TokenAmount[](1);
-        largeRewardTokens[0] = TokenAmount({
+        RewardToken[] memory largeRewardTokens = new RewardToken[](1);
+        largeRewardTokens[0] = RewardToken({
             token: address(tokenA),
-            amount: requestedAmount
+            rate: 0,
+            flat: requestedAmount
         });
 
         Reward memory newReward = reward;
@@ -673,7 +714,9 @@ contract IntentSourceTest is BaseTest {
         uint256 nativeAmount = 1 ether;
         uint256 sentAmount = 0.5 ether;
 
-        reward.nativeAmount = nativeAmount;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: nativeAmount})
+        );
         intent.reward = reward;
 
         // Test insufficient native reward without partial funding
@@ -729,7 +772,9 @@ contract IntentSourceTest is BaseTest {
         // Critical security test: prevent marking intent as funded with zero native value
         uint256 nativeAmount = 1 ether;
 
-        reward.nativeAmount = nativeAmount;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: nativeAmount})
+        );
         intent.reward = reward;
 
         // Try to exploit by sending zero value but claiming intent is funded
@@ -771,7 +816,13 @@ contract IntentSourceTest is BaseTest {
         uint256 initialBalanceB = tokenB.balanceOf(claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
 
         // Claimant should receive reward amount, creator gets the excess
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
@@ -780,18 +831,21 @@ contract IntentSourceTest is BaseTest {
 
     function testDuplicateTokensInRewardArray() public {
         // Security test: ensure system handles duplicate tokens gracefully
-        TokenAmount[] memory duplicateRewardTokens = new TokenAmount[](3);
-        duplicateRewardTokens[0] = TokenAmount({
+        RewardToken[] memory duplicateRewardTokens = new RewardToken[](3);
+        duplicateRewardTokens[0] = RewardToken({
             token: address(tokenA),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
-        duplicateRewardTokens[1] = TokenAmount({
+        duplicateRewardTokens[1] = RewardToken({
             token: address(tokenA), // Duplicate
-            amount: MINT_AMOUNT / 2
+            rate: 0,
+            flat: MINT_AMOUNT / 2
         });
-        duplicateRewardTokens[2] = TokenAmount({
+        duplicateRewardTokens[2] = RewardToken({
             token: address(tokenB),
-            amount: MINT_AMOUNT * 2
+            rate: 0,
+            flat: MINT_AMOUNT * 2
         });
 
         Reward memory newReward = reward;
@@ -817,7 +871,13 @@ contract IntentSourceTest is BaseTest {
 
         // IntentWithdrawn should handle duplicates correctly
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
 
         // Verify balances (should transfer per each entry, including duplicates)
         assertGt(tokenA.balanceOf(claimant), 0);
@@ -844,9 +904,9 @@ contract IntentSourceTest is BaseTest {
                 salt: keccak256("salt2"),
                 deadline: intent.route.deadline,
                 portal: intent.route.portal,
-                nativeAmount: intent.route.nativeAmount,
-                tokens: intent.route.tokens,
-                calls: intent.route.calls
+                creator: intent.route.creator,
+                calls: intent.route.calls,
+                minTokens: intent.route.minTokens
             }),
             reward: intent.reward
         });
@@ -859,9 +919,9 @@ contract IntentSourceTest is BaseTest {
                 salt: keccak256("salt3"),
                 deadline: intent.route.deadline,
                 portal: intent.route.portal,
-                nativeAmount: intent.route.nativeAmount,
-                tokens: intent.route.tokens,
-                calls: intent.route.calls
+                creator: intent.route.creator,
+                calls: intent.route.calls,
+                minTokens: intent.route.minTokens
             }),
             reward: intent.reward
         });
@@ -875,15 +935,17 @@ contract IntentSourceTest is BaseTest {
         uint256 initialClaimantBalance = tokenA.balanceOf(claimant);
         uint256 initialCreatorBalance = tokenA.balanceOf(creator);
 
-        // Since batchWithdraw calls withdraw in a loop and reverts on error,
-        // we need to handle each intent separately when they have different outcomes
+        // batchWithdraw was removed in v3; handle each intent separately since they have
+        // different outcomes (settle vs refund).
 
         // Intent 1: Proven with claimant - should succeed
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             intents[0].destination,
             keccak256(abi.encode(intents[0].route)),
-            intents[0].reward
+            intents[0].reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         // Intent 2: No proof, expired - should refund
@@ -896,10 +958,12 @@ contract IntentSourceTest is BaseTest {
 
         // Intent 3: Proven with creator as claimant - should succeed
         vm.prank(creator);
-        intentSource.withdraw(
+        intentSource.settle(
             intents[2].destination,
             keccak256(abi.encode(intents[2].route)),
-            intents[2].reward
+            intents[2].reward,
+            bytes32(uint256(uint160(creator))),
+            _defaultFulfilled()
         );
 
         // Verify correct distributions
@@ -930,7 +994,6 @@ contract IntentSourceTest is BaseTest {
             intent.reward.creator,
             intent.reward.prover,
             intent.reward.deadline,
-            0,
             intent.reward.tokens
         );
 
@@ -966,22 +1029,19 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentWithdrawn(intentHash, claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
     }
 
     function _convertToEVMIntent(
         Intent memory _evmIntent
     ) internal pure returns (EVMIntent memory) {
-        // The Intent type is already EVM-compatible, just repackage it
-        EVMTokenAmount[] memory evmRouteTokens = new EVMTokenAmount[](
-            _evmIntent.route.tokens.length
-        );
-        for (uint256 i = 0; i < _evmIntent.route.tokens.length; i++) {
-            evmRouteTokens[i] = EVMTokenAmount({
-                token: _evmIntent.route.tokens[i].token,
-                amount: _evmIntent.route.tokens[i].amount
-            });
-        }
+        // The Intent type is already EVM-compatible, just repackage it.
 
         // Convert calls
         EVMCall[] memory evmCalls = new EVMCall[](
@@ -995,14 +1055,26 @@ contract IntentSourceTest is BaseTest {
             });
         }
 
-        // Convert reward tokens
-        EVMTokenAmount[] memory evmRewardTokens = new EVMTokenAmount[](
+        // Convert reward legs
+        RewardToken[] memory evmRewardTokens = new RewardToken[](
             _evmIntent.reward.tokens.length
         );
         for (uint256 i = 0; i < _evmIntent.reward.tokens.length; i++) {
-            evmRewardTokens[i] = EVMTokenAmount({
+            evmRewardTokens[i] = RewardToken({
                 token: _evmIntent.reward.tokens[i].token,
-                amount: _evmIntent.reward.tokens[i].amount
+                rate: _evmIntent.reward.tokens[i].rate,
+                flat: _evmIntent.reward.tokens[i].flat
+            });
+        }
+
+        // Convert route min-tokens legs (the solver-input floor)
+        EVMTokenAmount[] memory evmMinTokens = new EVMTokenAmount[](
+            _evmIntent.route.minTokens.length
+        );
+        for (uint256 i = 0; i < _evmIntent.route.minTokens.length; i++) {
+            evmMinTokens[i] = EVMTokenAmount({
+                token: _evmIntent.route.minTokens[i].token,
+                amount: _evmIntent.route.minTokens[i].amount
             });
         }
 
@@ -1013,15 +1085,14 @@ contract IntentSourceTest is BaseTest {
                     salt: _evmIntent.route.salt,
                     deadline: _evmIntent.route.deadline,
                     portal: _evmIntent.route.portal,
-                    nativeAmount: _evmIntent.route.nativeAmount,
-                    tokens: evmRouteTokens,
-                    calls: evmCalls
+                    creator: _evmIntent.route.creator,
+                    calls: evmCalls,
+                    minTokens: evmMinTokens
                 }),
                 reward: EVMReward({
                     deadline: _evmIntent.reward.deadline,
                     creator: _evmIntent.reward.creator,
                     prover: _evmIntent.reward.prover,
-                    nativeAmount: _evmIntent.reward.nativeAmount,
                     tokens: evmRewardTokens
                 })
             });
@@ -1086,7 +1157,7 @@ contract IntentSourceTest is BaseTest {
         // First withdraw normally
         _mockProofAndWithdraw(intentHash, claimant);
 
-        // Try to withdraw again - should fail
+        // Try to settle again - should fail (mocked proof persists, status is Withdrawn)
         vm.expectRevert(
             abi.encodeWithSelector(
                 IIntentSource.InvalidStatusForWithdrawal.selector,
@@ -1094,17 +1165,23 @@ contract IntentSourceTest is BaseTest {
             )
         );
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
     }
 
     function testWithdrawRejectsRefundedStatus() public {
         _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
 
-        // Fast forward past deadline and refund
+        // Record a proof so settle clears the preimage check and reaches the status guard.
+        _addProof(intentHash, CHAIN_ID, claimant);
+
+        // Fast forward past deadline and refund (after the deadline refund succeeds regardless of proof)
         vm.warp(reward.deadline + 1);
         vm.prank(creator);
         intentSource.refund(
@@ -1113,7 +1190,7 @@ contract IntentSourceTest is BaseTest {
             intent.reward
         );
 
-        // Try to withdraw after refund - should fail
+        // Try to settle after refund - should fail (status is Refunded)
         vm.expectRevert(
             abi.encodeWithSelector(
                 IIntentSource.InvalidStatusForWithdrawal.selector,
@@ -1121,10 +1198,12 @@ contract IntentSourceTest is BaseTest {
             )
         );
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
     }
 
@@ -1132,21 +1211,33 @@ contract IntentSourceTest is BaseTest {
         _publishAndFund(intent, false);
         bytes32 intentHash = _hashIntent(intent);
 
-        // Mock a proof with zero claimant
+        // Mock a proof committing the zero claimant (with an empty fulfilled preimage).
         vm.mockCall(
             address(prover),
-            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
-            abi.encode(IProver.ProofData(address(0), CHAIN_ID))
+            abi.encodeWithSelector(IPolicy.provenIntents.selector, intentHash),
+            abi.encode(
+                IPolicy.ProofData(
+                    CHAIN_ID,
+                    IntentLib.fulfillmentHash(
+                        intentHash,
+                        bytes32(0),
+                        _defaultFulfilled()
+                    )
+                )
+            )
         );
 
+        // The preimage matches, then address(0) is rejected by _validateWithdraw.
         vm.expectRevert(
             abi.encodeWithSelector(IIntentSource.InvalidClaimant.selector)
         );
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(0),
+            _defaultFulfilled()
         );
     }
 
@@ -1177,8 +1268,17 @@ contract IntentSourceTest is BaseTest {
         // Mock a valid proof but don't withdraw (keep status as Funded)
         vm.mockCall(
             address(prover),
-            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
-            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+            abi.encodeWithSelector(IPolicy.provenIntents.selector, intentHash),
+            abi.encode(
+                IPolicy.ProofData(
+                    CHAIN_ID,
+                    IntentLib.fulfillmentHash(
+                        intentHash,
+                        bytes32(uint256(uint160(claimant))),
+                        _defaultFulfilled()
+                    )
+                )
+            )
         );
 
         // Try to refund an intent that has proof but hasn't been withdrawn - should fail
@@ -1222,7 +1322,9 @@ contract IntentSourceTest is BaseTest {
     }
 
     function testRefundToWithNativeTokens() public {
-        reward.nativeAmount = REWARD_NATIVE_ETH;
+        reward.tokens.push(
+            RewardToken({token: address(0), rate: 0, flat: REWARD_NATIVE_ETH})
+        );
         intent.reward = reward;
 
         _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
@@ -1319,8 +1421,17 @@ contract IntentSourceTest is BaseTest {
         // Mock a valid proof but don't withdraw
         vm.mockCall(
             address(prover),
-            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
-            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+            abi.encodeWithSelector(IPolicy.provenIntents.selector, intentHash),
+            abi.encode(
+                IPolicy.ProofData(
+                    CHAIN_ID,
+                    IntentLib.fulfillmentHash(
+                        intentHash,
+                        bytes32(uint256(uint160(claimant))),
+                        _defaultFulfilled()
+                    )
+                )
+            )
         );
 
         vm.prank(creator);
@@ -1345,17 +1456,20 @@ contract IntentSourceTest is BaseTest {
         _addProof(intentHash, CHAIN_ID, claimant);
 
         vm.prank(otherPerson);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         address refundee = makeAddr("refundee");
 
+        // refundTo after a claim is still allowed (dust recovery); settle already swept the residual, so
+        // this drains an empty vault. It must not revert.
         _expectEmit();
         emit IIntentSource.IntentRefunded(intentHash, refundee);
-
         vm.prank(creator);
         intentSource.refundTo(
             intent.destination,
@@ -1400,7 +1514,8 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
         assertEq(tokenB.balanceOf(vaultAddress), MINT_AMOUNT);
 
-        // Second refund - recovers the additional funds
+        // After the deadline, refund stays reachable and recovers the additional funds (drains the vault
+        // again to the creator).
         vm.prank(creator);
         intentSource.refund(
             intent.destination,
@@ -1451,7 +1566,8 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
         assertEq(tokenB.balanceOf(vaultAddress), MINT_AMOUNT);
 
-        // Second refundTo - recovers the additional funds to different address
+        // After the deadline, refundTo stays reachable and recovers the additional funds to a new
+        // refundee.
         address refundee2 = makeAddr("refundee2");
         vm.prank(creator);
         intentSource.refundTo(
@@ -1465,7 +1581,7 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenA.balanceOf(refundee), initialBalanceA + MINT_AMOUNT);
         assertEq(tokenB.balanceOf(refundee), initialBalanceB + MINT_AMOUNT * 2);
 
-        // New refundee gets the additional funds
+        // refundee2 gets the additional funds; the vault is drained again.
         assertEq(tokenA.balanceOf(refundee2), MINT_AMOUNT);
         assertEq(tokenB.balanceOf(refundee2), MINT_AMOUNT);
         assertEq(tokenA.balanceOf(vaultAddress), 0);
@@ -1553,24 +1669,35 @@ contract IntentSourceTest is BaseTest {
         );
     }
 
-    // Helper function to mock proof and withdraw
+    // Helper function to mock proof and settle
     function _mockProofAndWithdraw(
         bytes32 _intentHash,
         address claimant
     ) internal {
-        // Mock the prover to return a valid proof
+        // Mock the prover to return a valid hash-only proof for (claimant, empty fulfilled)
         vm.mockCall(
             address(prover),
-            abi.encodeWithSelector(IProver.provenIntents.selector, _intentHash),
-            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+            abi.encodeWithSelector(IPolicy.provenIntents.selector, _intentHash),
+            abi.encode(
+                IPolicy.ProofData(
+                    CHAIN_ID,
+                    IntentLib.fulfillmentHash(
+                        _intentHash,
+                        bytes32(uint256(uint160(claimant))),
+                        _defaultFulfilled()
+                    )
+                )
+            )
         );
 
-        // Withdraw the intent
+        // Settle the intent to the claimant
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
     }
 }

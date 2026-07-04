@@ -6,16 +6,16 @@ import {Vm} from "forge-std/Vm.sol";
 import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
 import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Reward, RewardToken, TokenAmount} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
-import {TestProver} from "../../contracts/test/TestProver.sol";
+import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
 
 contract DepositIntegration_USDCTransfer_SolanaTest is Test {
     DepositFactory_USDCTransfer_Solana public factory;
     Portal public portal;
     TestERC20 public token;
-    TestProver public prover;
+    TestPolicy public prover;
 
     // Configuration parameters
     bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
@@ -37,8 +37,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         address indexed creator,
         address indexed prover,
         uint64 deadline,
-        uint256 nativeAmount,
-        TokenAmount[] tokens
+        RewardToken[] rewardTokens
     );
 
     event IntentFunded(
@@ -55,7 +54,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         portal = new Portal();
 
         // Deploy prover
-        prover = new TestProver(address(portal));
+        prover = new TestPolicy(address(portal));
 
         // Deploy factory
         factory = new DepositFactory_USDCTransfer_Solana(

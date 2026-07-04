@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {IProver} from "./IProver.sol";
+import {IPolicy} from "./IPolicy.sol";
 
 /**
- * @title IMessageBridgeProver
+ * @title IMessageBridgePolicy
  * @notice Interface for message-bridge based provers
  * @dev Defines common functionality and events for cross-chain message bridge provers
  */
-interface IMessageBridgeProver is IProver {
+interface IMessageBridgePolicy is IPolicy {
     /**
      * @notice Insufficient fee provided for cross-chain message dispatch
      * @param requiredFee Amount of fee required
@@ -65,9 +65,9 @@ interface IMessageBridgeProver is IProver {
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      * @param data Additional data for message formatting.
      *        Specific format varies by implementation:
-     *        - HyperProver: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
-     *        - MetaProver: (bytes32 sourceChainProver, [uint256 gasLimitOverride])
-     *        - LayerZeroProver: (bytes32 sourceChainProver, uint128 gasLimit)
+     *        - HyperPolicy: (bytes32 sourceChainProver, bytes metadata, address hookAddr, [uint256 gasLimitOverride])
+     *        - MetaPolicy: (bytes32 sourceChainProver, [uint256 gasLimitOverride])
+     *        - LayerZeroPolicy: (bytes32 sourceChainProver, uint128 gasLimit)
      * @return Fee amount required for message dispatch
      */
     function fetchFee(

@@ -2,25 +2,25 @@
 pragma solidity ^0.8.27;
 
 import "forge-std/Test.sol";
-import {HyperProver} from "../../contracts/prover/HyperProver.sol";
-import {MetaProver} from "../../contracts/prover/MetaProver.sol";
-import {LayerZeroProver} from "../../contracts/prover/LayerZeroProver.sol";
-import {TestProver} from "../../contracts/test/TestProver.sol";
-import {TestMessageBridgeProver} from "../../contracts/test/TestMessageBridgeProver.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
+import {HyperPolicy} from "../../contracts/prover/HyperPolicy.sol";
+import {MetaPolicy} from "../../contracts/prover/MetaPolicy.sol";
+import {LayerZeroPolicy} from "../../contracts/prover/LayerZeroPolicy.sol";
+import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
+import {TestMessagePolicy} from "../../contracts/test/TestMessagePolicy.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {IMessageBridgePolicy} from "../../contracts/interfaces/IMessageBridgePolicy.sol";
 
 contract ProverInterfaceTest is Test {
-    TestProver testProver;
-    TestMessageBridgeProver testMessageBridgeProver;
+    TestPolicy testProver;
+    TestMessagePolicy testMessageBridgeProver;
 
     function setUp() public {
         address portal = makeAddr("portal");
-        testProver = new TestProver(portal);
+        testProver = new TestPolicy(portal);
 
         bytes32[] memory whitelistedProvers = new bytes32[](1);
         whitelistedProvers[0] = bytes32(uint256(uint160(makeAddr("prover"))));
-        testMessageBridgeProver = new TestMessageBridgeProver(
+        testMessageBridgeProver = new TestMessagePolicy(
             portal,
             whitelistedProvers,
             200000
@@ -92,15 +92,15 @@ contract ProverInterfaceTest is Test {
         assertEq(testProver.proveCallCount(), 1);
 
         // Verify the proofs were processed correctly by checking proven intents
-        TestProver.ProofData memory proof1 = testProver.provenIntents(
+        TestPolicy.ProofData memory proof1 = testProver.provenIntents(
             intentHashes[0]
         );
-        TestProver.ProofData memory proof2 = testProver.provenIntents(
+        TestPolicy.ProofData memory proof2 = testProver.provenIntents(
             intentHashes[1]
         );
 
-        assertEq(proof1.claimant, address(uint160(uint256(claimants[0]))));
-        assertEq(proof2.claimant, address(uint160(uint256(claimants[1]))));
+        assertEq(proof1.fulfillmentHash, claimants[0]);
+        assertEq(proof2.fulfillmentHash, claimants[1]);
         assertEq(proof1.destination, 1);
         assertEq(proof2.destination, 1);
     }
@@ -119,7 +119,7 @@ contract ProverInterfaceTest is Test {
         assertEq(testProver.getProofType(), "storage");
         assertEq(
             testMessageBridgeProver.getProofType(),
-            "TestMessageBridgeProver"
+            "TestMessagePolicy"
         );
     }
 
@@ -133,7 +133,7 @@ contract ProverInterfaceTest is Test {
             mstore(add(invalidProofs, 0x20), shl(192, chainId))
         }
 
-        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        vm.expectRevert(IPolicy.ArrayLengthMismatch.selector);
         testProver.receiveProofs(makeAddr("sender"), 1, invalidProofs, "");
 
         // Test with 8 + 63 bytes
@@ -141,56 +141,60 @@ contract ProverInterfaceTest is Test {
         assembly {
             mstore(add(invalidProofs, 0x20), shl(192, chainId))
         }
-        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        vm.expectRevert(IPolicy.ArrayLengthMismatch.selector);
         testProver.receiveProofs(makeAddr("sender"), 1, invalidProofs, "");
 
         // Test with just 7 bytes (less than chain ID)
         invalidProofs = new bytes(7);
-        vm.expectRevert(IMessageBridgeProver.InvalidProofMessage.selector);
+        vm.expectRevert(IMessageBridgePolicy.InvalidProofMessage.selector);
         testProver.receiveProofs(makeAddr("sender"), 1, invalidProofs, "");
     }
 
-    function testProveWithInvalidClaimantAddress() public {
-        // Create encoded proofs with invalid claimant (not a valid address format)
+    function testReceiveStoresNonzeroFulfillmentHashSkipsZero() public {
+        // v3: the second word of each wire pair is a fulfillmentHash, not a claimant. It is stored
+        // verbatim regardless of whether its low 20 bytes form a valid EVM address — claimant validity
+        // is checked at settle, not at proof time. Only a ZERO second word is skipped defensively.
         bytes memory encodedProofs = new bytes(8 + 64);
         bytes32 intentHash = keccak256("intent1");
-        // Use a claimant with high bytes set to make it invalid
-        bytes32 invalidClaimant = 0x0000000100000000000000000000000000000000000000000000000000000001;
+        // High bytes set: not a clean EVM address, but a valid nonzero fulfillmentHash.
+        bytes32 nonEvmFulfillment = 0x0000000100000000000000000000000000000000000000000000000000000001;
 
         uint64 chainId = uint64(block.chainid);
         assembly {
             mstore(add(encodedProofs, 0x20), shl(192, chainId))
             mstore(add(encodedProofs, 0x28), intentHash)
-            mstore(add(encodedProofs, 0x48), invalidClaimant)
+            mstore(add(encodedProofs, 0x48), nonEvmFulfillment)
         }
 
-        // Should succeed but skip the invalid claimant
+        // A nonzero fulfillmentHash is stored (no proof-time claimant validation).
         testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
-        // Verify the intent was NOT proven (skipped due to invalid claimant)
-        TestProver.ProofData memory proof = testProver.provenIntents(
+        // Verify the intent WAS proven (commitment stored regardless of address form).
+        TestPolicy.ProofData memory proof = testProver.provenIntents(
             intentHash
         );
-        assertEq(proof.claimant, address(0));
-        assertEq(proof.destination, 0);
+        assertEq(proof.fulfillmentHash, nonEvmFulfillment);
+        assertEq(proof.destination, 1);
 
-        // Test with all zeros claimant
-        invalidClaimant = bytes32(0);
+        // A ZERO second word is skipped; use a fresh intent hash so the store starts empty.
+        bytes32 zeroIntentHash = keccak256("intent-zero");
         assembly {
-            mstore(add(encodedProofs, 0x48), invalidClaimant)
+            mstore(add(encodedProofs, 0x28), zeroIntentHash)
+            mstore(add(encodedProofs, 0x48), 0)
         }
 
-        // Should succeed but skip the zero claimant
+        // Should succeed but skip the zero fulfillmentHash.
         testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
-        // Verify still not proven
-        proof = testProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        // Verify the fresh intent was NOT proven (zero commitment skipped).
+        proof = testProver.provenIntents(zeroIntentHash);
+        assertEq(proof.fulfillmentHash, bytes32(0));
         assertEq(proof.destination, 0);
     }
 
-    function testProveWithMalformedProofData() public {
-        // Test with multiple invalid claimants in batch
+    function testProveStoresAllNonzeroFulfillmentHashesInBatch() public {
+        // v3: every pair's second word is a fulfillmentHash stored verbatim; a high-bytes value is not
+        // "invalid" at proof time (claimant validity is a settle-time check), so all three are stored.
         bytes32[] memory intentHashes = new bytes32[](3);
         intentHashes[0] = keccak256("intent1");
         intentHashes[1] = keccak256("intent2");
@@ -200,7 +204,7 @@ contract ProverInterfaceTest is Test {
         claimants[0] = bytes32(uint256(uint160(makeAddr("validClaimant"))));
         claimants[
             1
-        ] = 0x0000000100000000000000000000000000000000000000000000000000000001; // Invalid - high bytes set
+        ] = 0x0000000100000000000000000000000000000000000000000000000000000001; // high bytes set (non-EVM form)
         claimants[2] = bytes32(uint256(uint160(makeAddr("anotherValid"))));
 
         // Use helper to encode with chain ID
@@ -209,56 +213,60 @@ contract ProverInterfaceTest is Test {
             claimants
         );
 
-        // Should succeed but skip the invalid claimant
+        // All three nonzero commitments are stored.
         testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify first proof was stored
-        TestProver.ProofData memory proof1 = testProver.provenIntents(
+        TestPolicy.ProofData memory proof1 = testProver.provenIntents(
             intentHashes[0]
         );
-        assertEq(proof1.claimant, address(uint160(uint256(claimants[0]))));
+        assertEq(proof1.fulfillmentHash, claimants[0]);
         assertEq(proof1.destination, 1);
 
-        // Verify second proof was skipped (invalid claimant)
-        TestProver.ProofData memory proof2 = testProver.provenIntents(
+        // Verify second proof was stored verbatim (non-EVM-form commitment, no proof-time rejection)
+        TestPolicy.ProofData memory proof2 = testProver.provenIntents(
             intentHashes[1]
         );
-        assertEq(proof2.claimant, address(0));
-        assertEq(proof2.destination, 0);
+        assertEq(proof2.fulfillmentHash, claimants[1]);
+        assertEq(proof2.destination, 1);
 
         // Verify third proof was stored
-        TestProver.ProofData memory proof3 = testProver.provenIntents(
+        TestPolicy.ProofData memory proof3 = testProver.provenIntents(
             intentHashes[2]
         );
-        assertEq(proof3.claimant, address(uint160(uint256(claimants[2]))));
+        assertEq(proof3.fulfillmentHash, claimants[2]);
         assertEq(proof3.destination, 1);
     }
 
-    function testProveWithCrossVMClaimant() public {
-        // Test with non-EVM claimant (high bytes set)
+    function testProveWithCrossVMFulfillmentHash() public {
+        // v3: a cross-VM fulfillmentHash (high bytes set) is stored verbatim on the receive side —
+        // there is no proof-time EVM-address restriction. Claimant validity is enforced at settle.
         bytes32 intentHash = keccak256("crossVMIntent");
-        bytes32 crossVMClaimant = bytes32(
+        bytes32 crossVMFulfillment = bytes32(
             uint256(
                 0xFFFFFFFFFFFFFFFF000000000000000000000000000000000000000000000001
             )
         );
 
         bytes32[] memory hashes = new bytes32[](1);
-        bytes32[] memory claimants = new bytes32[](1);
+        bytes32[] memory fulfillmentHashes = new bytes32[](1);
         hashes[0] = intentHash;
-        claimants[0] = crossVMClaimant;
+        fulfillmentHashes[0] = crossVMFulfillment;
 
-        bytes memory encodedProofs = encodeProofsWithChainId(hashes, claimants);
+        bytes memory encodedProofs = encodeProofsWithChainId(
+            hashes,
+            fulfillmentHashes
+        );
 
-        // This should succeed but skip the non-EVM claimant
+        // Succeeds and stores the cross-VM commitment.
         testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
-        // Verify the intent was NOT proven (skipped due to non-EVM claimant)
-        TestProver.ProofData memory proof = testProver.provenIntents(
+        // Verify the intent WAS proven (fulfillmentHash stored regardless of address form).
+        TestPolicy.ProofData memory proof = testProver.provenIntents(
             intentHash
         );
-        assertEq(proof.claimant, address(0));
-        assertEq(proof.destination, 0);
+        assertEq(proof.fulfillmentHash, crossVMFulfillment);
+        assertEq(proof.destination, 1);
     }
 
     function testProveLargeProofBatch() public {
@@ -285,8 +293,8 @@ contract ProverInterfaceTest is Test {
 
         // Verify a few random proofs
         bytes32 checkHash = keccak256(abi.encodePacked("intent", uint256(50)));
-        TestProver.ProofData memory proof = testProver.provenIntents(checkHash);
-        assertEq(proof.claimant, address(uint160(1050)));
+        TestPolicy.ProofData memory proof = testProver.provenIntents(checkHash);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(1050)));
         assertEq(proof.destination, 1);
     }
 }

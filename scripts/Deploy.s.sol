@@ -10,10 +10,10 @@ import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 
 // Protocol
 import {Portal} from "../contracts/Portal.sol";
-import {HyperProver} from "../contracts/prover/HyperProver.sol";
-import {MetaProver} from "../contracts/prover/MetaProver.sol";
-import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
-import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
+import {HyperPolicy} from "../contracts/prover/HyperPolicy.sol";
+import {MetaPolicy} from "../contracts/prover/MetaPolicy.sol";
+import {LayerZeroPolicy} from "../contracts/prover/LayerZeroPolicy.sol";
+import {PolymerPolicy} from "../contracts/prover/PolymerPolicy.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -159,22 +159,22 @@ contract Deploy is Script {
             deployPortal(ctx);
         }
 
-        // Deploy HyperProver
+        // Deploy HyperPolicy
         if (hasMailbox) {
             deployHyperProver(ctx);
         }
 
-        // Deploy MetaProver
+        // Deploy MetaPolicy
         if (hasRouter) {
             deployMetaProver(ctx);
         }
 
-        // Deploy LayerZeroProver
+        // Deploy LayerZeroPolicy
         if (hasLayerZero) {
             deployLayerZeroProver(ctx);
         }
 
-        // Deploy PolymerProver
+        // Deploy PolymerPolicy
         if (hasPolymer) {
             deployPolymerProver(ctx);
         }
@@ -217,7 +217,7 @@ contract Deploy is Script {
         if (hasMailbox) {
             contracts[count++] = VerificationData({
                 contractAddress: ctx.hyperProver,
-                contractPath: "contracts/prover/HyperProver.sol:HyperProver",
+                contractPath: "contracts/prover/HyperPolicy.sol:HyperPolicy",
                 constructorArgs: ctx.hyperProverConstructorArgs,
                 chainId: block.chainid
             });
@@ -225,7 +225,7 @@ contract Deploy is Script {
         if (hasRouter) {
             contracts[count++] = VerificationData({
                 contractAddress: ctx.metaProver,
-                contractPath: "contracts/prover/MetaProver.sol:MetaProver",
+                contractPath: "contracts/prover/MetaPolicy.sol:MetaPolicy",
                 constructorArgs: ctx.metaProverConstructorArgs,
                 chainId: block.chainid
             });
@@ -233,7 +233,7 @@ contract Deploy is Script {
         if (hasLayerZero) {
             contracts[count++] = VerificationData({
                 contractAddress: ctx.layerZeroProver,
-                contractPath: "contracts/prover/LayerZeroProver.sol:LayerZeroProver",
+                contractPath: "contracts/prover/LayerZeroPolicy.sol:LayerZeroPolicy",
                 constructorArgs: ctx.layerZeroProverConstructorArgs,
                 chainId: block.chainid
             });
@@ -241,7 +241,7 @@ contract Deploy is Script {
         if (hasPolymer) {
             contracts[count++] = VerificationData({
                 contractAddress: ctx.polymerProver,
-                contractPath: "contracts/prover/PolymerProver.sol:PolymerProver",
+                contractPath: "contracts/prover/PolymerPolicy.sol:PolymerPolicy",
                 constructorArgs: ctx.polymerProverConstructorArgs,
                 chainId: block.chainid
             });
@@ -285,7 +285,7 @@ contract Deploy is Script {
         );
 
         bytes memory hyperProverBytecode = abi.encodePacked(
-            type(HyperProver).creationCode,
+            type(HyperPolicy).creationCode,
             ctx.hyperProverConstructorArgs
         );
 
@@ -296,7 +296,7 @@ contract Deploy is Script {
             ctx.hyperProverSalt
         );
 
-        console.log("HyperProver :", ctx.hyperProver);
+        console.log("HyperPolicy :", ctx.hyperProver);
     }
 
     function deployMetaProver(
@@ -328,7 +328,7 @@ contract Deploy is Script {
         );
 
         bytes memory metaProverBytecode = abi.encodePacked(
-            type(MetaProver).creationCode,
+            type(MetaPolicy).creationCode,
             ctx.metaProverConstructorArgs
         );
 
@@ -339,7 +339,7 @@ contract Deploy is Script {
             ctx.metaProverSalt
         );
 
-        console.log("MetaProver :", ctx.metaProver);
+        console.log("MetaPolicy :", ctx.metaProver);
     }
 
     function deployLayerZeroProver(
@@ -372,7 +372,7 @@ contract Deploy is Script {
         );
 
         bytes memory layerZeroProverBytecode = abi.encodePacked(
-            type(LayerZeroProver).creationCode,
+            type(LayerZeroPolicy).creationCode,
             ctx.layerZeroProverConstructorArgs
         );
 
@@ -383,13 +383,13 @@ contract Deploy is Script {
             ctx.layerZeroProverSalt
         );
 
-        console.log("LayerZeroProver :", ctx.layerZeroProver);
+        console.log("LayerZeroPolicy :", ctx.layerZeroProver);
     }
 
     function deployPolymerProver(
         DeploymentContext memory ctx
     ) internal returns (address polymerProver) {
-        // Create provers array for PolymerProver whitelist
+        // Create provers array for PolymerPolicy whitelist
         bytes32[] memory provers = new bytes32[](
             ctx.polymerCrossVmProvers.length
         );
@@ -404,7 +404,7 @@ contract Deploy is Script {
         );
 
         bytes memory polymerProverBytecode = abi.encodePacked(
-            type(PolymerProver).creationCode,
+            type(PolymerPolicy).creationCode,
             ctx.polymerProverConstructorArgs
         );
 
@@ -415,7 +415,7 @@ contract Deploy is Script {
             ctx.polymerProverSalt
         );
 
-        console.log("PolymerProver :", ctx.polymerProver);
+        console.log("PolymerPolicy :", ctx.polymerProver);
     }
 
     function isDeployed(address _addr) internal view returns (bool) {

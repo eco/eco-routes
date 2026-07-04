@@ -8,7 +8,7 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 /**
  * @title TestMetaRouter
  * @notice A mock implementation of the Metalayer Router for testing purposes
- * @dev Simplifies testing of MetaProver without requiring a real Metalayer instance
+ * @dev Simplifies testing of MetaPolicy without requiring a real Metalayer instance
  */
 contract TestMetaRouter {
     using AddressConverter for bytes32;

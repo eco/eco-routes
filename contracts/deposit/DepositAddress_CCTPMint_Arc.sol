@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../types/Intent.sol";
 import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CCTPMint_Arc.sol";
 
 /**
@@ -144,7 +144,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      * @dev This intent is fulfilled on Arc: solver approves Gateway for USDC and calls depositFor
      * @param arcChainId Arc chain ID
      * @param portalAddress Portal address (same on all chains)
-     * @param arcProverAddress LocalProver address on Arc
+     * @param arcProverAddress LocalPolicy address on Arc
      * @param arcUsdc USDC ERC20 address on Arc
      * @param gatewayAddress Gateway contract address on Arc
      * @param netAmount Amount of USDC after CCTP fee deduction (6 decimals)
@@ -163,12 +163,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         uint64 deadline
     ) internal view returns (Intent memory intent) {
         // Arc's native token is USDC at 18 decimals. The arcUsdc ERC20 is a 6-decimal wrapper.
-        // nativeAmount funds the vault in native USDC (18 decimals), while the route calls
-        // (approve and depositFor) interact with the 6-decimal ERC20.
+        // The native `minTokens` leg is the native USDC (18 decimals) the solver forwards into execution,
+        // while the route calls (approve and depositFor) interact with the 6-decimal ERC20.
         uint256 nativeAmount = netAmount * NATIVE_USDC_SCALING;
-
-        // Route tokens: empty (native USDC)
-        TokenAmount[] memory routeTokens = new TokenAmount[](0);
 
         // Route calls: approve Gateway + depositFor (both use 6-decimal arcUsdc amounts)
         Call[] memory calls = new Call[](2);
@@ -192,25 +189,33 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route
+        // Solver input floor: the native USDC forwarded into execution (native `minTokens` leg).
+        TokenAmount[] memory minTokens = new TokenAmount[](1);
+        minTokens[0] = TokenAmount({token: address(0), amount: nativeAmount});
+
+        // Construct route (delivery is via the Gateway call; the native input funds it)
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            nativeAmount: nativeAmount,
-            tokens: routeTokens,
-            calls: calls
+            creator: depositor,
+            calls: calls,
+            minTokens: minTokens
         });
 
-        // Reward tokens: empty (native USDC reward)
-        TokenAmount[] memory rewardTokens = new TokenAmount[](0);
+        // Reward: native USDC as a single flat leg (rate 0)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
+            token: address(0),
+            rate: 0,
+            flat: nativeAmount
+        });
 
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
             creator: depositor,
             prover: arcProverAddress,
-            nativeAmount: nativeAmount,
             tokens: rewardTokens
         });
 
@@ -228,7 +233,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
      *      to burn USDC and mint to Intent 2's vault on Arc
      * @param sourceToken Source USDC token address
      * @param portalAddress Portal address on source chain
-     * @param proverAddress LocalProver address on source chain
+     * @param proverAddress LocalPolicy address on source chain
      * @param cctpTokenMessenger CCTP TokenMessengerV2 address
      * @param destinationDomain CCTP destination domain ID for Arc
      * @param vault2 Intent 2's vault address (CCTP mintRecipient)
@@ -253,9 +258,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         // Use current chain ID for local intent
         uint64 destChain = uint64(block.chainid);
 
-        // Route tokens: source USDC
-        TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = TokenAmount({token: sourceToken, amount: amount});
+        // Solver input floor: the source USDC the solver provides into execution.
+        TokenAmount[] memory minTokens = new TokenAmount[](1);
+        minTokens[0] = TokenAmount({token: sourceToken, amount: amount});
 
         // Route calls: approve TokenMessenger + CCTP depositForBurn
         Call[] memory calls = new Call[](2);
@@ -283,26 +288,25 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route
+        // Construct route (CCTP burn on source; the calls consume the full source-USDC input)
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            creator: depositor,
+            calls: calls,
+            minTokens: minTokens
         });
 
-        // Reward tokens: source USDC
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: sourceToken, amount: amount});
+        // Reward: source USDC as a single flat leg (rate 0)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({token: sourceToken, rate: 0, flat: amount});
 
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
             creator: depositor,
             prover: proverAddress,
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {IExecutor} from "./interfaces/IExecutor.sol";
 
-import {Call} from "./types/Intent.sol";
+import {Call, TokenAmount} from "./types/Intent.sol";
 
 /**
  * @title Executor
@@ -14,6 +17,8 @@ import {Call} from "./types/Intent.sol";
  * - Supports batch execution for multiple calls in a single transaction
  */
 contract Executor is IExecutor {
+    using SafeERC20 for IERC20;
+
     /**
      * @notice Address of the portal contract authorized to call execute
      */
@@ -74,6 +79,40 @@ contract Executor is IExecutor {
         }
 
         return result;
+    }
+
+    /**
+     * @notice Moves any unconsumed input held by the executor to `to`
+     * @dev Only the Portal may call this (it runs immediately after {execute}). For each leg the full
+     *      remaining balance of that token is forwarded to `to` — native (`address(0)`) via a low-level
+     *      call, ERC20 via a safe transfer. A zero remaining balance is skipped so a leg the calls fully
+     *      consumed costs nothing and never reverts on a zero-value transfer. The Portal passes the
+     *      intent's Vault as `to`, keeping leftover with the intent for the creator to retrieve later.
+     * @param tokens The input legs to move (typically `route.minTokens`)
+     * @param to The address that receives the unconsumed input (the intent's Vault)
+     */
+    function sweepTo(
+        TokenAmount[] calldata tokens,
+        address to
+    ) external override onlyPortal {
+        uint256 len = tokens.length;
+        for (uint256 i = 0; i < len; ++i) {
+            address token = tokens[i].token;
+            if (token == address(0)) {
+                uint256 balance = address(this).balance;
+                if (balance > 0) {
+                    (bool ok, ) = to.call{value: balance}("");
+                    if (!ok) {
+                        revert NativeSweepFailed(to, balance);
+                    }
+                }
+            } else {
+                uint256 balance = IERC20(token).balanceOf(address(this));
+                if (balance > 0) {
+                    IERC20(token).safeTransfer(to, balance);
+                }
+            }
+        }
     }
 
     /**

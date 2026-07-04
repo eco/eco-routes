@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Intent, Reward, TokenAmount} from "../types/Intent.sol";
+import {Intent, Reward, RewardToken} from "../types/Intent.sol";
 
 /**
  * @title IIntentSource
@@ -59,11 +59,17 @@ interface IIntentSource {
         uint256 deadline
     );
 
-    /// @notice Thrown when claimant address is address zero
+    /// @notice Thrown when claimant address is address zero or not a valid EVM address
     error InvalidClaimant();
 
     /// @notice Thrown when caller is not the reward creator
     error NotCreatorCaller(address caller);
+
+    /**
+     * @notice The supplied (claimant, fulfilled[]) preimage does not match the proven fulfillment hash
+     * @param intentHash The hash of the intent being settled
+     */
+    error InvalidFulfillmentProof(bytes32 intentHash);
 
     /**
      * @notice Signals the creation of a new cross-chain intent
@@ -73,8 +79,7 @@ interface IIntentSource {
      * @param creator Intent originator address
      * @param prover Prover contract address
      * @param rewardDeadline Timestamp for reward claim eligibility
-     * @param rewardNativeAmount Native token reward amount
-     * @param rewardTokens ERC20 token rewards with amounts
+     * @param rewardTokens Reward legs (rate+flat); native folds in as a leg with token==address(0)
      */
     event IntentPublished(
         bytes32 indexed intentHash,
@@ -83,8 +88,7 @@ interface IIntentSource {
         address indexed creator,
         address indexed prover,
         uint64 rewardDeadline,
-        uint256 rewardNativeAmount,
-        TokenAmount[] rewardTokens
+        RewardToken[] rewardTokens
     );
 
     /**
@@ -333,27 +337,21 @@ interface IIntentSource {
     ) external payable returns (bytes32 intentHash, address vault);
 
     /**
-     * @notice Claims rewards for a successfully fulfilled and proven intent
+     * @notice Settles rewards for a successfully fulfilled and proven intent
+     * @dev The caller supplies the proven `(claimant, fulfilled[])` preimage, verified against the
+     *      prover's hash-only fact before payout.
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
+     * @param claimant Cross-VM claimant identifier committed in the fulfillment
+     * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
      */
-    function withdraw(
+    function settle(
         uint64 destination,
         bytes32 routeHash,
-        Reward calldata reward
-    ) external;
-
-    /**
-     * @notice Claims rewards for multiple fulfilled and proven intents
-     * @param destinations Array of destination chain IDs for the intents
-     * @param routeHashes Array of route component hashes
-     * @param rewards Array of corresponding reward specifications
-     */
-    function batchWithdraw(
-        uint64[] calldata destinations,
-        bytes32[] calldata routeHashes,
-        Reward[] calldata rewards
+        Reward calldata reward,
+        bytes32 claimant,
+        uint256[] calldata fulfilled
     ) external;
 
     /**

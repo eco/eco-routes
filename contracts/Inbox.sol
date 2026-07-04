@@ -4,11 +4,12 @@ pragma solidity ^0.8.26;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {IProver} from "./interfaces/IProver.sol";
+import {IPolicy} from "./interfaces/IPolicy.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {IExecutor} from "./interfaces/IExecutor.sol";
 
-import {Route, Call, TokenAmount} from "./types/Intent.sol";
+import {Route} from "./types/Intent.sol";
+import {IntentLib} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 import {Refund} from "./libs/Refund.sol";
 
@@ -18,11 +19,16 @@ import {Executor} from "./Executor.sol";
 /**
  * @title Inbox
  * @notice Main entry point for fulfilling intents on the destination chain
- * @dev Validates intent hash authenticity and executes calldata. Destination fulfillment storage
- *      lives in the prover, not here: {fulfill} names the prover (policy) to record into, and the
- *      prover both stores the claimant and builds/dispatches the cross-chain proof from its own
- *      store. The Inbox is transport- and policy-agnostic — it only re-derives the intent hash,
- *      executes the route, and hands the fulfillment fact to the named prover.
+ * @dev Validates intent hash authenticity and enforces a solver-INPUT floor: the solver must provide at
+ *      least `route.minTokens[j].amount` of each min-in token (it may provide more, via `providedAmounts`).
+ *      The provided input is pulled into the executor and the route `calls` execute. The core is
+ *      UNOPINIONATED about fund destinations: there is no `recipient` and no protocol-level auto-sweep to
+ *      one — DELIVERY IS THE CALLS' JOB (any beneficiary lives inside a call's calldata). Any input the
+ *      calls did not consume is moved to the intent's Vault (so leftover stays WITH THE INTENT for the
+ *      creator to retrieve later) rather than being stranded in the shared executor. `fulfilled[j]`
+ *      records the amount actually provided; the Inbox commits `(intentHash, claimant, fulfilled[])` into
+ *      a HASH-ONLY fact (`fulfillmentHash = keccak256(abi.encode(intentHash, claimant, fulfilled))`) and
+ *      records it into the named prover (policy), which owns the fulfillment store and cross-chain proof.
  */
 abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
@@ -51,14 +57,15 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
     /**
      * @notice Fulfills an intent, recording the fulfillment into the named prover
-     * @dev Validates intent hash, executes calls, and records the fulfillment into `prover`. The
-     *      solver names the prover (policy) that will settle the reward. Naming a prover other than
-     *      the reward's committed `reward.prover` is solver self-harm only — settlement reads
-     *      `reward.prover`, so a mismatched fulfillment records against a prover that never settles.
+     * @dev Validates intent hash, pulls the solver's provided input, executes calls, moves any unconsumed
+     *      input to the intent's Vault, and records the hash-only fulfillment fact into `prover`. Naming a
+     *      prover other than the reward's committed `reward.prover` is solver self-harm only.
      * @param intentHash The hash of the intent to fulfill
      * @param route The route of the intent
      * @param rewardHash The hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
+     * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
+     *        `>= route.minTokens[j].amount`)
      * @param prover Prover (policy) to record the fulfillment into
      * @return Array of execution results from each call
      */
@@ -67,13 +74,15 @@ abstract contract Inbox is DestinationSettler, IInbox {
         Route memory route,
         bytes32 rewardHash,
         bytes32 claimant,
+        uint256[] memory providedAmounts,
         address prover
     ) external payable returns (bytes[] memory) {
-        bytes[] memory result = _fulfill(
+        (bytes[] memory result, ) = _fulfill(
             intentHash,
             route,
             rewardHash,
             claimant,
+            providedAmounts,
             prover
         );
 
@@ -90,25 +99,19 @@ abstract contract Inbox is DestinationSettler, IInbox {
      * @param route The route of the intent
      * @param rewardHash The hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
+     * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
+     *        `>= route.minTokens[j].amount`)
      * @param prover Address of prover on the destination chain
      * @param sourceChainDomainID Domain ID of the source chain where the intent was created
      * @param data Additional data for message formatting
      * @return Array of execution results
-     *
-     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
-     *      Each bridge provider uses their own domain ID mapping system:
-     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
-     *      - LayerZero: Uses endpoint IDs that map to chains differently
-     *      - Metalayer: Uses domain IDs specific to their routing system
-     *      - Polymer: Uses chain IDs
-     *      You MUST consult the specific bridge provider's documentation to determine
-     *      the correct domain ID for the source chain.
      */
     function fulfillAndProve(
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
         bytes32 claimant,
+        uint256[] memory providedAmounts,
         address prover,
         uint64 sourceChainDomainID,
         bytes memory data
@@ -118,11 +121,12 @@ abstract contract Inbox is DestinationSettler, IInbox {
         override(DestinationSettler, IInbox)
         returns (bytes[] memory)
     {
-        bytes[] memory result = _fulfill(
+        (bytes[] memory result, ) = _fulfill(
             intentHash,
             route,
             rewardHash,
             claimant,
+            providedAmounts,
             prover
         );
 
@@ -144,15 +148,6 @@ abstract contract Inbox is DestinationSettler, IInbox {
      * @param sourceChainDomainID Domain ID of the source chain
      * @param intentHashes Array of intent hashes to prove
      * @param data Additional data for message formatting
-     *
-     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
-     *      Each bridge provider uses their own domain ID mapping system:
-     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
-     *      - LayerZero: Uses endpoint IDs that map to chains differently
-     *      - Metalayer: Uses domain IDs specific to their routing system
-     *      - Polymer: Uses chainIDs
-     *      You MUST consult the specific bridge provider's documentation to determine
-     *      the correct domain ID for the source chain.
      */
     function prove(
         address prover,
@@ -160,10 +155,10 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes32[] memory intentHashes,
         bytes memory data
     ) public payable {
-        // The prover owns the destination fulfillment store and builds its own proof message from
-        // it, so the Inbox only forwards the intent hashes to prove. Any remaining balance (the
-        // cross-chain message fee) is forwarded to the prover, which refunds the sender if overpaid.
-        IProver(prover).prove{value: address(this).balance}(
+        // The prover owns the destination fulfillment store and builds its own proof message from it,
+        // so the Inbox only forwards the intent hashes to prove. Any remaining balance (the cross-chain
+        // message fee) is forwarded to the prover, which refunds the sender if overpaid.
+        IPolicy(prover).prove{value: address(this).balance}(
             msg.sender,
             sourceChainDomainID,
             intentHashes,
@@ -173,23 +168,30 @@ abstract contract Inbox is DestinationSettler, IInbox {
 
     /**
      * @notice Internal function to fulfill intents
-     * @dev Validates intent, records the fulfillment into the named prover, and executes calls.
-     *      The prover's {IProver-recordFulfillment} enforces the one-shot gate (a second fulfillment
-     *      of the same intent under the same prover reverts {IProver-IntentAlreadyFulfilled}).
+     * @dev Validates intent, enforces the solver-INPUT floor, pulls the provided input into the executor,
+     *      executes calls, moves any unconsumed input to the intent's Vault, and records the hash-only
+     *      fulfillment fact into the named prover. `fulfilled[j] = providedAmounts[j]` (the actual input
+     *      provided; the reward scales on it). The prover's {IPolicy-recordFulfillment} enforces the
+     *      one-shot gate. Recording happens AFTER execution; a re-entrant second fulfillment of the same
+     *      intent reverts the whole tx (the one-shot gate), so recording after effects cannot
+     *      double-deliver.
      * @param intentHash The hash of the intent to fulfill
      * @param route The route of the intent
      * @param rewardHash The hash of the reward
      * @param claimant Cross-VM compatible claimant identifier
+     * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens`
      * @param prover Prover (policy) to record the fulfillment into
-     * @return Array of execution results
+     * @return result Array of execution results
+     * @return fulfilled Per-leg provided-input amounts, index-aligned with `route.minTokens`
      */
     function _fulfill(
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
         bytes32 claimant,
+        uint256[] memory providedAmounts,
         address prover
-    ) internal returns (bytes[] memory) {
+    ) internal returns (bytes[] memory result, uint256[] memory fulfilled) {
         // Check if the route has expired
         if (block.timestamp > route.deadline) {
             revert IntentExpired();
@@ -210,31 +212,84 @@ abstract contract Inbox is DestinationSettler, IInbox {
             revert ZeroClaimant();
         }
 
-        // Record the fulfillment into the named prover (policy). The prover is the owner of
-        // destination fulfillment storage and enforces the one-shot gate.
-        IProver(prover).recordFulfillment(intentHash, CHAIN_ID, claimant);
+        // min-in legs must be canonical (strictly ascending by token -> deduped) so the provided inputs
+        // pair unambiguously with the reward legs at settlement.
+        IntentLib.requireStrictlyAscending(route.minTokens);
+
+        uint256 inLen = route.minTokens.length;
+        if (providedAmounts.length != inLen) {
+            revert ProvidedAmountsLengthMismatch(providedAmounts.length, inLen);
+        }
 
         emit IntentFulfilled(intentHash, claimant);
 
-        // Transfer ERC20 tokens to the executor
-        uint256 tokensLength = route.tokens.length;
-
-        // Validate that msg.value is at least the route's nativeAmount
-        // Allow extra value for cross-chain message fees when using fulfillAndProve
-        if (msg.value < route.nativeAmount) {
-            revert InsufficientNativeAmount(msg.value, route.nativeAmount);
+        // Enforce the solver INPUT floor per leg and pull the provided input into the executor. The
+        // solver must provide at least `minTokens[j].amount` and MAY provide more; `fulfilled[j]` records the
+        // actual amount provided (what the reward scales on). Native folds in as the `address(0)` leg —
+        // its provided amount is forwarded into execution as the executor's value.
+        fulfilled = providedAmounts;
+        uint256 nativeProvided = 0;
+        for (uint256 j = 0; j < inLen; ++j) {
+            address token = route.minTokens[j].token;
+            uint256 provided = providedAmounts[j];
+            if (provided < route.minTokens[j].amount) {
+                revert InsufficientTokens(
+                    token,
+                    provided,
+                    route.minTokens[j].amount
+                );
+            }
+            if (token == address(0)) {
+                nativeProvided = provided;
+            } else {
+                IERC20(token).safeTransferFrom(
+                    msg.sender,
+                    address(executor),
+                    provided
+                );
+            }
         }
 
-        for (uint256 i = 0; i < tokensLength; ++i) {
-            TokenAmount memory token = route.tokens[i];
-
-            IERC20(token.token).safeTransferFrom(
-                msg.sender,
-                address(executor),
-                token.amount
-            );
+        // The solver must actually deliver the native input it committed to. Extra value (e.g. a
+        // cross-chain message fee for fulfillAndProve) is allowed and refunded / forwarded by the caller.
+        if (msg.value < nativeProvided) {
+            revert InsufficientNativeAmount(msg.value, nativeProvided);
         }
 
-        return executor.execute{value: route.nativeAmount}(route.calls);
+        // Execute the route, forwarding the committed native input.
+        result = executor.execute{value: nativeProvided}(route.calls);
+
+        // Delivery is the calls' job (any beneficiary is inside the calls' calldata). Move any input the
+        // calls did not consume to the intent's Vault so leftover stays WITH THE INTENT — the creator
+        // retrieves it later — rather than being stranded in the shared executor. The Vault address is
+        // deterministic (CREATE2 keyed on the intent hash) and identical across chains, so the same
+        // per-intent vault the creator controls on the source chain is addressable here. The executor
+        // holds ONLY solver input (never reward escrow), so this can never misdirect escrow.
+        executor.sweepTo(route.minTokens, _predictVault(intentHash));
+
+        // Commit the (intentHash, claimant, fulfilled[]) preimage as a hash-only fact and record it into
+        // the named prover (policy). The prover enforces the one-shot gate.
+        bytes32 fulfillmentHash = IntentLib.fulfillmentHash(
+            intentHash,
+            claimant,
+            fulfilled
+        );
+        IPolicy(prover).recordFulfillment(
+            intentHash,
+            CHAIN_ID,
+            fulfillmentHash
+        );
     }
+
+    /**
+     * @notice Deterministic address of the intent's per-intent Vault for a given intent hash.
+     * @dev Implemented by the composition root (the Portal, which also inherits IntentSource) so the
+     *      destination-side Inbox can address the same CREATE2 vault the source-side escrow uses. Any
+     *      unconsumed solver input is moved here after execution so leftover stays with the intent.
+     * @param intentHash The intent hash keying the vault's CREATE2 salt.
+     * @return The predicted vault address.
+     */
+    function _predictVault(
+        bytes32 intentHash
+    ) internal view virtual returns (address);
 }

@@ -1,7 +1,7 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestProver } from '../typechain-types'
+import { TestERC20, Inbox, TestPolicy } from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -27,7 +27,7 @@ describe('Destination Settler Test', (): void => {
   let reward: Reward
   let intent: Intent
   let intentHash: string
-  let prover: TestProver
+  let prover: TestPolicy
   let fillerData: BytesLike
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
@@ -39,7 +39,7 @@ describe('Destination Settler Test', (): void => {
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
-    prover: TestProver
+    prover: TestPolicy
     erc20: TestERC20
     owner: SignerWithAddress
     creator: SignerWithAddress
@@ -53,7 +53,7 @@ describe('Destination Settler Test', (): void => {
     const portal = await portalFactory.deploy()
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const prover = await (
-      await ethers.getContractFactory('TestProver')
+      await ethers.getContractFactory('TestPolicy')
     ).deploy(await inbox.getAddress())
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
@@ -94,23 +94,27 @@ describe('Destination Settler Test', (): void => {
       },
     ]
 
+    // v3 minTokens: native folds in as the address(0) leg (sorts first), then the ERC20 route tokens.
     const _route: Route = {
       salt,
       deadline: _timestamp,
       portal: await inbox.getAddress(),
-      nativeAmount: _nativeAmount,
-      tokens: routeTokens,
+      creator: creator.address,
       calls: _calls,
+      minTokens: [
+        { token: ethers.ZeroAddress, amount: _nativeAmount },
+        ...routeTokens,
+      ],
     }
     const _reward: Reward = {
       creator: creator.address,
       prover: await prover.getAddress(),
       deadline: _timestamp,
-      nativeAmount: BigInt(0),
       tokens: [
         {
           token: erc20Address,
-          amount: amount,
+          rate: 0n,
+          flat: amount,
         },
       ],
     }
@@ -157,6 +161,7 @@ describe('Destination Settler Test', (): void => {
           intent.route,
           hashIntent(intent).rewardHash,
           ethers.zeroPadValue(solver.address, 32),
+          [nativeAmount, mintAmount],
           await prover.getAddress(),
           {
             value: nativeAmount,
@@ -186,6 +191,7 @@ describe('Destination Settler Test', (): void => {
           intent.route,
           hashIntent(intent).rewardHash,
           ethers.zeroPadValue(solver.address, 32),
+          [nativeAmount, mintAmount],
           await prover.getAddress(),
           {
             value: nativeAmount,

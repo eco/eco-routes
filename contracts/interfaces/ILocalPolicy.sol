@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
-import {IProver} from "./IProver.sol";
+import {IPolicy} from "./IPolicy.sol";
 import {Route, Intent, Reward} from "../types/Intent.sol";
 
 /**
- * @title ILocalProver
- * @notice Interface for LocalProver with flash-fulfill capability
- * @dev Extends IProver with flash-fulfill functionality for same-chain intents
+ * @title ILocalPolicy
+ * @notice Interface for LocalPolicy with flash-fulfill capability
+ * @dev Extends IPolicy with flash-fulfill functionality for same-chain intents
  */
-interface ILocalProver is IProver {
+interface ILocalPolicy is IPolicy {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/

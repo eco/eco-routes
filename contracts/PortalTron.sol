@@ -15,4 +15,15 @@ import {VaultTron} from "./vault/VaultTron.sol";
  */
 contract PortalTron is IntentSource, Inbox, Semver {
     constructor() IntentSource(address(new VaultTron()), bytes1(0x41)) {}
+
+    /**
+     * @notice Deterministic address of the intent's per-intent Vault (composition-root wiring).
+     * @dev Lets the destination-side {Inbox} address the same CREATE2 vault the source-side
+     *      {IntentSource} escrow uses, so unconsumed solver input lands with the intent.
+     */
+    function _predictVault(
+        bytes32 intentHash
+    ) internal view override returns (address) {
+        return _getVault(intentHash);
+    }
 }

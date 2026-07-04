@@ -6,14 +6,21 @@ import {
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
-  HyperProver,
+  HyperPolicy,
   Inbox,
   Portal,
   TestERC20,
   TestMailbox,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount, Intent, Route } from '../utils/intent'
+import {
+  hashIntent,
+  hashFulfillment,
+  TokenAmount,
+  RewardToken,
+  Intent,
+  Route,
+} from '../utils/intent'
 import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
 
 // Helper function to encode message body with chain ID prefix
@@ -59,10 +66,10 @@ function prepareEncodedProofs(
   return ethers.concat(parts)
 }
 
-describe('HyperProver Test', (): void => {
+describe('HyperPolicy Test', (): void => {
   let inbox: Inbox
   let mailbox: TestMailbox
-  let hyperProver: HyperProver
+  let hyperProver: HyperPolicy
   let token: TestERC20
   let owner: SignerWithAddress
   let solver: SignerWithAddress
@@ -109,7 +116,7 @@ describe('HyperProver Test', (): void => {
   describe('1. Constructor', () => {
     it('should initialize with the correct mailbox and inbox addresses', async () => {
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
 
       expect(await hyperProver.MAILBOX()).to.equal(await mailbox.getAddress())
@@ -119,7 +126,7 @@ describe('HyperProver Test', (): void => {
     it('should add constructor-provided provers to the whitelist', async () => {
       const additionalProver = await owner.getAddress()
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(additionalProver, 32),
         ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
@@ -142,7 +149,7 @@ describe('HyperProver Test', (): void => {
     it('should return the correct proof type', async () => {
       // use owner as mailbox so we can test handle
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
       expect(await hyperProver.getProofType()).to.equal('Hyperlane')
     })
@@ -151,7 +158,7 @@ describe('HyperProver Test', (): void => {
   describe('2. Handle', () => {
     beforeEach(async () => {
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(owner.address, await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
         ethers.zeroPadValue(await inbox.getAddress(), 32), // Use inbox as sourceChainProver since it's authorized
@@ -177,10 +184,12 @@ describe('HyperProver Test', (): void => {
     it('should record a single proven intent when called correctly', async () => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
-      const msgBody = encodeMessageBody([intentHash], [claimantAddress])
+      // The wire 2nd word is now an opaque fulfillmentHash; the prover stores it as-is.
+      const fulfillmentHash = ethers.zeroPadValue(claimantAddress, 32)
+      const msgBody = encodeMessageBody([intentHash], [fulfillmentHash])
 
       const proofDataBefore = await hyperProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBefore.fulfillmentHash).to.eq(ethers.ZeroHash)
 
       await expect(
         hyperProver
@@ -192,10 +201,10 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress, 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
 
       const proofDataAfter = await hyperProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(claimantAddress)
+      expect(proofDataAfter.fulfillmentHash).to.eq(fulfillmentHash)
     })
 
     it('should emit an event when intent is already proven', async () => {
@@ -231,10 +240,12 @@ describe('HyperProver Test', (): void => {
       const otherHash = ethers.sha256('0x1337')
       const claimantAddress = await claimant.getAddress()
       const otherAddress = await solver.getAddress()
+      const fulfillmentHash = ethers.zeroPadValue(claimantAddress, 32)
+      const otherFulfillmentHash = ethers.zeroPadValue(otherAddress, 32)
 
       const msgBody = encodeMessageBody(
         [intentHash, otherHash],
-        [claimantAddress, otherAddress],
+        [fulfillmentHash, otherFulfillmentHash],
       )
 
       await expect(
@@ -247,14 +258,14 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress, 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
         .to.emit(hyperProver, 'IntentProven')
-        .withArgs(otherHash, otherAddress, 12345)
+        .withArgs(otherHash, 12345, otherFulfillmentHash)
 
       const proofData1 = await hyperProver.provenIntents(intentHash)
-      expect(proofData1.claimant).to.eq(claimantAddress)
+      expect(proofData1.fulfillmentHash).to.eq(fulfillmentHash)
       const proofData2 = await hyperProver.provenIntents(otherHash)
-      expect(proofData2.claimant).to.eq(otherAddress)
+      expect(proofData2.fulfillmentHash).to.eq(otherFulfillmentHash)
     })
   })
 
@@ -263,7 +274,7 @@ describe('HyperProver Test', (): void => {
       // Deploy hyperProver with actual inbox and authorized provers
       const chainId = 12345 // Use test chainId
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
       ])
@@ -293,8 +304,8 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          creator: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -307,8 +318,9 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -339,6 +351,7 @@ describe('HyperProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await hyperProver.getAddress(),
         )
 
@@ -425,8 +438,8 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          creator: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -439,8 +452,9 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -471,6 +485,7 @@ describe('HyperProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await hyperProver.getAddress(),
         )
 
@@ -540,8 +555,8 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          creator: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -554,8 +569,9 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -586,6 +602,7 @@ describe('HyperProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await hyperProver.getAddress(),
         )
 
@@ -699,7 +716,7 @@ describe('HyperProver Test', (): void => {
       // - "should work with batched message bridge fulfillment end-to-end"
 
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
 
       const sourceChainId = 12345
@@ -734,7 +751,7 @@ describe('HyperProver Test', (): void => {
       // This test verifies the fee calculation consistency which affects refunds
 
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [])
 
       const sourceChainId = 12345
@@ -764,10 +781,10 @@ describe('HyperProver Test', (): void => {
   // The 3.1 section has been removed as it was causing test failures
 
   describe('4. Cross-VM Claimant Compatibility', () => {
-    it('should skip non-EVM claimants when processing handle messages', async () => {
+    it('records any 2nd-word shape as a fulfillmentHash when processing handle messages', async () => {
       // Deploy hyperProver with owner as mailbox for direct testing
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(
         await owner.getAddress(), // owner as mailbox
         await inbox.getAddress(),
@@ -802,19 +819,20 @@ describe('HyperProver Test', (): void => {
           msgBody,
         )
 
-      // The valid claimant should be processed
+      // v3: the 2nd wire word is now an opaque fulfillmentHash, so BOTH are recorded as-is
+      // (no claimant-shape check on the receive side).
       const proofData1 = await hyperProver.provenIntents(intentHash1)
-      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1.fulfillmentHash).to.eq(validClaimant)
 
-      // The invalid claimant should be skipped (not processed)
+      // The high-bytes ("non-EVM shaped") 2nd word is recorded, not skipped.
       const proofData2 = await hyperProver.provenIntents(intentHash2)
-      expect(proofData2.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofData2.fulfillmentHash).to.eq(nonAddressClaimant)
     })
 
     it('should skip non-EVM claimants when processing cross-chain messages', async () => {
       const chainId = 12345
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
       ])
@@ -850,8 +868,8 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: routeTokens,
+          creator: await owner.getAddress(),
+          minTokens: routeTokens,
           calls: [
             {
               target: await token.getAddress(),
@@ -864,8 +882,9 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -927,21 +946,22 @@ describe('HyperProver Test', (): void => {
           route,
           rewardHash,
           nonAddressClaimant,
+          [amount],
           await hyperProver.getAddress(),
           sourceChainID,
           data,
           { value: fee },
         )
 
-      // Verify the intent was fulfilled with the non-address claimant
+      // The destination fulfillment fact is the hash-only commitment (intentHash, claimant, fulfilled[]).
       expect(await hyperProver.destFulfillment(intentHash)).to.eq(
-        nonAddressClaimant,
+        hashFulfillment(intentHash, nonAddressClaimant, [amount]),
       )
 
-      // The prover should not have processed this intent due to invalid address format
-      // The AddressConverter will revert when trying to convert the non-EVM address
+      // The source-side prover has no proof yet: the mailbox in this fixture has no processor,
+      // so handle() is never invoked and provenIntents stays empty.
       const provenIntent = await hyperProver.provenIntents(intentHash)
-      expect(provenIntent.claimant).to.eq(ethers.ZeroAddress)
+      expect(provenIntent.fulfillmentHash).to.eq(ethers.ZeroHash)
     })
   })
 
@@ -949,7 +969,7 @@ describe('HyperProver Test', (): void => {
     it('works end to end with message bridge', async () => {
       const chainId = 12345 // Use test chainId
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
       ])
@@ -985,8 +1005,8 @@ describe('HyperProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: routeTokens,
+          creator: await owner.getAddress(),
+          minTokens: routeTokens,
           calls: [
             {
               target: await token.getAddress(),
@@ -999,8 +1019,9 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -1040,11 +1061,18 @@ describe('HyperProver Test', (): void => {
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
+      // The hash-only fulfillment commitment recorded by the Inbox and carried on the wire
+      const fulfillmentHash = hashFulfillment(
+        intentHash,
+        addressToBytes32(await claimant.getAddress()),
+        [amount],
+      )
+
       const proofDataBefore = await hyperProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBefore.fulfillmentHash).to.eq(ethers.ZeroHash)
 
       // Get fee for fulfillment - note: at this point intent is already fulfilled
-      // The Inbox will encode the claimant/intentHash pairs when prove() is called
+      // The Inbox will encode the (intentHash, fulfillmentHash) pairs when prove() is called
       // For now, we'll calculate fee with empty proofs since Inbox hasn't called prove yet
       const fee = await hyperProver.fetchFee(
         sourceChainID,
@@ -1060,6 +1088,7 @@ describe('HyperProver Test', (): void => {
           route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await hyperProver.getAddress(),
           sourceChainID,
           data,
@@ -1068,20 +1097,17 @@ describe('HyperProver Test', (): void => {
 
       //the testMailbox's dispatch method directly calls the hyperProver's handle method
       const proofDataAfter = await hyperProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(await claimant.getAddress())
+      expect(proofDataAfter.fulfillmentHash).to.eq(fulfillmentHash)
 
       //but lets simulate it fully anyway
 
-      // Simulate the message being handled on the destination chain
-      const msgBody = encodeMessageBody(
-        [intentHash],
-        [await claimant.getAddress()],
-      )
+      // Simulate the message being handled on the destination chain (carries the fulfillmentHash)
+      const msgBody = encodeMessageBody([intentHash], [fulfillmentHash])
 
       // For the end-to-end test, we need to simulate the mailbox
       // by deploying a new hyperProver with owner as the mailbox
       const simulatedHyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await owner.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
       ])
@@ -1097,15 +1123,15 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(simulatedHyperProver, 'IntentProven')
-        .withArgs(intentHash, await claimant.getAddress(), 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
 
       const proofData = await simulatedHyperProver.provenIntents(intentHash)
-      expect(proofData.claimant).to.eq(await claimant.getAddress())
+      expect(proofData.fulfillmentHash).to.eq(fulfillmentHash)
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
       hyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await mailbox.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
       ])
@@ -1152,8 +1178,8 @@ describe('HyperProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        creator: await owner.getAddress(),
+        minTokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -1166,8 +1192,9 @@ describe('HyperProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeAmount: ethers.parseEther('0.01'),
-        tokens: [],
+        tokens: [
+          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+        ],
       }
 
       const destination = Number(
@@ -1192,9 +1219,9 @@ describe('HyperProver Test', (): void => {
 
       // Approve tokens and check initial state
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      expect((await hyperProver.provenIntents(intentHash0)).claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(
+        (await hyperProver.provenIntents(intentHash0)).fulfillmentHash,
+      ).to.eq(ethers.ZeroHash)
 
       // Fulfill first intent in batch
       await inbox
@@ -1204,6 +1231,7 @@ describe('HyperProver Test', (): void => {
           route,
           rewardHash0,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await hyperProver.getAddress(),
         )
 
@@ -1213,8 +1241,8 @@ describe('HyperProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        creator: await owner.getAddress(),
+        minTokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -1227,8 +1255,9 @@ describe('HyperProver Test', (): void => {
         creator: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeAmount: ethers.parseEther('0.01'),
-        tokens: [],
+        tokens: [
+          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+        ],
       }
       const intent1: Intent = {
         destination,
@@ -1256,17 +1285,23 @@ describe('HyperProver Test', (): void => {
           route1,
           rewardHash1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await hyperProver.getAddress(),
         )
 
       // Check intent hasn't been proven yet
       const proofDataBeforeBatch = await hyperProver.provenIntents(intentHash1)
-      expect(proofDataBeforeBatch.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBeforeBatch.fulfillmentHash).to.eq(ethers.ZeroHash)
+
+      // Hash-only fulfillment commitments carried on the wire (per intent, same claimant)
+      const claimant32 = addressToBytes32(await claimant.getAddress())
+      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [amount])
+      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [amount])
 
       // Prepare message body for batch
       const msgbody = encodeMessageBody(
         [intentHash0, intentHash1],
-        [await claimant.getAddress(), await claimant.getAddress()],
+        [fulfillmentHash0, fulfillmentHash1],
       )
 
       // Get fee for batch - both intents are already fulfilled at this point
@@ -1292,16 +1327,16 @@ describe('HyperProver Test', (): void => {
 
       //the testMailbox's dispatch method directly calls the hyperProver's handle method
       const proofData0 = await hyperProver.provenIntents(intentHash0)
-      expect(proofData0.claimant).to.eq(await claimant.getAddress())
+      expect(proofData0.fulfillmentHash).to.eq(fulfillmentHash0)
       const proofData1 = await hyperProver.provenIntents(intentHash1)
-      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1.fulfillmentHash).to.eq(fulfillmentHash1)
 
       //but lets simulate it fully anyway
 
       // For the end-to-end test, we need to simulate the mailbox
       // by deploying a new hyperProver with owner as the mailbox
       const simulatedHyperProver = await (
-        await ethers.getContractFactory('HyperProver')
+        await ethers.getContractFactory('HyperPolicy')
       ).deploy(await owner.getAddress(), await inbox.getAddress(), [
         ethers.zeroPadValue(await inbox.getAddress(), 32),
       ])
@@ -1317,17 +1352,17 @@ describe('HyperProver Test', (): void => {
           ),
       )
         .to.emit(simulatedHyperProver, 'IntentProven')
-        .withArgs(intentHash0, await claimant.getAddress(), 12345)
+        .withArgs(intentHash0, 12345, fulfillmentHash0)
         .to.emit(simulatedHyperProver, 'IntentProven')
-        .withArgs(intentHash1, await claimant.getAddress(), 12345)
+        .withArgs(intentHash1, 12345, fulfillmentHash1)
 
       // Verify both intents were proven
       const proofData0Sim =
         await simulatedHyperProver.provenIntents(intentHash0)
-      expect(proofData0Sim.claimant).to.eq(await claimant.getAddress())
+      expect(proofData0Sim.fulfillmentHash).to.eq(fulfillmentHash0)
       const proofData1Sim =
         await simulatedHyperProver.provenIntents(intentHash1)
-      expect(proofData1Sim.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1Sim.fulfillmentHash).to.eq(fulfillmentHash1)
     })
   })
 
@@ -1348,8 +1383,8 @@ describe('HyperProver Test', (): void => {
           salt: ethers.randomBytes(32),
           deadline: (await time.latest()) + 3600,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          creator: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -1362,14 +1397,13 @@ describe('HyperProver Test', (): void => {
           creator: await owner.getAddress(),
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          tokens: [{ token: await token.getAddress(), rate: 0n, flat: amount }],
         },
       }
 
-      // Use TestProver for challenge tests since we need addProvenIntent method
+      // Use TestPolicy for challenge tests since we need addProvenIntent method
       prover = await (
-        await ethers.getContractFactory('TestProver')
+        await ethers.getContractFactory('TestPolicy')
       ).deploy(await inbox.getAddress())
     })
 
@@ -1380,13 +1414,13 @@ describe('HyperProver Test', (): void => {
       const wrongChainId = 999
       await prover.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         wrongChainId,
       )
 
       // Verify proof exists with wrong chain ID
       const proofBefore = await prover.provenIntents(intentHash)
-      expect(proofBefore.claimant).to.equal(await claimant.getAddress())
+      expect(proofBefore.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
       expect(proofBefore.destination).to.equal(wrongChainId)
 
       // Challenge the proof with correct destination chain ID
@@ -1401,7 +1435,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)
-      expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
+      expect(proofAfter.fulfillmentHash).to.equal(ethers.ZeroHash)
       expect(proofAfter.destination).to.equal(0)
     })
 
@@ -1411,13 +1445,13 @@ describe('HyperProver Test', (): void => {
       // Create proof with correct chain ID
       await prover.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         intent.destination,
       )
 
       // Verify proof exists
       const proofBefore = await prover.provenIntents(intentHash)
-      expect(proofBefore.claimant).to.equal(await claimant.getAddress())
+      expect(proofBefore.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
       expect(proofBefore.destination).to.equal(intent.destination)
 
       // Challenge the proof with same destination chain ID
@@ -1432,7 +1466,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify proof remains unchanged
       const proofAfter = await prover.provenIntents(intentHash)
-      expect(proofAfter.claimant).to.equal(await claimant.getAddress())
+      expect(proofAfter.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
       expect(proofAfter.destination).to.equal(intent.destination)
     })
 
@@ -1448,7 +1482,7 @@ describe('HyperProver Test', (): void => {
       // Verify no proof exists
       const intentHash = hashIntent(intent).intentHash
       const proof = await prover.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
       expect(proof.destination).to.equal(0)
     })
 
@@ -1461,7 +1495,7 @@ describe('HyperProver Test', (): void => {
       const wrongChainId = 999
       await prover.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         wrongChainId,
       )
 
@@ -1474,7 +1508,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify proof was cleared
       let proof = await prover.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
 
       // Second challenge (should be no-op)
       await expect(
@@ -1483,7 +1517,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify proof remains cleared
       proof = await prover.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
     })
 
     it('should allow anyone to challenge invalid proofs', async () => {
@@ -1495,7 +1529,7 @@ describe('HyperProver Test', (): void => {
       const wrongChainId = 999
       await prover.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         wrongChainId,
       )
 
@@ -1510,7 +1544,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify proof was cleared
       const proof = await prover.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
     })
 
     it('should handle challenge with edge case chain IDs', async () => {
@@ -1521,7 +1555,7 @@ describe('HyperProver Test', (): void => {
       // Create proof with different chain ID
       await prover.addProvenIntent(
         edgeIntentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         1,
       )
 
@@ -1538,7 +1572,7 @@ describe('HyperProver Test', (): void => {
 
       // Verify proof was cleared
       const proof = await prover.provenIntents(edgeIntentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
     })
 
     it('should handle challenge integration with batched operations', async () => {
@@ -1552,12 +1586,12 @@ describe('HyperProver Test', (): void => {
       // Add proofs with wrong chain IDs
       await prover.addProvenIntent(
         intentHash1,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         999, // Wrong chain ID
       )
       await prover.addProvenIntent(
         intentHash2,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         888, // Wrong chain ID
       )
 
@@ -1585,8 +1619,8 @@ describe('HyperProver Test', (): void => {
       // Verify both proofs were cleared
       const proof1 = await prover.provenIntents(intentHash1)
       const proof2 = await prover.provenIntents(intentHash2)
-      expect(proof1.claimant).to.equal(ethers.ZeroAddress)
-      expect(proof2.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof1.fulfillmentHash).to.equal(ethers.ZeroHash)
+      expect(proof2.fulfillmentHash).to.equal(ethers.ZeroHash)
     })
   })
 })

@@ -1,7 +1,7 @@
 /**
  * deploy-base-tron.ts
  *
- * Mainnet deployer: Portal + LayerZeroProver to any combination of
+ * Mainnet deployer: Portal + LayerZeroPolicy to any combination of
  * Arbitrum, Base, Optimism, Polygon, Ethereum + Tron.
  *
  * Solves the chicken-and-egg problem:
@@ -18,7 +18,7 @@
  * Skip-deployment env vars (if set, contract is reused):
  *   PORTAL_CONTRACT             existing Portal address (same on all EVM chains via CREATE3)
  *   TRON_PORTAL_CONTRACT        existing Tron Portal address
- *   TRON_LZ_PROVER              existing Tron LayerZeroProver address
+ *   TRON_LZ_PROVER              existing Tron LayerZeroPolicy address
  *
  * Optional env vars:
  *   TRON_LAYERZERO_ENDPOINT     Override Tron LZ endpoint (auto-resolved from lzDeployments.json)
@@ -304,7 +304,7 @@ class EvmDeployer {
       return predicted
     }
 
-    const { bytecode } = loadArtifact('LayerZeroProver')
+    const { bytecode } = loadArtifact('LayerZeroPolicy')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
     const constructorArgs = this.abiCoder.encode(
       ['address', 'address', 'address', 'bytes32[]', 'uint256'],
@@ -405,7 +405,7 @@ class TronDeployer {
     whitelist: string[],
   ): { initCode: string; addr20hex: string } {
     const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-    const { bytecode } = loadArtifact('LayerZeroProver')
+    const { bytecode } = loadArtifact('LayerZeroPolicy')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
     const constructorArgs = abiCoder.encode(
       ['address', 'address', 'address', 'bytes32[]', 'uint256'],

@@ -42,7 +42,7 @@ const CREATE_X_ABI = [
 ]
 
 type Contract = {
-  name: 'Portal' | 'HyperProver'
+  name: 'Portal' | 'HyperPolicy'
   path: string
   args: any[]
 }
@@ -54,7 +54,7 @@ const CONTRACTS_TO_DEPLOY: Contract[] = [
     args: [],
     path: 'contracts/Portal.sol:Portal',
   },
-  // { name: 'HyperProver', args: [], path: 'contracts/prover/HyperProver.sol:HyperProver' },
+  // { name: 'HyperPolicy', args: [], path: 'contracts/prover/HyperPolicy.sol:HyperPolicy' },
 ]
 
 /**

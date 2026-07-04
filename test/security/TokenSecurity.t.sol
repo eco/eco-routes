@@ -5,7 +5,7 @@ import "../BaseTest.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {FakePermit} from "../../contracts/test/FakePermit.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract TokenSecurityTest is BaseTest {
@@ -48,14 +48,16 @@ contract TokenSecurityTest is BaseTest {
     // Malicious Token Tests
     function testMaliciousTokenInRewards() public {
         // Create intent with malicious token as reward
-        TokenAmount[] memory maliciousRewards = new TokenAmount[](2);
-        maliciousRewards[0] = TokenAmount({
+        RewardToken[] memory maliciousRewards = new RewardToken[](2);
+        maliciousRewards[0] = RewardToken({
             token: address(maliciousToken),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
-        maliciousRewards[1] = TokenAmount({
+        maliciousRewards[1] = RewardToken({
             token: address(tokenA),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         reward.tokens = maliciousRewards;
@@ -86,7 +88,13 @@ contract TokenSecurityTest is BaseTest {
         // withdraw reverts because SafeERC20 bubbles up BadERC20.TransferNotAllowed()
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
     }
 
     function testMaliciousTokenInRouteTokens() public {
@@ -97,7 +105,7 @@ contract TokenSecurityTest is BaseTest {
             amount: MINT_AMOUNT
         });
 
-        route.tokens = maliciousRouteTokens;
+        route.minTokens = maliciousRouteTokens;
         intent.route = route;
 
         // Create corresponding call
@@ -127,7 +135,11 @@ contract TokenSecurityTest is BaseTest {
 
         bytes32 intentHash = _hashIntent(destIntent);
 
-        // Should revert when malicious token call fails
+        // Solver provides exactly the single min-tokens leg (the malicious token) as input.
+        uint256[] memory providedAmounts = new uint256[](1);
+        providedAmounts[0] = MINT_AMOUNT;
+
+        // Should revert when the malicious token's transfer (executed by the executor) fails
         vm.prank(attacker);
         bytes32 rewardHash = keccak256(abi.encode(destIntent.reward));
         vm.expectRevert();
@@ -136,6 +148,7 @@ contract TokenSecurityTest is BaseTest {
             destIntent.route,
             rewardHash,
             bytes32(uint256(uint160(attacker))),
+            providedAmounts,
             address(prover)
         );
     }
@@ -145,10 +158,11 @@ contract TokenSecurityTest is BaseTest {
         // The contracts should use proper state management to prevent reentrancy
 
         // Create intent with normal token first to ensure proper funding
-        TokenAmount[] memory normalRewards = new TokenAmount[](1);
-        normalRewards[0] = TokenAmount({
+        RewardToken[] memory normalRewards = new RewardToken[](1);
+        normalRewards[0] = RewardToken({
             token: address(tokenA),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         reward.tokens = normalRewards;
@@ -167,7 +181,13 @@ contract TokenSecurityTest is BaseTest {
 
         // IntentWithdrawn should succeed and state should be updated
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
 
         // After withdrawal, vault balance should be 0
         assertEq(tokenA.balanceOf(vaultAddress), 0);
@@ -178,10 +198,11 @@ contract TokenSecurityTest is BaseTest {
 
     function testFakePermitContract() public {
         // Create intent with normal token
-        TokenAmount[] memory normalRewards = new TokenAmount[](1);
-        normalRewards[0] = TokenAmount({
+        RewardToken[] memory normalRewards = new RewardToken[](1);
+        normalRewards[0] = RewardToken({
             token: address(tokenA),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         reward.tokens = normalRewards;
@@ -223,10 +244,11 @@ contract TokenSecurityTest is BaseTest {
         // USDT doesn't return bool from transfer/transferFrom
         // Test that contracts handle this properly
 
-        TokenAmount[] memory usdtRewards = new TokenAmount[](1);
-        usdtRewards[0] = TokenAmount({
+        RewardToken[] memory usdtRewards = new RewardToken[](1);
+        usdtRewards[0] = RewardToken({
             token: address(usdt),
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         reward.tokens = usdtRewards;
@@ -253,10 +275,12 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalance = usdt.balanceOf(claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         assertEq(
@@ -268,8 +292,8 @@ contract TokenSecurityTest is BaseTest {
     function testTokenApprovalRaceCondition() public {
         // Test that approval race conditions are handled properly
 
-        TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        RewardToken[] memory rewards = new RewardToken[](1);
+        rewards[0] = RewardToken({token: address(tokenA), rate: 0, flat: MINT_AMOUNT});
 
         reward.tokens = rewards;
         intent.reward = reward;
@@ -300,10 +324,11 @@ contract TokenSecurityTest is BaseTest {
     function testTokenBalanceManipulation() public {
         // Test that token balance manipulation doesn't break the system
 
-        TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({
+        RewardToken[] memory rewards = new RewardToken[](1);
+        rewards[0] = RewardToken({
             token: address(tokenA),
-            amount: MINT_AMOUNT * 2
+            rate: 0,
+            flat: MINT_AMOUNT * 2
         });
 
         reward.tokens = rewards;
@@ -336,8 +361,8 @@ contract TokenSecurityTest is BaseTest {
     function testZeroAmountTokenTransfer() public {
         // Test that zero amount transfers are handled correctly
 
-        TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({token: address(tokenA), amount: 0});
+        RewardToken[] memory rewards = new RewardToken[](1);
+        rewards[0] = RewardToken({token: address(tokenA), rate: 0, flat: 0});
 
         reward.tokens = rewards;
         intent.reward = reward;
@@ -355,10 +380,12 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalance = tokenA.balanceOf(claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(
+        intentSource.settle(
             intent.destination,
             keccak256(abi.encode(intent.route)),
-            intent.reward
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
         );
 
         // No tokens should be transferred
@@ -368,14 +395,16 @@ contract TokenSecurityTest is BaseTest {
     function testMixedTokenStandards() public {
         // Test with a mix of standard and non-standard tokens
 
-        TokenAmount[] memory mixedRewards = new TokenAmount[](2);
-        mixedRewards[0] = TokenAmount({
+        RewardToken[] memory mixedRewards = new RewardToken[](2);
+        mixedRewards[0] = RewardToken({
             token: address(tokenA), // Standard ERC20
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
-        mixedRewards[1] = TokenAmount({
+        mixedRewards[1] = RewardToken({
             token: address(usdt), // Non-standard ERC20
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         reward.tokens = mixedRewards;
@@ -405,7 +434,13 @@ contract TokenSecurityTest is BaseTest {
         uint256 initialClaimantBalanceUSDT = usdt.balanceOf(claimant);
 
         vm.prank(claimant);
-        intentSource.withdraw(intent.destination, routeHash, intent.reward);
+        intentSource.settle(
+            intent.destination,
+            routeHash,
+            intent.reward,
+            bytes32(uint256(uint160(claimant))),
+            _defaultFulfilled()
+        );
 
         // Standard tokens should be transferred
         assertEq(
@@ -430,10 +465,11 @@ contract TokenSecurityTest is BaseTest {
         // This demonstrates that the system reverts when dealing with non-existent tokens
         // This is expected behavior to prevent issues with destroyed contracts
 
-        TokenAmount[] memory rewards = new TokenAmount[](1);
-        rewards[0] = TokenAmount({
+        RewardToken[] memory rewards = new RewardToken[](1);
+        rewards[0] = RewardToken({
             token: address(0x123456789), // Non-existent contract
-            amount: MINT_AMOUNT
+            rate: 0,
+            flat: MINT_AMOUNT
         });
 
         reward.tokens = rewards;
