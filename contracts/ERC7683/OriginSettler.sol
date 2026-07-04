@@ -182,7 +182,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      *      with token == address(0). The rate-scaled component depends on the measured fulfillment and
      *      is not known at open time. Uses orderData.maxSpent directly for maxSpent. The route is kept
      *      opaque (cross-VM), so it is not decoded here.
-     * @dev FillInstruction.originData contains (route, rewardHash)
+     * @dev FillInstruction.originData contains (source, route, reward)
      * @param openDeadline The deadline for opening the order
      * @param orderData The updated OrderData with maxSpent, routePortal, and routeDeadline
      * @return ResolvedCrossChainOrder ERC-7683 compliant format with proper field mappings
@@ -218,10 +218,13 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         );
 
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
+        // originData carries the full reward (not just its hash): the destination fill needs the reward
+        // legs to authenticate them against the derived intent hash and to snapshot the reward escrow for
+        // the conservation postcondition.
         bytes memory originData = abi.encode(
             source,
             orderData.route,
-            rewardHash
+            orderData.reward
         );
         fillInstructions[0] = FillInstruction(
             orderData.destination,

@@ -211,9 +211,9 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
 
         results = _PORTAL.fulfill{value: msg.value}(
             _CHAIN_ID,
-            intentHash,
+            _CHAIN_ID,
             route,
-            rewardHash,
+            reward,
             claimant,
             providedAmounts,
             address(this)

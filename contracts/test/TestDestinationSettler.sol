@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {DestinationSettler, Route} from "../ERC7683/DestinationSettler.sol";
+import {DestinationSettler, Route, Reward} from "../ERC7683/DestinationSettler.sol";
 import {Portal} from "../Portal.sol";
 
 contract TestDestinationSettler is DestinationSettler {
@@ -13,9 +13,9 @@ contract TestDestinationSettler is DestinationSettler {
 
     function fulfillAndProve(
         uint64 _source,
-        bytes32 _intentHash,
+        uint64 _destination,
         Route memory _route,
-        bytes32 _rewardHash,
+        Reward memory _reward,
         bytes32 _claimant,
         uint256[] memory _providedAmounts,
         address _prover,
@@ -26,9 +26,9 @@ contract TestDestinationSettler is DestinationSettler {
         return
             PORTAL.fulfillAndProve{value: msg.value}(
                 _source,
-                _intentHash,
+                _destination,
                 _route,
-                _rewardHash,
+                _reward,
                 _claimant,
                 _providedAmounts,
                 _prover,

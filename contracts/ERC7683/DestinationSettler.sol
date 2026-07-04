@@ -3,7 +3,7 @@
 pragma solidity ^0.8.26;
 
 import {IDestinationSettler} from "../interfaces/ERC7683/IDestinationSettler.sol";
-import {Route} from "../types/Intent.sol";
+import {Route, Reward} from "../types/Intent.sol";
 
 /**
  * @title DestinationSettler
@@ -27,9 +27,11 @@ abstract contract DestinationSettler is IDestinationSettler {
         bytes calldata fillerData
     ) external payable {
         // originData carries the origin-emitted intent data: the committed `source` chain id (Model C —
-        // hashed into the intent), the encoded route, and the reward hash.
-        (uint64 source, bytes memory encodedRoute, bytes32 rewardHash) = abi
-            .decode(originData, (uint64, bytes, bytes32));
+        // hashed into the intent), the encoded route, and the full reward (needed for the reward-leg
+        // authentication + conservation snapshot at fulfill). The `destination` is this chain
+        // (block.chainid) — the fill happens on the destination chain.
+        (uint64 source, bytes memory encodedRoute, Reward memory reward) = abi
+            .decode(originData, (uint64, bytes, Reward));
 
         emit OrderFilled(orderId, msg.sender);
 
@@ -48,9 +50,9 @@ abstract contract DestinationSettler is IDestinationSettler {
 
         fulfillAndProve(
             source,
-            orderId,
+            uint64(block.chainid),
             abi.decode(encodedRoute, (Route)),
-            rewardHash,
+            reward,
             claimant,
             providedAmounts,
             prover,
@@ -63,9 +65,9 @@ abstract contract DestinationSettler is IDestinationSettler {
      * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Abstract function to be implemented by concrete settlement contracts
      * @param source The origin chain ID committed in the intent hash (Model C)
-     * @param intentHash The hash of the intent to fulfill
+     * @param destination The destination chain ID committed in the intent hash (must equal block.chainid)
      * @param route The route information for the intent
-     * @param rewardHash The hash of the reward details
+     * @param reward The reward details (legs authenticated by the derived intent hash)
      * @param claimant Cross-VM compatible claimant identifier
      * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens`
      * @param prover Address of prover on the destination chain
@@ -75,9 +77,9 @@ abstract contract DestinationSettler is IDestinationSettler {
      */
     function fulfillAndProve(
         uint64 source,
-        bytes32 intentHash,
+        uint64 destination,
         Route memory route,
-        bytes32 rewardHash,
+        Reward memory reward,
         bytes32 claimant,
         uint256[] memory providedAmounts,
         address prover,

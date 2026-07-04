@@ -56,6 +56,22 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     }
 
     /**
+     * @notice Restricts a source-side operation to the intent's committed source chain
+     * @dev Every source-side op resolves the SOURCE (escrow) account keyed by `intent.source`, so it is
+     *      only valid when `block.chainid == source`. Belt-and-braces on top of the Model C address
+     *      separation: even though a cross-chain intent's source account is a different address than its
+     *      destination account, this gate makes a source-side op on the wrong chain fail loudly
+     *      ({WrongSourceChain}) instead of silently operating on an empty source-account address.
+     * @param source The intent's committed source chain id
+     */
+    modifier onlySourceChain(uint64 source) {
+        if (block.chainid != source) {
+            revert WrongSourceChain(uint64(block.chainid), source);
+        }
+        _;
+    }
+
+    /**
      * @notice Retrieves reward status for a given intent hash
      * @param intentHash Hash of the intent to query
      * @return status Current status of the intent
@@ -320,7 +336,12 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bytes memory route,
         Reward calldata reward,
         bool allowPartial
-    ) public payable returns (bytes32 intentHash, address account) {
+    )
+        public
+        payable
+        onlySourceChain(source)
+        returns (bytes32 intentHash, address account)
+    {
         return
             _publishAndFund(
                 source,
@@ -347,7 +368,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bytes32 routeHash,
         Reward calldata reward,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash) {
+    ) external payable onlySourceChain(source) returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(
             source,
             destination,
@@ -385,7 +406,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bool allowPartial,
         address funder,
         address permitContract
-    ) external payable returns (bytes32 intentHash) {
+    ) external payable onlySourceChain(source) returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(
             source,
             destination,
@@ -451,7 +472,12 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bool allowPartial,
         address funder,
         address permitContract
-    ) public payable returns (bytes32 intentHash, address account) {
+    )
+        public
+        payable
+        onlySourceChain(source)
+        returns (bytes32 intentHash, address account)
+    {
         (intentHash, ) = publish(source, destination, route, reward);
 
         account = _fundIntentFor(
@@ -485,7 +511,30 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         Reward calldata reward,
         bytes32 claimant,
         uint256[] calldata fulfilled
-    ) public {
+    ) public onlySourceChain(source) {
+        _settle(source, destination, routeHash, reward, claimant, fulfilled);
+    }
+
+    /**
+     * @notice Internal settle: verifies the proven `(claimant, fulfilled[])` preimage and pays the reward
+     * @dev Shared by the two-step {settle} (source chain) and the same-chain one-tx
+     *      {IPortal-fulfillAndSettle}. The source-chain gate lives on the public entry points; this
+     *      internal assumes the caller has established that the SOURCE (escrow) account is on this chain.
+     * @param source Origin chain ID for the intent (selects the source/escrow account)
+     * @param destination Destination chain ID for the intent
+     * @param routeHash Hash of the intent's route
+     * @param reward Reward structure of the intent
+     * @param claimant Cross-VM claimant identifier committed in the fulfillment
+     * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
+     */
+    function _settle(
+        uint64 source,
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward,
+        bytes32 claimant,
+        uint256[] memory fulfilled
+    ) internal {
         (bytes32 intentHash, , bytes32 rewardHash) = getIntentHash(
             source,
             destination,
@@ -550,7 +599,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
-    ) external {
+    ) external onlySourceChain(source) {
         (bytes32 intentHash, , ) = getIntentHash(
             source,
             destination,
@@ -575,7 +624,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bytes32 routeHash,
         Reward calldata reward,
         address refundee
-    ) external {
+    ) external onlySourceChain(source) {
         if (msg.sender != reward.keeper) {
             revert NotKeeperCaller(msg.sender);
         }
@@ -605,7 +654,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bytes32 routeHash,
         Reward calldata reward,
         address token
-    ) external {
+    ) external onlySourceChain(source) {
         (bytes32 intentHash, , ) = getIntentHash(
             source,
             destination,
@@ -651,10 +700,12 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         Intent calldata intent,
         address runtime,
         bytes calldata payload
-    ) external payable returns (bytes memory) {
-        if (block.chainid != intent.source) {
-            revert WrongSourceChain(intent.source);
-        }
+    )
+        external
+        payable
+        onlySourceChain(intent.source)
+        returns (bytes memory)
+    {
         if (msg.sender != intent.reward.keeper) {
             revert NotAccountOwner(msg.sender);
         }

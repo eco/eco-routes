@@ -66,6 +66,18 @@ interface IIntentSource {
     error NotKeeperCaller(address caller);
 
     /**
+     * @notice A source-side operation was attempted on a chain whose id is not the intent's committed
+     *         `source`
+     * @dev Belt-and-braces on top of the Model C address separation: fund / settle / refund / recover /
+     *      executeAsOwner all resolve the SOURCE (escrow) vault keyed by `intent.source`, so they are only
+     *      valid on the source chain (`intent.source == block.chainid`). This keeps a source-side op on the
+     *      destination chain from ever reaching a cross-chain intent's destination vault.
+     * @param current The current chain id (block.chainid)
+     * @param expected The intent's committed source chain id
+     */
+    error WrongSourceChain(uint64 current, uint64 expected);
+
+    /**
      * @notice The supplied (claimant, fulfilled[]) preimage does not match the proven fulfillment hash
      * @param intentHash The hash of the intent being settled
      */
@@ -74,10 +86,6 @@ interface IIntentSource {
     /// @notice Thrown when {executeAsOwner} is called by someone other than the reward keeper
     /// @param caller The unauthorized caller
     error NotAccountOwner(address caller);
-
-    /// @notice Thrown when a source-side op is called on a chain other than the intent's `source`
-    /// @param expected The chain id the op must run on (`intent.source`)
-    error WrongSourceChain(uint64 expected);
 
     /**
      * @notice Thrown when {executeAsOwner} is attempted while the Account holds a LIVE escrow

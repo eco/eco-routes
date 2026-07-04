@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Semver} from "../libs/Semver.sol";
-import {IntentSource} from "../IntentSource.sol";
-import {Inbox} from "../Inbox.sol";
+import {PortalCore} from "../PortalCore.sol";
 import {AccountDeployer} from "../account/AccountDeployer.sol";
 import {AccountTron} from "./AccountTron.sol";
 
@@ -15,6 +13,6 @@ import {AccountTron} from "./AccountTron.sol";
  *      tokens such as Tron USDT. Identical to {Portal} apart from the Account clone template and the
  *      CREATE2 prefix supplied to the shared {AccountDeployer}.
  */
-contract PortalTron is IntentSource, Inbox, Semver {
+contract PortalTron is PortalCore {
     constructor() AccountDeployer(address(new AccountTron()), bytes1(0x41)) {}
 }
