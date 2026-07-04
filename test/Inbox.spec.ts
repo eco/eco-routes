@@ -164,6 +164,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
@@ -183,6 +184,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
     })
@@ -214,6 +216,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidPortal')
     })
@@ -224,7 +227,13 @@ describe('Inbox Test', (): void => {
       await expect(
         inbox
           .connect(solver)
-          .fulfill(intentHash, route, rewardHash, ethers.ZeroHash),
+          .fulfill(
+            intentHash,
+            route,
+            rewardHash,
+            ethers.ZeroHash,
+            await mockProver.getAddress(),
+          ),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
     })
 
@@ -237,6 +246,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
     })
@@ -268,6 +278,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(executor, 'CallFailed')
     })
@@ -298,6 +309,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       )
         .to.be.revertedWithCustomError(executor, 'CallToEOA')
@@ -305,7 +317,7 @@ describe('Inbox Test', (): void => {
     })
 
     it('should succeed with storage proving', async () => {
-      let claimant = await inbox.claimants(intentHash)
+      let claimant = await mockProver.destFulfillment(intentHash)
       expect(claimant).to.equal(ethers.ZeroHash)
 
       expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
@@ -323,12 +335,13 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
         .withArgs(intentHash, ethers.zeroPadValue(dstAddr.address, 32))
       // should update the fulfilled hash
-      claimant = await inbox.claimants(intentHash)
+      claimant = await mockProver.destFulfillment(intentHash)
       expect(claimant).to.equal(ethers.zeroPadValue(dstAddr.address, 32))
 
       // check balances
@@ -349,6 +362,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.not.be.reverted
       // should revert
@@ -360,8 +374,9 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
-      ).to.be.revertedWithCustomError(inbox, 'IntentAlreadyFulfilled')
+      ).to.be.revertedWithCustomError(mockProver, 'IntentAlreadyFulfilled')
     })
 
     it('should revert if msg.value is insufficient for route.nativeAmount', async () => {
@@ -398,6 +413,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
             { value: insufficientAmount },
           ),
       )
@@ -413,6 +429,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       )
         .to.be.revertedWithCustomError(inbox, 'InsufficientNativeAmount')
@@ -455,6 +472,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
             { value: ethAmount },
           ),
       )
@@ -513,6 +531,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
@@ -546,6 +565,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            await mockProver.getAddress(),
           ),
       ).to.not.be.reverted
 
@@ -642,7 +662,7 @@ describe('Inbox Test', (): void => {
         .withArgs(intentHash, ethers.zeroPadValue(validClaimant, 32))
 
       // Verify the claimant was stored correctly
-      const storedClaimant = await inbox.claimants(intentHash)
+      const storedClaimant = await mockProver.destFulfillment(intentHash)
       expect(storedClaimant).to.equal(ethers.zeroPadValue(validClaimant, 32))
     })
   })

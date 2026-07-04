@@ -76,7 +76,7 @@ contract ProverInterfaceTest is Test {
         );
 
         // Test that we can call prove with new interface
-        testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify the prove call was tracked
         (
@@ -134,7 +134,7 @@ contract ProverInterfaceTest is Test {
         }
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
-        testProver.prove(makeAddr("sender"), 1, invalidProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, invalidProofs, "");
 
         // Test with 8 + 63 bytes
         invalidProofs = new bytes(8 + 63);
@@ -142,12 +142,12 @@ contract ProverInterfaceTest is Test {
             mstore(add(invalidProofs, 0x20), shl(192, chainId))
         }
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
-        testProver.prove(makeAddr("sender"), 1, invalidProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, invalidProofs, "");
 
         // Test with just 7 bytes (less than chain ID)
         invalidProofs = new bytes(7);
         vm.expectRevert(IMessageBridgeProver.InvalidProofMessage.selector);
-        testProver.prove(makeAddr("sender"), 1, invalidProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, invalidProofs, "");
     }
 
     function testProveWithInvalidClaimantAddress() public {
@@ -165,7 +165,7 @@ contract ProverInterfaceTest is Test {
         }
 
         // Should succeed but skip the invalid claimant
-        testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify the intent was NOT proven (skipped due to invalid claimant)
         TestProver.ProofData memory proof = testProver.provenIntents(
@@ -181,7 +181,7 @@ contract ProverInterfaceTest is Test {
         }
 
         // Should succeed but skip the zero claimant
-        testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify still not proven
         proof = testProver.provenIntents(intentHash);
@@ -210,7 +210,7 @@ contract ProverInterfaceTest is Test {
         );
 
         // Should succeed but skip the invalid claimant
-        testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify first proof was stored
         TestProver.ProofData memory proof1 = testProver.provenIntents(
@@ -251,7 +251,7 @@ contract ProverInterfaceTest is Test {
         bytes memory encodedProofs = encodeProofsWithChainId(hashes, claimants);
 
         // This should succeed but skip the non-EVM claimant
-        testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify the intent was NOT proven (skipped due to non-EVM claimant)
         TestProver.ProofData memory proof = testProver.provenIntents(
@@ -281,7 +281,7 @@ contract ProverInterfaceTest is Test {
         );
 
         // Should process all proofs successfully
-        testProver.prove(makeAddr("sender"), 1, encodedProofs, "");
+        testProver.receiveProofs(makeAddr("sender"), 1, encodedProofs, "");
 
         // Verify a few random proofs
         bytes32 checkHash = keccak256(abi.encodePacked("intent", uint256(50)));

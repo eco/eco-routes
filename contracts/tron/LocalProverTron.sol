@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {LocalProver} from "./LocalProver.sol";
+import {LocalProver} from "../prover/LocalProver.sol";
 import {TronTransfer} from "../libs/TronTransfer.sol";
 
 /**

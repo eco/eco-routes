@@ -106,15 +106,19 @@ abstract contract MessageBridgeProver is
      *        domain ID mapping system. You MUST check with the specific bridge provider
      *        (Hyperlane, LayerZero, Metalayer) documentation to determine the correct
      *        domain ID for the source chain.
-     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param intentHashes Intent hashes to prove; the (intentHash, claimant) wire pairs are read
+     *        from this prover's destination fulfillment store
      * @param data Additional data for message formatting
      */
     function prove(
         address sender,
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes32[] calldata intentHashes,
         bytes calldata data
     ) external payable virtual override only(PORTAL) {
+        // Build the wire message from this prover's own destination fulfillment store
+        bytes memory encodedProofs = _buildProofMessage(intentHashes);
+
         // Calculate fee using implementation-specific logic
         uint256 fee = fetchFee(domainID, encodedProofs, data);
 
@@ -143,7 +147,7 @@ abstract contract MessageBridgeProver is
      */
     function _dispatchMessage(
         uint64 sourceChainId,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal virtual;
@@ -158,7 +162,7 @@ abstract contract MessageBridgeProver is
      */
     function fetchFee(
         uint64 sourceChainId,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data
     ) public view virtual returns (uint256);
 }

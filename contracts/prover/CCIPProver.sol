@@ -104,7 +104,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      */
     function _dispatchMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
@@ -132,7 +132,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      */
     function fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
         // Unpack the additional data
@@ -182,7 +182,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      */
     function _formatCCIPMessage(
         address sourceChainProver,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         uint256 gasLimit
     ) internal pure returns (Client.EVM2AnyMessage memory ccipMessage) {
         // Construct the CCIP message

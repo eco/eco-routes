@@ -74,19 +74,22 @@ interface IInbox {
     error InsufficientNativeAmount(uint256 sent, uint256 required);
 
     /**
-     * @notice Fulfills an intent using storage proofs
-     * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @notice Fulfills an intent, recording the fulfillment into the named prover
+     * @dev Validates intent hash, executes calls, and records the fulfillment into `prover`. The
+     *      solver names the prover (policy) that will settle the reward.
      * @param intentHash The hash of the intent to fulfill
      * @param route Route information for the intent
      * @param rewardHash Hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Prover (policy) to record the fulfillment into
      * @return Array of execution results
      */
     function fulfill(
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
-        bytes32 claimant
+        bytes32 claimant,
+        address prover
     ) external payable returns (bytes[] memory);
 
     /**
