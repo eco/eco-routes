@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IPolicy} from "./interfaces/IPolicy.sol";
+import {IStreamingPolicy} from "./interfaces/IStreamingPolicy.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IAccount} from "./interfaces/IAccount.sol";
 import {IPermit} from "./interfaces/IPermit.sol";
@@ -757,6 +758,91 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         // Operate on the SOURCE (escrow) account — the keeper's own funds.
         address account = _getOrDeployAccount(intentHash, intent.source);
         return IAccount(account).execute{value: msg.value}(runtime, payload);
+    }
+
+    /**
+     * @notice Settles one or more STREAMING batches, paying each slice's committed claimant its reward.
+     * @dev See {IIntentSource-settleStream}. Thin wrapper: the {IStreamingPolicy} verifies + CONSUMES the
+     *      supplied batches (recomputing each `batchHash` / slice hash against its own store) and returns
+     *      the per-slice payouts; the SOURCE (escrow) Account then pays each slice in FULL (reverting if
+     *      under-funded, so a batch is never partially consumed — L1) WITHOUT sweeping the residual (it
+     *      funds later slices). The intent stays `Funded` (re-fulfillable); the policy's batch consumption
+     *      is the anti-replay, so no status transition is needed.
+     */
+    function settleStream(
+        uint64 source,
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward,
+        bytes calldata batchData
+    ) external onlySourceChain(source) {
+        (bytes32 intentHash, , ) = getIntentHash(
+            source,
+            destination,
+            routeHash,
+            reward
+        );
+
+        Status status = rewardStatuses[intentHash];
+        if (status != Status.Initial && status != Status.Funded) {
+            revert InvalidStatusForWithdrawal(status);
+        }
+
+        // The policy verifies + consumes the batches and returns the payout table as opaque bytes; the
+        // Account decodes + pays. The Portal never touches the nested StreamBatch[]/payout types (keeps its
+        // bytecode footprint tiny).
+        bytes memory payoutData = IStreamingPolicy(reward.prover)
+            .consumeStreamClaims(intentHash, reward, batchData);
+
+        IAccount(_getOrDeployAccount(intentHash, source)).withdrawStream(
+            reward,
+            payoutData
+        );
+
+        emit StreamSettled(intentHash);
+    }
+
+    /**
+     * @notice Closes a stream and reclaims the remaining escrow to the keeper (terminal, keeper-only).
+     * @dev See {IIntentSource-closeStream}. C2 anti-rug: gated on
+     *      {IStreamingPolicy-hasUnsettledFulfillment} being FALSE — it can NEVER sweep escrow owed to a
+     *      solver with a proven-but-unsettled batch (the keeper must let those settle first; settlement
+     *      is permissionless). Marks the stream closed on the policy, terminates the intent, and refunds
+     *      the remaining escrow. The refund hook is intentionally not invoked (this is the streaming
+     *      reclaim path, distinct from {refund}).
+     */
+    function closeStream(
+        uint64 source,
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external onlySourceChain(source) {
+        if (msg.sender != reward.keeper) {
+            revert NotKeeperCaller(msg.sender);
+        }
+
+        (bytes32 intentHash, , ) = getIntentHash(
+            source,
+            destination,
+            routeHash,
+            reward
+        );
+
+        if (
+            IStreamingPolicy(reward.prover).hasUnsettledFulfillment(intentHash)
+        ) {
+            revert PendingProofBlocksClose(intentHash);
+        }
+
+        IStreamingPolicy(reward.prover).markClosed(intentHash);
+        rewardStatuses[intentHash] = Status.Refunded;
+
+        IAccount(_getOrDeployAccount(intentHash, source)).refund(
+            reward,
+            reward.keeper
+        );
+
+        emit StreamClosed(intentHash, reward.keeper);
     }
 
     /**

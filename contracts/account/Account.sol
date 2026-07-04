@@ -154,6 +154,75 @@ contract Account is IAccount {
     }
 
     /**
+     * @notice Pays streaming slices to their claimants in full, WITHOUT sweeping the residual
+     * @dev The streaming analogue of {withdraw}. The streaming policy has already verified + consumed the
+     *      batches and computed the per-leg payouts, so this only moves money: each slice's leg is paid in
+     *      FULL to its claimant. If the account cannot cover a leg the call reverts
+     *      ({StreamSlicePayoutExceedsBalance}) so the whole settle rolls back and the batch is never
+     *      partially consumed — the shortfall is recoverable after the keeper tops up (L1). The residual
+     *      is deliberately NOT swept: it funds later slices, and the keeper reclaims it via
+     *      {IIntentSource-closeStream}/{IIntentSource-refund}.
+     * @param reward The reward structure (its `tokens` legs define the payout columns)
+     * @param payoutData `abi.encode(address[] claimants, uint256[][] payouts)` from the streaming policy
+     *        (forwarded verbatim by the Portal; decoded here so the Portal never handles the nested type)
+     */
+    function withdrawStream(
+        Reward calldata reward,
+        bytes calldata payoutData
+    ) external onlyPortal {
+        // Decode the nested payout table HERE (not in the Portal). The streaming policy produced it.
+        (address[] memory claimants, uint256[][] memory payouts) = abi.decode(
+            payoutData,
+            (address[], uint256[][])
+        );
+
+        uint256 sliceCount = claimants.length;
+        if (payouts.length != sliceCount) {
+            revert StreamArrayLengthMismatch();
+        }
+        uint256 legCount = reward.tokens.length;
+
+        for (uint256 s; s < sliceCount; ++s) {
+            uint256[] memory slicePay = payouts[s];
+            address claimant = claimants[s];
+
+            for (uint256 j; j < legCount; ++j) {
+                uint256 pay = slicePay[j];
+                if (pay == 0) {
+                    continue;
+                }
+
+                address tokenAddr = reward.tokens[j].token;
+                if (tokenAddr == address(0)) {
+                    uint256 bal = address(this).balance;
+                    if (pay > bal) {
+                        revert StreamSlicePayoutExceedsBalance(
+                            address(0),
+                            pay,
+                            bal
+                        );
+                    }
+                    (bool ok, ) = claimant.call{value: pay}("");
+                    if (!ok) {
+                        revert NativeTransferFailed(claimant, pay);
+                    }
+                } else {
+                    IERC20 token = IERC20(tokenAddr);
+                    uint256 bal = token.balanceOf(address(this));
+                    if (pay > bal) {
+                        revert StreamSlicePayoutExceedsBalance(
+                            tokenAddr,
+                            pay,
+                            bal
+                        );
+                    }
+                    _transferToken(token, claimant, pay);
+                }
+            }
+        }
+    }
+
+    /**
      * @notice Refunds all account contents to a specified address
      * @param reward The reward structure containing the leg tokens
      * @param refundee Address to receive the refunded rewards

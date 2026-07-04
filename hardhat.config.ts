@@ -19,7 +19,10 @@ const config: HardhatUserConfig = {
           viaIR: true,
           optimizer: {
             enabled: true,
-            runs: 20000,
+            // Kept in lockstep with foundry.toml `optimizer_runs`. PR6 lowered this from 20000 to 1000
+            // so the Portal (which gained the streaming settle/close entry points) stays under the
+            // 24,576 B EIP-170 limit. See docs/v3/06-streaming-and-deposits.md ("Size budget").
+            runs: 1000,
           },
         },
       },

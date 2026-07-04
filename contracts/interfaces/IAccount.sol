@@ -24,6 +24,22 @@ interface IAccount {
     /// @param caller The address whose callback was rejected
     error FallbackNotInExecute(address caller);
 
+    /// @notice Thrown when a streaming slice payout exceeds the account's live balance for a leg
+    /// @dev Streaming settlement is all-or-nothing per call: a batch is paid in full or reverts, so an
+    ///      under-funded batch is never partially consumed and its shortfall stays recoverable after a
+    ///      top-up (L1). `token == address(0)` denotes native.
+    /// @param token The under-funded leg token (native as address(0))
+    /// @param owed The amount owed
+    /// @param balance The live account balance
+    error StreamSlicePayoutExceedsBalance(
+        address token,
+        uint256 owed,
+        uint256 balance
+    );
+
+    /// @notice Streaming settle input arrays are mismatched in length
+    error StreamArrayLengthMismatch();
+
     /**
      * @notice Runs a runtime against this Account's own funds via `delegatecall`
      * @dev Delegatecalls `runtime` with `payload` (forwarded verbatim), bubbling the raw return/revert.
@@ -76,6 +92,24 @@ interface IAccount {
         Reward calldata reward,
         address claimant,
         uint256[] calldata fulfilled
+    ) external;
+
+    /**
+     * @notice Pays a set of streaming slices to their claimants, in full, WITHOUT sweeping the residual
+     * @dev The streaming analogue of {withdraw}: the policy ({IStreamingPolicy-consumeStreamClaims}) has
+     *      already verified + consumed the batches and computed the per-leg payouts, so this only moves
+     *      money. Each slice's leg is paid in FULL to its claimant; if the account cannot cover a leg the
+     *      call reverts ({StreamSlicePayoutExceedsBalance}), so the whole settle rolls back and the batch
+     *      is never partially consumed (L1: the shortfall is recoverable after the keeper tops up). The
+     *      residual is NOT swept — it funds later slices; the keeper reclaims it via
+     *      {IIntentSource-closeStream}/{IIntentSource-refund}.
+     * @param reward The reward structure (its `tokens` legs define the payout columns)
+     * @param payoutData `abi.encode(address[] claimants, uint256[][] payouts)` from the streaming policy
+     *        (forwarded verbatim by the Portal; decoded HERE so the Portal never handles the nested type)
+     */
+    function withdrawStream(
+        Reward calldata reward,
+        bytes calldata payoutData
     ) external;
 
     /**

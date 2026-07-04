@@ -65,6 +65,13 @@ interface IIntentSource {
     /// @notice Thrown when caller is not the reward keeper
     error NotKeeperCaller(address caller);
 
+    /// @notice Thrown when {closeStream} is attempted while a proven-but-unsettled batch/slice exists
+    /// @dev C2 anti-rug: {closeStream} is a terminal keeper sweep, so — like {refund}/{executeAsOwner} —
+    ///      it must not drain escrow owed to a solver whose fulfillment is proven but not yet settled. The
+    ///      keeper must let the pending batch(es) settle first (settlement is permissionless).
+    /// @param intentHash The hash of the intent whose stream cannot yet be closed
+    error PendingProofBlocksClose(bytes32 intentHash);
+
     /**
      * @notice A source-side operation was attempted on a chain whose id is not the intent's committed
      *         `source`
@@ -150,6 +157,19 @@ interface IIntentSource {
      * @param index Which hook slot reverted (0 = reward hook on settle, 1 = refund hook on refund)
      */
     event HookReverted(bytes32 indexed intentHash, uint256 index);
+
+    /**
+     * @notice Signals a streaming settle paid out one or more slices to their claimants
+     * @param intentHash The hash of the streamed intent
+     */
+    event StreamSettled(bytes32 indexed intentHash);
+
+    /**
+     * @notice Signals the keeper closed a stream and reclaimed the remaining escrow
+     * @param intentHash The hash of the streamed intent
+     * @param keeper The keeper that received the remaining escrow
+     */
+    event StreamClosed(bytes32 indexed intentHash, address indexed keeper);
 
     /**
      * @notice Signals successful token recovery from an intent account
@@ -474,4 +494,47 @@ interface IIntentSource {
         address runtime,
         bytes calldata payload
     ) external payable returns (bytes memory);
+
+    /**
+     * @notice Settles one or more STREAMING batches, paying each slice's committed claimant its reward
+     * @dev The streaming analogue of {settle}. Delegates verification + consumption to the
+     *      {IStreamingPolicy}: it recomputes each supplied batch's commitment against the accumulated
+     *      unsettled set (cross-chain) or the destination slice array (same-chain), REMOVES the matched
+     *      entries (consume+delete), and returns the per-slice payouts. The (source/escrow) Account then
+     *      pays each slice in full (reverting if under-funded, so a batch is never partially consumed —
+     *      L1) WITHOUT sweeping the residual (it funds later slices). Permissionless: anyone may relay the
+     *      preimages; the money always goes to the committed claimants. The intent stays `Funded` (the
+     *      keeper reclaims the remainder via {closeStream}/{refund}).
+     * @param source Origin chain ID for the intent
+     * @param destination Destination chain ID for the intent
+     * @param routeHash The hash of the intent's route component
+     * @param reward The reward specification (must name a {IStreamingPolicy} at `reward.prover`)
+     * @param batchData `abi.encode(IStreamingPolicy.StreamBatch[])` — the unsettled batches with their
+     *        slice preimages (opaque to the Portal; decoded by the policy)
+     */
+    function settleStream(
+        uint64 source,
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward,
+        bytes calldata batchData
+    ) external;
+
+    /**
+     * @notice Closes a stream and reclaims the remaining escrow to the keeper (terminal, keeper-only)
+     * @dev C2 anti-rug: gated on {IStreamingPolicy-hasUnsettledFulfillment} being FALSE, so it can NEVER
+     *      sweep escrow owed to a solver whose batch is proven-but-unsettled — the keeper must let those
+     *      settle first (settlement is permissionless). Marks the stream closed on the policy, refunds the
+     *      remaining escrow to the keeper, and terminates the intent.
+     * @param source Origin chain ID for the intent
+     * @param destination Destination chain ID for the intent
+     * @param routeHash The hash of the intent's route component
+     * @param reward The reward specification (must name a {IStreamingPolicy} at `reward.prover`)
+     */
+    function closeStream(
+        uint64 source,
+        uint64 destination,
+        bytes32 routeHash,
+        Reward calldata reward
+    ) external;
 }
