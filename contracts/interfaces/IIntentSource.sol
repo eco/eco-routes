@@ -139,6 +139,19 @@ interface IIntentSource {
     event IntentRefunded(bytes32 intentHash, address indexed refundee);
 
     /**
+     * @notice A keeper-committed reward/refund hook reverted (or its `hooks` data was malformed) and was
+     *         caught, so the core settle/refund still completed
+     * @dev Hook invocation is best-effort by design (CEI: the core reward payout / refund and the terminal
+     *      status are committed BEFORE the hook runs). A reverting hook therefore cannot strand an
+     *      already-paid solver or permanently lock a keeper's refund — it only forgoes the hook's own
+     *      side effects. This event surfaces that a hook did not run to completion. The hook is
+     *      keeper-committed (inside the reward hash) and so is self-harm for a hostile keeper.
+     * @param intentHash The hash of the intent whose hook reverted
+     * @param index Which hook slot reverted (0 = reward hook on settle, 1 = refund hook on refund)
+     */
+    event HookReverted(bytes32 indexed intentHash, uint256 index);
+
+    /**
      * @notice Signals successful token recovery from an intent account
      * @dev Emitted when tokens that were accidentally sent to a account are recovered
      *      Only tokens not part of the intent's reward structure can be recovered

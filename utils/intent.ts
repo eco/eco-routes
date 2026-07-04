@@ -33,11 +33,20 @@ export type Route = {
   minTokens: TokenAmount[]
 }
 
+// A single delegate hook: `target` is delegatecalled by the intent's Vault with `data`.
+export type Hook = {
+  target: string
+  data: string
+}
+
 export type Reward = {
   keeper: string
   prover: string
   deadline: number | bigint
   tokens: RewardToken[]
+  // Opaque creator-committed delegate-hook data (hash-affecting). Empty ('0x') = no hooks.
+  // Default encoding is abi.encode(Hook[2]): index 0 = reward hook (settle), index 1 = refund hook.
+  hooks: string
 }
 
 // v3 / Model C Intent: gained a `source` field (origin chain id), hashed FIRST (before `destination`)
@@ -80,6 +89,11 @@ const RouteStruct = [
   },
 ]
 
+const HookComponents = [
+  { name: 'target', type: 'address' },
+  { name: 'data', type: 'bytes' },
+]
+
 const RewardStruct = [
   { name: 'deadline', type: 'uint64' },
   { name: 'keeper', type: 'address' },
@@ -89,7 +103,25 @@ const RewardStruct = [
     type: 'tuple[]',
     components: RewardTokenComponents,
   },
+  { name: 'hooks', type: 'bytes' },
 ]
+
+/**
+ * Encodes the default `Reward.hooks` payload: `abi.encode(Hook[2])` with
+ * index 0 = the reward hook (invoked on settle) and index 1 = the refund hook (invoked on refund).
+ * A `{ target: ZeroAddress, data: '0x' }` slot is a skipped no-op.
+ */
+export function encodeHooks(rewardHook: Hook, refundHook: Hook) {
+  return AbiCoder.defaultAbiCoder().encode(
+    [
+      {
+        type: 'tuple[2]',
+        components: HookComponents,
+      },
+    ],
+    [[rewardHook, refundHook]],
+  )
+}
 
 const IntentStruct = [
   {

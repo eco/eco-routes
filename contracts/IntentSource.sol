@@ -37,6 +37,14 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     /// @dev Tracks the lifecycle status of each intent's rewards
     mapping(bytes32 => Status) private rewardStatuses;
 
+    /// @dev Index of the REWARD hook in the default `Reward.hooks` (`abi.encode(Hook[2])`): run after a
+    ///      successful settle.
+    uint256 private constant HOOK_REWARD = 0;
+
+    /// @dev Index of the REFUND hook in the default `Reward.hooks` (`abi.encode(Hook[2])`): run after a
+    ///      refund.
+    uint256 private constant HOOK_REFUND = 1;
+
     /**
      * @notice Ensures intent can be funded based on its current status
      * @param intentHash Hash of the intent to validate for funding eligibility
@@ -585,6 +593,13 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         account.withdraw(reward, claimantAddr, fulfilled);
 
         emit IntentWithdrawn(intentHash, claimantAddr);
+
+        // CEI: run the keeper-committed REWARD hook LAST — after the claimant is paid, the residual is
+        // swept to the keeper, and the status is terminal (Withdrawn). Best-effort (try/catch): a
+        // reverting or malformed hook is caught so it can never strand the already-paid solver. The hook
+        // is committed in the reward hash and inspectable before fulfillment, so a hostile hook is
+        // self-harm for the keeper.
+        _runHook(intentHash, address(account), reward.hooks, HOOK_REWARD);
     }
 
     /**
@@ -1051,6 +1066,39 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     }
 
     /**
+ * @notice Runs a keeper-committed delegate hook against an intent's Account, best-effort
+     * @dev Invoked AFTER the core settle/refund effects (CEI). Short-circuits the common no-hooks case
+     *      (`hooks.length == 0`) without an external call. Otherwise it delegates to
+     *      {IAccount-runHook}, which decodes the default `abi.encode(Hook[2])`, skips a `target ==
+     *      address(0)` slot, and runs the hook in the Account's gated delegatecall sandbox. The call is
+     *      wrapped in try/catch: a reverting hook OR a malformed `hooks` (a decode revert in the Account) is
+     *      caught and surfaced via {HookReverted}, so it can never revert the settle/refund that already
+     *      committed its money effects. No reentrancy guard is needed: the terminal status is set and the
+     *      account drained before the hook runs, so a hook that reenters settle/refund of THIS intent
+     *      reverts on status (and cannot double-spend), and per-intent Account isolation means it cannot
+     *      touch another intent's escrow.
+     * @param intentHash The intent hash (for the {HookReverted} event)
+     * @param account The intent's SOURCE (escrow) Account, which runs the hook via delegatecall
+     * @param hooks The opaque `Reward.hooks` bytes (default: `abi.encode(Hook[2])`)
+     * @param index Which hook slot to run (0 = reward, 1 = refund)
+     */
+    function _runHook(
+        bytes32 intentHash,
+        address account,
+        bytes calldata hooks,
+        uint256 index
+    ) private {
+        if (hooks.length == 0) {
+            return;
+        }
+        try IAccount(account).runHook(hooks, index) {
+            // Hook ran (or the slot was a no-op target(0)); nothing more to do.
+        } catch {
+            emit HookReverted(intentHash, index);
+        }
+    }
+
+    /**
      * @notice Validates that token can be recovered (not zero address and not a reward token)
      * @param reward Reward structure containing token list
      * @param token Address of the token to recover
@@ -1094,6 +1142,12 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         account.refund(reward, refundee);
 
         emit IntentRefunded(intentHash, refundee);
+
+        // CEI: run the keeper-committed REFUND hook LAST — after the escrow is returned to the refundee and
+        // the status is terminal (Refunded). Best-effort (try/catch): a reverting or malformed refund hook
+        // is caught so it can NEVER permanently lock the keeper's refund (the core refund is already
+        // committed and irreversible before the hook runs).
+        _runHook(intentHash, address(account), reward.hooks, HOOK_REFUND);
     }
 
     /**

@@ -38,6 +38,19 @@ interface IAccount {
     ) external payable returns (bytes memory);
 
     /**
+     * @notice Runs a keeper-committed delegate hook against this Account via `delegatecall`
+     * @dev Decodes `hooks` as the default `abi.encode(Hook[2])` and runs slot `index` (0 = reward hook,
+     *      1 = refund hook) in the SAME gated-execute sandbox as {execute}: it sets the in-execute slot,
+     *      `delegatecall`s `Hook.target` with `Hook.data`, and clears the slot, so an in-flight callback is
+     *      forwarded to the hook via the gated fallback. An empty `hooks` (length 0) or a slot with
+     *      `target == address(0)` is a no-op. On hook revert the raw revert data is bubbled verbatim (the
+     *      Portal wraps the call in try/catch so a reverting hook cannot break settle/refund).
+     * @param hooks The opaque `Reward.hooks` bytes (default: `abi.encode(Hook[2])`)
+     * @param index Which hook slot to run (0 = reward, 1 = refund)
+     */
+    function runHook(bytes calldata hooks, uint256 index) external;
+
+    /**
      * @notice Funds the account with reward legs
      * @param reward The reward structure containing the legs
      * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
