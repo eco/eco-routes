@@ -92,9 +92,9 @@ contract RewardLegsTest is BaseTest {
         tokenA.approve(address(portal), provided);
         portal.fulfill(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             bytes32(uint256(uint160(claimant))),
             providedAmounts,
             address(prover)
@@ -261,7 +261,6 @@ contract RewardLegsTest is BaseTest {
     function test_fulfill_revertsOnInsufficientTokens() public {
         // Provide only 400 but the min-tokens floor is 500.
         Intent memory _intent = _rateIntent(500, 500, WAD, 0);
-        bytes32 intentHash = _hashIntent(_intent);
         tokenA.mint(solver, 400);
         uint256[] memory providedAmounts = new uint256[](1);
         providedAmounts[0] = 400;
@@ -277,9 +276,9 @@ contract RewardLegsTest is BaseTest {
         );
         portal.fulfill(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             bytes32(uint256(uint160(claimant))),
             providedAmounts,
             address(prover)
@@ -290,7 +289,6 @@ contract RewardLegsTest is BaseTest {
     function test_fulfill_revertsOnProvidedAmountsLengthMismatch() public {
         // One min-tokens leg, but an empty providedAmounts array.
         Intent memory _intent = _rateIntent(500, 500, WAD, 0);
-        bytes32 intentHash = _hashIntent(_intent);
         vm.expectRevert(
             abi.encodeWithSelector(
                 IInbox.ProvidedAmountsLengthMismatch.selector,
@@ -301,9 +299,9 @@ contract RewardLegsTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             bytes32(uint256(uint160(claimant))),
             new uint256[](0),
             address(prover)
@@ -442,16 +440,15 @@ contract RewardLegsTest is BaseTest {
             route: r,
             reward: rw
         });
-        bytes32 intentHash = _hashIntent(_intent);
 
         vm.expectRevert(
             abi.encodeWithSelector(IntentLib.MinTokensNotSorted.selector, hi, lo)
         );
         portal.fulfill(
             _intent.source,
-            intentHash,
+            _intent.destination,
             r,
-            keccak256(abi.encode(rw)),
+            rw,
             bytes32(uint256(uint160(claimant))),
             new uint256[](2),
             address(prover)
@@ -485,7 +482,6 @@ contract RewardLegsTest is BaseTest {
             route: r,
             reward: rw
         });
-        bytes32 intentHash = _hashIntent(_intent);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -496,9 +492,9 @@ contract RewardLegsTest is BaseTest {
         );
         portal.fulfill(
             _intent.source,
-            intentHash,
+            _intent.destination,
             r,
-            keccak256(abi.encode(rw)),
+            rw,
             bytes32(uint256(uint160(claimant))),
             new uint256[](n),
             address(prover)

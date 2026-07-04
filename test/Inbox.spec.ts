@@ -157,53 +157,74 @@ describe('Inbox Test', (): void => {
 
   describe('fulfill when the intent is invalid', () => {
     it('should revert if fulfillment is attempted on an incorrect destination chain', async () => {
-      // Create an intent hash for a different destination chain
+      // `fulfill` requires `destination == block.chainid`; a foreign destination reverts
+      // `WrongDestinationChain` before it ever reaches hash derivation.
       const wrongDestination = 123
-      const wrongIntent: Intent = {
-        source: wrongDestination,
-        destination: wrongDestination,
-        route: route,
-        reward: reward,
-      }
-      const { intentHash: wrongIntentHash } = hashIntent(wrongIntent)
-
       await expect(
         inbox
           .connect(owner)
           .fulfill(
-            wrongIntent.source,
-            wrongIntentHash,
+            chainId,
+            wrongDestination,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
           ),
-      ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
+      )
+        .to.be.revertedWithCustomError(inbox, 'WrongDestinationChain')
+        .withArgs(chainId, wrongDestination)
     })
 
-    it('should revert if the generated hash does not match the expected hash', async () => {
-      const goofyHash = keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-          ['string'],
-          ["you wouldn't block a chain"],
+    it('records the fulfillment under the route-derived hash (no separate hash input to tamper with)', async () => {
+      // The new `fulfill` no longer takes a separate intent-hash input to malform — the hash is
+      // derived on-chain from (source, destination, route, reward). Tampering with the route no
+      // longer reverts; it just fulfills under a DIFFERENT derived hash than the original
+      // (untampered) intent's.
+      const _route: Route = {
+        ...route,
+        salt: keccak256(
+          ethers.AbiCoder.defaultAbiCoder().encode(
+            ['string'],
+            ["you wouldn't block a chain"],
+          ),
         ),
-      )
+      }
+      const { intentHash: tamperedHash } = hashIntent({
+        source: chainId,
+        destination: chainId,
+        route: _route,
+        reward,
+      })
+      expect(tamperedHash).to.not.equal(intentHash)
+
+      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+
       await expect(
         inbox
           .connect(solver)
           .fulfill(
             chainId,
-            goofyHash,
-            route,
-            rewardHash,
+            chainId,
+            _route,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
           ),
-      ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
+      ).to.not.be.reverted
+
+      expect(await mockProver.destFulfillment(tamperedHash)).to.equal(
+        hashFulfillment(tamperedHash, addressToBytes32(dstAddr.address), [
+          mintAmount,
+        ]),
+      )
+      expect(await mockProver.destFulfillment(intentHash)).to.equal(
+        ethers.ZeroHash,
+      )
     })
-    it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
+    it('should revert via InvalidPortal if all intent data was input correctly, but the intent used a different portal on creation', async () => {
       const anotherPortal = await (
         await ethers.getContractFactory('Portal')
       ).deploy()
@@ -229,9 +250,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            _intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -247,9 +268,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             ethers.ZeroHash,
             [mintAmount],
             await mockProver.getAddress(),
@@ -263,9 +284,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -298,9 +319,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            _intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -332,9 +353,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -360,9 +381,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -397,9 +418,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -411,9 +432,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -453,9 +474,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [ethAmount],
             await mockProver.getAddress(),
@@ -471,9 +492,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [ethAmount],
             await mockProver.getAddress(),
@@ -517,9 +538,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [ethAmount],
             await mockProver.getAddress(),
@@ -579,9 +600,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            _intentHash,
+            chainId,
             _route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -615,9 +636,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfill(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -678,9 +699,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfillAndProve(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(dstAddr.address),
             [mintAmount],
             await mockProver.getAddress(),
@@ -717,9 +738,9 @@ describe('Inbox Test', (): void => {
           .connect(solver)
           .fulfillAndProve(
             chainId,
-            intentHash,
+            chainId,
             route,
-            rewardHash,
+            reward,
             addressToBytes32(validClaimant),
             [mintAmount],
             await mockProver.getAddress(),

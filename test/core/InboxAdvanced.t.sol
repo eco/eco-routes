@@ -120,9 +120,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -179,9 +179,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -246,9 +246,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.deal(solver, ethAmount);
         portal.fulfill{value: ethAmount}(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -263,19 +263,26 @@ contract InboxAdvancedTest is BaseTest {
 
     function testValidationWithMalformedIntentHash() public {
         Intent memory intent = _createBasicIntent();
-        // bytes32 routeHash = keccak256(abi.encode(intent.route)); // unused
-        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
 
-        // Create malformed intent hash
-        bytes32 malformedHash = keccak256(abi.encodePacked("malformed"));
+        // The new `fulfill` no longer takes a separate `intentHash` input to malform — the hash
+        // is derived on-chain from (source, destination, route, reward). The closest surviving
+        // "bad identifier" gate is an out-of-range `destination`: fulfill requires
+        // `destination == block.chainid`.
+        uint64 wrongDestination = uint64(block.chainid) + 1;
 
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IInbox.WrongDestinationChain.selector,
+                uint64(block.chainid),
+                wrongDestination
+            )
+        );
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            malformedHash,
+            wrongDestination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -292,21 +299,40 @@ contract InboxAdvancedTest is BaseTest {
             rewardHash
         );
 
-        // Create mismatched route
+        // Tamper with the route (still targets this portal + block.chainid). Under the new
+        // signature the hash is derived on-chain from whatever route/reward is passed in, so a
+        // tampered route no longer reverts — it just records the fulfillment under a DIFFERENT
+        // derived hash than the original (untampered) intent's.
         Route memory mismatchedRoute = intent.route;
         mismatchedRoute.salt = keccak256("different");
+        bytes32 mismatchedHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            keccak256(abi.encode(mismatchedRoute)),
+            rewardHash
+        );
+        assertTrue(mismatchedHash != intentHash);
 
-        vm.expectRevert();
+        bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
+        uint256[] memory provided = _providedFromMinTokens(intent.route);
+
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             mismatchedRoute,
-            rewardHash,
-            bytes32(uint256(uint160(recipient))),
-            _providedFromMinTokens(intent.route),
+            intent.reward,
+            claimantBytes,
+            provided,
             address(prover)
         );
+
+        // Fulfilled under the TAMPERED route's own derived hash, not the original intent's hash.
+        assertEq(
+            prover.destFulfillment(mismatchedHash),
+            IntentLib.fulfillmentHash(mismatchedHash, claimantBytes, provided)
+        );
+        assertEq(prover.destFulfillment(intentHash), bytes32(0));
     }
 
     function testValidationWithExpiredDeadline() public {
@@ -326,9 +352,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -350,9 +376,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(0), // Zero claimant
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -376,9 +402,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -465,9 +491,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -507,9 +533,9 @@ contract InboxAdvancedTest is BaseTest {
             vm.prank(solver);
             portal.fulfill(
                 intent.source,
-                intentHash,
+                intent.destination,
                 intent.route,
-                rewardHash,
+                intent.reward,
                 bytes32(uint256(uint160(recipient))),
                 _providedFromMinTokens(intent.route),
                 address(prover)

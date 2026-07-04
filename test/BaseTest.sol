@@ -54,6 +54,12 @@ contract BaseTest is Test {
     Intent internal intent;
 
     function setUp() public virtual {
+        // Pin the test chain id to CHAIN_ID BEFORE deploying so `block.chainid` equals the default
+        // same-chain intent's source == destination, satisfying the source/destination chain gates
+        // (onlySourceChain / WrongDestinationChain). Cross-chain tests override the intent's chain fields
+        // explicitly (with a foreign chain distinct from CHAIN_ID).
+        vm.chainId(CHAIN_ID);
+
         // Setup test addresses
         keeper = makeAddr("keeper");
         claimant = makeAddr("claimant");

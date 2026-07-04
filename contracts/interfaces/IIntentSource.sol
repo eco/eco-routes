@@ -69,9 +69,9 @@ interface IIntentSource {
      * @notice A source-side operation was attempted on a chain whose id is not the intent's committed
      *         `source`
      * @dev Belt-and-braces on top of the Model C address separation: fund / settle / refund / recover /
-     *      executeAsOwner all resolve the SOURCE (escrow) vault keyed by `intent.source`, so they are only
-     *      valid on the source chain (`intent.source == block.chainid`). This keeps a source-side op on the
-     *      destination chain from ever reaching a cross-chain intent's destination vault.
+     *      executeAsOwner all resolve the SOURCE (escrow) account keyed by `intent.source`, so they are
+     *      only valid on the source chain (`intent.source == block.chainid`). This keeps a source-side op
+     *      on the destination chain from ever reaching a cross-chain intent's destination account.
      * @param current The current chain id (block.chainid)
      * @param expected The intent's committed source chain id
      */

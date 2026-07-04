@@ -157,9 +157,9 @@ contract LocalProverTest is Test {
         vm.deal(solver, REWARD_AMOUNT);
         portal.fulfill{value: REWARD_AMOUNT}(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             bytes32(uint256(uint160(solver))),
             new uint256[](0),
             address(localProver)
@@ -245,9 +245,9 @@ contract LocalProverTest is Test {
         vm.deal(solver, REWARD_AMOUNT);
         portal.fulfill{value: REWARD_AMOUNT}(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             bytes32(uint256(uint160(solver))),
             new uint256[](0),
             address(localProver)
@@ -553,9 +553,9 @@ contract LocalProverTest is Test {
         );
         portal.fulfill{value: REWARD_AMOUNT}(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             localProverAsBytes32,
             new uint256[](0),
             address(localProver)
@@ -616,9 +616,9 @@ contract LocalProverTest is Test {
         bytes32 nonEVMBytes32 = bytes32(uint256(type(uint256).max)); // All 1s
         portal.fulfill{value: REWARD_AMOUNT}(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             nonEVMBytes32,
             new uint256[](0),
             address(localProver)
@@ -680,9 +680,9 @@ contract LocalProverTest is Test {
         );
         portal.fulfill{value: REWARD_AMOUNT}(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             localProverAsBytes32,
             new uint256[](0),
             address(localProver)
@@ -719,9 +719,9 @@ contract LocalProverTest is Test {
         );
         portal.fulfill{value: REWARD_AMOUNT}(
             _intent.source,
-            intentHash,
+            _intent.destination,
             _intent.route,
-            keccak256(abi.encode(_intent.reward)),
+            _intent.reward,
             localProverAsBytes32,
             new uint256[](0),
             address(localProver)
