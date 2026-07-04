@@ -11,8 +11,9 @@ import {
   Portal,
   TestPolicy,
   Inbox,
+  MulticallRuntime,
 } from '../typechain-types'
-import { hashIntent, RewardToken } from '../utils/intent'
+import { hashIntent, encodeCalls, RewardToken } from '../utils/intent'
 
 /**
  * This test suite focuses on testing the protocol's resilience against token security issues
@@ -21,6 +22,7 @@ describe('Token Security Tests', () => {
   let intentSource: IntentSource
   let prover: TestPolicy
   let inbox: Inbox
+  let multicallRuntime: MulticallRuntime
   let token: TestERC20
   let keeper: SignerWithAddress
   let claimant: SignerWithAddress
@@ -45,6 +47,11 @@ describe('Token Security Tests', () => {
       await ethers.getContractFactory('TestPolicy')
     ).deploy(await portal.getAddress())
 
+    // Deploy the default v3 route runtime
+    const multicallRuntime = await (
+      await ethers.getContractFactory('MulticallRuntime')
+    ).deploy()
+
     // Deploy test token
     const tokenFactory = await ethers.getContractFactory('TestERC20')
     const token = await tokenFactory.deploy('Test Token', 'TEST')
@@ -56,6 +63,7 @@ describe('Token Security Tests', () => {
       intentSource,
       prover,
       inbox,
+      multicallRuntime,
       token,
       keeper,
       claimant,
@@ -63,8 +71,15 @@ describe('Token Security Tests', () => {
   }
 
   beforeEach(async () => {
-    ;({ intentSource, prover, inbox, token, keeper, claimant } =
-      await loadFixture(deployContractsFixture))
+    ;({
+      intentSource,
+      prover,
+      inbox,
+      multicallRuntime,
+      token,
+      keeper,
+      claimant,
+    } = await loadFixture(deployContractsFixture))
   })
 
   it('should handle token transfers correctly in intent creation', async () => {
@@ -92,7 +107,8 @@ describe('Token Security Tests', () => {
       portal: await inbox.getAddress(),
       keeper: await keeper.getAddress(),
       minTokens: routeTokens,
-      calls: calls,
+      runtime: await multicallRuntime.getAddress(),
+      payload: encodeCalls(calls),
     }
 
     const reward = {
@@ -102,7 +118,12 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { destination: chainId + 1, route, reward }
+    const intent = {
+      source: chainId + 1,
+      destination: chainId + 1,
+      route,
+      reward,
+    }
 
     // Approve tokens for spending
     await token
@@ -137,8 +158,16 @@ describe('Token Security Tests', () => {
     const expiry = (await time.latest()) + 3600 // 1 hour from now
 
     const rewardTokens: RewardToken[] = [
-      { token: await token.getAddress(), rate: 0n, flat: ethers.parseEther('2') },
-      { token: await tokenB.getAddress(), rate: 0n, flat: ethers.parseEther('3') },
+      {
+        token: await token.getAddress(),
+        rate: 0n,
+        flat: ethers.parseEther('2'),
+      },
+      {
+        token: await tokenB.getAddress(),
+        rate: 0n,
+        flat: ethers.parseEther('3'),
+      },
     ]
 
     const route = {
@@ -147,7 +176,8 @@ describe('Token Security Tests', () => {
       portal: await inbox.getAddress(),
       keeper: await keeper.getAddress(),
       minTokens: [],
-      calls: [],
+      runtime: await multicallRuntime.getAddress(),
+      payload: encodeCalls([]),
     }
 
     const reward = {
@@ -157,7 +187,12 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { destination: chainId + 1, route, reward }
+    const intent = {
+      source: chainId + 1,
+      destination: chainId + 1,
+      route,
+      reward,
+    }
 
     // Approve both tokens for spending
     await token
@@ -205,7 +240,8 @@ describe('Token Security Tests', () => {
       portal: await inbox.getAddress(),
       keeper: await keeper.getAddress(),
       minTokens: [],
-      calls: [],
+      runtime: await multicallRuntime.getAddress(),
+      payload: encodeCalls([]),
     }
 
     const reward = {
@@ -215,7 +251,12 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { destination: chainId + 1, route, reward }
+    const intent = {
+      source: chainId + 1,
+      destination: chainId + 1,
+      route,
+      reward,
+    }
 
     // Track starting balance
     const startTokenBalance = await token.balanceOf(keeper.address)
@@ -259,8 +300,16 @@ describe('Token Security Tests', () => {
     // Create reward with duplicate token entries. In v3 the source enforces UNIQUE reward legs
     // (requireUniqueRewardTokens), so a duplicate token is rejected rather than summed.
     const rewardTokens: RewardToken[] = [
-      { token: await token.getAddress(), rate: 0n, flat: ethers.parseEther('1') },
-      { token: await token.getAddress(), rate: 0n, flat: ethers.parseEther('2') }, // Same token
+      {
+        token: await token.getAddress(),
+        rate: 0n,
+        flat: ethers.parseEther('1'),
+      },
+      {
+        token: await token.getAddress(),
+        rate: 0n,
+        flat: ethers.parseEther('2'),
+      }, // Same token
     ]
 
     const route = {
@@ -269,7 +318,8 @@ describe('Token Security Tests', () => {
       portal: await inbox.getAddress(),
       keeper: await keeper.getAddress(),
       minTokens: [],
-      calls: [],
+      runtime: await multicallRuntime.getAddress(),
+      payload: encodeCalls([]),
     }
 
     const reward = {
@@ -279,7 +329,12 @@ describe('Token Security Tests', () => {
       tokens: rewardTokens,
     }
 
-    const intent = { destination: chainId + 1, route, reward }
+    const intent = {
+      source: chainId + 1,
+      destination: chainId + 1,
+      route,
+      reward,
+    }
 
     // Approve tokens
     await token

@@ -6,7 +6,8 @@ import {CCIPPolicy} from "../../contracts/prover/CCIPPolicy.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {IMessageBridgePolicy} from "../../contracts/interfaces/IMessageBridgePolicy.sol";
 import {TestCCIPRouter} from "../../contracts/test/TestCCIPRouter.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {IAny2EVMMessageReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
@@ -488,7 +489,7 @@ contract CCIPProverTest is BaseTest {
         // So challenging with the original intent should clear the proof
         vm.prank(keeper);
         ccipProver.challengeIntentProof(
-            intent.destination, keccak256(abi.encode(intent.route)), keccak256(abi.encode(intent.reward))
+            intent.source, intent.destination, keccak256(abi.encode(intent.route)), keccak256(abi.encode(intent.reward))
         );
 
         // Verify proof was cleared
@@ -522,7 +523,7 @@ contract CCIPProverTest is BaseTest {
         // Challenge with correct chain should do nothing
         vm.prank(keeper);
         ccipProver.challengeIntentProof(
-            localIntent.destination, keccak256(abi.encode(localIntent.route)), keccak256(abi.encode(localIntent.reward))
+            localIntent.source, localIntent.destination, keccak256(abi.encode(localIntent.route)), keccak256(abi.encode(localIntent.reward))
         );
 
         // Verify proof is still there

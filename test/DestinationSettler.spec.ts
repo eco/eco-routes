@@ -1,7 +1,12 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestPolicy } from '../typechain-types'
+import {
+  TestERC20,
+  Inbox,
+  TestPolicy,
+  MulticallRuntime,
+} from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -10,6 +15,7 @@ import { encodeTransfer, encodeTransferPayable } from '../utils/encode'
 import { BytesLike, AbiCoder, parseEther, keccak256 } from 'ethers'
 import {
   hashIntent,
+  encodeCalls,
   Call,
   Route,
   Reward,
@@ -19,6 +25,7 @@ import {
 
 describe('Destination Settler Test', (): void => {
   let inbox: Inbox
+  let multicallRuntime: MulticallRuntime
   let erc20: TestERC20
   let owner: SignerWithAddress
   let keeper: SignerWithAddress
@@ -39,6 +46,7 @@ describe('Destination Settler Test', (): void => {
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
+    multicallRuntime: MulticallRuntime
     prover: TestPolicy
     erc20: TestERC20
     owner: SignerWithAddress
@@ -52,6 +60,9 @@ describe('Destination Settler Test', (): void => {
     const portalFactory = await ethers.getContractFactory('Portal')
     const portal = await portalFactory.deploy()
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
+    const multicallRuntime = await (
+      await ethers.getContractFactory('MulticallRuntime')
+    ).deploy()
     const prover = await (
       await ethers.getContractFactory('TestPolicy')
     ).deploy(await inbox.getAddress())
@@ -62,6 +73,7 @@ describe('Destination Settler Test', (): void => {
 
     return {
       inbox,
+      multicallRuntime,
       prover,
       erc20,
       owner,
@@ -100,7 +112,8 @@ describe('Destination Settler Test', (): void => {
       deadline: _timestamp,
       portal: await inbox.getAddress(),
       keeper: keeper.address,
-      calls: _calls,
+      runtime: await multicallRuntime.getAddress(),
+      payload: encodeCalls(_calls),
       minTokens: [
         { token: ethers.ZeroAddress, amount: _nativeAmount },
         ...routeTokens,
@@ -118,8 +131,10 @@ describe('Destination Settler Test', (): void => {
         },
       ],
     }
+    const _chainId = Number((await owner.provider.getNetwork()).chainId)
     const _intent: Intent = {
-      destination: Number((await owner.provider.getNetwork()).chainId),
+      source: _chainId,
+      destination: _chainId,
       route: _route,
       reward: _reward,
     }
@@ -137,7 +152,7 @@ describe('Destination Settler Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, prover, erc20, owner, keeper, solver } =
+    ;({ inbox, multicallRuntime, prover, erc20, owner, keeper, solver } =
       await loadFixture(deployInboxFixture))
     ;({ route, reward, intent, intentHash } = await createIntentDataNative(
       mintAmount,
@@ -157,6 +172,7 @@ describe('Destination Settler Test', (): void => {
       inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           hashIntent(intent).rewardHash,
@@ -187,6 +203,7 @@ describe('Destination Settler Test', (): void => {
       inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           hashIntent(intent).rewardHash,

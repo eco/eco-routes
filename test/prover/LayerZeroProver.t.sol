@@ -7,6 +7,7 @@ import {ILayerZeroEndpointV2} from "../../contracts/interfaces/layerzero/ILayerZ
 import {ILayerZeroReceiver} from "../../contracts/interfaces/layerzero/ILayerZeroReceiver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {IntentLib} from "../../contracts/types/Intent.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(address => address) public delegates;
@@ -450,8 +451,11 @@ contract LayerZeroProverTest is BaseTest {
         uint64 wrongDestination = 2;
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(actualDestination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            actualDestination,
+            actualDestination,
+            routeHash,
+            rewardHash
         );
 
         // Setup a proof with wrong destination chain
@@ -492,7 +496,12 @@ contract LayerZeroProverTest is BaseTest {
         vm.expectEmit(true, true, true, true);
         emit IPolicy.IntentProofInvalidated(intentHash);
 
-        lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
+        lzProver.challengeIntentProof(
+            actualDestination,
+            actualDestination,
+            routeHash,
+            rewardHash
+        );
 
         // Verify proof was cleared
         LayerZeroPolicy.ProofData memory proofAfter = lzProver.provenIntents(
@@ -511,8 +520,11 @@ contract LayerZeroProverTest is BaseTest {
         uint64 correctDestination = 1;
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(correctDestination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            correctDestination,
+            correctDestination,
+            routeHash,
+            rewardHash
         );
 
         // Setup a proof with correct destination chain
@@ -552,6 +564,7 @@ contract LayerZeroProverTest is BaseTest {
         // Challenge the proof with correct destination (should do nothing)
         lzProver.challengeIntentProof(
             correctDestination,
+            correctDestination,
             routeHash,
             rewardHash
         );
@@ -573,8 +586,11 @@ contract LayerZeroProverTest is BaseTest {
         uint64 wrongDestination = 2;
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(actualDestination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            actualDestination,
+            actualDestination,
+            routeHash,
+            rewardHash
         );
 
         // Test with invalid srcEid
@@ -604,7 +620,12 @@ contract LayerZeroProverTest is BaseTest {
         vm.expectEmit(true, true, true, true);
         emit IPolicy.IntentProofInvalidated(intentHash);
 
-        lzProver.challengeIntentProof(actualDestination, routeHash, rewardHash);
+        lzProver.challengeIntentProof(
+            actualDestination,
+            actualDestination,
+            routeHash,
+            rewardHash
+        );
 
         // Verify proof was cleared
         LayerZeroPolicy.ProofData memory proofAfter = lzProver.provenIntents(

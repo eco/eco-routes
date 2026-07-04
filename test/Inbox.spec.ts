@@ -6,7 +6,7 @@ import {
   TestUSDT,
   Inbox,
   TestPolicy,
-  Executor,
+  MulticallRuntime,
 } from '../typechain-types'
 import {
   time,
@@ -14,12 +14,19 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer } from '../utils/encode'
 import { keccak256 } from 'ethers'
-import { hashIntent, hashFulfillment, Route, Reward, Intent } from '../utils/intent'
+import {
+  hashIntent,
+  hashFulfillment,
+  encodeCalls,
+  Route,
+  Reward,
+  Intent,
+} from '../utils/intent'
 import { addressToBytes32 } from '../utils/typeCasts'
 
 describe('Inbox Test', (): void => {
   let inbox: Inbox
-  let executor: Executor
+  let multicallRuntime: MulticallRuntime
   let erc20: TestERC20
   let testUSDT: TestUSDT
   let owner: SignerWithAddress
@@ -29,6 +36,7 @@ describe('Inbox Test', (): void => {
   let reward: Reward
   let rewardHash: string
   let intentHash: string
+  let chainId: number
   let mockProver: TestPolicy
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
@@ -38,7 +46,7 @@ describe('Inbox Test', (): void => {
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
-    executor: Executor
+    multicallRuntime: MulticallRuntime
     erc20: TestERC20
     testUSDT: TestUSDT
     owner: SignerWithAddress
@@ -49,10 +57,9 @@ describe('Inbox Test', (): void => {
     const portalFactory = await ethers.getContractFactory('Portal')
     const portal = await portalFactory.deploy()
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
-    const executor = await ethers.getContractAt(
-      'Executor',
-      await inbox.executor(),
-    )
+    const multicallRuntime = await (
+      await ethers.getContractFactory('MulticallRuntime')
+    ).deploy()
 
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
@@ -68,7 +75,7 @@ describe('Inbox Test', (): void => {
 
     return {
       inbox,
-      executor,
+      multicallRuntime,
       erc20,
       testUSDT,
       owner,
@@ -90,21 +97,23 @@ describe('Inbox Test', (): void => {
     const data = await encodeTransfer(dstAddr.address, amount)
     const deadline = (await time.latest()) + timeDelta
 
-    // Create intent directly
+    // Create intent directly. `source` defaults to same-chain (== destination) for these tests.
     const intent: Intent = {
-      destination: Number((await owner.provider.getNetwork()).chainId),
+      source: chainId,
+      destination: chainId,
       route: {
         salt,
         deadline,
         portal: await inbox.getAddress(),
         keeper: solver.address,
-        calls: [
+        runtime: await multicallRuntime.getAddress(),
+        payload: encodeCalls([
           {
             target: erc20Address,
             data,
             value: 0,
           },
-        ],
+        ]),
         minTokens: [{ token: await erc20.getAddress(), amount: amount }],
       },
       reward: {
@@ -133,8 +142,9 @@ describe('Inbox Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, executor, erc20, testUSDT, owner, solver, dstAddr } =
+    ;({ inbox, multicallRuntime, erc20, testUSDT, owner, solver, dstAddr } =
       await loadFixture(deployInboxFixture))
+    chainId = Number((await owner.provider.getNetwork()).chainId)
     ;({ route, reward, rewardHash, intentHash } = await createIntentData(
       mintAmount,
       timeDelta,
@@ -150,6 +160,7 @@ describe('Inbox Test', (): void => {
       // Create an intent hash for a different destination chain
       const wrongDestination = 123
       const wrongIntent: Intent = {
+        source: wrongDestination,
         destination: wrongDestination,
         route: route,
         reward: reward,
@@ -160,6 +171,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(owner)
           .fulfill(
+            wrongIntent.source,
             wrongIntentHash,
             route,
             rewardHash,
@@ -181,6 +193,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             goofyHash,
             route,
             rewardHash,
@@ -205,7 +218,8 @@ describe('Inbox Test', (): void => {
       }
 
       const _intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
+        source: chainId,
+        destination: chainId,
         route: _route,
         reward: reward,
       }).intentHash
@@ -214,6 +228,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             _intentHash,
             _route,
             rewardHash,
@@ -231,6 +246,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -246,6 +262,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -261,17 +278,18 @@ describe('Inbox Test', (): void => {
 
       const _route: Route = {
         ...route,
-        calls: [
+        payload: encodeCalls([
           {
             target: await erc20.getAddress(),
             data: await encodeTransfer(dstAddr.address, mintAmount * 100),
             value: 0,
           },
-        ],
+        ]),
       }
 
       const _intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
+        source: chainId,
+        destination: chainId,
         route: _route,
         reward: reward,
       }).intentHash
@@ -279,6 +297,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             _intentHash,
             _route,
             rewardHash,
@@ -286,7 +305,7 @@ describe('Inbox Test', (): void => {
             [mintAmount],
             await mockProver.getAddress(),
           ),
-      ).to.be.revertedWithCustomError(executor, 'CallFailed')
+      ).to.be.revertedWithCustomError(multicallRuntime, 'CallReverted')
     })
 
     it('should revert if one of the targets is an EOA', async () => {
@@ -294,16 +313,17 @@ describe('Inbox Test', (): void => {
 
       const _route: Route = {
         ...route,
-        calls: [
+        payload: encodeCalls([
           {
             target: solver.address,
             data: await encodeTransfer(dstAddr.address, mintAmount * 100),
             value: 0,
           },
-        ],
+        ]),
       }
       const intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
+        source: chainId,
+        destination: chainId,
         route: _route,
         reward: reward,
       }).intentHash
@@ -311,6 +331,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             _route,
             rewardHash,
@@ -319,7 +340,7 @@ describe('Inbox Test', (): void => {
             await mockProver.getAddress(),
           ),
       )
-        .to.be.revertedWithCustomError(executor, 'CallToEOA')
+        .to.be.revertedWithCustomError(multicallRuntime, 'CallToEOA')
         .withArgs(solver.address)
     })
 
@@ -338,6 +359,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -374,6 +396,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -387,6 +410,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -405,17 +429,18 @@ describe('Inbox Test', (): void => {
       const _route: Route = {
         ...route,
         minTokens: [{ token: ethers.ZeroAddress, amount: ethAmount }],
-        calls: [
+        payload: encodeCalls([
           {
             target: dstAddr.address,
             data: '0x',
             value: ethAmount,
           },
-        ],
+        ]),
       }
 
       const intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
+        source: chainId,
+        destination: chainId,
         route: _route,
         reward: reward,
       }).intentHash
@@ -427,6 +452,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             _route,
             rewardHash,
@@ -444,6 +470,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             _route,
             rewardHash,
@@ -463,17 +490,18 @@ describe('Inbox Test', (): void => {
       const _route: Route = {
         ...route,
         minTokens: [{ token: ethers.ZeroAddress, amount: ethAmount }],
-        calls: [
+        payload: encodeCalls([
           {
             target: dstAddr.address,
             data: '0x', // Empty data for ETH transfer
             value: ethAmount,
           },
-        ],
+        ]),
       }
 
       const intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
+        source: chainId,
+        destination: chainId,
         route: _route,
         reward: reward,
       }).intentHash
@@ -488,6 +516,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             _route,
             rewardHash,
@@ -520,17 +549,18 @@ describe('Inbox Test', (): void => {
             amount: mintAmount,
           },
         ],
-        calls: [
+        payload: encodeCalls([
           {
             target: await testUSDT.getAddress(),
             data: transferCalldata,
             value: 0,
           },
-        ],
+        ]),
       }
 
       const _intentHash = hashIntent({
-        destination: Number((await owner.provider.getNetwork()).chainId),
+        source: chainId,
+        destination: chainId,
         route: _route,
         reward: reward,
       }).intentHash
@@ -548,6 +578,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             _intentHash,
             _route,
             rewardHash,
@@ -583,6 +614,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -645,6 +677,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillAndProve(
+            chainId,
             intentHash,
             route,
             rewardHash,
@@ -683,6 +716,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillAndProve(
+            chainId,
             intentHash,
             route,
             rewardHash,

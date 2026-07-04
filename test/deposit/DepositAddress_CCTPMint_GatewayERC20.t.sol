@@ -7,7 +7,8 @@ import {DepositFactory_CCTPMint_GatewayERC20} from "../../contracts/deposit/Depo
 import {DepositAddress_CCTPMint_GatewayERC20} from "../../contracts/deposit/DepositAddress_CCTPMint_GatewayERC20.sol";
 import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
@@ -258,22 +259,23 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                 assertEq(route.minTokens.length, 1, "Intent 2 route should have one min-tokens leg (destination USDC)");
                 assertEq(route.minTokens[0].token, DESTINATION_USDC, "Intent 2 route min-tokens token should be destination USDC");
                 assertEq(route.minTokens[0].amount, netAmount, "Intent 2 route min-tokens amount should be netAmount");
-                assertEq(route.calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
+                Call[] memory calls = abi.decode(route.payload, (Call[]));
+                assertEq(calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
 
                 // Verify call 0: approve Gateway for USDC (netAmount)
-                assertEq(route.calls[0].target, DESTINATION_USDC, "Call 0 target should be DESTINATION_USDC");
-                assertEq(route.calls[0].value, 0, "Call 0 value should be 0");
+                assertEq(calls[0].target, DESTINATION_USDC, "Call 0 target should be DESTINATION_USDC");
+                assertEq(calls[0].value, 0, "Call 0 value should be 0");
 
                 bytes memory expectedApproveData = abi.encodeWithSignature(
                     "approve(address,uint256)",
                     GATEWAY_ADDRESS,
                     netAmount
                 );
-                assertEq(route.calls[0].data, expectedApproveData, "Call 0 data should encode approve with netAmount");
+                assertEq(calls[0].data, expectedApproveData, "Call 0 data should encode approve with netAmount");
 
                 // Verify call 1: Gateway.depositFor (netAmount)
-                assertEq(route.calls[1].target, GATEWAY_ADDRESS, "Call 1 target should be Gateway");
-                assertEq(route.calls[1].value, 0, "Call 1 value should be 0");
+                assertEq(calls[1].target, GATEWAY_ADDRESS, "Call 1 target should be Gateway");
+                assertEq(calls[1].value, 0, "Call 1 value should be 0");
 
                 bytes memory expectedDepositForData = abi.encodeWithSignature(
                     "depositFor(address,address,uint256)",
@@ -281,7 +283,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     address(uint160(uint256(bytes32(uint256(uint160(USER_DESTINATION)))))),
                     netAmount
                 );
-                assertEq(route.calls[1].data, expectedDepositForData, "Call 1 data should encode depositFor with netAmount");
+                assertEq(calls[1].data, expectedDepositForData, "Call 1 data should encode depositFor with netAmount");
 
                 // Verify reward — equals netAmount (intent2 reward and route are symmetric)
                 assertEq(rewardTokens.length, 1, "Intent 2 reward should have one token (destination USDC)");
@@ -341,15 +343,16 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     assertEq(route.minTokens.length, 1, "Intent 1 route should have one min-tokens leg");
                     assertEq(route.minTokens[0].token, address(token), "Intent 1 route min-tokens token should be source USDC");
                     assertEq(route.minTokens[0].amount, routeAmount, "Intent 1 route min-tokens amount should equal amount minus flat fee");
-                    assertEq(route.calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
+                    Call[] memory calls = abi.decode(route.payload, (Call[]));
+                    assertEq(calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
 
                     // Verify approve call (calls[0])
-                    assertEq(route.calls[0].target, address(token), "Call 0 target should be source token (approve)");
-                    assertEq(route.calls[0].value, 0, "Approve call should have no value");
+                    assertEq(calls[0].target, address(token), "Call 0 target should be source token (approve)");
+                    assertEq(calls[0].value, 0, "Approve call should have no value");
 
                     // Verify CCTP depositForBurn call (calls[1])
-                    assertEq(route.calls[1].target, CCTP_TOKEN_MESSENGER, "Call 1 target should be TokenMessenger");
-                    assertEq(route.calls[1].value, 0, "CCTP call should have no value");
+                    assertEq(calls[1].target, CCTP_TOKEN_MESSENGER, "Call 1 target should be TokenMessenger");
+                    assertEq(calls[1].value, 0, "CCTP call should have no value");
 
                     // Verify reward (full deposit; flat fee delta vs route is solver profit)
                     assertEq(rewardTokens.length, 1, "Intent 1 reward should have one token");
@@ -393,7 +396,8 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
                     // Decode the CCTP depositForBurn call data (calls[1], after approve)
                     // Expected signature: depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)
-                    bytes memory callData = route.calls[1].data;
+                    Call[] memory calls = abi.decode(route.payload, (Call[]));
+                    bytes memory callData = calls[1].data;
 
                     // Skip the 4-byte selector and decode the parameters
                     bytes4 selector = bytes4(callData);
@@ -472,7 +476,8 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
-                    bytes memory callData = route.calls[1].data; // calls[1] = depositForBurn (after approve)
+                    Call[] memory calls = abi.decode(route.payload, (Call[]));
+                    bytes memory callData = calls[1].data; // calls[1] = depositForBurn (after approve)
 
                     // Decode the third parameter (mintRecipient) from the CCTP call
                     (
@@ -689,6 +694,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
+                    Call[] memory calls = abi.decode(route.payload, (Call[]));
                     uint256 expectedRouteAmount = amount - FLAT_FEE;
 
                     // calls[0] is the approve(TokenMessenger, routeAmount) — must NOT use full amount
@@ -698,7 +704,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                         expectedRouteAmount
                     );
                     assertEq(
-                        route.calls[0].data,
+                        calls[0].data,
                         expectedApproveData,
                         "Intent 1 calls[0] must encode approve(TokenMessenger, routeAmount)"
                     );

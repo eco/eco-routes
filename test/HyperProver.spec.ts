@@ -8,6 +8,7 @@ import { ethers } from 'hardhat'
 import {
   HyperPolicy,
   Inbox,
+  MulticallRuntime,
   Portal,
   TestERC20,
   TestMailbox,
@@ -16,6 +17,7 @@ import { encodeTransfer } from '../utils/encode'
 import {
   hashIntent,
   hashFulfillment,
+  encodeCalls,
   TokenAmount,
   RewardToken,
   Intent,
@@ -71,6 +73,7 @@ describe('HyperPolicy Test', (): void => {
   let mailbox: TestMailbox
   let hyperProver: HyperPolicy
   let token: TestERC20
+  let multicallRuntime: MulticallRuntime
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
@@ -81,6 +84,7 @@ describe('HyperPolicy Test', (): void => {
     inbox: Inbox
     mailbox: TestMailbox
     token: TestERC20
+    multicallRuntime: MulticallRuntime
     owner: SignerWithAddress
     solver: SignerWithAddress
     claimant: SignerWithAddress
@@ -97,10 +101,15 @@ describe('HyperPolicy Test', (): void => {
       await ethers.getContractFactory('TestERC20')
     ).deploy('token', 'tkn')
 
+    const multicallRuntime = await (
+      await ethers.getContractFactory('MulticallRuntime')
+    ).deploy()
+
     return {
       inbox,
       mailbox,
       token,
+      multicallRuntime,
       owner,
       solver,
       claimant,
@@ -108,9 +117,8 @@ describe('HyperPolicy Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, mailbox, token, owner, solver, claimant } = await loadFixture(
-      deployHyperproverFixture,
-    ))
+    ;({ inbox, mailbox, token, multicallRuntime, owner, solver, claimant } =
+      await loadFixture(deployHyperproverFixture))
   })
 
   describe('1. Constructor', () => {
@@ -296,30 +304,37 @@ describe('HyperPolicy Test', (): void => {
       const deadline = (await time.latest()) + 3600
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
+      const currentChain = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
       const intent: Intent = {
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ), // Current chain
+        source: currentChain, // Current chain (same-chain default)
+        destination: currentChain, // Current chain
         route: {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -347,6 +362,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           rewardHash,
@@ -430,30 +446,37 @@ describe('HyperPolicy Test', (): void => {
       const deadline = (await time.latest()) + 3600
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
+      const currentChain = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
       const intent: Intent = {
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ), // Current chain
+        source: currentChain, // Current chain (same-chain default)
+        destination: currentChain, // Current chain
         route: {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -481,6 +504,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           rewardHash,
@@ -547,30 +571,37 @@ describe('HyperPolicy Test', (): void => {
       const deadline = (await time.latest()) + 3600
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
+      const currentChain = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
       const intent: Intent = {
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ), // Current chain
+        source: currentChain, // Current chain (same-chain default)
+        destination: currentChain, // Current chain
         route: {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -598,6 +629,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           rewardHash,
@@ -860,30 +892,37 @@ describe('HyperPolicy Test', (): void => {
       const salt = ethers.encodeBytes32String('0x987')
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
+      const currentChain = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
       const intent: Intent = {
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ),
+        source: currentChain, // Current chain (same-chain default)
+        destination: currentChain,
         route: {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: routeTokens,
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -942,6 +981,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          intent.source,
           intentHash,
           route,
           rewardHash,
@@ -997,30 +1037,37 @@ describe('HyperPolicy Test', (): void => {
       const salt = ethers.encodeBytes32String('0x987')
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
+      const currentChain = Number(
+        (await hyperProver.runner?.provider?.getNetwork())?.chainId,
+      )
       const intent: Intent = {
-        destination: Number(
-          (await hyperProver.runner?.provider?.getNetwork())?.chainId,
-        ),
+        source: currentChain, // Current chain (same-chain default)
+        destination: currentChain,
         route: {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: routeTokens,
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -1084,6 +1131,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          intent.source,
           intentHash,
           route,
           rewardHash,
@@ -1180,20 +1228,25 @@ describe('HyperPolicy Test', (): void => {
         portal: await inbox.getAddress(),
         keeper: await owner.getAddress(),
         minTokens: routeTokens,
-        calls: [
+        runtime: await multicallRuntime.getAddress(),
+        payload: encodeCalls([
           {
             target: await token.getAddress(),
             data: calldata,
             value: 0,
           },
-        ],
+        ]),
       }
       const reward = {
         keeper: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
-          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          {
+            token: ethers.ZeroAddress,
+            rate: 0n,
+            flat: ethers.parseEther('0.01'),
+          },
         ],
       }
 
@@ -1201,6 +1254,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent0: Intent = {
+        source: destination, // Current chain (same-chain default)
         destination,
         route,
         reward,
@@ -1227,6 +1281,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent0.source,
           intentHash0,
           route,
           rewardHash0,
@@ -1243,23 +1298,29 @@ describe('HyperPolicy Test', (): void => {
         portal: await inbox.getAddress(),
         keeper: await owner.getAddress(),
         minTokens: routeTokens,
-        calls: [
+        runtime: await multicallRuntime.getAddress(),
+        payload: encodeCalls([
           {
             target: await token.getAddress(),
             data: calldata,
             value: 0,
           },
-        ],
+        ]),
       }
       const reward1 = {
         keeper: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
-          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          {
+            token: ethers.ZeroAddress,
+            rate: 0n,
+            flat: ethers.parseEther('0.01'),
+          },
         ],
       }
       const intent1: Intent = {
+        source: destination, // Current chain (same-chain default)
         destination,
         route: route1,
         reward: reward1,
@@ -1281,6 +1342,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent1.source,
           intentHash1,
           route1,
           rewardHash1,
@@ -1295,8 +1357,12 @@ describe('HyperPolicy Test', (): void => {
 
       // Hash-only fulfillment commitments carried on the wire (per intent, same claimant)
       const claimant32 = addressToBytes32(await claimant.getAddress())
-      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [amount])
-      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [amount])
+      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [
+        amount,
+      ])
+      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [
+        amount,
+      ])
 
       // Prepare message body for batch
       const msgbody = encodeMessageBody(
@@ -1378,6 +1444,8 @@ describe('HyperPolicy Test', (): void => {
     beforeEach(async () => {
       // Create a standard intent for testing
       intent = {
+        source: 42161, // Fixed to match `destination` so it's inherited unchanged by every
+        // spread-derived variant below (only `destination` varies across those tests).
         destination: 42161, // Arbitrum
         route: {
           salt: ethers.randomBytes(32),
@@ -1385,13 +1453,14 @@ describe('HyperPolicy Test', (): void => {
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: await encodeTransfer(await claimant.getAddress(), amount),
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
@@ -1420,7 +1489,9 @@ describe('HyperPolicy Test', (): void => {
 
       // Verify proof exists with wrong chain ID
       const proofBefore = await prover.provenIntents(intentHash)
-      expect(proofBefore.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
+      expect(proofBefore.fulfillmentHash).to.equal(
+        addressToBytes32(await claimant.getAddress()),
+      )
       expect(proofBefore.destination).to.equal(wrongChainId)
 
       // Challenge the proof with correct destination chain ID
@@ -1428,7 +1499,12 @@ describe('HyperPolicy Test', (): void => {
       const rewardHash = hashIntent(intent).rewardHash
 
       await expect(
-        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
+        prover.challengeIntentProof(
+          intent.source,
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
       )
         .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash)
@@ -1451,7 +1527,9 @@ describe('HyperPolicy Test', (): void => {
 
       // Verify proof exists
       const proofBefore = await prover.provenIntents(intentHash)
-      expect(proofBefore.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
+      expect(proofBefore.fulfillmentHash).to.equal(
+        addressToBytes32(await claimant.getAddress()),
+      )
       expect(proofBefore.destination).to.equal(intent.destination)
 
       // Challenge the proof with same destination chain ID
@@ -1459,6 +1537,7 @@ describe('HyperPolicy Test', (): void => {
       const rewardHash = hashIntent(intent).rewardHash
 
       await prover.challengeIntentProof(
+        intent.source,
         intent.destination,
         routeHash,
         rewardHash,
@@ -1466,7 +1545,9 @@ describe('HyperPolicy Test', (): void => {
 
       // Verify proof remains unchanged
       const proofAfter = await prover.provenIntents(intentHash)
-      expect(proofAfter.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
+      expect(proofAfter.fulfillmentHash).to.equal(
+        addressToBytes32(await claimant.getAddress()),
+      )
       expect(proofAfter.destination).to.equal(intent.destination)
     })
 
@@ -1476,7 +1557,12 @@ describe('HyperPolicy Test', (): void => {
 
       // Challenge non-existent proof should be a no-op
       await expect(
-        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
+        prover.challengeIntentProof(
+          intent.source,
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
       ).to.not.be.reverted
 
       // Verify no proof exists
@@ -1501,6 +1587,7 @@ describe('HyperPolicy Test', (): void => {
 
       // First challenge
       await prover.challengeIntentProof(
+        intent.source,
         intent.destination,
         routeHash,
         rewardHash,
@@ -1512,7 +1599,12 @@ describe('HyperPolicy Test', (): void => {
 
       // Second challenge (should be no-op)
       await expect(
-        prover.challengeIntentProof(intent.destination, routeHash, rewardHash),
+        prover.challengeIntentProof(
+          intent.source,
+          intent.destination,
+          routeHash,
+          rewardHash,
+        ),
       ).to.not.be.reverted
 
       // Verify proof remains cleared
@@ -1537,7 +1629,12 @@ describe('HyperPolicy Test', (): void => {
       await expect(
         prover
           .connect(solver)
-          .challengeIntentProof(intent.destination, routeHash, rewardHash),
+          .challengeIntentProof(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash,
+          ),
       )
         .to.emit(prover, 'IntentProofInvalidated')
         .withArgs(intentHash)
@@ -1562,7 +1659,8 @@ describe('HyperPolicy Test', (): void => {
       // Challenge with chain ID 0
       await expect(
         prover.challengeIntentProof(
-          0,
+          edgeIntent.source,
+          edgeIntent.destination,
           hashIntent(edgeIntent).routeHash,
           hashIntent(edgeIntent).rewardHash,
         ),
@@ -1598,6 +1696,7 @@ describe('HyperPolicy Test', (): void => {
       // Challenge both proofs
       await expect(
         prover.challengeIntentProof(
+          intent1.source,
           intent1.destination,
           hashIntent(intent1).routeHash,
           hashIntent(intent1).rewardHash,
@@ -1608,6 +1707,7 @@ describe('HyperPolicy Test', (): void => {
 
       await expect(
         prover.challengeIntentProof(
+          intent2.source,
           intent2.destination,
           hashIntent(intent2).routeHash,
           hashIntent(intent2).rewardHash,

@@ -1,14 +1,16 @@
 import { AbiCoder } from 'ethers'
 
-import { Call, TokenAmount, Reward } from './intent'
+import { TokenAmount, Reward } from './intent'
 
-// EcoERC7683 specific Route type (v3: minTokens solver-input legs, no nativeAmount/tokens)
+// EcoERC7683 specific Route type (v3 / Model C: minTokens solver-input legs, runtime+payload
+// execution instead of calls, no nativeAmount/tokens)
 export type Route = {
   salt: string
   deadline: number
   portal: string
   keeper: string
-  calls: Call[]
+  runtime: string
+  payload: string
   minTokens: TokenAmount[]
 }
 

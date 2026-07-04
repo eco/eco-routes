@@ -1,5 +1,5 @@
 import { ethers } from 'hardhat'
-import { getCreate2Address, keccak256, solidityPacked, AbiCoder } from 'ethers'
+import { keccak256, solidityPacked, AbiCoder } from 'ethers'
 
 export type Call = {
   target: string
@@ -20,12 +20,16 @@ export type RewardToken = {
   flat: number | bigint
 }
 
+// v3 / Model C Route: `calls` was replaced by `runtime` (delegatecall target) + `payload` (opaque
+// program forwarded to it verbatim). The default runtime is `MulticallRuntime`, which decodes
+// `payload` as `abi.encode(Call[])` -- see {encodeCalls}.
 export type Route = {
   salt: string
   deadline: number | bigint
   portal: string
   keeper: string
-  calls: Call[]
+  runtime: string
+  payload: string
   minTokens: TokenAmount[]
 }
 
@@ -36,7 +40,10 @@ export type Reward = {
   tokens: RewardToken[]
 }
 
+// v3 / Model C Intent: gained a `source` field (origin chain id), hashed FIRST (before `destination`)
+// into the intent hash.
 export type Intent = {
+  source: number | bigint
   destination: number
   route: Route
   reward: Reward
@@ -64,11 +71,8 @@ const RouteStruct = [
   { name: 'deadline', type: 'uint64' },
   { name: 'portal', type: 'address' },
   { name: 'keeper', type: 'address' },
-  {
-    name: 'calls',
-    type: 'tuple[]',
-    components: CallComponents,
-  },
+  { name: 'runtime', type: 'address' },
+  { name: 'payload', type: 'bytes' },
   {
     name: 'minTokens',
     type: 'tuple[]',
@@ -88,6 +92,10 @@ const RewardStruct = [
 ]
 
 const IntentStruct = [
+  {
+    name: 'source',
+    type: 'uint64',
+  },
   {
     name: 'destination',
     type: 'uint64',
@@ -143,14 +151,31 @@ export function encodeIntent(intent: Intent) {
   )
 }
 
+/**
+ * ABI-encodes a `Call[]` batch the same way the Solidity side does `abi.encode(callsArray)`, producing
+ * the `Route.payload` bytes for the default {MulticallRuntime} (which decodes `payload` as `Call[]`).
+ */
+export function encodeCalls(calls: Call[]) {
+  const abiCoder = AbiCoder.defaultAbiCoder()
+  return abiCoder.encode(
+    [
+      {
+        type: 'tuple[]',
+        components: CallComponents,
+      },
+    ],
+    [calls],
+  )
+}
+
 export function hashIntent(intent: Intent) {
   const routeHash = keccak256(encodeRoute(intent.route))
   const rewardHash = keccak256(encodeReward(intent.reward))
 
   const intentHash = keccak256(
     solidityPacked(
-      ['uint64', 'bytes32', 'bytes32'],
-      [intent.destination, routeHash, rewardHash],
+      ['uint64', 'uint64', 'bytes32', 'bytes32'],
+      [intent.source, intent.destination, routeHash, rewardHash],
     ),
   )
 
@@ -176,34 +201,16 @@ export function hashFulfillment(
   )
 }
 
+/**
+ * Computes the deterministic (source/escrow) Account address for an intent by querying the deployed
+ * Portal/IntentSource contract's `intentAccountAddress` view (Model C Accounts are ERC-1167 clones of a
+ * shared implementation, deployed via the Portal's `AccountDeployer`; there is no local bytecode/CREATE2
+ * math to mirror here on the TS side).
+ */
 export async function intentAccountAddress(
   intentSourceAddress: string,
   intent: Intent,
 ) {
-  const { routeHash, intentHash } = hashIntent(intent)
-  const intentAccountFactory = await ethers.getContractFactory('Account')
-  const abiCoder = AbiCoder.defaultAbiCoder()
-
-  return getCreate2Address(
-    intentSourceAddress,
-    routeHash,
-    keccak256(
-      solidityPacked(
-        ['bytes', 'bytes'],
-        [
-          intentAccountFactory.bytecode,
-          abiCoder.encode(
-            [
-              'bytes32',
-              {
-                type: 'tuple',
-                components: RewardStruct,
-              },
-            ],
-            [intentHash, intent.reward],
-          ),
-        ],
-      ),
-    ),
-  )
+  const intentSource = await ethers.getContractAt('Portal', intentSourceAddress)
+  return intentSource.intentAccountAddress(intent)
 }

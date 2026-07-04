@@ -9,13 +9,16 @@ import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {ILocalPolicy} from "../../contracts/interfaces/ILocalPolicy.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
+import {MulticallRuntime} from "../../contracts/runtime/MulticallRuntime.sol";
 
 contract LocalProverTest is Test {
     LocalPolicy internal localProver;
     Portal internal portal;
     TestPolicy internal secondaryProver;
     TestERC20 internal token;
+    MulticallRuntime internal multicallRuntime;
 
     address internal keeper;
     address internal solver;
@@ -46,6 +49,7 @@ contract LocalProverTest is Test {
         localProver = new LocalPolicy(address(portal));
         secondaryProver = new TestPolicy(address(portal));
         token = new TestERC20("Test Token", "TEST");
+        multicallRuntime = new MulticallRuntime();
 
         // Fund accounts
         vm.deal(keeper, INITIAL_BALANCE);
@@ -70,7 +74,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: calls,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(calls),
             minTokens: routeTokens
         });
 
@@ -100,7 +105,13 @@ contract LocalProverTest is Test {
             tokens: rewardTokens
         });
 
-        return Intent({destination: CHAIN_ID, route: route, reward: reward});
+        return
+            Intent({
+                source: CHAIN_ID,
+                destination: CHAIN_ID,
+                route: route,
+                reward: reward
+            });
     }
 
     function _publishAndFundIntent(
@@ -145,6 +156,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.deal(solver, REWARD_AMOUNT);
         portal.fulfill{value: REWARD_AMOUNT}(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -192,7 +204,7 @@ contract LocalProverTest is Test {
     // A3. challengeIntentProof()
     function test_challengeIntentProof_IsNoOp() public {
         // Test: challengeIntentProof() is a no-op (doesn't revert)
-        localProver.challengeIntentProof(0, bytes32(0), bytes32(0));
+        localProver.challengeIntentProof(0, 0, bytes32(0), bytes32(0));
         // Should not revert
     }
 
@@ -232,6 +244,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.deal(solver, REWARD_AMOUNT);
         portal.fulfill{value: REWARD_AMOUNT}(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -325,7 +338,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: calls,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(calls),
             minTokens: routeTokens
         });
 
@@ -337,6 +351,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
             reward: reward
@@ -359,7 +374,7 @@ contract LocalProverTest is Test {
         // the intent's Account (leftover stays with the intent); the executor ends drained. flashFulfill
         // then settles: the account pays the claimant its flat reward (TOKEN_AMOUNT) and sweeps the residual
         // (the unconsumed TOKEN_AMOUNT) to the keeper, so the keeper nets +TOKEN_AMOUNT.
-        assertEq(token.balanceOf(address(portal.executor())), 0);
+        assertEq(token.balanceOf(portal.intentAccountAddress(_intent)), 0);
         assertEq(
             token.balanceOf(keeper),
             keeperBalanceBefore + TOKEN_AMOUNT
@@ -394,7 +409,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: calls,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(calls),
             minTokens: routeTokens
         });
 
@@ -406,6 +422,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
             reward: reward
@@ -430,7 +447,7 @@ contract LocalProverTest is Test {
         // The route has no calls, so the provided token input is unconsumed and moved to the intent's
         // Account; settle then pays the claimant its flat token reward and sweeps the residual (the
         // unconsumed TOKEN_AMOUNT) to the keeper. The executor ends drained.
-        assertEq(token.balanceOf(address(portal.executor())), 0);
+        assertEq(token.balanceOf(portal.intentAccountAddress(_intent)), 0);
         assertEq(token.balanceOf(keeper), keeperTokenBefore + TOKEN_AMOUNT);
 
         // Verify native reward transferred to solver (claimant)
@@ -464,7 +481,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: calls,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(calls),
             minTokens: routeTokens
         });
 
@@ -476,6 +494,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
             reward: reward
@@ -500,7 +519,7 @@ contract LocalProverTest is Test {
         // The route has no calls, so the provided route input (500) is unconsumed and moved to the
         // intent's Account; settle then pays the claimant its flat reward (1000) and sweeps the residual
         // (the unconsumed 500) to the keeper. The executor ends drained.
-        assertEq(token.balanceOf(address(portal.executor())), 0);
+        assertEq(token.balanceOf(portal.intentAccountAddress(_intent)), 0);
         assertEq(token.balanceOf(keeper), keeperTokenBefore + routeTokenAmount);
 
         // Verify the solver nets the reward remainder (reward 1000 - provided 500 = +500)
@@ -533,6 +552,7 @@ contract LocalProverTest is Test {
             uint256(uint160(address(localProver)))
         );
         portal.fulfill{value: REWARD_AMOUNT}(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -566,6 +586,7 @@ contract LocalProverTest is Test {
         uint256 keeperBalanceBefore = keeper.balance;
         vm.prank(user);
         portal.refund(
+            _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
             _intent.reward
@@ -594,6 +615,7 @@ contract LocalProverTest is Test {
         vm.deal(attacker, REWARD_AMOUNT);
         bytes32 nonEVMBytes32 = bytes32(uint256(type(uint256).max)); // All 1s
         portal.fulfill{value: REWARD_AMOUNT}(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -627,6 +649,7 @@ contract LocalProverTest is Test {
         uint256 keeperBalanceBefore = keeper.balance;
         vm.prank(user);
         portal.refund(
+            _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
             _intent.reward
@@ -656,6 +679,7 @@ contract LocalProverTest is Test {
             uint256(uint160(address(localProver)))
         );
         portal.fulfill{value: REWARD_AMOUNT}(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -669,6 +693,7 @@ contract LocalProverTest is Test {
         vm.prank(user);
         vm.expectRevert(); // Portal reverts with InvalidStatusForRefund
         portal.refund(
+            _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
             _intent.reward
@@ -693,6 +718,7 @@ contract LocalProverTest is Test {
             uint256(uint160(address(localProver)))
         );
         portal.fulfill{value: REWARD_AMOUNT}(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -711,6 +737,7 @@ contract LocalProverTest is Test {
 
         vm.prank(user);
         portal.refund(
+            _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
             _intent.reward
@@ -806,7 +833,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: calls,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(calls),
             minTokens: minTokensList // Duplicate (non-ascending) min-tokens legs here
         });
 
@@ -818,6 +846,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
             reward: reward

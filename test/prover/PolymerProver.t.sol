@@ -5,7 +5,8 @@ import "../BaseTest.sol";
 import {PolymerPolicy} from "../../contracts/prover/PolymerPolicy.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 
 contract PolymerProverTest is BaseTest {
     PolymerPolicy internal polymerProver;
@@ -654,6 +655,7 @@ contract PolymerProverTest is BaseTest {
 
         // Challenge with different destination (intent.destination = 1 from BaseTest, proof.destination = 10)
         polymerProver.challengeIntentProof(
+            intent.source,
             intent.destination, // 1
             keccak256(abi.encode(intent.route)),
             keccak256(abi.encode(intent.reward))
@@ -696,6 +698,7 @@ contract PolymerProverTest is BaseTest {
 
         // Challenge with correct destination should do nothing
         polymerProver.challengeIntentProof(
+            localIntent.source,
             localIntent.destination,
             keccak256(abi.encode(localIntent.route)),
             keccak256(abi.encode(localIntent.reward))

@@ -12,7 +12,9 @@ import {TestPolicy} from "../contracts/test/TestPolicy.sol";
 import {Portal} from "../contracts/Portal.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../contracts/types/Intent.sol";
+import {Call} from "../contracts/interfaces/IRuntime.sol";
+import {MulticallRuntime} from "../contracts/runtime/MulticallRuntime.sol";
 import {OrderData} from "../contracts/types/ERC7683.sol";
 
 contract BaseTest is Test {
@@ -37,6 +39,9 @@ contract BaseTest is Test {
     // Test tokens
     TestERC20 internal tokenA;
     TestERC20 internal tokenB;
+
+    // Default v3 runtime (delegatecall execution target for route payloads)
+    MulticallRuntime internal multicallRuntime;
 
     // Test data
     bytes32 internal salt;
@@ -67,6 +72,9 @@ contract BaseTest is Test {
         // Deploy test tokens
         tokenA = new TestERC20("TokenA", "TKA");
         tokenB = new TestERC20("TokenB", "TKB");
+
+        // Deploy the default runtime (delegatecall target for route payloads)
+        multicallRuntime = new MulticallRuntime();
 
         vm.stopPrank();
 
@@ -126,13 +134,15 @@ contract BaseTest is Test {
         }
 
         // Setup route (input-floor model: `minTokens` is what the solver provides; delivery is the job of
-        // the committed `calls`, and any unconsumed input is moved to the intent's Account).
+        // the committed runtime/payload, and any unconsumed input stays in the intent's Account). The
+        // default runtime is the MulticallRuntime; the payload is `abi.encode(Call[])`.
         route = Route({
             salt: salt,
             deadline: uint64(expiry),
             portal: address(portal),
             keeper: keeper,
-            calls: callsMemory,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(callsMemory),
             minTokens: minTokensMemory
         });
 
@@ -144,8 +154,13 @@ contract BaseTest is Test {
             tokens: rewardTokensMemory
         });
 
-        // Setup intent
-        intent = Intent({destination: CHAIN_ID, route: route, reward: reward});
+        // Setup intent (default is same-chain: source == destination == CHAIN_ID)
+        intent = Intent({
+            source: CHAIN_ID,
+            destination: CHAIN_ID,
+            route: route,
+            reward: reward
+        });
     }
 
     /**
@@ -205,8 +220,11 @@ contract BaseTest is Test {
         bytes32 routeHash = keccak256(abi.encode(_intent.route));
         bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
         return
-            keccak256(
-                abi.encodePacked(_intent.destination, routeHash, rewardHash)
+            IntentLib.hashIntent(
+                _intent.source,
+                _intent.destination,
+                routeHash,
+                rewardHash
             );
     }
 
@@ -234,12 +252,14 @@ contract BaseTest is Test {
      * @notice Settles the default intent (fulfilled = [MINT_AMOUNT]) to `claimantAddr`.
      */
     function _settle(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward memory _reward,
         address claimantAddr
     ) internal {
         intentSource.settle(
+            source,
             destination,
             routeHash,
             _reward,

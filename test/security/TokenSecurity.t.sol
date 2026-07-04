@@ -5,7 +5,8 @@ import "../BaseTest.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {FakePermit} from "../../contracts/test/FakePermit.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract TokenSecurityTest is BaseTest {
@@ -89,6 +90,7 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
         intentSource.settle(
+            intent.source,
             intent.destination,
             routeHash,
             intent.reward,
@@ -120,7 +122,8 @@ contract TokenSecurityTest is BaseTest {
             value: 0
         });
 
-        route.calls = maliciousCalls;
+        route.runtime = address(multicallRuntime);
+        route.payload = abi.encode(maliciousCalls);
         intent.route = route;
 
         // Test with inbox (destination chain)
@@ -144,6 +147,7 @@ contract TokenSecurityTest is BaseTest {
         bytes32 rewardHash = keccak256(abi.encode(destIntent.reward));
         vm.expectRevert();
         portal.fulfill(
+            destIntent.source,
             intentHash,
             destIntent.route,
             rewardHash,
@@ -182,6 +186,7 @@ contract TokenSecurityTest is BaseTest {
         // IntentWithdrawn should succeed and state should be updated
         vm.prank(claimant);
         intentSource.settle(
+            intent.source,
             intent.destination,
             routeHash,
             intent.reward,
@@ -221,6 +226,7 @@ contract TokenSecurityTest is BaseTest {
         vm.expectRevert(); // Should revert because fake permit doesn't actually transfer
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.source,
             intent.destination,
             routeHash,
             reward,
@@ -276,6 +282,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
             intent.reward,
@@ -381,6 +388,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
             intent.reward,
@@ -435,6 +443,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.source,
             intent.destination,
             routeHash,
             intent.reward,
@@ -487,6 +496,7 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(keeper);
         vm.expectRevert();
         intentSource.fundFor(
+            intent.source,
             intent.destination,
             routeHash,
             reward,
