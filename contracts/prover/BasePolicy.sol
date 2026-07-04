@@ -3,7 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IPolicy} from "../interfaces/IPolicy.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import {Reward, RewardToken} from "../types/Intent.sol";
+import {Reward, RewardToken, IntentLib} from "../types/Intent.sol";
 import {RewardMath} from "../libs/RewardMath.sol";
 
 /**
@@ -237,17 +237,22 @@ abstract contract BasePolicy is IPolicy, ERC165 {
      * @notice Challenge an intent proof if destination chain ID doesn't match
      * @dev Can be called by anyone to remove invalid proofs. Ensures intents are only claimable when
      *      executed on their intended destination chains.
+     * @param source The origin chain ID committed in the intent hash (Model C)
      * @param destination The intended destination chain ID
      * @param routeHash The hash of the intent's route
      * @param rewardHash The hash of the reward specification
      */
     function challengeIntentProof(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         bytes32 rewardHash
     ) external {
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            source,
+            destination,
+            routeHash,
+            rewardHash
         );
 
         ProofData memory proof = _provenIntents[intentHash];

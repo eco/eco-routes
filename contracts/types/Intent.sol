@@ -18,19 +18,6 @@ uint256 constant MAX_IN_TOKENS = 8;
 uint256 constant MAX_REWARD_TOKENS = MAX_IN_TOKENS * 2;
 
 /**
- * @notice Represents a single contract call with encoded function data
- * @dev Used to execute arbitrary function calls on the destination chain
- * @param target The contract address to call
- * @param data ABI-encoded function call data
- * @param value Amount of native tokens to send with the call
- */
-struct Call {
-    address target;
-    bytes data;
-    uint256 value;
-}
-
-/**
  * @notice Represents a token amount pair
  * @dev Used to specify min-tokens floors and reward amounts. A `token` of `address(0)` denotes native.
  * @param token Address of the ERC20 token contract (or `address(0)` for native)
@@ -72,20 +59,29 @@ struct RewardToken {
  *      of each `minTokens[j].token` into the destination execution (it may provide more). It is
  *      POSITIONALLY PAIRED with the first `minTokens.length` entries of `Reward.tokens`.
  *
+ *      Execution is the per-intent DESTINATION {Account} running `runtime(payload)` under `delegatecall`:
+ *      the solver's staged input becomes the Account's own balance and the committed `runtime` spends it.
+ *      Because `runtime` is committed in the `routeHash` (hence the `intentHash`), the intent commits to
+ *      the exact code that runs against the Account holding its funds.
+ *
  *      The core is UNOPINIONATED about where funds go: there is no `recipient` and no protocol-level
- *      output floor or auto-sweep. DELIVERY IS THE JOB OF THE COMMITTED `calls` (the payload) — any
- *      beneficiary address lives INSIDE a call's calldata, not in the Route. Any solver input the calls
- *      do not consume is not stranded: it stays WITH THE INTENT (moved to the intent's Account), where
- *      `route.keeper` can retrieve it later. See {Inbox} for the destination-side handling.
+ *      output floor or auto-sweep. DELIVERY IS THE JOB OF THE COMMITTED `runtime`/`payload` — any
+ *      beneficiary address lives INSIDE the payload, not in the Route. Any solver input the runtime does
+ *      not consume is not stranded: it STAYS in the intent's DESTINATION Account, where `route.keeper`
+ *      can retrieve it later via {executeAsOwner}. See {Inbox} for the destination-side handling.
  * @param salt Unique identifier provided by the intent keeper, used to prevent duplicates
  * @param deadline Timestamp by which the route must be executed
  * @param portal Address of the portal contract on the destination chain that receives messages
  * @param keeper Owner of the DESTINATION-side account: the authority that may retrieve leftover / execute
- *        the account as owner (executeAsOwner arrives in a later stage). It lives in the Route because the
- *        destination only sees the route plus the opaque `rewardHash` and cannot read `Reward.keeper`;
- *        this is the same logical entity as `Reward.keeper` (the SOURCE escrow owner) but MAY be a
- *        DIFFERENT address across a cross-VM lane (e.g. a Solana source, an EVM destination).
- * @param calls Array of contract calls to execute on the destination chain in sequence
+ *        the account as owner ({executeAsOwner}). It lives in the Route because the destination only sees
+ *        the route plus the opaque `rewardHash` and cannot read `Reward.keeper`; this is the same logical
+ *        entity as `Reward.keeper` (the SOURCE escrow owner) but MAY be a DIFFERENT address across a
+ *        cross-VM lane (e.g. a Solana source, an EVM destination).
+ * @param runtime Delegatecall target the per-intent DESTINATION {Account} runs to execute this route
+ *        (e.g. {MulticallRuntime} or an external DEX router adapter). Committed in the `routeHash`, so the
+ *        intent commits to the exact code that runs against the Account holding its funds.
+ * @param payload Opaque program interpreted by `runtime` (the default {MulticallRuntime} decodes it as
+ *        `abi.encode(Call[])`); the Account forwards it verbatim under `delegatecall`.
  * @param minTokens Minimum inputs the solver must provide into the execution (per token). Native folds in
  *        as a leg with `token == address(0)` (its `amount` is the native forwarded into execution).
  *        Length must be <= {MAX_IN_TOKENS} and MUST be STRICTLY ASCENDING by token address
@@ -96,7 +92,8 @@ struct Route {
     uint64 deadline;
     address portal;
     address keeper;
-    Call[] calls;
+    address runtime;
+    bytes payload;
     TokenAmount[] minTokens;
 }
 
@@ -119,12 +116,17 @@ struct Reward {
 
 /**
  * @notice Complete cross-chain intent combining routing and reward information
- * @dev Main structure used to process and execute cross-chain messages
+ * @dev Main structure used to process and execute cross-chain messages. Both `source` and `destination`
+ *      are HASHED into the intent hash (Model C), so an A->B intent is distinct from an A'->B intent
+ *      (kills cross-chain replay) and the two chain-parameterized Account addresses separate the escrow
+ *      (source) from the execution leftovers (destination).
+ * @param source Origin chain ID where the reward is escrowed and settled
  * @param destination Target chain ID where the intent should be executed
  * @param route Routing and execution instructions
  * @param reward Reward and validation parameters
  */
 struct Intent {
+    uint64 source;
     uint64 destination;
     Route route;
     Reward reward;
@@ -132,16 +134,19 @@ struct Intent {
 
 /**
  * @title IntentLib
- * @notice Canonicalization + fulfillment-hash helpers for v3 intents.
- * @dev The intent hash algorithm is UNCHANGED from v2 (`keccak256(abi.encodePacked(uint64 destination,
- *      routeHash, rewardHash))` where `routeHash = keccak256(abi.encode(route))` and `rewardHash =
- *      keccak256(abi.encode(reward))`); only the struct contents changed. This lib adds the leg
- *      canonicalization validators and the hash-only fulfillment commitment:
+ * @notice Canonical hashing + canonicalization + fulfillment-hash helpers for v3 intents.
+ * @dev The intent hash is (Model C — source added to the preimage):
  *
+ *        routeHash       = keccak256(abi.encode(route))
+ *        rewardHash      = keccak256(abi.encode(reward))
+ *        intentHash      = keccak256(abi.encodePacked(uint64 source, uint64 destination, routeHash, rewardHash))
  *        fulfillmentHash = keccak256(abi.encode(intentHash, claimant, fulfilled))
  *
- *      Only `(intentHash, fulfillmentHash)` crosses chains; the `(claimant, fulfilled[])` preimage is
- *      supplied as calldata at `settle`, where this same helper re-derives and checks it.
+ *      Every site that derives an intent hash (IntentSource, Inbox, LocalPolicy, the ERC-7683 adapter)
+ *      MUST go through {hashIntent} so the hash agrees across chains. Adding `source` makes an A->B
+ *      intent distinct from an A'->B intent (kills cross-chain replay double-claim). Only `(intentHash,
+ *      fulfillmentHash)` crosses chains; the `(claimant, fulfilled[])` preimage is supplied as calldata
+ *      at `settle`, where {fulfillmentHash} re-derives and checks it.
  */
 library IntentLib {
     /**
@@ -189,6 +194,29 @@ library IntentLib {
      * @param minTokensCount The min-tokens count.
      */
     error RewardShorterThanMinTokens(uint256 rewardCount, uint256 minTokensCount);
+
+    /**
+     * @notice Canonical intent hash from its chain ids and component hashes.
+     * @dev `keccak256(abi.encodePacked(source, destination, routeHash, rewardHash))`. Both chain ids are
+     *      committed so the hash (and thus both chain-parameterized Account addresses) separates by
+     *      direction.
+     * @param source Origin chain ID (where the reward is escrowed/settled).
+     * @param destination Destination chain ID (where the route executes).
+     * @param routeHash Hash of the route component.
+     * @param rewardHash Hash of the reward component.
+     * @return The intent hash.
+     */
+    function hashIntent(
+        uint64 source,
+        uint64 destination,
+        bytes32 routeHash,
+        bytes32 rewardHash
+    ) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encodePacked(source, destination, routeHash, rewardHash)
+            );
+    }
 
     /**
      * @notice Requires `minTokens` to be STRICTLY ASCENDING by token address and within {MAX_IN_TOKENS}.
@@ -252,7 +280,7 @@ library IntentLib {
         }
 
         // UNIQUENESS across ALL reward legs: paired reward tokens are arbitrary source tokens (ordered by
-        // the paired minOut, not by reward token), so uniqueness cannot be derived from ordering alone.
+        // the paired minTokens, not by reward token), so uniqueness cannot be derived from ordering alone.
         for (uint256 a = 0; a < total; ++a) {
             address ta = rewardTokens[a].token;
             for (uint256 b = a + 1; b < total; ++b) {

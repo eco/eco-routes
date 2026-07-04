@@ -67,6 +67,12 @@ interface IInbox {
     error ChainIdTooLarge(uint256 chainId);
 
     /**
+     * @notice {executeAsOwner} was called by someone other than the route keeper
+     * @param caller The unauthorized caller
+     */
+    error NotAccountKeeper(address caller);
+
+    /**
      * @notice Sent native amount is insufficient for the native `minTokens` leg the solver committed to
      * @param sent Amount of native tokens sent with the transaction
      * @param required Native input the solver committed to provide (the native `minTokens` leg's provided
@@ -95,9 +101,10 @@ interface IInbox {
 
     /**
      * @notice Fulfills an intent, recording the fulfillment into the named prover
-     * @dev Validates intent hash, pulls the solver's provided input, executes calls, moves any unconsumed
-     *      input to the intent's Account, and records the fulfillment into `prover`. The solver names the
-     *      prover (policy) that will settle the reward.
+     * @dev Validates intent hash (with `source` in the preimage), stages the solver's provided input onto
+     *      the DESTINATION Account, executes `route.runtime(payload)` in it, and records the fulfillment
+     *      into `prover`. The solver names the prover (policy) that will settle the reward.
+     * @param source Origin chain ID committed in the intent hash
      * @param intentHash The hash of the intent to fulfill
      * @param route Route information for the intent
      * @param rewardHash Hash of the reward details
@@ -105,20 +112,22 @@ interface IInbox {
      * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
      *        `>= route.minTokens[j].amount`)
      * @param prover Prover (policy) to record the fulfillment into
-     * @return Array of execution results
+     * @return The runtime's raw return data
      */
     function fulfill(
+        uint64 source,
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
         bytes32 claimant,
         uint256[] memory providedAmounts,
         address prover
-    ) external payable returns (bytes[] memory);
+    ) external payable returns (bytes memory);
 
     /**
      * @notice Fulfills an intent and initiates proving in one transaction
-     * @dev Validates intent hash, pulls the solver's provided input, executes calls, and marks fulfilled
+     * @dev Validates intent hash, executes the route, and records the fulfillment
+     * @param source Origin chain ID committed in the intent hash
      * @param intentHash The hash of the intent to fulfill
      * @param route Route information for the intent
      * @param rewardHash Hash of the reward details
@@ -128,9 +137,11 @@ interface IInbox {
      * @param prover Address of prover on the destination chain
      * @param sourceChainDomainID Domain ID of the source chain where the intent was created
      * @param data Additional data for message formatting
-     * @return Array of execution results
+     * @return The runtime's raw return data
      *
-     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
+     * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID (nor the same as
+     *      `source`): `source` is the origin CHAIN ID committed in the hash, while sourceChainDomainID
+     *      is the bridge transport's domain id used to route the proof back.
      *      Each bridge provider uses their own domain ID mapping system:
      *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
      *      - LayerZero: Uses endpoint IDs that map to chains differently
@@ -141,6 +152,7 @@ interface IInbox {
      *      the correct domain ID for the source chain.
      */
     function fulfillAndProve(
+        uint64 source,
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
@@ -149,7 +161,29 @@ interface IInbox {
         address prover,
         uint64 sourceChainDomainID,
         bytes memory data
-    ) external payable returns (bytes[] memory);
+    ) external payable returns (bytes memory);
+
+    /**
+     * @notice Owner-cook on the DESTINATION side: `route.keeper` runs an arbitrary runtime against the
+     *         intent's DESTINATION (execution) Account via delegatecall
+     * @dev Only `route.keeper` may call. Operates the destination execution Account (keyed by this chain
+     *      id) — the one holding any unconsumed solver input — never the source escrow Account. This is
+     *      the destination leftover-retrieval / stray-fund rescue (the core is unopinionated — there is no
+     *      `recipient` / auto-sweep).
+     * @param source Origin chain ID committed in the intent hash
+     * @param route The route of the intent (supplies `route.keeper` + `route.portal`)
+     * @param rewardHash The hash of the reward details (opaque on the destination)
+     * @param runtime The delegatecall target to run against the Account
+     * @param payload The opaque program forwarded to `runtime`
+     * @return The runtime's raw return data
+     */
+    function executeAsOwner(
+        uint64 source,
+        Route memory route,
+        bytes32 rewardHash,
+        address runtime,
+        bytes calldata payload
+    ) external payable returns (bytes memory);
 
     /**
      * @notice Initiates proving process for fulfilled intents

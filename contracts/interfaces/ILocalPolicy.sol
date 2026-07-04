@@ -45,11 +45,11 @@ interface ILocalPolicy is IPolicy {
      * @param route Route information for the intent
      * @param reward Reward details for the intent
      * @param claimant Address that receives the fulfillment reward (ERC20 tokens + native ETH)
-     * @return results Results from the fulfill execution
+     * @return results The runtime's raw return data from the fulfill execution
      */
     function flashFulfill(
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant
-    ) external payable returns (bytes[] memory results);
+    ) external payable returns (bytes memory results);
 }

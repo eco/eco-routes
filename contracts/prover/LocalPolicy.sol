@@ -9,7 +9,7 @@ import {ILocalPolicy} from "../interfaces/ILocalPolicy.sol";
 import {IPortal} from "../interfaces/IPortal.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {RewardMath} from "../libs/RewardMath.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount} from "../types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../types/Intent.sol";
 
 /**
  * @title LocalPolicy
@@ -148,6 +148,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
      * @notice Challenges an intent proof (not applicable for same-chain intents)
      */
     function challengeIntentProof(
+        uint64 /* source */,
         uint64 /* destination */,
         bytes32 /* routeHash */,
         bytes32 /* rewardHash */
@@ -165,17 +166,20 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
      *      keeper. `fulfilled[] == providedAmounts == the minTokens amounts`, so the settle preimage matches
      *      the recorded fulfillmentHash.
      *
+     *      Same-chain: `source == destination == _CHAIN_ID`, so the source-escrow Account and the
+     *      destination-execution Account collapse to ONE Account (Model C same-chain collapse).
+     *
      *      WARNING: permissionless and front-runnable — standard MEV behavior in intent systems.
      * @param route Route information for the intent
      * @param reward Reward details for the intent
      * @param claimant Address of the claimant eligible for rewards
-     * @return results Results from the fulfill execution
+     * @return results The runtime's raw return data from the fulfill execution
      */
     function flashFulfill(
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant
-    ) external payable nonReentrant returns (bytes[] memory results) {
+    ) external payable nonReentrant returns (bytes memory results) {
         if (claimant == bytes32(0)) revert InvalidClaimant();
         if (claimant == bytes32(uint256(uint160(address(this)))))
             revert InvalidClaimant();
@@ -183,12 +187,15 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
 
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 rewardHash = keccak256(abi.encode(reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(_CHAIN_ID, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            _CHAIN_ID,
+            _CHAIN_ID,
+            routeHash,
+            rewardHash
         );
 
         // Provide exactly the input floor for each leg. Pull the ERC20 legs from the caller and approve
-        // the Portal to pull them into the executor; the native leg is forwarded from msg.value.
+        // the Portal to pull them onto the Account; the native leg is forwarded from msg.value.
         uint256 inLen = route.minTokens.length;
         uint256[] memory providedAmounts = new uint256[](inLen);
         for (uint256 j = 0; j < inLen; ++j) {
@@ -203,6 +210,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
         }
 
         results = _PORTAL.fulfill{value: msg.value}(
+            _CHAIN_ID,
             intentHash,
             route,
             rewardHash,
@@ -213,7 +221,14 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
 
         // Settle: pays the claimant the owed reward from the account, sweeps residual to the keeper.
         // `providedAmounts` is the committed `fulfilled[]`, so the preimage matches the recorded fact.
-        _PORTAL.settle(_CHAIN_ID, routeHash, reward, claimant, providedAmounts);
+        _PORTAL.settle(
+            _CHAIN_ID,
+            _CHAIN_ID,
+            routeHash,
+            reward,
+            claimant,
+            providedAmounts
+        );
 
         emit FlashFulfilled(intentHash, claimant, 0);
     }

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Clones} from "../account/Clones.sol";
+import {MulticallRuntime} from "../runtime/MulticallRuntime.sol";
 
 /**
  * @title BaseDepositFactory
@@ -16,6 +17,11 @@ abstract contract BaseDepositFactory {
 
     /// @notice DepositAddress implementation contract for cloning
     address public immutable DEPOSIT_IMPLEMENTATION;
+
+    /// @notice Shared default runtime (v3 delegatecall execution): the deposit templates set it as
+    ///         `route.runtime` and encode their calls into `route.payload` as `abi.encode(Call[])`.
+    ///         Deployed once here so every factory variant gets it without extra constructor args.
+    address public immutable MULTICALL_RUNTIME;
 
     // ============ Events ============
 
@@ -46,6 +52,7 @@ abstract contract BaseDepositFactory {
      */
     constructor(address implementation) {
         DEPOSIT_IMPLEMENTATION = implementation;
+        MULTICALL_RUNTIME = address(new MulticallRuntime());
     }
 
     // ============ External Functions ============

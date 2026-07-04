@@ -13,12 +13,17 @@ import {Reward, RewardToken} from "../types/Intent.sol";
 
 /**
  * @title Account
- * @notice Escrow contract for managing cross-chain reward payments (v3 rate+flat legs)
+ * @notice Escrow + execution contract for cross-chain rewards (v3 rate+flat legs) and route runtimes.
  * @dev Implements a lifecycle-based account that can be funded, withdrawn from, or refunded. Rewards are
  *      per-token legs; native folds in as a leg with `token == address(0)`. On withdraw the Account
  *      consults `reward.prover` (as a VIEW — no reentrancy surface) to turn the core-verified
  *      `fulfilled[]` into per-leg amounts, pays each capped at its own balance to the claimant, and
  *      sweeps the residual to the keeper.
+ *
+ *      On the DESTINATION side the same Account also EXECUTES the route: the Inbox stages the solver's
+ *      input onto this Account and calls {execute}, which `delegatecall`s the committed `route.runtime`
+ *      so the runtime spends the Account's own balance. Any unconsumed input simply stays here for the
+ *      keeper to retrieve later (unopinionated core — no auto-sweep).
  */
 contract Account is IAccount {
     /// @notice Address of the portal contract that can call this account
@@ -26,6 +31,21 @@ contract Account is IAccount {
 
     using SafeERC20 for IERC20;
     using Math for uint256;
+
+    /**
+     * @notice In-execute slot: holds the runtime ADDRESS while {execute} is on the stack, else 0.
+     * @dev A nonzero value doubles as the in-progress flag: the gated {fallback} forwards in-flight
+     *      callbacks only when the slot is nonzero (and to that runtime) and reverts
+     *      {FallbackNotInExecute} otherwise, closing the unauthenticated-delegatecall drain vector.
+     *      Stored at an explicit HIGH hashed slot (== keccak256("eco.routes.v3.account.inExecute"),
+     *      inlined as a numeric literal because inline assembly cannot reference a keccak expression) so
+     *      it never collides with the LOW slots a delegatecalled runtime may write in this Account's
+     *      context. Paris EVM has no transient storage, so this is a regular storage slot; it is set at
+     *      the start of {execute} and cleared at the end (on revert the whole frame — and this write —
+     *      rolls back), so it is only ever observed nonzero mid-{execute}.
+     */
+    bytes32 private constant _IN_EXECUTE_SLOT =
+        0xacc20dacae6b4d5949ef091bdce937ee4ae97c3312ea3d3826cb7ff678dcaca3;
 
     /**
      * @notice Creates a new account instance
@@ -177,6 +197,107 @@ contract Account is IAccount {
         }
 
         _transferToken(tokenContract, refundee, balance);
+    }
+
+    /**
+     * @notice Runs a runtime against this Account's own funds via `delegatecall`.
+     * @dev `onlyPortal`. The Portal stages the route inputs (ERC20 legs + forwarded native) onto this
+     *      Account, then calls this to execute the keeper-committed `Route.runtime(payload)`. Because the
+     *      runtime is reached by `delegatecall`, it runs in THIS Account's context — `address(this)`,
+     *      balances and approvals are the Account's — so it spends the staged inputs directly. The raw
+     *      return/revert data is bubbled verbatim (failures are never swallowed); declared
+     *      `returns (bytes memory)` to satisfy the ABI, but control never falls through to a Solidity
+     *      return because every assembly path terminates in `return`/`revert`.
+     *
+     *      Stores `runtime` in {_IN_EXECUTE_SLOT} (a nonzero address == in-execute) for the duration of
+     *      the delegatecall so legitimate in-flight callbacks (e.g. a DEX pool callback) re-entering
+     *      this Account's address land in {fallback} and are forwarded to that SAME runtime. The slot is
+     *      cleared on the success path; on the revert path the whole frame (and the slot write) rolls
+     *      back — the slot is never observed nonzero after `execute` returns.
+     *
+     *      RETURN ENCODING: on failure the raw revert data is bubbled VERBATIM (`revert(...)`), so a
+     *      runtime revert reason propagates unchanged. On success the raw runtime return data is wrapped
+     *      as a canonical ABI `bytes` (`[offset=0x20][len][data]`) so the typed caller
+     *      (`IAccount.execute returns (bytes memory)`) decodes it — a runtime that returns 0 bytes (e.g.
+     *      the {MulticallRuntime} fallback) would otherwise make the caller's `bytes` decode revert.
+     * @param runtime The delegatecall target (committed in the route hash).
+     * @param payload The opaque program forwarded to `runtime` verbatim.
+     * @return The runtime's raw return data (ABI-wrapped as `bytes`).
+     */
+    function execute(
+        address runtime,
+        bytes calldata payload
+    ) external payable onlyPortal returns (bytes memory) {
+        assembly ("memory-safe") {
+            // Mark `execute` in progress by storing the runtime address (nonzero) so {fallback}
+            // forwards legitimate in-flight callbacks to it.
+            sstore(_IN_EXECUTE_SLOT, runtime)
+            let ptr := mload(0x40)
+            calldatacopy(ptr, payload.offset, payload.length)
+            let ok := delegatecall(gas(), runtime, ptr, payload.length, 0, 0)
+            switch ok
+            // On failure bubble the raw revert data verbatim, rolling back the slot write above.
+            case 0 {
+                returndatacopy(ptr, 0, returndatasize())
+                revert(ptr, returndatasize())
+            }
+            // On success, clear the slot and return the raw return data wrapped as ABI `bytes`.
+            default {
+                sstore(_IN_EXECUTE_SLOT, 0)
+                let len := returndatasize()
+                let out := mload(0x40)
+                mstore(out, 0x20)
+                mstore(add(out, 0x20), len)
+                returndatacopy(add(out, 0x40), 0, len)
+                return(out, add(0x40, len))
+            }
+        }
+    }
+
+    /**
+     * @notice Accepts plain native transfers (counterfactual escrow funding, WETH unwraps, native swap
+     *         proceeds). Carries no calldata, so it never reaches the gated {fallback}.
+     */
+    receive() external payable {}
+
+    /**
+     * @notice Gated forwarder for runtime self-calls and swap callbacks during {execute}.
+     * @dev Forwards ONLY while a Portal-driven {execute} is on the stack — i.e. while {_IN_EXECUTE_SLOT}
+     *      holds a nonzero runtime address, which is also the runtime to forward to (the callback is
+     *      delegated to it with the raw calldata and `msg.sender` preserved, bubbling its return/revert).
+     *      Outside {execute} the slot is zero and this path reverts {FallbackNotInExecute}, closing the
+     *      unauthenticated-delegatecall drain vector: without the gate the default {MulticallRuntime}
+     *      would interpret attacker calldata as `abi.encode(Call[])` and move funds stranded at this
+     *      address, bypassing the Portal-gated rescue paths. `receive()` stays open for plain native.
+     */
+    fallback() external payable {
+        address runtime = _loadInExecuteRuntime();
+        if (runtime == address(0)) {
+            revert FallbackNotInExecute(msg.sender);
+        }
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            calldatacopy(ptr, 0, calldatasize())
+            let ok := delegatecall(gas(), runtime, ptr, calldatasize(), 0, 0)
+            returndatacopy(ptr, 0, returndatasize())
+            switch ok
+            case 0 {
+                revert(ptr, returndatasize())
+            }
+            default {
+                return(ptr, returndatasize())
+            }
+        }
+    }
+
+    /**
+     * @dev Reads the in-execute runtime address from {_IN_EXECUTE_SLOT} (nonzero while {execute} runs,
+     *      else address(0)).
+     */
+    function _loadInExecuteRuntime() private view returns (address runtime) {
+        assembly ("memory-safe") {
+            runtime := sload(_IN_EXECUTE_SLOT)
+        }
     }
 
     /**
