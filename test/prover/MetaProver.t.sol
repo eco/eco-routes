@@ -38,7 +38,7 @@ contract MetaProverTest is BaseTest {
 
         vm.stopPrank();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
     }
 
     function _encodeProverData(
@@ -107,7 +107,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -137,7 +137,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -160,7 +160,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -181,11 +181,11 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.deal(creator, 1 ether);
+        vm.deal(keeper, 1 ether);
         vm.expectRevert(); // Should revert with access control error
-        vm.prank(creator);
+        vm.prank(keeper);
         metaProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             _encodeProverData(
@@ -205,7 +205,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -240,7 +240,7 @@ contract MetaProverTest is BaseTest {
                 _record(intentHashes, claimants);
             }
             _proveWithFunding(
-                creator,
+                keeper,
                 uint64(destinations[i]),
                 intentHashes,
                 claimants,
@@ -255,15 +255,15 @@ contract MetaProverTest is BaseTest {
         }
     }
 
-    function testProveIntentWithDifferentCreators() public {
-        address[] memory creators = new address[](3);
-        creators[0] = makeAddr("creator1");
-        creators[1] = makeAddr("creator2");
-        creators[2] = makeAddr("creator3");
+    function testProveIntentWithDifferentKeepers() public {
+        address[] memory keepers = new address[](3);
+        keepers[0] = makeAddr("keeper1");
+        keepers[1] = makeAddr("keeper2");
+        keepers[2] = makeAddr("keeper3");
 
-        for (uint256 i = 0; i < creators.length; i++) {
+        for (uint256 i = 0; i < keepers.length; i++) {
             Intent memory testIntent = intent;
-            testIntent.reward.creator = creators[i];
+            testIntent.reward.keeper = keepers[i];
             bytes32 intentHash = _hashIntent(testIntent);
 
             bytes32[] memory intentHashes = new bytes32[](1);
@@ -273,7 +273,7 @@ contract MetaProverTest is BaseTest {
 
             _record(intentHashes, claimants);
             _proveWithFunding(
-                creator,
+                keeper,
                 uint64(block.chainid),
                 intentHashes,
                 claimants,
@@ -315,7 +315,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes1, claimants1);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes1,
             claimants1,
@@ -327,7 +327,7 @@ contract MetaProverTest is BaseTest {
         );
         _record(intentHashes2, claimants2);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes2,
             claimants2,
@@ -354,7 +354,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             0,
             intentHashes,
             claimants,
@@ -380,7 +380,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             type(uint32).max,
             intentHashes,
             claimants,
@@ -394,9 +394,9 @@ contract MetaProverTest is BaseTest {
         assertEq(metaRouter.destinationDomain(), type(uint32).max);
     }
 
-    function testProveIntentWithZeroCreator() public {
+    function testProveIntentWithZeroKeeper() public {
         Intent memory testIntent = intent;
-        testIntent.reward.creator = address(0);
+        testIntent.reward.keeper = address(0);
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -406,7 +406,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -471,7 +471,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -498,7 +498,7 @@ contract MetaProverTest is BaseTest {
         uint256 gasStart = gasleft();
 
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -527,7 +527,7 @@ contract MetaProverTest is BaseTest {
         _record(intentHashes, claimants);
         vm.expectRevert();
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -560,7 +560,7 @@ contract MetaProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](0);
 
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -590,7 +590,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -611,12 +611,12 @@ contract MetaProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         uint256 overpayment = 5 ether;
-        vm.deal(creator, 10 ether);
-        uint256 initialBalance = creator.balance;
+        vm.deal(keeper, 10 ether);
+        uint256 initialBalance = keeper.balance;
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -629,7 +629,7 @@ contract MetaProverTest is BaseTest {
 
         // Should receive refund of overpayment minus actual fee
         // Fee is 0.001 ether, so refund should be 4.999 ether
-        assertEq(creator.balance, initialBalance + overpayment - 0.001 ether);
+        assertEq(keeper.balance, initialBalance + overpayment - 0.001 ether);
     }
 
     function testProveWithMinimumGasLimitEnforcement() public {
@@ -643,7 +643,7 @@ contract MetaProverTest is BaseTest {
         // destination store is one-shot per hash).
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -656,7 +656,7 @@ contract MetaProverTest is BaseTest {
 
         // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -732,7 +732,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -772,7 +772,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,

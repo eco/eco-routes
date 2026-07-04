@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Clones} from "../vault/Clones.sol";
+import {Clones} from "../account/Clones.sol";
 import {DepositAddress_USDCTransfer_Solana} from "./DepositAddress_USDCTransfer_Solana.sol";
 
 /**
@@ -35,7 +35,7 @@ contract DepositFactory_USDCTransfer_Solana {
     /// @notice Portal program address on destination chain (as bytes32 for Solana)
     bytes32 public immutable DESTINATION_PORTAL;
 
-    /// @notice Portal's PDA vault authority on Solana (owns Executor ATA)
+    /// @notice Portal's PDA account authority on Solana (owns Executor ATA)
     bytes32 public immutable PORTAL_PDA;
 
     /// @notice Intent deadline duration in seconds (e.g., 7 days)
@@ -80,7 +80,7 @@ contract DepositFactory_USDCTransfer_Solana {
      * @param _portalAddress Portal contract address on source chain
      * @param _proverAddress Prover contract address
      * @param _destinationPortal Portal program ID on destination chain (as bytes32)
-     * @param _portalPDA Portal's PDA vault authority on Solana
+     * @param _portalPDA Portal's PDA account authority on Solana
      * @param _intentDeadlineDuration Deadline duration for intents in seconds
      * @param _executorATA Executor's Associated Token Account on Solana
      */
@@ -180,7 +180,7 @@ contract DepositFactory_USDCTransfer_Solana {
      * @return portalAddress Portal address on source chain
      * @return proverAddress Prover contract address
      * @return destinationPortal Portal program ID on destination chain (bytes32)
-     * @return portalPDA Portal's PDA vault authority on Solana
+     * @return portalPDA Portal's PDA account authority on Solana
      * @return intentDeadlineDuration Deadline duration in seconds
      * @return executorATA Executor's Associated Token Account on Solana
      */

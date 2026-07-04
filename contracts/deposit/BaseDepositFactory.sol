@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Clones} from "../vault/Clones.sol";
+import {Clones} from "../account/Clones.sol";
 
 /**
  * @title BaseDepositFactory

@@ -304,7 +304,7 @@ describe('HyperPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -315,7 +315,7 @@ describe('HyperPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -438,7 +438,7 @@ describe('HyperPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -449,7 +449,7 @@ describe('HyperPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -555,7 +555,7 @@ describe('HyperPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -566,7 +566,7 @@ describe('HyperPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -851,7 +851,7 @@ describe('HyperPolicy Test', (): void => {
       )
 
       await token.mint(solver.address, amount * 2) // Need double for two fulfills
-      await token.mint(owner.address, amount) // Mint tokens for the creator to fund the intent
+      await token.mint(owner.address, amount) // Mint tokens for the keeper to fund the intent
 
       // Set up intent data
       const sourceChainID = 12345
@@ -868,7 +868,7 @@ describe('HyperPolicy Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: routeTokens,
           calls: [
             {
@@ -879,7 +879,7 @@ describe('HyperPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
@@ -988,7 +988,7 @@ describe('HyperPolicy Test', (): void => {
       )
 
       await token.mint(solver.address, amount * 2) // Need double for two fulfills
-      await token.mint(owner.address, amount) // Mint tokens for the creator to fund the intent
+      await token.mint(owner.address, amount) // Mint tokens for the keeper to fund the intent
 
       // Set up intent data
       const sourceChainID = 12345
@@ -1005,7 +1005,7 @@ describe('HyperPolicy Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: routeTokens,
           calls: [
             {
@@ -1016,7 +1016,7 @@ describe('HyperPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await hyperProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
@@ -1151,7 +1151,7 @@ describe('HyperPolicy Test', (): void => {
 
       // Set up token and mint
       await token.mint(solver.address, 2 * amount)
-      await token.mint(owner.address, 2 * amount) // Mint tokens for the creator to fund the intents
+      await token.mint(owner.address, 2 * amount) // Mint tokens for the keeper to fund the intents
 
       // Set up common data
       const sourceChainID = 12345
@@ -1178,7 +1178,7 @@ describe('HyperPolicy Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         minTokens: routeTokens,
         calls: [
           {
@@ -1189,7 +1189,7 @@ describe('HyperPolicy Test', (): void => {
         ],
       }
       const reward = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
@@ -1241,7 +1241,7 @@ describe('HyperPolicy Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         minTokens: routeTokens,
         calls: [
           {
@@ -1252,7 +1252,7 @@ describe('HyperPolicy Test', (): void => {
         ],
       }
       const reward1 = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await hyperProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
@@ -1383,7 +1383,7 @@ describe('HyperPolicy Test', (): void => {
           salt: ethers.randomBytes(32),
           deadline: (await time.latest()) + 3600,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -1394,7 +1394,7 @@ describe('HyperPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
           tokens: [{ token: await token.getAddress(), rate: 0n, flat: amount }],

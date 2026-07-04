@@ -49,7 +49,7 @@ interface IOriginSettler {
      * @notice Opens a gasless cross-chain order on behalf of a user
      * @dev Called by a solver to create an intent for a user via signature
      * @dev Validates signature, deadlines, chain IDs, and origin settler address
-     * @dev Includes replay protection through vault state checking
+     * @dev Includes replay protection through account state checking
      * @dev Emits Open event with resolved order data
      * @dev Made payable to support native token rewards
      * @param order The GaslessCrossChainOrder definition with user signature

@@ -24,13 +24,13 @@ export type Route = {
   salt: string
   deadline: number | bigint
   portal: string
-  creator: string
+  keeper: string
   calls: Call[]
   minTokens: TokenAmount[]
 }
 
 export type Reward = {
-  creator: string
+  keeper: string
   prover: string
   deadline: number | bigint
   tokens: RewardToken[]
@@ -63,7 +63,7 @@ const RouteStruct = [
   { name: 'salt', type: 'bytes32' },
   { name: 'deadline', type: 'uint64' },
   { name: 'portal', type: 'address' },
-  { name: 'creator', type: 'address' },
+  { name: 'keeper', type: 'address' },
   {
     name: 'calls',
     type: 'tuple[]',
@@ -78,7 +78,7 @@ const RouteStruct = [
 
 const RewardStruct = [
   { name: 'deadline', type: 'uint64' },
-  { name: 'creator', type: 'address' },
+  { name: 'keeper', type: 'address' },
   { name: 'prover', type: 'address' },
   {
     name: 'tokens',
@@ -176,12 +176,12 @@ export function hashFulfillment(
   )
 }
 
-export async function intentVaultAddress(
+export async function intentAccountAddress(
   intentSourceAddress: string,
   intent: Intent,
 ) {
   const { routeHash, intentHash } = hashIntent(intent)
-  const intentVaultFactory = await ethers.getContractFactory('Vault')
+  const intentAccountFactory = await ethers.getContractFactory('Account')
   const abiCoder = AbiCoder.defaultAbiCoder()
 
   return getCreate2Address(
@@ -191,7 +191,7 @@ export async function intentVaultAddress(
       solidityPacked(
         ['bytes', 'bytes'],
         [
-          intentVaultFactory.bytecode,
+          intentAccountFactory.bytecode,
           abiCoder.encode(
             [
               'bytes32',

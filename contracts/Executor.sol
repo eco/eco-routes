@@ -87,9 +87,9 @@ contract Executor is IExecutor {
      *      remaining balance of that token is forwarded to `to` — native (`address(0)`) via a low-level
      *      call, ERC20 via a safe transfer. A zero remaining balance is skipped so a leg the calls fully
      *      consumed costs nothing and never reverts on a zero-value transfer. The Portal passes the
-     *      intent's Vault as `to`, keeping leftover with the intent for the creator to retrieve later.
+     *      intent's Account as `to`, keeping leftover with the intent for the keeper to retrieve later.
      * @param tokens The input legs to move (typically `route.minTokens`)
-     * @param to The address that receives the unconsumed input (the intent's Vault)
+     * @param to The address that receives the unconsumed input (the intent's Account)
      */
     function sweepTo(
         TokenAmount[] calldata tokens,

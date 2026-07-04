@@ -87,8 +87,8 @@ contract HyperProverTest is BaseTest {
 
         vm.stopPrank();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _mintAndApprove(keeper, MINT_AMOUNT);
+        _fundUserNative(keeper, 10 ether);
 
         // Fund the hyperProver contract for gas fees
         vm.deal(address(hyperProver), 10 ether);
@@ -141,8 +141,8 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         vm.expectRevert();
-        vm.prank(creator);
-        hyperProver.prove(creator, uint64(block.chainid), intentHashes, "");
+        vm.prank(keeper);
+        hyperProver.prove(keeper, uint64(block.chainid), intentHashes, "");
     }
 
     function testProveWithValidInput() public {
@@ -169,7 +169,7 @@ contract HyperProverTest is BaseTest {
         _record(intentHashes, claimants);
         vm.prank(address(portal));
         hyperProver.prove{value: expectedFee}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -199,7 +199,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -225,7 +225,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -266,7 +266,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -280,7 +280,7 @@ contract HyperProverTest is BaseTest {
         );
 
         vm.expectRevert();
-        vm.prank(creator);
+        vm.prank(keeper);
         hyperProver.handle(
             1,
             bytes32(uint256(uint160(whitelistedProver))),
@@ -404,7 +404,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -418,7 +418,7 @@ contract HyperProverTest is BaseTest {
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
         // So challenging with the original intent should clear the proof
         // because intent.destination (1) != proof.destination (31337)
-        vm.prank(creator);
+        vm.prank(keeper);
         hyperProver.challengeIntentProof(
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -450,7 +450,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -462,7 +462,7 @@ contract HyperProverTest is BaseTest {
         assertEq(proof.destination, uint96(block.chainid));
 
         // Challenge with correct chain (destination matches proof) should do nothing
-        vm.prank(creator);
+        vm.prank(keeper);
         hyperProver.challengeIntentProof(
             localIntent.destination,
             keccak256(abi.encode(localIntent.route)),
@@ -490,7 +490,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -527,7 +527,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         uint256 overpayment = 2 ether;
-        uint256 initialBalance = creator.balance;
+        uint256 initialBalance = keeper.balance;
 
         _record(intentHashes, claimants);
         vm.prank(address(portal));
@@ -537,7 +537,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: overpayment}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -545,7 +545,7 @@ contract HyperProverTest is BaseTest {
 
         // Should refund excess payment (implementation dependent)
         // This test validates the refund mechanism exists
-        assertTrue(creator.balance >= initialBalance - overpayment);
+        assertTrue(keeper.balance >= initialBalance - overpayment);
     }
 
     function testProveWithLargeArrays() public {
@@ -567,7 +567,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData
@@ -621,7 +621,7 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
         hyperProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             proverData

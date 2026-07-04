@@ -6,7 +6,7 @@ import {Semver} from "./libs/Semver.sol";
 
 import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
-import {Vault} from "./vault/Vault.sol";
+import {Account} from "./account/Account.sol";
 
 /**
  * @title Portal
@@ -18,16 +18,16 @@ contract Portal is IntentSource, Inbox, Semver {
      * @notice Initializes the Portal contract
      * @dev Creates a unified entry point combining source and destination chain functionality
      */
-    constructor() IntentSource(address(new Vault()), bytes1(0xff)) {}
+    constructor() IntentSource(address(new Account()), bytes1(0xff)) {}
 
     /**
-     * @notice Deterministic address of the intent's per-intent Vault (composition-root wiring).
-     * @dev Lets the destination-side {Inbox} address the same CREATE2 vault the source-side
+     * @notice Deterministic address of the intent's per-intent Account (composition-root wiring).
+     * @dev Lets the destination-side {Inbox} address the same CREATE2 account the source-side
      *      {IntentSource} escrow uses, so unconsumed solver input lands with the intent.
      */
-    function _predictVault(
+    function _predictAccount(
         bytes32 intentHash
     ) internal view override returns (address) {
-        return _getVault(intentHash);
+        return _getAccount(intentHash);
     }
 }

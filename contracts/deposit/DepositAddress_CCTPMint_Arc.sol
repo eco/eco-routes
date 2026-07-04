@@ -12,13 +12,13 @@ import {DepositFactory_CCTPMint_Arc as DepositFactory} from "./DepositFactory_CC
  * @notice Minimal proxy contract that constructs two Intent structs for CCTP+Gateway transfers to Arc
  * @dev Creates TWO intents to bridge USDC from source chain to Arc via CCTP, then deposit into Gateway:
  *      Intent 2 (published first): Gateway deposit on Arc — receives CCTP-bridged USDC and deposits into Gateway
- *      Intent 1 (published and funded second): CCTP burn on source chain — burns USDC and mints to Intent 2's vault
+ *      Intent 1 (published and funded second): CCTP burn on source chain — burns USDC and mints to Intent 2's account
  *      Each DepositAddress is specific to one user's destination address.
  *      Deployed via CREATE2 by DepositFactory_CCTPMint_Arc for deterministic addressing.
  *
  * @dev Intent Call Flow:
  *      Intent 1: Solver calls TokenMessengerV2.depositForBurn to burn USDC on source chain via CCTP,
- *                minting to Intent 2's vault on Arc.
+ *                minting to Intent 2's account on Arc.
  *      Intent 2: Solver approves Gateway for USDC and calls Gateway.depositFor to credit the user.
  */
 contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
@@ -69,8 +69,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
     /**
      * @notice Execute variant-specific intent creation logic
      * @dev Creates TWO intents:
-     *      1. Gateway deposit intent on Arc (published first to obtain vault address)
-     *      2. CCTP burn intent on source chain (funded with deposited USDC, mints to Intent 2's vault)
+     *      1. Gateway deposit intent on Arc (published first to obtain account address)
+     *      2. CCTP burn intent on source chain (funded with deposited USDC, mints to Intent 2's account)
      * @param amount Amount of tokens to bridge
      * @return intentHash Hash of the CCTP burn intent (Intent 1)
      */
@@ -114,9 +114,9 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             deadline
         );
 
-        // Publish Intent 2 and get its vault address
+        // Publish Intent 2 and get its account address
         Portal portalContract = Portal(portalAddress);
-        (, address vault2) = portalContract.publish(intent2);
+        (, address account2) = portalContract.publish(intent2);
 
         // ---- Step 2: Construct, fund, and publish Intent 1 (CCTP burn on source chain) ----
         Intent memory intent1 = _constructCCTPIntent(
@@ -125,7 +125,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             proverAddress,
             cctpTokenMessenger,
             destinationDomain,
-            vault2,
+            account2,
             amount,
             maxFee,
             salt,
@@ -198,7 +198,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            creator: depositor,
+            keeper: depositor,
             calls: calls,
             minTokens: minTokens
         });
@@ -214,7 +214,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
-            creator: depositor,
+            keeper: depositor,
             prover: arcProverAddress,
             tokens: rewardTokens
         });
@@ -230,13 +230,13 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
     /**
      * @notice Construct the CCTP burn intent (Intent 1) for source chain
      * @dev This intent is fulfilled locally: solver calls TokenMessengerV2.depositForBurn
-     *      to burn USDC and mint to Intent 2's vault on Arc
+     *      to burn USDC and mint to Intent 2's account on Arc
      * @param sourceToken Source USDC token address
      * @param portalAddress Portal address on source chain
      * @param proverAddress LocalPolicy address on source chain
      * @param cctpTokenMessenger CCTP TokenMessengerV2 address
      * @param destinationDomain CCTP destination domain ID for Arc
-     * @param vault2 Intent 2's vault address (CCTP mintRecipient)
+     * @param account2 Intent 2's account address (CCTP mintRecipient)
      * @param amount Amount of USDC (6 decimals)
      * @param maxFee Maximum CCTP fast-deposit fee (deducted on destination)
      * @param salt Unique salt for the intent
@@ -249,7 +249,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         address proverAddress,
         address cctpTokenMessenger,
         uint32 destinationDomain,
-        address vault2,
+        address account2,
         uint256 amount,
         uint256 maxFee,
         bytes32 salt,
@@ -279,7 +279,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
                 "depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)",
                 amount,
                 destinationDomain,
-                bytes32(uint256(uint160(vault2))), // mintRecipient = Intent 2 vault
+                bytes32(uint256(uint160(account2))), // mintRecipient = Intent 2 account
                 sourceToken,
                 bytes32(0), // destinationCaller (anyone)
                 maxFee, // maxFee for CCTP fast-deposit
@@ -293,7 +293,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            creator: depositor,
+            keeper: depositor,
             calls: calls,
             minTokens: minTokens
         });
@@ -305,7 +305,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
-            creator: depositor,
+            keeper: depositor,
             prover: proverAddress,
             tokens: rewardTokens
         });

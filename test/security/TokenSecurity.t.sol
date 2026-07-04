@@ -37,10 +37,10 @@ contract TokenSecurityTest is BaseTest {
 
         vm.stopPrank();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
         _mintAndApprove(attacker, MINT_AMOUNT);
         _mintAndApprove(victim, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _fundUserNative(keeper, 10 ether);
         _fundUserNative(attacker, 10 ether);
         _fundUserNative(victim, 10 ether);
     }
@@ -67,14 +67,14 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(attacker);
         maliciousToken.mint(attacker, MINT_AMOUNT);
 
-        // Fund the vault directly with both tokens
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        // Fund the account directly with both tokens
+        address accountAddress = intentSource.intentAccountAddress(intent);
 
         vm.prank(attacker);
-        maliciousToken.transfer(vaultAddress, MINT_AMOUNT);
+        maliciousToken.transfer(accountAddress, MINT_AMOUNT);
 
-        vm.prank(creator);
-        tokenA.transfer(vaultAddress, MINT_AMOUNT);
+        vm.prank(keeper);
+        tokenA.transfer(accountAddress, MINT_AMOUNT);
 
         // Verify intent is funded
         assertTrue(intentSource.isIntentFunded(intent));
@@ -168,10 +168,10 @@ contract TokenSecurityTest is BaseTest {
         reward.tokens = normalRewards;
         intent.reward = reward;
 
-        // Fund vault with normal token
-        address vaultAddress = intentSource.intentVaultAddress(intent);
-        vm.prank(creator);
-        tokenA.transfer(vaultAddress, MINT_AMOUNT);
+        // Fund account with normal token
+        address accountAddress = intentSource.intentAccountAddress(intent);
+        vm.prank(keeper);
+        tokenA.transfer(accountAddress, MINT_AMOUNT);
 
         assertTrue(intentSource.isIntentFunded(intent));
 
@@ -189,8 +189,8 @@ contract TokenSecurityTest is BaseTest {
             _defaultFulfilled()
         );
 
-        // After withdrawal, vault balance should be 0
-        assertEq(tokenA.balanceOf(vaultAddress), 0);
+        // After withdrawal, account balance should be 0
+        assertEq(tokenA.balanceOf(accountAddress), 0);
 
         // Intent should be marked as unfunded since reward was withdrawn
         assertFalse(intentSource.isIntentFunded(intent));
@@ -208,36 +208,36 @@ contract TokenSecurityTest is BaseTest {
         reward.tokens = normalRewards;
         intent.reward = reward;
 
-        // Creator has tokens but doesn't approve IntentSource
-        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        // Keeper has tokens but doesn't approve IntentSource
+        assertEq(tokenA.balanceOf(keeper), MINT_AMOUNT);
 
         // Don't approve IntentSource
-        vm.prank(creator);
+        vm.prank(keeper);
         tokenA.approve(address(intentSource), 0);
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
 
         // Try to fund using fake permit contract
         vm.expectRevert(); // Should revert because fake permit doesn't actually transfer
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.fundFor(
             intent.destination,
             routeHash,
             reward,
             false,
-            creator,
+            keeper,
             address(fakePermit)
         );
 
         // Intent should not be funded
         assertFalse(intentSource.isIntentFunded(intent));
 
-        // Creator should still have their tokens
-        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        // Keeper should still have their tokens
+        assertEq(tokenA.balanceOf(keeper), MINT_AMOUNT);
 
-        // Vault should have no tokens
-        address vaultAddress = intentSource.intentVaultAddress(intent);
-        assertEq(tokenA.balanceOf(vaultAddress), 0);
+        // Account should have no tokens
+        address accountAddress = intentSource.intentAccountAddress(intent);
+        assertEq(tokenA.balanceOf(accountAddress), 0);
     }
 
     function testUSDTNonStandardERC20() public {
@@ -254,16 +254,16 @@ contract TokenSecurityTest is BaseTest {
         reward.tokens = usdtRewards;
         intent.reward = reward;
 
-        // Mint USDT to creator
-        vm.prank(creator);
-        usdt.mint(creator, MINT_AMOUNT);
+        // Mint USDT to keeper
+        vm.prank(keeper);
+        usdt.mint(keeper, MINT_AMOUNT);
 
         // Approve IntentSource
-        vm.prank(creator);
+        vm.prank(keeper);
         usdt.approve(address(intentSource), MINT_AMOUNT);
 
         // Should handle USDT properly
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(intent, false);
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -299,23 +299,23 @@ contract TokenSecurityTest is BaseTest {
         intent.reward = reward;
 
         // Initial approval
-        vm.prank(creator);
+        vm.prank(keeper);
         tokenA.approve(address(intentSource), MINT_AMOUNT);
 
         // Change approval (simulating race condition)
-        vm.prank(creator);
+        vm.prank(keeper);
         tokenA.approve(address(intentSource), 0);
 
         // Try to fund - should fail due to insufficient approval
         vm.expectRevert();
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(intent, false);
 
         // Re-approve and fund
-        vm.prank(creator);
+        vm.prank(keeper);
         tokenA.approve(address(intentSource), MINT_AMOUNT);
 
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(intent, false);
 
         assertTrue(intentSource.isIntentFunded(intent));
@@ -334,25 +334,25 @@ contract TokenSecurityTest is BaseTest {
         reward.tokens = rewards;
         intent.reward = reward;
 
-        // Creator only has MINT_AMOUNT tokens
-        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        // Keeper only has MINT_AMOUNT tokens
+        assertEq(tokenA.balanceOf(keeper), MINT_AMOUNT);
 
         // Approve more than balance
-        vm.prank(creator);
+        vm.prank(keeper);
         tokenA.approve(address(intentSource), MINT_AMOUNT * 2);
 
         // Should fail with insufficient balance
         vm.expectRevert();
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(intent, false);
 
         // With partial funding enabled, should only transfer available balance
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(intent, true);
 
-        address vaultAddress = intentSource.intentVaultAddress(intent);
-        assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT); // Only transferred what was available
-        assertEq(tokenA.balanceOf(creator), 0); // Creator balance is zero
+        address accountAddress = intentSource.intentAccountAddress(intent);
+        assertEq(tokenA.balanceOf(accountAddress), MINT_AMOUNT); // Only transferred what was available
+        assertEq(tokenA.balanceOf(keeper), 0); // Keeper balance is zero
 
         // Intent should not be fully funded
         assertFalse(intentSource.isIntentFunded(intent));
@@ -367,7 +367,7 @@ contract TokenSecurityTest is BaseTest {
         reward.tokens = rewards;
         intent.reward = reward;
 
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(intent, false);
 
         // Should be considered funded even with zero amounts
@@ -410,19 +410,19 @@ contract TokenSecurityTest is BaseTest {
         reward.tokens = mixedRewards;
         intent.reward = reward;
 
-        // Mint USDT to creator
-        vm.prank(creator);
-        usdt.mint(creator, MINT_AMOUNT);
+        // Mint USDT to keeper
+        vm.prank(keeper);
+        usdt.mint(keeper, MINT_AMOUNT);
 
-        // Fund vault directly
+        // Fund account directly
         bytes32 routeHash = keccak256(abi.encode(intent.route));
-        address vaultAddress = intentSource.intentVaultAddress(intent);
+        address accountAddress = intentSource.intentAccountAddress(intent);
 
-        vm.prank(creator);
-        tokenA.transfer(vaultAddress, MINT_AMOUNT);
+        vm.prank(keeper);
+        tokenA.transfer(accountAddress, MINT_AMOUNT);
 
-        vm.prank(creator);
-        usdt.transfer(vaultAddress, MINT_AMOUNT);
+        vm.prank(keeper);
+        usdt.transfer(accountAddress, MINT_AMOUNT);
 
         assertTrue(intentSource.isIntentFunded(intent));
 
@@ -452,9 +452,9 @@ contract TokenSecurityTest is BaseTest {
             initialClaimantBalanceUSDT + MINT_AMOUNT
         );
 
-        // Vault should have 0 balance for all tokens
-        assertEq(tokenA.balanceOf(vaultAddress), 0);
-        assertEq(usdt.balanceOf(vaultAddress), 0);
+        // Account should have 0 balance for all tokens
+        assertEq(tokenA.balanceOf(accountAddress), 0);
+        assertEq(usdt.balanceOf(accountAddress), 0);
 
         // Intent should be marked as unfunded after withdrawal
         assertFalse(intentSource.isIntentFunded(intent));
@@ -476,22 +476,22 @@ contract TokenSecurityTest is BaseTest {
         intent.reward = reward;
 
         // Publishing should work fine
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publish(intent);
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
 
         // Even if token contract doesn't exist, the intent should still be publishable
-        // Funding with a non-existent token contract will revert when Vault tries to check balance
+        // Funding with a non-existent token contract will revert when Account tries to check balance
         // This is expected behavior - the system protects against non-existent tokens
-        vm.prank(creator);
+        vm.prank(keeper);
         vm.expectRevert();
         intentSource.fundFor(
             intent.destination,
             routeHash,
             reward,
             true,
-            creator,
+            keeper,
             address(0)
         );
 

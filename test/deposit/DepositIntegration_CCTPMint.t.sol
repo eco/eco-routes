@@ -54,7 +54,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         bytes32 indexed intentHash,
         uint64 destination,
         bytes route,
-        address indexed creator,
+        address indexed keeper,
         address indexed prover,
         uint64 deadline,
         RewardToken[] rewardTokens
@@ -135,10 +135,10 @@ contract DepositIntegration_CCTPMintTest is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         assertTrue(intentHash != bytes32(0));
 
-        // 5. Verify tokens moved from deposit address to vault
+        // 5. Verify tokens moved from deposit address to account
         assertEq(token.balanceOf(depositAddr), 0);
 
-        // 6. Verify intent was funded (tokens moved to vault)
+        // 6. Verify intent was funded (tokens moved to account)
         IIntentSource.Status status = portal.getRewardStatus(intentHash);
         assertEq(
             uint256(status),
@@ -185,7 +185,7 @@ contract DepositIntegration_CCTPMintTest is Test {
             if (logs[i].topics[0] == intentPublishedSig) {
                 // Indexed fields
                 bytes32 publishedIntentHash = logs[i].topics[1];
-                address creator = address(uint160(uint256(logs[i].topics[2])));
+                address keeper = address(uint160(uint256(logs[i].topics[2])));
 
                 // Non-indexed fields
                 (
@@ -203,7 +203,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                 if (eventIdx == 0) {
                     // Intent 2 (Gateway deposit on Arc) - published first
                     assertEq(destination, ARC_CHAIN_ID, "Intent 2 destination should be Arc chain");
-                    assertEq(creator, DEPOSITOR, "Intent 2 creator should be depositor");
+                    assertEq(keeper, DEPOSITOR, "Intent 2 keeper should be depositor");
                     assertEq(route.portal, address(portal), "Intent 2 route portal should be portal address");
                     // Native USDC folds into a single native (address(0)) min-tokens leg.
                     assertEq(route.minTokens.length, 1, "Intent 2 route should have one native min-tokens leg (native USDC)");
@@ -215,7 +215,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                     // Intent 1 (CCTP burn on source chain) - published second
                     assertEq(publishedIntentHash, intentHash, "Intent 1 hash should match returned hash");
                     assertEq(destination, CHAIN_ID, "Intent 1 destination should be source chain");
-                    assertEq(creator, DEPOSITOR, "Intent 1 creator should be depositor");
+                    assertEq(keeper, DEPOSITOR, "Intent 1 keeper should be depositor");
                     assertEq(route.portal, address(portal), "Intent 1 route portal should be portal address");
                     assertEq(route.minTokens.length, 1, "Intent 1 route should have one min-tokens leg");
                     assertEq(route.minTokens[0].token, address(token), "Intent 1 route min-tokens token should be source USDC");
@@ -313,7 +313,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         // Fast forward past deadline
         vm.warp(block.timestamp + INTENT_DEADLINE_DURATION + 1);
 
-        // Note: Depositor can now call Portal.refund() directly since they are the intent creator
+        // Note: Depositor can now call Portal.refund() directly since they are the intent keeper
         // This allows refunds through the normal intent flow without a separate function
         // Full refund testing is covered in Portal/IntentSource tests
 
@@ -377,13 +377,13 @@ contract DepositIntegration_CCTPMintTest is Test {
         assertTrue(createIntentGas < 1_000_000); // Should be < 1M for dual-intent creation
     }
 
-    // ============ CCTP → Vault2 → Intent 2 Fulfillment Flow ============
+    // ============ CCTP → Account2 → Intent 2 Fulfillment Flow ============
 
     /**
      * @notice Tests the full two-intent CCTP flow:
      *         1. createIntent() publishes Intent 2 (Gateway deposit on Arc) and Intent 1 (CCTP burn),
-     *            with Intent 2's vault address as the CCTP mintRecipient.
-     *         2. Simulates CCTP minting by funding vault2 with native ETH (representing native USDC on Arc).
+     *            with Intent 2's account address as the CCTP mintRecipient.
+     *         2. Simulates CCTP minting by funding account2 with native ETH (representing native USDC on Arc).
      *         3. Solver calls LocalPolicy.flashFulfill() for Intent 2, triggering Gateway.depositFor.
      *         4. Verifies Intent 2 is fulfilled and the solver is recorded as claimant.
      *
@@ -391,7 +391,7 @@ contract DepositIntegration_CCTPMintTest is Test {
      *      The MockGateway emits DepositFor without transferring tokens, allowing the route
      *      calls (approve + depositFor) to succeed in a test environment.
      */
-    function test_integration_cctpMintsToVault2AndSolverFulfillsIntent2() public {
+    function test_integration_cctpMintsToAccount2AndSolverFulfillsIntent2() public {
         // --- Setup: factory with ARC_CHAIN_ID = block.chainid for local provability ---
         uint64 localChainId = uint64(block.chainid);
 
@@ -439,7 +439,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == intentPublishedSig) {
                 intent2Hash = logs[i].topics[1];
-                address creator = address(uint160(uint256(logs[i].topics[2])));
+                address keeper = address(uint160(uint256(logs[i].topics[2])));
                 address proverAddr = address(uint160(uint256(logs[i].topics[3])));
 
                 (
@@ -455,7 +455,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                 route2 = abi.decode(routeBytes, (Route));
                 reward2 = Reward({
                     deadline: rewardDeadline,
-                    creator: creator,
+                    keeper: keeper,
                     prover: proverAddr,
                     tokens: rewardTokens
                 });
@@ -470,14 +470,14 @@ contract DepositIntegration_CCTPMintTest is Test {
         assertEq(reward2.tokens[0].token, address(0), "Intent 2 reward leg should be native (address(0))");
         assertEq(reward2.tokens[0].flat, nativeReward, "Intent 2 native reward should be scaled native USDC");
 
-        // --- Derive vault2 address ---
-        // vault2 is the reward vault for Intent 2; CCTP mints native USDC here on Arc
-        address vault2 = portal.intentVaultAddress(localChainId, abi.encode(route2), reward2);
-        assertTrue(vault2 != address(0), "vault2 address should be non-zero");
+        // --- Derive account2 address ---
+        // account2 is the reward account for Intent 2; CCTP mints native USDC here on Arc
+        address account2 = portal.intentAccountAddress(localChainId, abi.encode(route2), reward2);
+        assertTrue(account2 != address(0), "account2 address should be non-zero");
 
-        // --- Simulate CCTP mint: fund vault2 with native ETH (= native USDC on Arc) ---
-        vm.deal(vault2, nativeReward);
-        assertEq(address(vault2).balance, nativeReward, "vault2 should hold native USDC after CCTP mint");
+        // --- Simulate CCTP mint: fund account2 with native ETH (= native USDC on Arc) ---
+        vm.deal(account2, nativeReward);
+        assertEq(address(account2).balance, nativeReward, "account2 should hold native USDC after CCTP mint");
 
         // --- Solver fulfills Intent 2 via Arc LocalPolicy.flashFulfill ---
         address solver = address(0x5555);
@@ -495,8 +495,8 @@ contract DepositIntegration_CCTPMintTest is Test {
         );
         Vm.Log[] memory fulfillLogs = vm.getRecordedLogs();
 
-        // --- Verify vault2 is drained ---
-        assertEq(address(vault2).balance, 0, "vault2 should be empty after fulfillment");
+        // --- Verify account2 is drained ---
+        assertEq(address(account2).balance, 0, "account2 should be empty after fulfillment");
 
         // --- Verify Gateway.depositFor was called with correct parameters ---
         bool foundDepositFor = false;

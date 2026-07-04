@@ -12,7 +12,7 @@ import {Reward} from "../types/Intent.sol";
  *      `fulfillmentHash = keccak256(abi.encode(intentHash, claimant, fulfilled))`. The `(claimant,
  *      fulfilled[])` preimage is supplied as calldata at `settle` and verified against the proven hash;
  *      the claimant is NOT stored in the fact. The prover also exposes {previewRelease}, a pure view the
- *      Vault consults to turn the verified `fulfilled[]` into per-leg reward amounts.
+ *      Account consults to turn the verified `fulfilled[]` into per-leg reward amounts.
  */
 interface IPolicy is ISemver {
     /**
@@ -143,10 +143,10 @@ interface IPolicy is ISemver {
 
     /**
      * @notice Computes the per-leg reward amounts owed for a set of delivered amounts (pure view)
-     * @dev The Vault consults this (as a staticcall/view — no reentrancy surface) at settle to turn the
+     * @dev The Account consults this (as a staticcall/view — no reentrancy surface) at settle to turn the
      *      core-verified `fulfilled[]` into amounts. PAIRED legs (`j < fulfilled.length`) return
      *      `fulfilled[j] * rate / WAD + flat`; EXTRA legs (`j >= fulfilled.length`) return `flat`. The
-     *      result is index-aligned with `reward.tokens`; the Vault caps each entry at its own balance.
+     *      result is index-aligned with `reward.tokens`; the Account caps each entry at its own balance.
      * @param reward The reward specification (its `tokens` legs define the curve)
      * @param fulfilled The core-verified per-leg delivered amounts (paired prefix)
      * @return payNow Per-leg uncapped reward amount, index-aligned with `reward.tokens`

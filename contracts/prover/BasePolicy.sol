@@ -13,7 +13,7 @@ import {RewardMath} from "../libs/RewardMath.sol";
  *      fulfillment fact and the cross-chain proof are HASH-ONLY: the prover stores and forwards a
  *      `fulfillmentHash`, never the claimant. The claimant + per-leg amounts are supplied as a preimage
  *      at settle. {previewRelease} turns the verified `fulfilled[]` into per-leg reward amounts (the
- *      atomic rate+flat curve) for the Vault to cap and pay.
+ *      atomic rate+flat curve) for the Account to cap and pay.
  */
 abstract contract BasePolicy is IPolicy, ERC165 {
     /**
@@ -105,10 +105,10 @@ abstract contract BasePolicy is IPolicy, ERC165 {
     }
 
     /**
-     * @notice The atomic rate+flat reward curve (pure view consulted by the Vault at settle)
+     * @notice The atomic rate+flat reward curve (pure view consulted by the Account at settle)
      * @dev PAIRED legs (`j < fulfilled.length`): `fulfilled[j] * rate / WAD + flat`. EXTRA legs (`j >=
      *      fulfilled.length`): `flat` (rate ignored). Result index-aligned with `reward.tokens`; the
-     *      Vault caps each entry at its own balance and sweeps the residual to the creator.
+     *      Account caps each entry at its own balance and sweeps the residual to the keeper.
      * @param reward The reward specification
      * @param fulfilled The core-verified per-leg delivered amounts (paired prefix)
      * @return payNow Per-leg uncapped reward amount

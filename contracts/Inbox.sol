@@ -24,8 +24,8 @@ import {Executor} from "./Executor.sol";
  *      The provided input is pulled into the executor and the route `calls` execute. The core is
  *      UNOPINIONATED about fund destinations: there is no `recipient` and no protocol-level auto-sweep to
  *      one — DELIVERY IS THE CALLS' JOB (any beneficiary lives inside a call's calldata). Any input the
- *      calls did not consume is moved to the intent's Vault (so leftover stays WITH THE INTENT for the
- *      creator to retrieve later) rather than being stranded in the shared executor. `fulfilled[j]`
+ *      calls did not consume is moved to the intent's Account (so leftover stays WITH THE INTENT for the
+ *      keeper to retrieve later) rather than being stranded in the shared executor. `fulfilled[j]`
  *      records the amount actually provided; the Inbox commits `(intentHash, claimant, fulfilled[])` into
  *      a HASH-ONLY fact (`fulfillmentHash = keccak256(abi.encode(intentHash, claimant, fulfilled))`) and
  *      records it into the named prover (policy), which owns the fulfillment store and cross-chain proof.
@@ -58,7 +58,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
     /**
      * @notice Fulfills an intent, recording the fulfillment into the named prover
      * @dev Validates intent hash, pulls the solver's provided input, executes calls, moves any unconsumed
-     *      input to the intent's Vault, and records the hash-only fulfillment fact into `prover`. Naming a
+     *      input to the intent's Account, and records the hash-only fulfillment fact into `prover`. Naming a
      *      prover other than the reward's committed `reward.prover` is solver self-harm only.
      * @param intentHash The hash of the intent to fulfill
      * @param route The route of the intent
@@ -169,7 +169,7 @@ abstract contract Inbox is DestinationSettler, IInbox {
     /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent, enforces the solver-INPUT floor, pulls the provided input into the executor,
-     *      executes calls, moves any unconsumed input to the intent's Vault, and records the hash-only
+     *      executes calls, moves any unconsumed input to the intent's Account, and records the hash-only
      *      fulfillment fact into the named prover. `fulfilled[j] = providedAmounts[j]` (the actual input
      *      provided; the reward scales on it). The prover's {IPolicy-recordFulfillment} enforces the
      *      one-shot gate. Recording happens AFTER execution; a re-entrant second fulfillment of the same
@@ -260,12 +260,12 @@ abstract contract Inbox is DestinationSettler, IInbox {
         result = executor.execute{value: nativeProvided}(route.calls);
 
         // Delivery is the calls' job (any beneficiary is inside the calls' calldata). Move any input the
-        // calls did not consume to the intent's Vault so leftover stays WITH THE INTENT — the creator
-        // retrieves it later — rather than being stranded in the shared executor. The Vault address is
+        // calls did not consume to the intent's Account so leftover stays WITH THE INTENT — the keeper
+        // retrieves it later — rather than being stranded in the shared executor. The Account address is
         // deterministic (CREATE2 keyed on the intent hash) and identical across chains, so the same
-        // per-intent vault the creator controls on the source chain is addressable here. The executor
+        // per-intent account the keeper controls on the source chain is addressable here. The executor
         // holds ONLY solver input (never reward escrow), so this can never misdirect escrow.
-        executor.sweepTo(route.minTokens, _predictVault(intentHash));
+        executor.sweepTo(route.minTokens, _predictAccount(intentHash));
 
         // Commit the (intentHash, claimant, fulfilled[]) preimage as a hash-only fact and record it into
         // the named prover (policy). The prover enforces the one-shot gate.
@@ -282,14 +282,14 @@ abstract contract Inbox is DestinationSettler, IInbox {
     }
 
     /**
-     * @notice Deterministic address of the intent's per-intent Vault for a given intent hash.
+     * @notice Deterministic address of the intent's per-intent Account for a given intent hash.
      * @dev Implemented by the composition root (the Portal, which also inherits IntentSource) so the
-     *      destination-side Inbox can address the same CREATE2 vault the source-side escrow uses. Any
+     *      destination-side Inbox can address the same CREATE2 account the source-side escrow uses. Any
      *      unconsumed solver input is moved here after execution so leftover stays with the intent.
-     * @param intentHash The intent hash keying the vault's CREATE2 salt.
-     * @return The predicted vault address.
+     * @param intentHash The intent hash keying the account's CREATE2 salt.
+     * @return The predicted account address.
      */
-    function _predictVault(
+    function _predictAccount(
         bytes32 intentHash
     ) internal view virtual returns (address);
 }

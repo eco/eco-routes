@@ -7,7 +7,7 @@ import {WAD} from "../types/Intent.sol";
 /**
  * @title RewardMath
  * @notice Pure helpers for v3's dynamic reward formula (rate+flat legs).
- * @dev The reward owed for a leg is `fulfilled * rate / WAD + flat`, then capped at the vault balance
+ * @dev The reward owed for a leg is `fulfilled * rate / WAD + flat`, then capped at the account balance
  *      available for that token. Splitting the formula ({reward}) from the cap ({capped}) lets settlement
  *      compute the owed amount and then clamp it to escrow without ever paying out more than was
  *      deposited (money-conservation invariant; also the L1 lesson: advance any ledger by PAID not
@@ -35,16 +35,16 @@ library RewardMath {
 
     /**
      * @notice Clamp an owed amount to the funds actually available.
-     * @dev Returns `min(amount, vaultBalance)`. Used so a leg never pays more than the vault holds for
-     *      that token; the unpaid difference (if any) flows to the creator as the remainder.
+     * @dev Returns `min(amount, accountBalance)`. Used so a leg never pays more than the account holds for
+     *      that token; the unpaid difference (if any) flows to the keeper as the remainder.
      * @param amount The owed (uncapped) amount.
-     * @param vaultBalance The vault balance available for this token.
-     * @return The amount to pay, never exceeding `vaultBalance`.
+     * @param accountBalance The account balance available for this token.
+     * @return The amount to pay, never exceeding `accountBalance`.
      */
     function capped(
         uint256 amount,
-        uint256 vaultBalance
+        uint256 accountBalance
     ) internal pure returns (uint256) {
-        return Math.min(amount, vaultBalance);
+        return Math.min(amount, accountBalance);
     }
 }

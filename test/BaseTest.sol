@@ -23,7 +23,7 @@ contract BaseTest is Test {
     uint64 internal constant CHAIN_ID = 1;
 
     // Test addresses
-    address internal creator;
+    address internal keeper;
     address internal claimant;
     address internal otherPerson;
     address internal deployer;
@@ -50,7 +50,7 @@ contract BaseTest is Test {
 
     function setUp() public virtual {
         // Setup test addresses
-        creator = makeAddr("creator");
+        keeper = makeAddr("keeper");
         claimant = makeAddr("claimant");
         otherPerson = makeAddr("otherPerson");
         deployer = makeAddr("deployer");
@@ -91,7 +91,7 @@ contract BaseTest is Test {
                 target: address(tokenA),
                 data: abi.encodeWithSignature(
                     "transfer(address,uint256)",
-                    creator,
+                    keeper,
                     MINT_AMOUNT
                 ),
                 value: 0
@@ -126,12 +126,12 @@ contract BaseTest is Test {
         }
 
         // Setup route (input-floor model: `minTokens` is what the solver provides; delivery is the job of
-        // the committed `calls`, and any unconsumed input is moved to the intent's Vault).
+        // the committed `calls`, and any unconsumed input is moved to the intent's Account).
         route = Route({
             salt: salt,
             deadline: uint64(expiry),
             portal: address(portal),
-            creator: creator,
+            keeper: keeper,
             calls: callsMemory,
             minTokens: minTokensMemory
         });
@@ -139,7 +139,7 @@ contract BaseTest is Test {
         // Setup reward
         reward = Reward({
             deadline: uint64(expiry),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: rewardTokensMemory
         });
@@ -221,7 +221,7 @@ contract BaseTest is Test {
         uint96 destinationChainId,
         address recipient
     ) internal {
-        vm.prank(creator);
+        vm.prank(keeper);
         prover.addProvenFulfillment(
             intentHash,
             bytes32(uint256(uint160(recipient))),
@@ -252,7 +252,7 @@ contract BaseTest is Test {
         Intent memory _intent,
         bool allowPartial
     ) internal {
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(_intent, allowPartial);
     }
 
@@ -261,7 +261,7 @@ contract BaseTest is Test {
         bool allowPartial,
         uint256 value
     ) internal {
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund{value: value}(_intent, allowPartial);
     }
 

@@ -104,7 +104,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
     }
 
     /**
-     * @notice The atomic rate+flat reward curve (pure view consulted by the Vault at settle)
+     * @notice The atomic rate+flat reward curve (pure view consulted by the Account at settle)
      * @param reward The reward specification
      * @param fulfilled The core-verified per-leg delivered amounts (paired prefix)
      * @return payNow Per-leg uncapped reward amount, index-aligned with `reward.tokens`
@@ -161,8 +161,8 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
      * @dev Fulfill-then-settle (PR2): provides exactly the `minTokens` input floor for each leg — pulls the
      *      ERC20 legs from the caller and approves the Portal, forwards the native leg as value — then
      *      executes the route via the Portal (which enforces the input floor and records the hash-only
-     *      fact) and settles: the Vault pays the claimant the owed reward and sweeps the residual to the
-     *      creator. `fulfilled[] == providedAmounts == the minTokens amounts`, so the settle preimage matches
+     *      fact) and settles: the Account pays the claimant the owed reward and sweeps the residual to the
+     *      keeper. `fulfilled[] == providedAmounts == the minTokens amounts`, so the settle preimage matches
      *      the recorded fulfillmentHash.
      *
      *      WARNING: permissionless and front-runnable — standard MEV behavior in intent systems.
@@ -211,7 +211,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
             address(this)
         );
 
-        // Settle: pays the claimant the owed reward from the vault, sweeps residual to the creator.
+        // Settle: pays the claimant the owed reward from the account, sweeps residual to the keeper.
         // `providedAmounts` is the committed `fulfilled[]`, so the preimage matches the recorded fact.
         _PORTAL.settle(_CHAIN_ID, routeHash, reward, claimant, providedAmounts);
 

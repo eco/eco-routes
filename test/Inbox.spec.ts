@@ -97,7 +97,7 @@ describe('Inbox Test', (): void => {
         salt,
         deadline,
         portal: await inbox.getAddress(),
-        creator: solver.address,
+        keeper: solver.address,
         calls: [
           {
             target: erc20Address,
@@ -108,7 +108,7 @@ describe('Inbox Test', (): void => {
         minTokens: [{ token: await erc20.getAddress(), amount: amount }],
       },
       reward: {
-        creator: solver.address,
+        keeper: solver.address,
         prover: solver.address,
         deadline,
         tokens: [

@@ -7,7 +7,7 @@ export type Route = {
   salt: string
   deadline: number
   portal: string
-  creator: string
+  keeper: string
   calls: Call[]
   minTokens: TokenAmount[]
 }
@@ -45,11 +45,11 @@ export type OnchainCrosschainOrder = {
   orderData: OnchainCrosschainOrderData
 }
 
-// v3 Reward struct: (uint64 deadline, address creator, address prover, RewardToken[] tokens)
+// v3 Reward struct: (uint64 deadline, address keeper, address prover, RewardToken[] tokens)
 // where RewardToken is (address token, uint256 rate, uint256 flat).
 const RewardStructComponents = [
   { name: 'deadline', type: 'uint64' },
-  { name: 'creator', type: 'address' },
+  { name: 'keeper', type: 'address' },
   { name: 'prover', type: 'address' },
   {
     name: 'tokens',

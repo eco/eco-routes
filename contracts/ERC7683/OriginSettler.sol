@@ -18,7 +18,7 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  * @notice Entry point to Eco Protocol via EIP-7683 with enhanced security and compliance
  * @dev Provides ERC-7683 compliant interface with replay protection and proper validation
  * @dev Features comprehensive validation, unified funding logic, and ERC-7683 compliance
- * @dev Includes protection against replay attacks through vault state checking
+ * @dev Includes protection against replay attacks through account state checking
  */
 abstract contract OriginSettler is IOriginSettler, EIP712 {
     using ECDSA for bytes32;
@@ -69,7 +69,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @notice Opens an Eco intent on behalf of a user via ERC-7683 gasless interface
      * @dev Called by a solver to create an intent for a user using their signature
      * @dev Performs comprehensive validation: deadlines, signature, chain IDs, origin settler
-     * @dev Includes replay protection through vault state checking in _publishAndFund
+     * @dev Includes replay protection through account state checking in _publishAndFund
      * @dev Uses unified _publishAndFund method for consistent behavior and security
      * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
      * @param order the GaslessCrossChainOrder containing user signature and OrderData
@@ -220,7 +220,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
 
         return
             ResolvedCrossChainOrder(
-                orderData.reward.creator,
+                orderData.reward.keeper,
                 block.chainid,
                 openDeadline,
                 uint32(orderData.routeDeadline),
@@ -240,16 +240,16 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @notice Core method for atomic intent creation and funding
      * @dev Abstract method to be implemented by derived contracts for unified intent handling
      * @dev Must handle both publishing new intents and funding existing ones atomically
-     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Provides replay protection through account state checking in funding logic
      * @dev Should handle excess ETH return for optimal user experience
      * @dev Called by both open() and openFor() methods to ensure consistent behavior
      * @param destination Destination chain ID where the intent should be executed
      * @param route Encoded route data containing execution instructions for destination chain
-     * @param reward The reward structure containing token amounts, creator, prover, and deadline
+     * @param reward The reward structure containing token amounts, keeper, prover, and deadline
      * @param allowPartial Whether to accept partial funding if full funding is not possible
      * @param funder The address providing the funding (msg.sender for open(), order.user for openFor())
      * @return intentHash Unique identifier of the created or existing intent
-     * @return vault Address of the intent's vault contract for reward escrow
+     * @return account Address of the intent's account contract for reward escrow
      */
     function _publishAndFund(
         uint64 destination,
@@ -257,5 +257,5 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         Reward memory reward,
         bool allowPartial,
         address funder
-    ) internal virtual returns (bytes32 intentHash, address vault);
+    ) internal virtual returns (bytes32 intentHash, address account);
 }

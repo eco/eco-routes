@@ -106,8 +106,8 @@ contract PolymerProverTest is BaseTest {
             provers
         );
 
-        _mintAndApprove(creator, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _mintAndApprove(keeper, MINT_AMOUNT);
+        _fundUserNative(keeper, 10 ether);
     }
 
     /// @dev Records each fulfillment into the prover (as the Portal) so `prove` can build its
@@ -162,7 +162,7 @@ contract PolymerProverTest is BaseTest {
         // Should revert when called by non-portal (before the message is built)
         vm.expectRevert(PolymerPolicy.OnlyPortal.selector);
         polymerProver.prove(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             hex""
@@ -189,7 +189,7 @@ contract PolymerProverTest is BaseTest {
 
         vm.prank(address(portal));
         polymerProver.prove(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             hex""
@@ -199,7 +199,7 @@ contract PolymerProverTest is BaseTest {
     function testProveHandlesEmptyProofs() public {
         vm.prank(address(portal));
         polymerProver.prove(
-            creator,
+            keeper,
             uint64(block.chainid),
             new bytes32[](0),
             hex""
@@ -230,7 +230,7 @@ contract PolymerProverTest is BaseTest {
 
         vm.prank(address(portal));
         polymerProver.prove(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             hex""
@@ -552,7 +552,7 @@ contract PolymerProverTest is BaseTest {
 
         crossL2ProverV2.setAll(
             OPTIMISM_CHAIN_ID,
-            creator, // wrong contract
+            keeper, // wrong contract
             topics,
             data
         );
@@ -562,7 +562,7 @@ contract PolymerProverTest is BaseTest {
         vm.expectRevert(
             abi.encodeWithSelector(
                 PolymerPolicy.InvalidEmittingContract.selector,
-                creator
+                keeper
             )
         );
         polymerProver.validate(proof);

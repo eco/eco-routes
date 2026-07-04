@@ -15,7 +15,7 @@ import {WAD, MAX_IN_TOKENS, MAX_REWARD_TOKENS} from "../../contracts/types/Inten
  * @dev Input-floor model: the solver must PROVIDE at least `minTokens[j].amount` (it may provide more); the
  *      reward scales on the PROVIDED amount (`fulfilled[j] == providedAmounts[j]`). Delivery is the job of
  *      the committed `calls` (any beneficiary is inside the calls' calldata); any input the calls do not
- *      consume is moved to the intent's Vault (leftover stays with the intent). There is no on-chain output
+ *      consume is moved to the intent's Account (leftover stays with the intent). There is no on-chain output
  *      measurement and no protocol-level recipient.
  */
 contract RewardLegsTest is BaseTest {
@@ -55,7 +55,7 @@ contract RewardLegsTest is BaseTest {
             salt: bytes32(uint256(7)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            creator: creator,
+            keeper: keeper,
             calls: cs,
             minTokens: minTokensLegs
         });
@@ -65,7 +65,7 @@ contract RewardLegsTest is BaseTest {
 
         Reward memory rw = Reward({
             deadline: uint64(block.timestamp + 2000),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: legs
         });
@@ -104,7 +104,7 @@ contract RewardLegsTest is BaseTest {
 
         Reward memory rw = Reward({
             deadline: uint64(expiry),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: legs
         });
@@ -123,7 +123,7 @@ contract RewardLegsTest is BaseTest {
         legs[0] = RewardToken({token: address(tokenA), rate: WAD / 3, flat: 0});
         Reward memory rw = Reward({
             deadline: uint64(expiry),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: legs
         });
@@ -137,10 +137,10 @@ contract RewardLegsTest is BaseTest {
     // ── settle pays the rate+flat reward, capped at escrow ─────────────────────
 
     function test_settle_paysRateReward_whenFullyFunded() public {
-        // owed = 500*1.5 + 50 = 800; over-fund the vault to 900 so it is not capped.
+        // owed = 500*1.5 + 50 = 800; over-fund the account to 900 so it is not capped.
         Intent memory _intent = _rateIntent(500, 500, (3 * WAD) / 2, 50);
-        address vault = intentSource.intentVaultAddress(_intent);
-        tokenA.mint(vault, 900);
+        address account = intentSource.intentAccountAddress(_intent);
+        tokenA.mint(account, 900);
 
         bytes32 intentHash = _fulfillProviding(_intent, 500);
         // The fulfill recorded into the prover's DESTINATION store; surface the source-side fact.
@@ -154,7 +154,7 @@ contract RewardLegsTest is BaseTest {
         );
 
         uint256 claimantBefore = tokenA.balanceOf(claimant);
-        uint256 creatorBefore = tokenA.balanceOf(creator);
+        uint256 keeperBefore = tokenA.balanceOf(keeper);
 
         intentSource.settle(
             uint64(block.chainid),
@@ -165,15 +165,15 @@ contract RewardLegsTest is BaseTest {
         );
 
         assertEq(tokenA.balanceOf(claimant), claimantBefore + 800); // rate*provided + flat
-        assertEq(tokenA.balanceOf(creator), creatorBefore + 100); // residual swept to creator
-        assertEq(tokenA.balanceOf(vault), 0);
+        assertEq(tokenA.balanceOf(keeper), keeperBefore + 100); // residual swept to keeper
+        assertEq(tokenA.balanceOf(account), 0);
     }
 
-    function test_settle_capsRewardAtVaultBalance() public {
-        // owed = 800 but the vault holds only 300 -> pays 300, no residual.
+    function test_settle_capsRewardAtAccountBalance() public {
+        // owed = 800 but the account holds only 300 -> pays 300, no residual.
         Intent memory _intent = _rateIntent(500, 500, (3 * WAD) / 2, 50);
-        address vault = intentSource.intentVaultAddress(_intent);
-        tokenA.mint(vault, 300);
+        address account = intentSource.intentAccountAddress(_intent);
+        tokenA.mint(account, 300);
 
         bytes32 intentHash = _fulfillProviding(_intent, 500);
         uint256[] memory fulfilled = new uint256[](1);
@@ -196,7 +196,7 @@ contract RewardLegsTest is BaseTest {
         );
 
         assertEq(tokenA.balanceOf(claimant), claimantBefore + 300); // capped at escrow
-        assertEq(tokenA.balanceOf(vault), 0);
+        assertEq(tokenA.balanceOf(account), 0);
     }
 
     // ── input floor: records provided input, scales reward on it, sweeps leftover ──
@@ -221,20 +221,20 @@ contract RewardLegsTest is BaseTest {
         );
     }
 
-    function test_fulfill_providingMoreThanFloor_leftoverToVault() public {
+    function test_fulfill_providingMoreThanFloor_leftoverToAccount() public {
         // minTokens floor 500; the calls consume 500; solver provides 600 -> 100 unconsumed stays with
-        // the intent (moved to the intent's Vault, NOT to any protocol-level recipient).
+        // the intent (moved to the intent's Account, NOT to any protocol-level recipient).
         Intent memory _intent = _rateIntent(500, 500, WAD, 0);
-        address vault = intentSource.intentVaultAddress(_intent);
+        address account = intentSource.intentAccountAddress(_intent);
         uint256 recipientBefore = tokenA.balanceOf(recipient);
-        uint256 vaultBefore = tokenA.balanceOf(vault);
+        uint256 accountBefore = tokenA.balanceOf(account);
         bytes32 intentHash = _fulfillProviding(_intent, 600);
 
         // Delivery is the calls' job: the recipient (inside the call's calldata) gets exactly the 500 the
         // calls transfer. The 100 unconsumed input is NOT delivered to the recipient.
         assertEq(tokenA.balanceOf(recipient), recipientBefore + 500);
-        // The unconsumed 100 lands in the intent's Vault, where the creator can retrieve it later.
-        assertEq(tokenA.balanceOf(vault), vaultBefore + 100);
+        // The unconsumed 100 lands in the intent's Account, where the keeper can retrieve it later.
+        assertEq(tokenA.balanceOf(account), accountBefore + 100);
 
         // fulfilled records the FULL provided input; the reward scales on 600, not on the 500 floor.
         uint256[] memory fulfilled = new uint256[](1);
@@ -303,8 +303,8 @@ contract RewardLegsTest is BaseTest {
 
     function test_settle_revertsOnPreimageMismatch() public {
         Intent memory _intent = _rateIntent(500, 500, WAD, 0);
-        address vault = intentSource.intentVaultAddress(_intent);
-        tokenA.mint(vault, 500);
+        address account = intentSource.intentAccountAddress(_intent);
+        tokenA.mint(account, 500);
         bytes32 intentHash = _fulfillProviding(_intent, 500);
 
         uint256[] memory proven = new uint256[](1);
@@ -342,7 +342,7 @@ contract RewardLegsTest is BaseTest {
         legs[1] = RewardToken({token: address(tokenA), rate: 0, flat: 200});
         Reward memory rw = Reward({
             deadline: uint64(expiry),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: legs
         });
@@ -358,7 +358,7 @@ contract RewardLegsTest is BaseTest {
                 address(tokenA)
             )
         );
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publish(_intent);
     }
 
@@ -375,7 +375,7 @@ contract RewardLegsTest is BaseTest {
         }
         Reward memory rw = Reward({
             deadline: uint64(expiry),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: legs
         });
@@ -392,7 +392,7 @@ contract RewardLegsTest is BaseTest {
                 MAX_REWARD_TOKENS
             )
         );
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publish(_intent);
     }
 
@@ -408,7 +408,7 @@ contract RewardLegsTest is BaseTest {
             salt: bytes32(uint256(9)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            creator: creator,
+            keeper: keeper,
             calls: new Call[](0),
             minTokens: mi
         });
@@ -417,7 +417,7 @@ contract RewardLegsTest is BaseTest {
         legs[1] = RewardToken({token: lo, rate: 0, flat: 0});
         Reward memory rw = Reward({
             deadline: uint64(block.timestamp + 2000),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: legs
         });
@@ -451,13 +451,13 @@ contract RewardLegsTest is BaseTest {
             salt: bytes32(uint256(11)),
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
-            creator: creator,
+            keeper: keeper,
             calls: new Call[](0),
             minTokens: mi
         });
         Reward memory rw = Reward({
             deadline: uint64(block.timestamp + 2000),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             tokens: new RewardToken[](0)
         });

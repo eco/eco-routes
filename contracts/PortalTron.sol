@@ -5,25 +5,25 @@ pragma solidity ^0.8.26;
 import {Semver} from "./libs/Semver.sol";
 import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
-import {VaultTron} from "./vault/VaultTron.sol";
+import {AccountTron} from "./tron/AccountTron.sol";
 
 /**
  * @title PortalTron
  * @notice Portal variant for Tron chains. Combines IntentSource and Inbox functionality.
- * @dev Uses VaultTron clones (via the 0x41 CREATE2 prefix) to support non-standard ERC20
+ * @dev Uses AccountTron clones (via the 0x41 CREATE2 prefix) to support non-standard ERC20
  *      tokens such as Tron USDT.
  */
 contract PortalTron is IntentSource, Inbox, Semver {
-    constructor() IntentSource(address(new VaultTron()), bytes1(0x41)) {}
+    constructor() IntentSource(address(new AccountTron()), bytes1(0x41)) {}
 
     /**
-     * @notice Deterministic address of the intent's per-intent Vault (composition-root wiring).
-     * @dev Lets the destination-side {Inbox} address the same CREATE2 vault the source-side
+     * @notice Deterministic address of the intent's per-intent Account (composition-root wiring).
+     * @dev Lets the destination-side {Inbox} address the same CREATE2 account the source-side
      *      {IntentSource} escrow uses, so unconsumed solver input lands with the intent.
      */
-    function _predictVault(
+    function _predictAccount(
         bytes32 intentHash
     ) internal view override returns (address) {
-        return _getVault(intentHash);
+        return _getAccount(intentHash);
     }
 }

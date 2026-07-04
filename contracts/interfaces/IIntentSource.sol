@@ -17,7 +17,7 @@ interface IIntentSource {
         Initial, /// @dev Intent created, may be partially funded but not fully funded
         Funded, /// @dev Intent has been fully funded with all required rewards
         Withdrawn, /// @dev Rewards have been withdrawn by claimant
-        Refunded /// @dev Rewards have been refunded to creator
+        Refunded /// @dev Rewards have been refunded to keeper
     }
 
     /**
@@ -62,8 +62,8 @@ interface IIntentSource {
     /// @notice Thrown when claimant address is address zero or not a valid EVM address
     error InvalidClaimant();
 
-    /// @notice Thrown when caller is not the reward creator
-    error NotCreatorCaller(address caller);
+    /// @notice Thrown when caller is not the reward keeper
+    error NotKeeperCaller(address caller);
 
     /**
      * @notice The supplied (claimant, fulfilled[]) preimage does not match the proven fulfillment hash
@@ -76,7 +76,7 @@ interface IIntentSource {
      * @param intentHash Unique identifier of the intent
      * @param destination Destination chain ID
      * @param route Encoded route data for the destination chain
-     * @param creator Intent originator address
+     * @param keeper Intent originator address
      * @param prover Prover contract address
      * @param rewardDeadline Timestamp for reward claim eligibility
      * @param rewardTokens Reward legs (rate+flat); native folds in as a leg with token==address(0)
@@ -85,7 +85,7 @@ interface IIntentSource {
         bytes32 indexed intentHash,
         uint64 destination,
         bytes route,
-        address indexed creator,
+        address indexed keeper,
         address indexed prover,
         uint64 rewardDeadline,
         RewardToken[] rewardTokens
@@ -114,11 +114,11 @@ interface IIntentSource {
     event IntentRefunded(bytes32 intentHash, address indexed refundee);
 
     /**
-     * @notice Signals successful token recovery from an intent vault
-     * @dev Emitted when tokens that were accidentally sent to a vault are recovered
+     * @notice Signals successful token recovery from an intent account
+     * @dev Emitted when tokens that were accidentally sent to a account are recovered
      *      Only tokens not part of the intent's reward structure can be recovered
-     * @param intentHash The hash of the intent whose vault had tokens recovered
-     * @param refundee The address receiving the recovered tokens (typically the intent creator)
+     * @param intentHash The hash of the intent whose account had tokens recovered
+     * @param refundee The address receiving the recovered tokens (typically the intent keeper)
      * @param token The address of the token contract that was recovered
      */
     event IntentTokenRecovered(
@@ -169,22 +169,22 @@ interface IIntentSource {
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
     /**
-     * @notice Computes the deterministic vault address for an intent
-     * @param intent The intent to calculate the vault address for
-     * @return Predicted vault address
+     * @notice Computes the deterministic account address for an intent
+     * @param intent The intent to calculate the account address for
+     * @return Predicted account address
      */
-    function intentVaultAddress(
+    function intentAccountAddress(
         Intent calldata intent
     ) external view returns (address);
 
     /**
-     * @notice Computes the deterministic vault address for an intent
+     * @notice Computes the deterministic account address for an intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
-     * @return Predicted vault address
+     * @return Predicted account address
      */
-    function intentVaultAddress(
+    function intentAccountAddress(
         uint64 destination,
         bytes memory route,
         Reward calldata reward
@@ -217,11 +217,11 @@ interface IIntentSource {
      * @dev Intent must be proven on source chain before expiration for valid reward claims
      * @param intent The complete intent specification
      * @return intentHash Unique identifier of the created intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publish(
         Intent calldata intent
-    ) external returns (bytes32 intentHash, address vault);
+    ) external returns (bytes32 intentHash, address account);
 
     /**
      * @notice Creates a new cross-chain intent with associated rewards
@@ -230,25 +230,25 @@ interface IIntentSource {
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
      * @return intentHash Unique identifier of the created intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publish(
         uint64 destination,
         bytes memory route,
         Reward memory reward
-    ) external returns (bytes32 intentHash, address vault);
+    ) external returns (bytes32 intentHash, address account);
 
     /**
      * @notice Creates and funds an intent in a single transaction
      * @param intent The complete intent specification
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Unique identifier of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash, address vault);
+    ) external payable returns (bytes32 intentHash, address account);
 
     /**
      * @notice Creates and funds an intent in a single transaction
@@ -257,14 +257,14 @@ interface IIntentSource {
      * @param reward The reward structure containing distribution details
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Unique identifier of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFund(
         uint64 destination,
         bytes memory route,
         Reward memory reward,
         bool allowPartial
-    ) external payable returns (bytes32 intentHash, address vault);
+    ) external payable returns (bytes32 intentHash, address account);
 
     /**
      * @notice Funds an existing intent
@@ -307,14 +307,14 @@ interface IIntentSource {
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
      * @return intentHash The hash of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFundFor(
         Intent calldata intent,
         bool allowPartial,
         address funder,
         address permitContract
-    ) external payable returns (bytes32 intentHash, address vault);
+    ) external payable returns (bytes32 intentHash, address account);
 
     /**
      * @notice Creates and funds an intent on behalf of another address
@@ -325,7 +325,7 @@ interface IIntentSource {
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
      * @return intentHash The hash of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFundFor(
         uint64 destination,
@@ -334,7 +334,7 @@ interface IIntentSource {
         bool allowPartial,
         address funder,
         address permitContract
-    ) external payable returns (bytes32 intentHash, address vault);
+    ) external payable returns (bytes32 intentHash, address account);
 
     /**
      * @notice Settles rewards for a successfully fulfilled and proven intent
@@ -355,7 +355,7 @@ interface IIntentSource {
     ) external;
 
     /**
-     * @notice Returns rewards to the intent creator
+     * @notice Returns rewards to the intent keeper
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
@@ -367,7 +367,7 @@ interface IIntentSource {
     ) external;
 
     /**
-     * @notice Returns rewards to a specified address (only callable by reward creator)
+     * @notice Returns rewards to a specified address (only callable by reward keeper)
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
@@ -381,7 +381,7 @@ interface IIntentSource {
     ) external;
 
     /**
-     * @notice Recovers mistakenly transferred tokens from the intent vault
+     * @notice Recovers mistakenly transferred tokens from the intent account
      * @dev Token must not be part of the intent's reward structure
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component

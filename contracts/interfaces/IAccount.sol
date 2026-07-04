@@ -6,11 +6,11 @@ import {Reward} from "../types/Intent.sol";
 import {IPermit} from "./IPermit.sol";
 
 /**
- * @title IVault
- * @notice Interface for Vault contract that manages reward escrow functionality
+ * @title IAccount
+ * @notice Interface for Account contract that manages reward escrow functionality
  * @dev Handles funding, withdrawal, and refund operations for cross-chain rewards
  */
-interface IVault {
+interface IAccount {
     /// @notice Thrown when caller is not the portal contract
     error NotPortalCaller(address caller);
 
@@ -21,7 +21,7 @@ interface IVault {
     error NativeTransferFailed(address to, uint256 amount);
 
     /**
-     * @notice Funds the vault with reward legs
+     * @notice Funds the account with reward legs
      * @param reward The reward structure containing the legs
      * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
      * @param funder Address providing the funding
@@ -36,7 +36,7 @@ interface IVault {
     ) external payable returns (bool fullyFunded);
 
     /**
-     * @notice Withdraws the owed reward to the claimant and sweeps the residual to the creator
+     * @notice Withdraws the owed reward to the claimant and sweeps the residual to the keeper
      * @dev Consults `reward.prover.previewRelease(reward, fulfilled)` for the per-leg amounts
      * @param reward The reward structure to withdraw
      * @param claimant Address that will receive the owed reward
@@ -56,7 +56,7 @@ interface IVault {
     function refund(Reward calldata reward, address refundee) external;
 
     /**
-     * @notice Recovers tokens that are not part of the reward to the creator
+     * @notice Recovers tokens that are not part of the reward to the keeper
      * @param refundee Address to receive the recovered tokens
      * @param token Address of the token to recover (must not be a reward token)
      */

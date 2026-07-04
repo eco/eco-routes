@@ -361,7 +361,7 @@ describe('MetaPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -372,7 +372,7 @@ describe('MetaPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -473,7 +473,7 @@ describe('MetaPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -484,7 +484,7 @@ describe('MetaPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -572,7 +572,7 @@ describe('MetaPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -583,7 +583,7 @@ describe('MetaPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -838,7 +838,7 @@ describe('MetaPolicy Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: routeTokens,
           calls: [
             {
@@ -849,7 +849,7 @@ describe('MetaPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
@@ -958,7 +958,7 @@ describe('MetaPolicy Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: routeTokens,
           calls: [
             {
@@ -969,7 +969,7 @@ describe('MetaPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
@@ -1113,7 +1113,7 @@ describe('MetaPolicy Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         minTokens: routeTokens,
         calls: [
           {
@@ -1124,7 +1124,7 @@ describe('MetaPolicy Test', (): void => {
         ],
       }
       const reward = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
@@ -1172,7 +1172,7 @@ describe('MetaPolicy Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         minTokens: routeTokens,
         calls: [
           {
@@ -1183,7 +1183,7 @@ describe('MetaPolicy Test', (): void => {
         ],
       }
       const reward1 = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [

@@ -228,7 +228,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == intentPublishedSig) {
                 // Indexed fields
-                address creator = address(uint160(uint256(logs[i].topics[2])));
+                address keeper = address(uint160(uint256(logs[i].topics[2])));
                 address proverAddr = address(uint160(uint256(logs[i].topics[3])));
 
                 // Non-indexed fields
@@ -244,7 +244,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
                 // Verify Intent 2 targets destination chain
                 assertEq(destination, DESTINATION_CHAIN_ID, "Intent 2 destination should be destination chain");
-                assertEq(creator, DEPOSITOR, "Intent 2 creator should be depositor");
+                assertEq(keeper, DEPOSITOR, "Intent 2 keeper should be depositor");
                 assertEq(proverAddr, DESTINATION_PROVER_ADDRESS, "Intent 2 prover should be destination prover");
 
                 // Compute expected fee math: flatFee on intent1 route, CCTP maxFee on routeAmount.
@@ -313,7 +313,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     // This is the second IntentPublished event (Intent 1)
 
                     // Indexed fields
-                    address creator = address(uint160(uint256(logs[i].topics[2])));
+                    address keeper = address(uint160(uint256(logs[i].topics[2])));
                     address proverAddr = address(uint160(uint256(logs[i].topics[3])));
 
                     // Non-indexed fields
@@ -329,7 +329,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
                     // Verify Intent 1 targets source chain
                     assertEq(destination, uint64(block.chainid), "Intent 1 destination should be source chain");
-                    assertEq(creator, DEPOSITOR, "Intent 1 creator should be depositor");
+                    assertEq(keeper, DEPOSITOR, "Intent 1 keeper should be depositor");
                     assertEq(proverAddr, PROVER_ADDRESS, "Intent 1 prover should be source chain prover");
 
                     // Compute expected route amount after flat fee
@@ -426,8 +426,8 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     assertEq(maxFee, expectedMaxFee, "CCTP maxFee should be 1.3 bps of routeAmount");
                     assertEq(minFinalityThreshold, 0, "CCTP minFinalityThreshold should be 0 (fast finality)");
 
-                    // mintRecipient should be vault2 encoded as bytes32
-                    // We can verify it is non-zero (vault addresses are always non-zero)
+                    // mintRecipient should be account2 encoded as bytes32
+                    // We can verify it is non-zero (account addresses are always non-zero)
                     assertTrue(mintRecipient != bytes32(0), "mintRecipient should not be zero");
 
                     break;
@@ -437,7 +437,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         }
     }
 
-    function test_createIntent_mintRecipient_matchesIntent2Vault() public {
+    function test_createIntent_mintRecipient_matchesIntent2Account() public {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
@@ -492,11 +492,11 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         }
 
         // Verify that the address encoded in mintRecipient is non-zero and represents an address
-        address vault2Address = address(uint160(uint256(mintRecipient)));
-        assertTrue(vault2Address != address(0), "Intent 2 vault address should not be zero");
+        address account2Address = address(uint160(uint256(mintRecipient)));
+        assertTrue(account2Address != address(0), "Intent 2 account address should not be zero");
 
-        // The vault2 should be consistent with what portal would predict for intent2Hash
-        assertEq(mintRecipient, bytes32(uint256(uint160(vault2Address))), "mintRecipient should be properly encoded vault2 address");
+        // The account2 should be consistent with what portal would predict for intent2Hash
+        assertEq(mintRecipient, bytes32(uint256(uint160(account2Address))), "mintRecipient should be properly encoded account2 address");
     }
 
     function test_createIntent_bothIntentsUseSameSalt() public {
@@ -1048,7 +1048,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
         depositAddress.createIntentWithApproval(DEPOSITOR);
 
-        // Funder drained, deposit address also drained (tokens forwarded to portal vault)
+        // Funder drained, deposit address also drained (tokens forwarded to portal account)
         assertEq(token.balanceOf(DEPOSITOR), 0);
         assertEq(token.balanceOf(address(depositAddress)), 0);
     }

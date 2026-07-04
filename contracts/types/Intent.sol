@@ -44,8 +44,8 @@ struct TokenAmount {
 /**
  * @notice A dynamic reward leg (v3 rate+flat model).
  * @dev PAIRED legs (index `j < minTokens.length`): the reward owed is `fulfilled[j] * rate / WAD + flat`,
- *      capped at the vault balance of `token`. `fulfilled[j]` is the amount the solver actually PROVIDED
- *      as input for leg `j` (`>= minTokens[j].amount`). The creator bakes price/fee into `rate` (fixed-point,
+ *      capped at the account balance of `token`. `fulfilled[j]` is the amount the solver actually PROVIDED
+ *      as input for leg `j` (`>= minTokens[j].amount`). The keeper bakes price/fee into `rate` (fixed-point,
  *      WAD); a same-asset, no-fee leg uses `rate == WAD`. The reward `token` MAY differ from the paired
  *      input token — `rate` encodes the conversion.
  *
@@ -53,7 +53,7 @@ struct TokenAmount {
  *      reward is exactly `flat` (the `rate` term is ignored; a well-formed extra leg sets `rate == 0`).
  *      A common extra leg is `{address(0), 0, gasAmount}` — a flat native gas reward. Native folds in as
  *      a `RewardToken` leg with `token == address(0)`; there is no separate native reward field.
- * @param token ERC20 token address escrowed in the Vault, or `address(0)` for native.
+ * @param token ERC20 token address escrowed in the Account, or `address(0)` for native.
  * @param rate Fixed-point (WAD) multiplier applied to the solver-provided input amount (paired legs
  *        only; ignored / expected 0 for extra flat-only legs).
  * @param flat Flat reward added on top of the rate-scaled amount (paired legs) or the whole reward
@@ -75,15 +75,15 @@ struct RewardToken {
  *      The core is UNOPINIONATED about where funds go: there is no `recipient` and no protocol-level
  *      output floor or auto-sweep. DELIVERY IS THE JOB OF THE COMMITTED `calls` (the payload) — any
  *      beneficiary address lives INSIDE a call's calldata, not in the Route. Any solver input the calls
- *      do not consume is not stranded: it stays WITH THE INTENT (moved to the intent's Vault), where
- *      `route.creator` can retrieve it later. See {Inbox} for the destination-side handling.
- * @param salt Unique identifier provided by the intent creator, used to prevent duplicates
+ *      do not consume is not stranded: it stays WITH THE INTENT (moved to the intent's Account), where
+ *      `route.keeper` can retrieve it later. See {Inbox} for the destination-side handling.
+ * @param salt Unique identifier provided by the intent keeper, used to prevent duplicates
  * @param deadline Timestamp by which the route must be executed
  * @param portal Address of the portal contract on the destination chain that receives messages
- * @param creator Owner of the DESTINATION-side vault: the authority that may retrieve leftover / execute
- *        the vault as owner (executeAsOwner arrives in a later stage). It lives in the Route because the
- *        destination only sees the route plus the opaque `rewardHash` and cannot read `Reward.creator`;
- *        this is the same logical entity as `Reward.creator` (the SOURCE escrow owner) but MAY be a
+ * @param keeper Owner of the DESTINATION-side account: the authority that may retrieve leftover / execute
+ *        the account as owner (executeAsOwner arrives in a later stage). It lives in the Route because the
+ *        destination only sees the route plus the opaque `rewardHash` and cannot read `Reward.keeper`;
+ *        this is the same logical entity as `Reward.keeper` (the SOURCE escrow owner) but MAY be a
  *        DIFFERENT address across a cross-VM lane (e.g. a Solana source, an EVM destination).
  * @param calls Array of contract calls to execute on the destination chain in sequence
  * @param minTokens Minimum inputs the solver must provide into the execution (per token). Native folds in
@@ -95,7 +95,7 @@ struct Route {
     bytes32 salt;
     uint64 deadline;
     address portal;
-    address creator;
+    address keeper;
     Call[] calls;
     TokenAmount[] minTokens;
 }
@@ -106,13 +106,13 @@ struct Route {
  *      `tokens.length >= minTokens.length`. Legs split into PAIRED (rate+flat on `fulfilled[j]`) and EXTRA
  *      (flat-only). Native is a `RewardToken` leg with `token == address(0)` (no separate native field).
  * @param deadline Timestamp after which the intent can no longer be executed / is refundable
- * @param creator Address that created the intent and receives remainders / refunds
+ * @param keeper Address that created the intent and receives remainders / refunds
  * @param prover Address of the prover (settlement policy) that must approve execution
- * @param tokens Reward legs escrowed in the Vault: paired with `Route.minTokens` then optional flat-only extras
+ * @param tokens Reward legs escrowed in the Account: paired with `Route.minTokens` then optional flat-only extras
  */
 struct Reward {
     uint64 deadline;
-    address creator;
+    address keeper;
     address prover;
     RewardToken[] tokens;
 }
@@ -163,7 +163,7 @@ library IntentLib {
 
     /**
      * @notice A reward token appears more than once across all reward legs (paired + extra).
-     * @dev Uniqueness is required so the Vault escrows/settles each token exactly once per leg.
+     * @dev Uniqueness is required so the Account escrows/settles each token exactly once per leg.
      * @param token The reward token that appears in more than one leg.
      */
     error RewardTokensNotUnique(address token);
@@ -269,7 +269,7 @@ library IntentLib {
      * @dev The source escrows each reward token once per leg; a duplicate would double-count. Native
      *      (`address(0)`) folds in as a leg, so two native legs collide. The paired-vs-`minTokens` ORDER is
      *      not checkable here (the source treats the route as opaque bytes for cross-VM compatibility);
-     *      it is a creator-side canonical form, while `minTokens` dedup is enforced at the destination
+     *      it is a keeper-side canonical form, while `minTokens` dedup is enforced at the destination
      *      fulfill via {requireStrictlyAscending}.
      * @param rewardTokens The reward legs to validate.
      */

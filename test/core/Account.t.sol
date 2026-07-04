@@ -4,9 +4,9 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import {Vault} from "../../contracts/vault/Vault.sol";
-import {VaultTron} from "../../contracts/vault/VaultTron.sol";
-import {IVault} from "../../contracts/interfaces/IVault.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
+import {AccountTron} from "../../contracts/tron/AccountTron.sol";
+import {IAccount} from "../../contracts/interfaces/IAccount.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {IPermit} from "../../contracts/interfaces/IPermit.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
@@ -14,7 +14,7 @@ import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
 import {TronUSDTMock} from "../../contracts/test/TronUSDTMock.sol";
 import {Reward, RewardToken} from "../../contracts/types/Intent.sol";
-import {Clones} from "../../contracts/vault/Clones.sol";
+import {Clones} from "../../contracts/account/Clones.sol";
 
 contract MockPermit is IPermit {
     mapping(address => mapping(address => mapping(address => uint160)))
@@ -71,32 +71,32 @@ contract MockPermit is IPermit {
     }
 }
 
-contract VaultTest is Test {
+contract AccountTest is Test {
     using Clones for address;
 
-    IVault internal vault;
+    IAccount internal account;
     TestERC20 internal token;
     MockPermit internal mockPermit;
     TestPolicy internal prover;
 
     address internal portal;
-    address internal creator;
+    address internal keeper;
     address internal claimant;
     address internal unauthorized;
 
     function setUp() public {
         portal = makeAddr("portal");
-        creator = makeAddr("creator");
+        keeper = makeAddr("keeper");
         claimant = makeAddr("claimant");
         unauthorized = makeAddr("unauthorized");
 
         vm.prank(portal);
-        vault = IVault(address(new Vault()).clone(bytes32(0)));
+        account = IAccount(address(new EcoAccount()).clone(bytes32(0)));
 
         token = new TestERC20("Test Token", "TEST");
         mockPermit = new MockPermit();
 
-        // The Vault now consults `reward.prover.previewRelease(...)` during withdraw, so
+        // The Account now consults `reward.prover.previewRelease(...)` during withdraw, so
         // every reward literal points at a real prover deployed here.
         prover = new TestPolicy(portal);
     }
@@ -120,7 +120,7 @@ contract VaultTest is Test {
     function test_constructor_setsPortalCorrectly() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -128,33 +128,33 @@ contract VaultTest is Test {
 
         vm.prank(portal);
         assertTrue(
-            vault.fundFor(reward, _targets(reward), creator, IPermit(address(0)))
+            account.fundFor(reward, _targets(reward), keeper, IPermit(address(0)))
         );
 
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVault.NotPortalCaller.selector,
+                IAccount.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.fundFor(reward, _targets(reward), creator, IPermit(address(0)));
+        account.fundFor(reward, _targets(reward), keeper, IPermit(address(0)));
     }
 
     function test_fundFor_success_emptyReward() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
@@ -167,35 +167,35 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 1000);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 1000);
 
         vm.deal(portal, 2 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 1 ether}(
+        bool result = account.fundFor{value: 1 ether}(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         assertTrue(result);
-        assertEq(address(vault).balance, 1 ether);
-        assertEq(token.balanceOf(address(vault)), 1000);
+        assertEq(address(account).balance, 1 ether);
+        assertEq(token.balanceOf(address(account)), 1000);
     }
 
     function test_fundFor_partialFunding_insufficientNative() public {
         RewardToken[] memory tokens = new RewardToken[](1);
         tokens[0] = RewardToken({token: address(0), rate: 0, flat: 2 ether});
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -203,15 +203,15 @@ contract VaultTest is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 1 ether}(
+        bool result = account.fundFor{value: 1 ether}(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         assertFalse(result);
-        assertEq(address(vault).balance, 1 ether);
+        assertEq(address(account).balance, 1 ether);
     }
 
     function test_fundFor_partialFunding_insufficientTokens() public {
@@ -219,26 +219,26 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 2000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 1000);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         assertFalse(result);
-        assertEq(token.balanceOf(address(vault)), 1000);
+        assertEq(token.balanceOf(address(account)), 1000);
     }
 
     function test_fundFor_success_multipleTokens() public {
@@ -249,37 +249,37 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(token2), rate: 0, flat: 500});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 1000);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 1000);
 
-        TestERC20(address(token2)).mint(creator, 500);
-        vm.prank(creator);
-        token2.approve(address(vault), 500);
+        TestERC20(address(token2)).mint(keeper, 500);
+        vm.prank(keeper);
+        token2.approve(address(account), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         assertTrue(result);
-        assertEq(token.balanceOf(address(vault)), 1000);
-        assertEq(token2.balanceOf(address(vault)), 500);
+        assertEq(token.balanceOf(address(account)), 1000);
+        assertEq(token2.balanceOf(address(account)), 500);
     }
 
     function test_fundFor_not_portal_caller() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -288,39 +288,39 @@ contract VaultTest is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVault.NotPortalCaller.selector,
+                IAccount.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.fundFor(reward, _targets(reward), creator, IPermit(address(0)));
+        account.fundFor(reward, _targets(reward), keeper, IPermit(address(0)));
     }
 
-    function test_fundFor_success_prefundedVault() public {
+    function test_fundFor_success_prefundedAccount() public {
         RewardToken[] memory tokens = new RewardToken[](2);
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        vm.deal(address(vault), 1 ether);
+        token.mint(address(account), 1000);
+        vm.deal(address(account), 1 ether);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         assertTrue(result);
-        assertEq(address(vault).balance, 1 ether);
-        assertEq(token.balanceOf(address(vault)), 1000);
+        assertEq(address(account).balance, 1 ether);
+        assertEq(token.balanceOf(address(account)), 1000);
     }
 
     function test_fundFor_success_partiallyPrefunded() public {
@@ -329,31 +329,31 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 500);
-        vm.deal(address(vault), 0.5 ether);
+        token.mint(address(account), 500);
+        vm.deal(address(account), 0.5 ether);
 
-        token.mint(creator, 500);
-        vm.prank(creator);
-        token.approve(address(vault), 500);
+        token.mint(keeper, 500);
+        vm.prank(keeper);
+        token.approve(address(account), 500);
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 0.5 ether}(
+        bool result = account.fundFor{value: 0.5 ether}(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         assertTrue(result);
-        assertEq(address(vault).balance, 1 ether);
-        assertEq(token.balanceOf(address(vault)), 1000);
+        assertEq(address(account).balance, 1 ether);
+        assertEq(token.balanceOf(address(account)), 1000);
     }
 
     function test_fundFor_success_withPermit() public {
@@ -361,29 +361,29 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
         token.approve(address(mockPermit), 1000);
 
-        mockPermit.setAllowance(creator, address(token), address(vault), 1000);
+        mockPermit.setAllowance(keeper, address(token), address(account), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(mockPermit))
         );
 
         assertTrue(result);
-        assertEq(token.balanceOf(address(vault)), 1000);
-        assertEq(token.balanceOf(creator), 0);
+        assertEq(token.balanceOf(address(account)), 1000);
+        assertEq(token.balanceOf(keeper), 0);
     }
 
     function test_fundFor_success_withPermit_partialFromPermit() public {
@@ -391,31 +391,31 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 500);
-        vm.prank(creator);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 500);
+        vm.prank(keeper);
         token.approve(address(mockPermit), 500);
 
-        mockPermit.setAllowance(creator, address(token), address(vault), 500);
+        mockPermit.setAllowance(keeper, address(token), address(account), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(mockPermit))
         );
 
         assertTrue(result);
-        assertEq(token.balanceOf(address(vault)), 1000);
-        assertEq(token.balanceOf(creator), 0);
+        assertEq(token.balanceOf(address(account)), 1000);
+        assertEq(token.balanceOf(keeper), 0);
     }
 
     function test_fundFor_success_withPermit_fallbackToRegularApproval()
@@ -425,27 +425,27 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 1000);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(mockPermit))
         );
 
         assertTrue(result);
-        assertEq(token.balanceOf(address(vault)), 1000);
-        assertEq(token.balanceOf(creator), 0);
+        assertEq(token.balanceOf(address(account)), 1000);
+        assertEq(token.balanceOf(keeper), 0);
     }
 
     function test_fundFor_partial_withPermit_insufficientPermitAllowance()
@@ -455,42 +455,42 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
         token.approve(address(mockPermit), 500);
 
-        mockPermit.setAllowance(creator, address(token), address(vault), 500);
+        mockPermit.setAllowance(keeper, address(token), address(account), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        bool result = account.fundFor(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(mockPermit))
         );
 
         assertFalse(result);
-        assertEq(token.balanceOf(address(vault)), 500);
-        assertEq(token.balanceOf(creator), 500);
+        assertEq(token.balanceOf(address(account)), 500);
+        assertEq(token.balanceOf(keeper), 500);
     }
 
     function test_withdraw_success_emptyReward() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
     }
 
     function test_withdraw_success_nativeAndTokens() public {
@@ -499,22 +499,22 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        vm.deal(address(vault), 1 ether);
+        token.mint(address(account), 1000);
+        vm.deal(address(account), 1 ether);
 
         uint256 claimantInitialBalance = claimant.balance;
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
 
-        assertEq(address(vault).balance, 0);
-        assertEq(token.balanceOf(address(vault)), 0);
+        assertEq(address(account).balance, 0);
+        assertEq(token.balanceOf(address(account)), 0);
         assertEq(claimant.balance, claimantInitialBalance + 1 ether);
         assertEq(token.balanceOf(claimant), 1000);
     }
@@ -527,20 +527,20 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(token2), rate: 0, flat: 500});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        TestERC20(address(token2)).mint(address(vault), 500);
+        token.mint(address(account), 1000);
+        TestERC20(address(token2)).mint(address(account), 500);
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
 
-        assertEq(token.balanceOf(address(vault)), 0);
-        assertEq(token2.balanceOf(address(vault)), 0);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(token2.balanceOf(address(account)), 0);
         assertEq(token.balanceOf(claimant), 1000);
         assertEq(token2.balanceOf(claimant), 500);
     }
@@ -550,18 +550,18 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 500);
+        token.mint(address(account), 500);
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
 
-        assertEq(token.balanceOf(address(vault)), 0);
+        assertEq(token.balanceOf(address(account)), 0);
         assertEq(token.balanceOf(claimant), 500);
     }
 
@@ -569,55 +569,55 @@ contract VaultTest is Test {
         RewardToken[] memory tokens = new RewardToken[](1);
         tokens[0] = RewardToken({token: address(0), rate: 0, flat: 2 ether});
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        vm.deal(address(vault), 1 ether);
+        vm.deal(address(account), 1 ether);
 
         uint256 claimantInitialBalance = claimant.balance;
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
 
-        assertEq(address(vault).balance, 0);
+        assertEq(address(account).balance, 0);
         assertEq(claimant.balance, claimantInitialBalance + 1 ether);
     }
 
-    function test_withdraw_success_fromFundedVault() public {
+    function test_withdraw_success_fromFundedAccount() public {
         RewardToken[] memory tokens = new RewardToken[](2);
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 1000);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 1000);
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        vault.fundFor{value: 1 ether}(
+        account.fundFor{value: 1 ether}(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
         uint256 claimantInitialBalance = claimant.balance;
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
 
-        assertEq(address(vault).balance, 0);
-        assertEq(token.balanceOf(address(vault)), 0);
+        assertEq(address(account).balance, 0);
+        assertEq(token.balanceOf(address(account)), 0);
         assertEq(claimant.balance, claimantInitialBalance + 1 ether);
         assertEq(token.balanceOf(claimant), 1000);
     }
@@ -625,7 +625,7 @@ contract VaultTest is Test {
     function test_withdraw_not_portal_caller() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -634,17 +634,17 @@ contract VaultTest is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVault.NotPortalCaller.selector,
+                IAccount.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
     }
 
     function test_refund_success_emptyReward_afterDeadline() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -653,7 +653,7 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
     }
 
     function test_refund_success_nativeAndTokens_afterDeadline() public {
@@ -662,26 +662,26 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        vm.deal(address(vault), 1 ether);
+        token.mint(address(account), 1000);
+        vm.deal(address(account), 1 ether);
 
-        uint256 creatorInitialBalance = creator.balance;
+        uint256 keeperInitialBalance = keeper.balance;
 
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
 
-        assertEq(address(vault).balance, 0);
-        assertEq(token.balanceOf(address(vault)), 0);
-        assertEq(creator.balance, creatorInitialBalance + 1 ether);
-        assertEq(token.balanceOf(creator), 1000);
+        assertEq(address(account).balance, 0);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(keeper.balance, keeperInitialBalance + 1 ether);
+        assertEq(token.balanceOf(keeper), 1000);
     }
 
     function test_refund_success_multipleTokens_afterDeadline() public {
@@ -692,24 +692,24 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(token2), rate: 0, flat: 500});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        TestERC20(address(token2)).mint(address(vault), 500);
+        token.mint(address(account), 1000);
+        TestERC20(address(token2)).mint(address(account), 500);
 
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
 
-        assertEq(token.balanceOf(address(vault)), 0);
-        assertEq(token2.balanceOf(address(vault)), 0);
-        assertEq(token.balanceOf(creator), 1000);
-        assertEq(token2.balanceOf(creator), 500);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(token2.balanceOf(address(account)), 0);
+        assertEq(token.balanceOf(keeper), 1000);
+        assertEq(token2.balanceOf(keeper), 500);
     }
 
     function test_refund_success_zeroTokenBalance_afterDeadline() public {
@@ -717,7 +717,7 @@ contract VaultTest is Test {
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -726,48 +726,48 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
 
-        assertEq(token.balanceOf(address(vault)), 0);
-        assertEq(token.balanceOf(creator), 0);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(token.balanceOf(keeper), 0);
     }
 
-    function test_refund_success_fromFundedVault_afterDeadline() public {
+    function test_refund_success_fromFundedAccount_afterDeadline() public {
         RewardToken[] memory tokens = new RewardToken[](2);
         tokens[0] = RewardToken({token: address(token), rate: 0, flat: 1000});
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(creator, 1000);
-        vm.prank(creator);
-        token.approve(address(vault), 1000);
+        token.mint(keeper, 1000);
+        vm.prank(keeper);
+        token.approve(address(account), 1000);
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        vault.fundFor{value: 1 ether}(
+        account.fundFor{value: 1 ether}(
             reward,
             _targets(reward),
-            creator,
+            keeper,
             IPermit(address(0))
         );
 
-        uint256 creatorInitialBalance = creator.balance;
+        uint256 keeperInitialBalance = keeper.balance;
 
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
 
-        assertEq(address(vault).balance, 0);
-        assertEq(token.balanceOf(address(vault)), 0);
-        assertEq(creator.balance, creatorInitialBalance + 1 ether);
-        assertEq(token.balanceOf(creator), 1000);
+        assertEq(address(account).balance, 0);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(keeper.balance, keeperInitialBalance + 1 ether);
+        assertEq(token.balanceOf(keeper), 1000);
     }
 
     function test_refund_success_fromWithdrawnStatus() public {
@@ -776,35 +776,35 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        vm.deal(address(vault), 1 ether);
+        token.mint(address(account), 1000);
+        vm.deal(address(account), 1 ether);
 
         vm.prank(portal);
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
 
-        // Capture AFTER the withdraw: the withdraw fully drained the vault (claimant accepts, so no
-        // residual sweep to creator), so refund moves nothing and the creator balance is unchanged.
-        uint256 creatorInitialBalance = creator.balance;
+        // Capture AFTER the withdraw: the withdraw fully drained the account (claimant accepts, so no
+        // residual sweep to keeper), so refund moves nothing and the keeper balance is unchanged.
+        uint256 keeperInitialBalance = keeper.balance;
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
 
-        assertEq(address(vault).balance, 0);
-        assertEq(token.balanceOf(address(vault)), 0);
-        assertEq(creator.balance, creatorInitialBalance);
-        assertEq(token.balanceOf(creator), 0);
+        assertEq(address(account).balance, 0);
+        assertEq(token.balanceOf(address(account)), 0);
+        assertEq(keeper.balance, keeperInitialBalance);
+        assertEq(token.balanceOf(keeper), 0);
     }
 
     function test_refund_not_portal_caller() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -815,17 +815,17 @@ contract VaultTest is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVault.NotPortalCaller.selector,
+                IAccount.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
     }
 
     function test_refund_refund_twice() public {
         RewardToken[] memory tokens = new RewardToken[](0);
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
@@ -834,25 +834,25 @@ contract VaultTest is Test {
         vm.warp(block.timestamp + 2000);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
 
         vm.prank(portal);
-        vault.refund(reward, creator);
+        account.refund(reward, keeper);
     }
 
     function test_recover_success_differentToken() public {
         TestERC20 differentToken = new TestERC20("Different Token", "DIFF");
-        differentToken.mint(address(vault), 500);
+        differentToken.mint(address(account), 500);
 
-        uint256 creatorInitialBalance = differentToken.balanceOf(creator);
+        uint256 keeperInitialBalance = differentToken.balanceOf(keeper);
 
         vm.prank(portal);
-        vault.recover(creator, address(differentToken));
+        account.recover(keeper, address(differentToken));
 
-        assertEq(differentToken.balanceOf(address(vault)), 0);
+        assertEq(differentToken.balanceOf(address(account)), 0);
         assertEq(
-            differentToken.balanceOf(creator),
-            creatorInitialBalance + 500
+            differentToken.balanceOf(keeper),
+            keeperInitialBalance + 500
         );
     }
 
@@ -862,11 +862,11 @@ contract VaultTest is Test {
         vm.prank(unauthorized);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVault.NotPortalCaller.selector,
+                IAccount.NotPortalCaller.selector,
                 unauthorized
             )
         );
-        vault.recover(creator, address(recoverToken));
+        account.recover(keeper, address(recoverToken));
     }
 
     function test_recover_zero_balance() public {
@@ -875,11 +875,11 @@ contract VaultTest is Test {
         vm.prank(portal);
         vm.expectRevert(
             abi.encodeWithSelector(
-                IVault.ZeroRecoverTokenBalance.selector,
+                IAccount.ZeroRecoverTokenBalance.selector,
                 address(recoverToken)
             )
         );
-        vault.recover(creator, address(recoverToken));
+        account.recover(keeper, address(recoverToken));
     }
 
     function test_withdraw_success_withRevertingClaimant() public {
@@ -891,28 +891,28 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator, // Normal address that accepts ETH
+            keeper: keeper, // Normal address that accepts ETH
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        vm.deal(address(vault), 1 ether);
+        token.mint(address(account), 1000);
+        vm.deal(address(account), 1 ether);
 
-        uint256 creatorBefore = creator.balance;
+        uint256 keeperBefore = keeper.balance;
 
         // Withdrawal succeeds: tokens transfer to the claimant, the claimant rejects the native pay,
-        // so that 1 ether becomes residual and is swept to the creator (funds conserved, not stuck).
+        // so that 1 ether becomes residual and is swept to the keeper (funds conserved, not stuck).
         vm.prank(portal);
-        vault.withdraw(reward, address(revertingClaimant), _noFulfilled());
+        account.withdraw(reward, address(revertingClaimant), _noFulfilled());
 
-        // Vault fully drained: the un-received native was swept to the creator.
-        assertEq(address(vault).balance, 0);
-        assertEq(token.balanceOf(address(vault)), 0);
+        // Account fully drained: the un-received native was swept to the keeper.
+        assertEq(address(account).balance, 0);
+        assertEq(token.balanceOf(address(account)), 0);
 
-        // Native swept to the creator (the claimant rejected it).
-        assertEq(creator.balance, creatorBefore + 1 ether);
+        // Native swept to the keeper (the claimant rejected it).
+        assertEq(keeper.balance, keeperBefore + 1 ether);
 
         // Claimant still received tokens but NOT the native ETH (its receive reverted).
         assertEq(address(revertingClaimant).balance, 0);
@@ -928,24 +928,24 @@ contract VaultTest is Test {
         tokens[1] = RewardToken({token: address(0), rate: 0, flat: 1 ether});
 
         Reward memory reward = Reward({
-            creator: creator, // Normal creator address
+            keeper: keeper, // Normal keeper address
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        token.mint(address(vault), 1000);
-        vm.deal(address(vault), 1 ether);
+        token.mint(address(account), 1000);
+        vm.deal(address(account), 1 ether);
 
         vm.warp(block.timestamp + 2000);
 
         // Refund should succeed - tokens transfer, ETH remains if refundee rejects
         vm.prank(portal);
-        vault.refund(reward, address(revertingRefundee));
+        account.refund(reward, address(revertingRefundee));
 
-        // Verify ETH remains in vault (refundee rejected it)
-        assertEq(address(vault).balance, 1 ether);
-        assertEq(token.balanceOf(address(vault)), 0);
+        // Verify ETH remains in account (refundee rejected it)
+        assertEq(address(account).balance, 1 ether);
+        assertEq(token.balanceOf(address(account)), 0);
 
         // Verify refundee received tokens but NOT native ETH (reverted)
         assertEq(address(revertingRefundee).balance, 0);
@@ -956,7 +956,7 @@ contract VaultTest is Test {
 
     /**
      * @notice Reproduces the exact on-chain failure seen when withdrawing USDT
-     *         rewards locked in a vault on Tron (Shasta testnet).
+     *         rewards locked in a account on Tron (Shasta testnet).
      *
      * Root cause: StandardTokenWithFees.transfer() (solc 0.4.18) is declared
      * `returns (bool)` but has no explicit `return` statement, so it always
@@ -971,7 +971,7 @@ contract VaultTest is Test {
      *   }
      *
      * OZ SafeERC20._callOptionalReturn decodes the return data as bool, sees
-     * `false`, and reverts with SafeERC20FailedOperation(token).  The vault
+     * `false`, and reverts with SafeERC20FailedOperation(token).  The account
      * call reverts, tokens stay locked forever.
      *
      * Note: transferFrom() in StandardTokenWithFees *does* have `return true`,
@@ -983,11 +983,11 @@ contract VaultTest is Test {
         // returning false (no explicit return statement in solc 0.4.18).
         TronUSDTMock tether = new TronUSDTMock(10_000_000);
 
-        // Fund the vault via transferFrom (which returns true) — mirrors
+        // Fund the account via transferFrom (which returns true) — mirrors
         // what publishAndFund does on-chain.
         tether.approve(address(this), 100_000);
-        tether.transferFrom(address(this), address(vault), 100_000);
-        assertEq(tether.balanceOf(address(vault)), 100_000);
+        tether.transferFrom(address(this), address(account), 100_000);
+        assertEq(tether.balanceOf(address(account)), 100_000);
 
         RewardToken[] memory tokens = new RewardToken[](1);
         tokens[0] = RewardToken({
@@ -997,36 +997,36 @@ contract VaultTest is Test {
         });
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        // Base Vault uses SafeERC20 and will revert when TronUSDTMock.transfer()
+        // Base Account uses SafeERC20 and will revert when TronUSDTMock.transfer()
         // returns false (the ERC20 leg transfer reverts before any residual sweep) —
-        // Tron USDT compatibility is handled by VaultTron instead.
+        // Tron USDT compatibility is handled by AccountTron instead.
         vm.prank(portal);
         vm.expectRevert();
-        vault.withdraw(reward, claimant, _noFulfilled());
+        account.withdraw(reward, claimant, _noFulfilled());
     }
 
-    function test_withdraw_succeeds_withTetherToken_usingVaultTron() public {
+    function test_withdraw_succeeds_withTetherToken_usingAccountTron() public {
         // Deploy the mock that reproduces StandardTokenWithFees.transfer()
         // returning false (no explicit return statement in solc 0.4.18).
         TronUSDTMock tether = new TronUSDTMock(10_000_000);
 
-        // Deploy a VaultTron clone (Tron-aware vault) for this test.
+        // Deploy a AccountTron clone (Tron-aware account) for this test.
         // vm.prank sets msg.sender for the constructor so portal is set correctly.
         vm.prank(portal);
-        IVault vaultTron = IVault(
-            address(new VaultTron()).clone(bytes32(uint256(1)))
+        IAccount accountTron = IAccount(
+            address(new AccountTron()).clone(bytes32(uint256(1)))
         );
 
         // Fund via transferFrom (returns true) — mirrors publishAndFund on-chain.
         tether.approve(address(this), 100_000);
-        tether.transferFrom(address(this), address(vaultTron), 100_000);
-        assertEq(tether.balanceOf(address(vaultTron)), 100_000);
+        tether.transferFrom(address(this), address(accountTron), 100_000);
+        assertEq(tether.balanceOf(address(accountTron)), 100_000);
 
         RewardToken[] memory tokens = new RewardToken[](1);
         tokens[0] = RewardToken({
@@ -1036,20 +1036,20 @@ contract VaultTest is Test {
         });
 
         Reward memory reward = Reward({
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
             tokens: tokens
         });
 
-        // VaultTron uses a raw call so it succeeds even though
+        // AccountTron uses a raw call so it succeeds even though
         // TronUSDTMock.transfer() returns false (reproducing the Tron USDT bug).
         // The balance check in _transferToken confirms tokens actually moved.
         vm.prank(portal);
-        vaultTron.withdraw(reward, claimant, _noFulfilled());
+        accountTron.withdraw(reward, claimant, _noFulfilled());
 
-        // Tokens left the vault and arrived at the claimant.
-        assertEq(tether.balanceOf(address(vaultTron)), 0);
+        // Tokens left the account and arrived at the claimant.
+        assertEq(tether.balanceOf(address(accountTron)), 0);
         assertEq(tether.balanceOf(claimant), 100_000);
     }
 }

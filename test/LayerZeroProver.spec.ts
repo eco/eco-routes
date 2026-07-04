@@ -351,7 +351,7 @@ describe('LayerZeroPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -362,7 +362,7 @@ describe('LayerZeroPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -465,7 +465,7 @@ describe('LayerZeroPolicy Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -476,7 +476,7 @@ describe('LayerZeroPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: deadline,
           tokens: [
@@ -691,7 +691,7 @@ describe('LayerZeroPolicy Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: routeTokens,
           calls: [
             {
@@ -702,7 +702,7 @@ describe('LayerZeroPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
@@ -835,7 +835,7 @@ describe('LayerZeroPolicy Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         minTokens: routeTokens,
         calls: [
           {
@@ -846,7 +846,7 @@ describe('LayerZeroPolicy Test', (): void => {
         ],
       }
       const reward = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await layerZeroProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
@@ -895,7 +895,7 @@ describe('LayerZeroPolicy Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         minTokens: routeTokens,
         calls: [
           {
@@ -906,7 +906,7 @@ describe('LayerZeroPolicy Test', (): void => {
         ],
       }
       const reward1 = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await layerZeroProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
@@ -1013,7 +1013,7 @@ describe('LayerZeroPolicy Test', (): void => {
           salt: ethers.randomBytes(32),
           deadline: (await time.latest()) + 3600,
           portal: await inbox.getAddress(),
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
@@ -1024,7 +1024,7 @@ describe('LayerZeroPolicy Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
           tokens: [{ token: await token.getAddress(), rate: 0n, flat: amount }],

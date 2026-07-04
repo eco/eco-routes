@@ -34,9 +34,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(deployer);
         usdtToken = new TestUSDT("USDT", "USDT");
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
         _mintAndApprove(solver, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _fundUserNative(keeper, 10 ether);
         _fundUserNative(solver, 10 ether);
 
         // Mint and approve bad tokens (use deployer as god for BadERC20)
@@ -93,13 +93,13 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -146,13 +146,13 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -204,13 +204,13 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -407,13 +407,13 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -528,13 +528,13 @@ contract InboxAdvancedTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    creator: creator,
+                    keeper: keeper,
                     calls: calls,
                     minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
-                    creator: creator,
+                    keeper: keeper,
                     prover: address(prover),
                     tokens: new RewardToken[](0)
                 })

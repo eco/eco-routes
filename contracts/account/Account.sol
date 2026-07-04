@@ -6,29 +6,29 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {IVault} from "../interfaces/IVault.sol";
+import {IAccount} from "../interfaces/IAccount.sol";
 import {IPermit} from "../interfaces/IPermit.sol";
 import {IPolicy} from "../interfaces/IPolicy.sol";
 import {Reward, RewardToken} from "../types/Intent.sol";
 
 /**
- * @title Vault
+ * @title Account
  * @notice Escrow contract for managing cross-chain reward payments (v3 rate+flat legs)
- * @dev Implements a lifecycle-based vault that can be funded, withdrawn from, or refunded. Rewards are
- *      per-token legs; native folds in as a leg with `token == address(0)`. On withdraw the Vault
+ * @dev Implements a lifecycle-based account that can be funded, withdrawn from, or refunded. Rewards are
+ *      per-token legs; native folds in as a leg with `token == address(0)`. On withdraw the Account
  *      consults `reward.prover` (as a VIEW — no reentrancy surface) to turn the core-verified
  *      `fulfilled[]` into per-leg amounts, pays each capped at its own balance to the claimant, and
- *      sweeps the residual to the creator.
+ *      sweeps the residual to the keeper.
  */
-contract Vault is IVault {
-    /// @notice Address of the portal contract that can call this vault
+contract Account is IAccount {
+    /// @notice Address of the portal contract that can call this account
     address private immutable portal;
 
     using SafeERC20 for IERC20;
     using Math for uint256;
 
     /**
-     * @notice Creates a new vault instance
+     * @notice Creates a new account instance
      * @dev Sets the deployer (IntentSource) as the authorized portal contract
      */
     constructor() {
@@ -47,7 +47,7 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Funds the vault with reward legs from the funder
+     * @notice Funds the account with reward legs from the funder
      * @dev `targets[j]` is the escrow target for reward leg `j` (computed by IntentSource from the paired
      *      `minTokens` and the leg's rate/flat). Native (`token == address(0)`) is funded from `msg.value`;
      *      ERC20 legs are pulled via permit then standing allowance.
@@ -71,7 +71,7 @@ contract Vault is IVault {
             uint256 target = targets[i];
 
             if (tokenAddr == address(0)) {
-                // Native leg: funded from the value already delivered to the vault.
+                // Native leg: funded from the value already delivered to the account.
                 fullyFunded = fullyFunded && address(this).balance >= target;
                 continue;
             }
@@ -85,10 +85,10 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Withdraws the owed reward to the claimant and sweeps the residual to the creator
+     * @notice Withdraws the owed reward to the claimant and sweeps the residual to the keeper
      * @dev Consults `reward.prover.previewRelease(reward, fulfilled)` (a VIEW) for the per-leg amounts,
      *      pays each capped at its own balance to `claimant`, and returns the leftover of each leg token
-     *      to `reward.creator`.
+     *      to `reward.keeper`.
      * @param reward The reward structure defining the legs and the prover
      * @param claimant Address that will receive the owed reward
      * @param fulfilled Core-verified per-leg delivered amounts (paired prefix)
@@ -110,12 +110,12 @@ contract Vault is IVault {
             if (tokenAddr == address(0)) {
                 uint256 pay = payNow[i].min(address(this).balance);
                 if (pay > 0) {
-                    // Try to send to claimant - if it fails, ETH remains for the creator sweep below
+                    // Try to send to claimant - if it fails, ETH remains for the keeper sweep below
                     claimant.call{value: pay}("");
                 }
                 uint256 residual = address(this).balance;
                 if (residual > 0) {
-                    reward.creator.call{value: residual}("");
+                    reward.keeper.call{value: residual}("");
                 }
                 continue;
             }
@@ -128,13 +128,13 @@ contract Vault is IVault {
             }
             uint256 tokenResidual = token.balanceOf(address(this));
             if (tokenResidual > 0) {
-                _transferToken(token, reward.creator, tokenResidual);
+                _transferToken(token, reward.keeper, tokenResidual);
             }
         }
     }
 
     /**
-     * @notice Refunds all vault contents to a specified address
+     * @notice Refunds all account contents to a specified address
      * @param reward The reward structure containing the leg tokens
      * @param refundee Address to receive the refunded rewards
      */
@@ -158,13 +158,13 @@ contract Vault is IVault {
 
         uint256 nativeAmount = address(this).balance;
         if (nativeAmount > 0) {
-            // Try to send to refundee - if it fails, ETH remains in vault for future refund attempts
+            // Try to send to refundee - if it fails, ETH remains in account for future refund attempts
             refundee.call{value: nativeAmount}("");
         }
     }
 
     /**
-     * @notice Recovers tokens that are not part of the reward to the creator
+     * @notice Recovers tokens that are not part of the reward to the keeper
      * @param refundee Address to receive the recovered tokens
      * @param token Address of the token to recover (must not be a reward token)
      */
@@ -180,7 +180,7 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Internal function to fund vault with tokens using standard ERC20 transfers
+     * @notice Internal function to fund account with tokens using standard ERC20 transfers
      * @param funder Address providing the tokens
      * @param token ERC20 token contract
      * @param remainingAmount Remaining amount needed to fully fund the leg
@@ -210,7 +210,7 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Internal function to fund vault using permit-based transfers
+     * @notice Internal function to fund account using permit-based transfers
      * @param funder Address providing the tokens
      * @param token ERC20 token contract
      * @param rewardAmount Required token amount for the leg
@@ -257,7 +257,7 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Transfers ERC20 tokens out of the vault.
+     * @notice Transfers ERC20 tokens out of the account.
      * @dev Virtual so subclasses can override for non-standard tokens (e.g. Tron USDT).
      * @param token ERC20 token to transfer
      * @param to Recipient address

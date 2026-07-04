@@ -96,7 +96,7 @@ interface IInbox {
     /**
      * @notice Fulfills an intent, recording the fulfillment into the named prover
      * @dev Validates intent hash, pulls the solver's provided input, executes calls, moves any unconsumed
-     *      input to the intent's Vault, and records the fulfillment into `prover`. The solver names the
+     *      input to the intent's Account, and records the fulfillment into `prover`. The solver names the
      *      prover (policy) that will settle the reward.
      * @param intentHash The hash of the intent to fulfill
      * @param route Route information for the intent

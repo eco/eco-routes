@@ -33,7 +33,7 @@ interface IExecutor {
 
     /**
      * @notice Moving unconsumed native input to its destination failed
-     * @param to The intended destination of the moved native (the intent's Vault)
+     * @param to The intended destination of the moved native (the intent's Account)
      * @param amount The native amount that could not be delivered
      */
     error NativeSweepFailed(address to, uint256 amount);
@@ -53,11 +53,11 @@ interface IExecutor {
     /**
      * @notice Moves any unconsumed input held by the executor to `to`
      * @dev Called by the Portal after {execute} to move the solver-provided input the calls did not
-     *      consume to the intent's Vault (leftover stays with the intent). For each leg the full
+     *      consume to the intent's Account (leftover stays with the intent). For each leg the full
      *      remaining balance of that token is transferred (native `address(0)` via a low-level call). A
      *      zero remaining balance is a no-op.
      * @param tokens The input legs to move (typically `route.minTokens`)
-     * @param to The address that receives the unconsumed input (the intent's Vault)
+     * @param to The address that receives the unconsumed input (the intent's Account)
      */
     function sweepTo(TokenAmount[] calldata tokens, address to) external;
 }

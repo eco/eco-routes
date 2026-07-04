@@ -76,9 +76,9 @@ contract OriginSettlerTest is BaseTest {
         vm.prank(deployer);
         originSettler = new TestOriginSettler();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
         _mintAndApprove(user, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _fundUserNative(keeper, 10 ether);
         _fundUserNative(user, 10 ether);
     }
 

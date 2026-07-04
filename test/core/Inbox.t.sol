@@ -16,9 +16,9 @@ contract InboxTest is BaseTest {
         solver = makeAddr("solver");
         recipient = makeAddr("recipient");
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
         _mintAndApprove(solver, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _fundUserNative(keeper, 10 ether);
         _fundUserNative(solver, 10 ether);
 
         // Approve portal for solver to transfer tokens
@@ -172,13 +172,13 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: nativeMinTokens
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -226,13 +226,13 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: nativeMinTokens
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -299,13 +299,13 @@ contract InboxTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                creator: creator,
+                keeper: keeper,
                 calls: calls,
                 minTokens: nativeMinTokens
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
                 tokens: new RewardToken[](0)
             })
@@ -582,13 +582,13 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    creator: creator,
+                    keeper: keeper,
                     calls: calls,
                     minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
-                    creator: creator,
+                    keeper: keeper,
                     prover: address(prover),
                     tokens: new RewardToken[](0)
                 })
@@ -649,13 +649,13 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    creator: creator,
+                    keeper: keeper,
                     calls: calls,
                     minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
-                    creator: creator,
+                    keeper: keeper,
                     prover: address(prover),
                     tokens: new RewardToken[](0)
                 })
@@ -727,13 +727,13 @@ contract InboxTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    creator: creator,
+                    keeper: keeper,
                     calls: calls,
                     minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
-                    creator: creator,
+                    keeper: keeper,
                     prover: address(prover),
                     tokens: new RewardToken[](0)
                 })

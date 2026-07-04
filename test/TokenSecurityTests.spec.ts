@@ -22,11 +22,11 @@ describe('Token Security Tests', () => {
   let prover: TestPolicy
   let inbox: Inbox
   let token: TestERC20
-  let creator: SignerWithAddress
+  let keeper: SignerWithAddress
   let claimant: SignerWithAddress
 
   async function deployContractsFixture() {
-    const [creator, claimant] = await ethers.getSigners()
+    const [keeper, claimant] = await ethers.getSigners()
 
     // Deploy Portal (which includes IntentSource and Inbox)
     const portalFactory = await ethers.getContractFactory('Portal')
@@ -49,21 +49,21 @@ describe('Token Security Tests', () => {
     const tokenFactory = await ethers.getContractFactory('TestERC20')
     const token = await tokenFactory.deploy('Test Token', 'TEST')
 
-    // Mint tokens to creator
-    await token.mint(creator.address, ethers.parseEther('100'))
+    // Mint tokens to keeper
+    await token.mint(keeper.address, ethers.parseEther('100'))
 
     return {
       intentSource,
       prover,
       inbox,
       token,
-      creator,
+      keeper,
       claimant,
     }
   }
 
   beforeEach(async () => {
-    ;({ intentSource, prover, inbox, token, creator, claimant } =
+    ;({ intentSource, prover, inbox, token, keeper, claimant } =
       await loadFixture(deployContractsFixture))
   })
 
@@ -90,13 +90,13 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       minTokens: routeTokens,
       calls: calls,
     }
 
     const reward = {
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
@@ -106,12 +106,12 @@ describe('Token Security Tests', () => {
 
     // Approve tokens for spending
     await token
-      .connect(creator)
+      .connect(keeper)
       .approve(await intentSource.getAddress(), ethers.parseEther('100'))
 
     // Create intent with tokens
     await intentSource
-      .connect(creator)
+      .connect(keeper)
       .publishAndFund(intent, false, { value: 0 })
 
     // Verify intent was created and funded
@@ -127,7 +127,7 @@ describe('Token Security Tests', () => {
     const tokenB = await (
       await ethers.getContractFactory('TestERC20')
     ).deploy('Token B', 'TKB')
-    await tokenB.mint(creator.address, ethers.parseEther('100'))
+    await tokenB.mint(keeper.address, ethers.parseEther('100'))
 
     // Setup intent data with multiple reward tokens
     const salt = ethers.randomBytes(32)
@@ -145,13 +145,13 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       minTokens: [],
       calls: [],
     }
 
     const reward = {
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
@@ -161,16 +161,16 @@ describe('Token Security Tests', () => {
 
     // Approve both tokens for spending
     await token
-      .connect(creator)
+      .connect(keeper)
       .approve(await intentSource.getAddress(), ethers.parseEther('100'))
 
     await tokenB
-      .connect(creator)
+      .connect(keeper)
       .approve(await intentSource.getAddress(), ethers.parseEther('100'))
 
     // Create intent with multiple tokens
     await intentSource
-      .connect(creator)
+      .connect(keeper)
       .publishAndFund(intent, false, { value: 0 })
 
     // Verify intent was created and funded
@@ -203,13 +203,13 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       minTokens: [],
       calls: [],
     }
 
     const reward = {
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
@@ -218,15 +218,15 @@ describe('Token Security Tests', () => {
     const intent = { destination: chainId + 1, route, reward }
 
     // Track starting balance
-    const startTokenBalance = await token.balanceOf(creator.address)
+    const startTokenBalance = await token.balanceOf(keeper.address)
 
     // Approve tokens
     await token
-      .connect(creator)
+      .connect(keeper)
       .approve(await intentSource.getAddress(), ethers.parseEther('100'))
 
     // Create intent with native ETH value
-    await intentSource.connect(creator).publishAndFund(
+    await intentSource.connect(keeper).publishAndFund(
       intent,
       false, // Don't allow partial funding
       { value: ethers.parseEther('0.1') }, // Send ETH with the transaction
@@ -239,7 +239,7 @@ describe('Token Security Tests', () => {
     expect(await intentSource.isIntentFunded(intent)).to.be.true
 
     // Verify token balance decreased
-    expect(await token.balanceOf(creator.address)).to.lt(startTokenBalance)
+    expect(await token.balanceOf(keeper.address)).to.lt(startTokenBalance)
   })
 
   it('should handle validation for token arrays correctly', async () => {
@@ -247,7 +247,7 @@ describe('Token Security Tests', () => {
     const tokenB = await (
       await ethers.getContractFactory('TestERC20')
     ).deploy('Token B', 'TKB')
-    await tokenB.mint(creator.address, ethers.parseEther('100'))
+    await tokenB.mint(keeper.address, ethers.parseEther('100'))
 
     // Prepare two identical token entries to test array validation
     const salt = ethers.randomBytes(32)
@@ -267,13 +267,13 @@ describe('Token Security Tests', () => {
       salt,
       deadline: expiry,
       portal: await inbox.getAddress(),
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       minTokens: [],
       calls: [],
     }
 
     const reward = {
-      creator: await creator.getAddress(),
+      keeper: await keeper.getAddress(),
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
@@ -283,7 +283,7 @@ describe('Token Security Tests', () => {
 
     // Approve tokens
     await token
-      .connect(creator)
+      .connect(keeper)
       .approve(await intentSource.getAddress(), ethers.parseEther('100'))
 
     // v3 rejects duplicate reward legs at publish time (RewardTokensNotUnique)
@@ -292,7 +292,7 @@ describe('Token Security Tests', () => {
       await intentSource.getAddress(),
     )
     await expect(
-      intentSource.connect(creator).publishAndFund(intent, false, { value: 0 }),
+      intentSource.connect(keeper).publishAndFund(intent, false, { value: 0 }),
     ).to.be.revertedWithCustomError(portal, 'RewardTokensNotUnique')
 
     // Verify the intent was NOT funded

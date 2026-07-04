@@ -108,7 +108,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
         rewardTokens[0] = RewardToken({token: sourceToken, rate: 0, flat: amount});
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + deadlineDuration),
-            creator: depositor, // Depositor receives refunds through normal intent flow
+            keeper: depositor, // Depositor receives refunds through normal intent flow
             prover: prover,
             tokens: rewardTokens
         });
@@ -142,7 +142,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
      * @param amount Amount of tokens to transfer
      * @param destinationToken Token mint address on destination chain
      * @param destPortal Portal program ID on destination chain
-     * @param portalPDA Portal's PDA vault authority (owns Executor ATA)
+     * @param portalPDA Portal's PDA account authority (owns Executor ATA)
      * @param deadlineDuration Deadline duration in seconds
      * @param executorATA Executor's Associated Token Account (source)
      * @return routeBytes Encoded route bytes
@@ -203,7 +203,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
             bytes1(0x01), // is_writable = true
 
             // accounts[3]: Executor authority (Portal PDA) - read-only, not signer
-            portalPDA, // 32 bytes (Portal's PDA vault authority)
+            portalPDA, // 32 bytes (Portal's PDA account authority)
             bytes1(0x00), // is_signer = false
             bytes1(0x00) // is_writable = false
         );
