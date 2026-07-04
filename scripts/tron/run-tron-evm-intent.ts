@@ -336,6 +336,7 @@ async function fulfillAndProveOnEvm(
     keeper: keeperHex,
     prover: tronProver,
     tokens: [{ token: tronUsdtHex, rate: 0n, flat: REWARD_AMOUNT }],
+    hooks: '0x',
   }
 
   const rewardHash = ethers.keccak256(

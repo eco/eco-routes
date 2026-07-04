@@ -102,7 +102,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: proverAddress,
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         return
@@ -347,7 +348,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(localProver),
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         Intent memory _intent = Intent({
@@ -418,7 +420,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(localProver),
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         Intent memory _intent = Intent({
@@ -490,7 +493,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(localProver),
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         Intent memory _intent = Intent({
@@ -842,7 +846,8 @@ contract LocalProverTest is Test {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(localProver),
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         Intent memory _intent = Intent({

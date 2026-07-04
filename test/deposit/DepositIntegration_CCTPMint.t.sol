@@ -459,7 +459,8 @@ contract DepositIntegration_CCTPMintTest is Test {
                     deadline: rewardDeadline,
                     keeper: keeper,
                     prover: proverAddr,
-                    tokens: rewardTokens
+                    tokens: rewardTokens,
+                    hooks: ""
                 });
 
                 break; // first IntentPublished = Intent 2

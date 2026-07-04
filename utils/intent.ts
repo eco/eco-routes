@@ -33,7 +33,7 @@ export type Route = {
   minTokens: TokenAmount[]
 }
 
-// A single delegate hook: `target` is delegatecalled by the intent's Vault with `data`.
+// A single delegate hook: `target` is delegatecalled by the intent's Account with `data`.
 export type Hook = {
   target: string
   data: string

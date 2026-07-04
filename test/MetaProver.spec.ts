@@ -403,6 +403,7 @@ describe('MetaPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -524,6 +525,7 @@ describe('MetaPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -632,6 +634,7 @@ describe('MetaPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -907,6 +910,7 @@ describe('MetaPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -1036,6 +1040,7 @@ describe('MetaPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -1200,6 +1205,7 @@ describe('MetaPolicy Test', (): void => {
             flat: ethers.parseEther('0.01'),
           },
         ],
+        hooks: '0x',
       }
 
       const destination = Number(
@@ -1266,6 +1272,7 @@ describe('MetaPolicy Test', (): void => {
             flat: ethers.parseEther('0.01'),
           },
         ],
+        hooks: '0x',
       }
       const intent1: Intent = {
         source: destination,

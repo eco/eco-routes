@@ -47,7 +47,7 @@ export type OnchainCrosschainOrder = {
   orderData: OnchainCrosschainOrderData
 }
 
-// v3 Reward struct: (uint64 deadline, address keeper, address prover, RewardToken[] tokens)
+// v3 Reward struct: (uint64 deadline, address keeper, address prover, RewardToken[] tokens, bytes hooks)
 // where RewardToken is (address token, uint256 rate, uint256 flat).
 const RewardStructComponents = [
   { name: 'deadline', type: 'uint64' },
@@ -62,6 +62,7 @@ const RewardStructComponents = [
       { name: 'flat', type: 'uint256' },
     ],
   },
+  { name: 'hooks', type: 'bytes' },
 ]
 
 // ERC-7683 Output struct: (bytes32 token, uint256 amount, bytes32 recipient, uint256 chainId)

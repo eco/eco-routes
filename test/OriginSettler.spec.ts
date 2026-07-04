@@ -68,7 +68,7 @@ describe('Origin Settler Test', (): void => {
   // Use the correct ORDER_DATA_TYPEHASH from the contract (v3 rate+flat Reward shape)
   const ORDER_DATA_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens)RewardToken(address token,uint256 rate,uint256 flat)',
+      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens,bytes hooks)RewardToken(address token,uint256 rate,uint256 flat)',
     ),
   )
 
@@ -186,6 +186,7 @@ describe('Origin Settler Test', (): void => {
         prover: await prover.getAddress(),
         deadline: expiry_fill,
         tokens: rewardTokens,
+        hooks: '0x',
       }
       intent = {
         source: sourceChainId,
@@ -214,7 +215,7 @@ describe('Origin Settler Test', (): void => {
         orderDataType: ORDER_DATA_TYPEHASH,
         orderData: AbiCoder.defaultAbiCoder().encode(
           [
-            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
           ],
           [
             [
@@ -229,6 +230,7 @@ describe('Origin Settler Test', (): void => {
                   token.rate,
                   token.flat,
                 ]), // TokenAmount[] with proper structure
+                reward.hooks, // reward.hooks
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
               expiry_fill, // routeDeadline
@@ -267,7 +269,7 @@ describe('Origin Settler Test', (): void => {
         orderDataType: ORDER_DATA_TYPEHASH,
         orderData: AbiCoder.defaultAbiCoder().encode(
           [
-            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
           ],
           [
             [
@@ -282,6 +284,7 @@ describe('Origin Settler Test', (): void => {
                   token.rate,
                   token.flat,
                 ]), // TokenAmount[] with proper structure
+                reward.hooks, // reward.hooks
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
               expiry_fill, // routeDeadline
@@ -330,7 +333,7 @@ describe('Origin Settler Test', (): void => {
         orderDataHash: keccak256(
           AbiCoder.defaultAbiCoder().encode(
             [
-              'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+              'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
             ],
             [
               [
@@ -345,6 +348,7 @@ describe('Origin Settler Test', (): void => {
                     token.rate,
                     token.flat,
                   ]), // TokenAmount[] with proper structure
+                  reward.hooks, // reward.hooks
                 ],
                 ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
                 expiry_fill, // routeDeadline

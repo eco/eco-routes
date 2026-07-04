@@ -68,7 +68,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(prover),
-            tokens: legs
+            tokens: legs,
+            hooks: ""
         });
 
         _intent = Intent({
@@ -113,7 +114,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(expiry),
             keeper: keeper,
             prover: address(prover),
-            tokens: legs
+            tokens: legs,
+            hooks: ""
         });
 
         uint256[] memory fulfilled = new uint256[](1);
@@ -132,7 +134,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(expiry),
             keeper: keeper,
             prover: address(prover),
-            tokens: legs
+            tokens: legs,
+            hooks: ""
         });
         uint256[] memory fulfilled = new uint256[](1);
         fulfilled[0] = 10;
@@ -354,7 +357,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(expiry),
             keeper: keeper,
             prover: address(prover),
-            tokens: legs
+            tokens: legs,
+            hooks: ""
         });
         Intent memory _intent = Intent({
             source: uint64(block.chainid),
@@ -388,7 +392,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(expiry),
             keeper: keeper,
             prover: address(prover),
-            tokens: legs
+            tokens: legs,
+            hooks: ""
         });
         Intent memory _intent = Intent({
             source: uint64(block.chainid),
@@ -432,7 +437,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(prover),
-            tokens: legs
+            tokens: legs,
+            hooks: ""
         });
         Intent memory _intent = Intent({
             source: uint64(block.chainid),
@@ -474,7 +480,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(block.timestamp + 2000),
             keeper: keeper,
             prover: address(prover),
-            tokens: new RewardToken[](0)
+            tokens: new RewardToken[](0),
+            hooks: ""
         });
         Intent memory _intent = Intent({
             source: uint64(block.chainid),

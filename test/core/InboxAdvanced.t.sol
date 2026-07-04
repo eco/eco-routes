@@ -104,7 +104,8 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0)
+                tokens: new RewardToken[](0),
+                hooks: ""
             })
         });
 
@@ -163,7 +164,8 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0)
+                tokens: new RewardToken[](0),
+                hooks: ""
             })
         });
 
@@ -227,7 +229,8 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0)
+                tokens: new RewardToken[](0),
+                hooks: ""
             })
         });
 
@@ -475,7 +478,8 @@ contract InboxAdvancedTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(prover),
-                tokens: new RewardToken[](0)
+                tokens: new RewardToken[](0),
+                hooks: ""
             })
         });
 
@@ -606,7 +610,8 @@ contract InboxAdvancedTest is BaseTest {
                     deadline: uint64(expiry),
                     keeper: keeper,
                     prover: address(prover),
-                    tokens: new RewardToken[](0)
+                    tokens: new RewardToken[](0),
+                    hooks: ""
                 })
             });
     }

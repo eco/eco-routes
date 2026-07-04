@@ -96,7 +96,8 @@ contract SameChainAndGatesTest is BaseTest {
                     deadline: uint64(expiry),
                     keeper: keeper,
                     prover: prover,
-                    tokens: legs
+                    tokens: legs,
+                    hooks: ""
                 })
             });
     }
@@ -237,7 +238,8 @@ contract SameChainAndGatesTest is BaseTest {
                 deadline: uint64(expiry),
                 keeper: keeper,
                 prover: address(localPolicy),
-                tokens: legs
+                tokens: legs,
+                hooks: ""
             })
         });
         _fund(_intent);

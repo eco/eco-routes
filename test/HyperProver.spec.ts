@@ -336,6 +336,7 @@ describe('HyperPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -478,6 +479,7 @@ describe('HyperPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -603,6 +605,7 @@ describe('HyperPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -924,6 +927,7 @@ describe('HyperPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -1069,6 +1073,7 @@ describe('HyperPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -1248,6 +1253,7 @@ describe('HyperPolicy Test', (): void => {
             flat: ethers.parseEther('0.01'),
           },
         ],
+        hooks: '0x',
       }
 
       const destination = Number(
@@ -1318,6 +1324,7 @@ describe('HyperPolicy Test', (): void => {
             flat: ethers.parseEther('0.01'),
           },
         ],
+        hooks: '0x',
       }
       const intent1: Intent = {
         source: destination, // Current chain (same-chain default)
@@ -1467,6 +1474,7 @@ describe('HyperPolicy Test', (): void => {
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
           tokens: [{ token: await token.getAddress(), rate: 0n, flat: amount }],
+          hooks: '0x',
         },
       }
 

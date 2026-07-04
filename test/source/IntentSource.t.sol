@@ -1116,7 +1116,8 @@ contract IntentSourceTest is BaseTest {
                     deadline: _evmIntent.reward.deadline,
                     keeper: _evmIntent.reward.keeper,
                     prover: _evmIntent.reward.prover,
-                    tokens: evmRewardTokens
+                    tokens: evmRewardTokens,
+                    hooks: ""
                 })
             });
     }
