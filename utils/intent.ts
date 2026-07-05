@@ -138,6 +138,27 @@ export function encodeReward(reward: Reward) {
   )
 }
 
+/**
+ * ABI-encodes the ERC-7683 `FillInstruction.originData` payload the same way
+ * {OriginSettler-resolve} does: `abi.encode(source, routeBytes, reward)`, where `routeBytes` is the
+ * ALREADY-ENCODED route (see {encodeRoute}) and `reward` is the full (unhashed) `Reward` struct.
+ */
+export function encodeOriginData(
+  source: number | bigint,
+  routeBytes: string,
+  reward: Reward,
+) {
+  const abiCoder = AbiCoder.defaultAbiCoder()
+  return abiCoder.encode(
+    [
+      { name: 'source', type: 'uint64' },
+      { name: 'route', type: 'bytes' },
+      { name: 'reward', type: 'tuple', components: RewardStruct },
+    ],
+    [source, routeBytes, reward],
+  )
+}
+
 export function encodeIntent(intent: Intent) {
   const abiCoder = AbiCoder.defaultAbiCoder()
   return abiCoder.encode(

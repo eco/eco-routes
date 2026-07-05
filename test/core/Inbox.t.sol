@@ -63,9 +63,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -86,9 +86,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -114,9 +114,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -137,9 +137,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -164,9 +164,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -225,9 +225,9 @@ contract InboxTest is BaseTest {
         vm.deal(solver, ethAmount);
         portal.fulfill{value: ethAmount}(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -288,9 +288,9 @@ contract InboxTest is BaseTest {
         );
         portal.fulfill{value: ethAmount / 2}(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -307,9 +307,9 @@ contract InboxTest is BaseTest {
         );
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -365,9 +365,9 @@ contract InboxTest is BaseTest {
 
         portal.fulfill{value: ethAmount + extraFee}(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -399,9 +399,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             nonAddressClaimant,
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -426,9 +426,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfillAndProve(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             claimantBytes,
             _providedFromMinTokens(intent.route),
             address(prover),
@@ -482,9 +482,9 @@ contract InboxTest is BaseTest {
             vm.prank(solver);
             portal.fulfill(
                 intent.source,
-                intentHash,
+                intent.destination,
                 intent.route,
-                rewardHash,
+                intent.reward,
                 bytes32(uint256(uint160(recipient))),
                 _providedFromMinTokens(intent.route),
                 address(prover)
@@ -517,9 +517,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             claimantBytes,
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -530,9 +530,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             claimantBytes,
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -556,9 +556,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -583,9 +583,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             claimantBytes,
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -607,9 +607,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(0),
             _providedFromMinTokens(intent.route),
             address(prover)
@@ -749,9 +749,9 @@ contract InboxTest is BaseTest {
         vm.prank(solver);
         portal.fulfill(
             intent.source,
-            intentHash,
+            intent.destination,
             intent.route,
-            rewardHash,
+            intent.reward,
             bytes32(uint256(uint160(recipient))),
             _providedFromMinTokens(intent.route),
             address(prover)

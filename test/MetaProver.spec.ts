@@ -425,9 +425,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfill(
           intent.source,
-          intentHash,
+          intent.destination,
           intent.route,
-          rewardHash,
+          intent.reward,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
           [amount],
           await metaProver.getAddress(),
@@ -546,9 +546,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfill(
           intent.source,
-          intentHash,
+          intent.destination,
           intent.route,
-          rewardHash,
+          intent.reward,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
           [amount],
           await metaProver.getAddress(),
@@ -654,9 +654,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfill(
           intent.source,
-          intentHash,
+          intent.destination,
           intent.route,
-          rewardHash,
+          intent.reward,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
           [amount],
           await metaProver.getAddress(),
@@ -949,9 +949,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfillAndProve(
           intent.source,
-          intentHash,
+          intent.destination,
           route,
-          rewardHash,
+          reward,
           nonAddressClaimant,
           [amount],
           await metaProver.getAddress(),
@@ -1084,9 +1084,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfillAndProve(
           intent.source,
-          intentHash,
+          intent.destination,
           route,
-          rewardHash,
+          reward,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
           [amount],
           await metaProver.getAddress(),
@@ -1231,9 +1231,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfill(
           intent0.source,
-          intentHash0,
+          intent0.destination,
           route,
-          rewardHash0,
+          reward,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
           [amount],
           await metaProver.getAddress(),
@@ -1289,9 +1289,9 @@ describe('MetaPolicy Test', (): void => {
         .connect(solver)
         .fulfill(
           intent1.source,
-          intentHash1,
+          intent1.destination,
           route1,
-          rewardHash1,
+          reward1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
           [amount],
           await metaProver.getAddress(),

@@ -119,7 +119,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
-      source: chainId + 1,
+      source: chainId,
       destination: chainId + 1,
       route,
       reward,
@@ -188,7 +188,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
-      source: chainId + 1,
+      source: chainId,
       destination: chainId + 1,
       route,
       reward,
@@ -252,7 +252,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
-      source: chainId + 1,
+      source: chainId,
       destination: chainId + 1,
       route,
       reward,
@@ -330,7 +330,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
-      source: chainId + 1,
+      source: chainId,
       destination: chainId + 1,
       route,
       reward,

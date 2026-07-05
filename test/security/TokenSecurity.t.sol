@@ -136,21 +136,18 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(attacker);
         maliciousToken.approve(address(portal), MINT_AMOUNT);
 
-        bytes32 intentHash = _hashIntent(destIntent);
-
         // Solver provides exactly the single min-tokens leg (the malicious token) as input.
         uint256[] memory providedAmounts = new uint256[](1);
         providedAmounts[0] = MINT_AMOUNT;
 
         // Should revert when the malicious token's transfer (executed by the executor) fails
         vm.prank(attacker);
-        bytes32 rewardHash = keccak256(abi.encode(destIntent.reward));
         vm.expectRevert();
         portal.fulfill(
             destIntent.source,
-            intentHash,
+            destIntent.destination,
             destIntent.route,
-            rewardHash,
+            destIntent.reward,
             bytes32(uint256(uint160(attacker))),
             providedAmounts,
             address(prover)

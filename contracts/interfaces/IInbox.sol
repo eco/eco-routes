@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {Route} from "../types/Intent.sol";
+import {Route, Reward} from "../types/Intent.sol";
 
 /**
  * @title IInbox
@@ -44,15 +44,35 @@ interface IInbox {
     error IntentExpired();
 
     /**
-     * @notice Generated hash doesn't match expected hash
-     * @param expectedHash Hash that was expected
-     */
-    error InvalidHash(bytes32 expectedHash);
-
-    /**
      * @notice Zero claimant identifier provided
      */
     error ZeroClaimant();
+
+    /**
+     * @notice A fulfill was attempted on a chain whose id is not the intent's committed `destination`
+     * @param current The current chain id (block.chainid)
+     * @param expected The intent's committed destination chain id
+     */
+    error WrongDestinationChain(uint64 current, uint64 expected);
+
+    /**
+     * @notice The runtime consumed reward escrow reserved in a (same-chain collapsed) execution Account
+     * @dev Reward-conservation postcondition: a reward-leg token's Account balance dropped below its
+     *      pre-execution snapshot. Reverts the whole fulfill (griefing DoS at worst, never reward theft).
+     * @param token The reward-leg token whose escrow was touched
+     * @param live The reward-leg token balance after execution
+     * @param reserved The reserved escrow snapshot taken before staging solver input
+     */
+    error RewardEscrowTouched(address token, uint256 live, uint256 reserved);
+
+    /**
+     * @notice The destination-side {executeAsOwner} was called for a source-chain (or same-chain) intent
+     * @dev CROSS-CHAIN ONLY: when `source == block.chainid` the `block.chainid`-keyed Account is (or
+     *      collapses with) the SOURCE escrow Account, which must be governed by the reward-aware
+     *      {IIntentSource-executeAsOwner}, not this reward-blind path.
+     * @param source The intent's committed source chain id (equal to block.chainid)
+     */
+    error SourceChainOwnerOnly(uint64 source);
 
     /**
      * @notice Attempted to batch an unfulfilled intent
@@ -101,13 +121,14 @@ interface IInbox {
 
     /**
      * @notice Fulfills an intent, recording the fulfillment into the named prover
-     * @dev Validates intent hash (with `source` in the preimage), stages the solver's provided input onto
-     *      the DESTINATION Account, executes `route.runtime(payload)` in it, and records the fulfillment
-     *      into `prover`. The solver names the prover (policy) that will settle the reward.
+     * @dev Derives the intent hash from `(source, destination, route, reward)`, requires
+     *      `destination == block.chainid`, stages the solver's provided input onto the DESTINATION
+     *      Account, executes `route.runtime(payload)` in it, enforces reward-conservation, and records the
+     *      fulfillment into `prover`. The solver names the prover (policy) that will settle the reward.
      * @param source Origin chain ID committed in the intent hash
-     * @param intentHash The hash of the intent to fulfill
+     * @param destination Destination chain ID committed in the intent hash (must equal block.chainid)
      * @param route Route information for the intent
-     * @param rewardHash Hash of the reward details
+     * @param reward Reward details of the intent (legs authenticated by the derived intent hash)
      * @param claimant Cross-VM compatible claimant identifier
      * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
      *        `>= route.minTokens[j].amount`)
@@ -116,9 +137,9 @@ interface IInbox {
      */
     function fulfill(
         uint64 source,
-        bytes32 intentHash,
+        uint64 destination,
         Route memory route,
-        bytes32 rewardHash,
+        Reward memory reward,
         bytes32 claimant,
         uint256[] memory providedAmounts,
         address prover
@@ -128,9 +149,9 @@ interface IInbox {
      * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Validates intent hash, executes the route, and records the fulfillment
      * @param source Origin chain ID committed in the intent hash
-     * @param intentHash The hash of the intent to fulfill
+     * @param destination Destination chain ID committed in the intent hash (must equal block.chainid)
      * @param route Route information for the intent
-     * @param rewardHash Hash of the reward details
+     * @param reward Reward details of the intent (legs authenticated by the derived intent hash)
      * @param claimant Cross-VM compatible claimant identifier
      * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
      *        `>= route.minTokens[j].amount`)
@@ -153,9 +174,9 @@ interface IInbox {
      */
     function fulfillAndProve(
         uint64 source,
-        bytes32 intentHash,
+        uint64 destination,
         Route memory route,
-        bytes32 rewardHash,
+        Reward memory reward,
         bytes32 claimant,
         uint256[] memory providedAmounts,
         address prover,

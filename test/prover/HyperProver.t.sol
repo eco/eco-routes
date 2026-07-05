@@ -390,10 +390,19 @@ contract HyperProverTest is BaseTest {
     }
 
     function testChallengeIntentProofWithWrongChain() public {
+        // BaseTest's default `intent` is now same-chain (source == destination == block.chainid), so
+        // it can no longer exercise the "proven on the wrong chain" mismatch on its own. Build an
+        // intent whose OWN committed destination is a FOREIGN chain (distinct from block.chainid) to
+        // reproduce the scenario: the intent claims destination X, but the fulfillment was actually
+        // proven on block.chainid != X.
+        uint64 foreignDestination = uint64(block.chainid) + 1;
+        Intent memory foreignIntent = intent;
+        foreignIntent.destination = foreignDestination;
+
         // First, prove the intent
         bytes32[] memory intentHashes = new bytes32[](1);
         bytes32[] memory claimants = new bytes32[](1);
-        bytes32 intentHash = _hashIntent(intent);
+        bytes32 intentHash = _hashIntent(foreignIntent);
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
@@ -404,6 +413,7 @@ contract HyperProverTest is BaseTest {
             "",
             address(0)
         );
+        // prove() reports the ACTUAL chain the fulfillment happened on: block.chainid.
         hyperProver.prove{value: 1 ether}(
             keeper,
             uint64(block.chainid),
@@ -411,20 +421,19 @@ contract HyperProverTest is BaseTest {
             proverData
         );
 
-        // Verify intent is proven (with chain ID = 31337 from the prove call)
+        // Verify intent is proven, recorded against the actual fulfillment chain (block.chainid).
         IPolicy.ProofData memory proof = hyperProver.provenIntents(intentHash);
         assertTrue(proof.fulfillmentHash != bytes32(0));
-        assertEq(proof.destination, uint96(block.chainid)); // 31337
+        assertEq(proof.destination, uint96(block.chainid));
 
-        // The original intent has destination = 1 (CHAIN_ID from BaseTest)
-        // So challenging with the original intent should clear the proof
-        // because intent.destination (1) != proof.destination (31337)
+        // The intent's OWN committed destination (foreignDestination) does not match where it was
+        // actually proven (block.chainid), so challenging with the intent's true fields should clear it.
         vm.prank(keeper);
         hyperProver.challengeIntentProof(
-            intent.source,
-            intent.destination,
-            keccak256(abi.encode(intent.route)),
-            keccak256(abi.encode(intent.reward))
+            foreignIntent.source,
+            foreignIntent.destination,
+            keccak256(abi.encode(foreignIntent.route)),
+            keccak256(abi.encode(foreignIntent.reward))
         );
 
         // Verify proof was cleared

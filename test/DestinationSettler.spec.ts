@@ -173,9 +173,9 @@ describe('Destination Settler Test', (): void => {
         .connect(solver)
         .fulfill(
           intent.source,
-          intentHash,
+          intent.destination,
           intent.route,
-          hashIntent(intent).rewardHash,
+          intent.reward,
           ethers.zeroPadValue(solver.address, 32),
           [nativeAmount, mintAmount],
           await prover.getAddress(),
@@ -204,9 +204,9 @@ describe('Destination Settler Test', (): void => {
         .connect(solver)
         .fulfill(
           intent.source,
-          intentHash,
+          intent.destination,
           intent.route,
-          hashIntent(intent).rewardHash,
+          intent.reward,
           ethers.zeroPadValue(solver.address, 32),
           [nativeAmount, mintAmount],
           await prover.getAddress(),

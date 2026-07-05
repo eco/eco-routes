@@ -13,6 +13,7 @@ import { keccak256, BytesLike, Provider, AbiCoder } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeRoute,
+  encodeOriginData,
   encodeCalls,
   Call,
   TokenAmount,
@@ -579,28 +580,13 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           onchainCrosschainOrderData.routePortal,
         )
-        // originData is (source, route, rewardHash) -- Model C carries the committed `source` chain
-        // id so the destination fill can re-derive the same hash.
-        const rewardForEncoding = [
-          reward.deadline,
-          reward.keeper,
-          reward.prover,
-          reward.tokens.map((token) => [token.token, token.rate, token.flat]),
-        ]
-        const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
-          ['uint64', 'bytes', 'bytes32'],
-          [
-            sourceChainId,
-            encodeRoute(route),
-            keccak256(
-              AbiCoder.defaultAbiCoder().encode(
-                [
-                  'tuple(uint64,address,address,tuple(address,uint256,uint256)[])',
-                ],
-                [rewardForEncoding],
-              ),
-            ),
-          ],
+        // originData is (source, route, reward) -- Model C carries the committed `source` chain id
+        // and the FULL reward struct (not just its hash) so the destination fill can derive the
+        // intent hash and settle against the reward on-chain.
+        const expectedOriginData = encodeOriginData(
+          sourceChainId,
+          encodeRoute(route),
+          reward,
         )
         expect(fillInstruction.originData).to.eq(expectedOriginData)
       })
@@ -734,28 +720,13 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           gaslessCrosschainOrderData.routePortal,
         )
-        // originData is (source, route, rewardHash) -- Model C carries the committed `source` chain
-        // id so the destination fill can re-derive the same hash.
-        const rewardForEncoding = [
-          reward.deadline,
-          reward.keeper,
-          reward.prover,
-          reward.tokens.map((token) => [token.token, token.rate, token.flat]),
-        ]
-        const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
-          ['uint64', 'bytes', 'bytes32'],
-          [
-            sourceChainId,
-            encodeRoute(route),
-            keccak256(
-              AbiCoder.defaultAbiCoder().encode(
-                [
-                  'tuple(uint64,address,address,tuple(address,uint256,uint256)[])',
-                ],
-                [rewardForEncoding],
-              ),
-            ),
-          ],
+        // originData is (source, route, reward) -- Model C carries the committed `source` chain id
+        // and the FULL reward struct (not just its hash) so the destination fill can derive the
+        // intent hash and settle against the reward on-chain.
+        const expectedOriginData = encodeOriginData(
+          sourceChainId,
+          encodeRoute(route),
+          reward,
         )
         expect(fillInstruction.originData).to.eq(expectedOriginData)
       })
