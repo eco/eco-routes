@@ -289,6 +289,15 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
             revert ProvidedAmountsLengthMismatch(providedAmounts.length, inLen);
         }
 
+        // H2 anti-poison: an intent with NO input legs AND NO reward asks a solver to provide nothing for
+        // no pay, so there is no honest fulfill — and recording one would permanently occupy the prover's
+        // fulfillment store, bricking a REUSABLE deposit address for every later deposit. The only
+        // legitimate way to run such an Account's committed `runtime(payload)` is the owner-gated
+        // {Inbox-executeAsOwner} (cross-chain) / {IIntentSource-executeAsOwner} (source). Reject it here.
+        if (route.minTokens.length == 0 && reward.tokens.length == 0) {
+            revert NothingToFulfill();
+        }
+
         emit IntentFulfilled(intentHash, claimant);
 
         // The DESTINATION (execution) Account is keyed by this chain id (== intent.destination). For a
