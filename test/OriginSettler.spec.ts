@@ -90,9 +90,12 @@ describe('Origin Settler Test', (): void => {
     const accountImpl = await (
       await ethers.getContractFactory('Account')
     ).deploy(await portalProxy.getAddress())
+    const erc7683Impl = await (
+      await ethers.getContractFactory('ERC7683Implementation')
+    ).deploy()
     const portalImpl = await (
       await ethers.getContractFactory('Portal')
-    ).deploy(await accountImpl.getAddress())
+    ).deploy(await accountImpl.getAddress(), await erc7683Impl.getAddress())
     await portalProxy.registerVersion(1, await portalImpl.getAddress())
     const portal = await ethers.getContractAt(
       'Portal',
@@ -110,8 +113,13 @@ describe('Origin Settler Test', (): void => {
       await ethers.getContractFactory('MulticallRuntime')
     ).deploy()
 
-    // Use portal as the originSettler since OriginSettler is now abstract
-    const originSettler = portal
+    // The ERC-7683 surface (open/openFor/resolve/resolveFor/eip712Domain) is no longer on the lean Portal
+    // ABI — it lives on the ERC7683Implementation adapter the Portal falls back to. Bind `originSettler` to
+    // that ABI AT THE PROXY ADDRESS so calls route proxy -> Portal -> (fallback) -> adapter (2 hops).
+    const originSettler = await ethers.getContractAt(
+      'ERC7683Implementation',
+      await portalProxy.getAddress(),
+    )
 
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
@@ -631,15 +639,23 @@ describe('Origin Settler Test', (): void => {
           }),
         ).to.be.false
 
-        // Ensure keeper has enough tokens and approvals for gasless order
+        // Ensure keeper has enough tokens and approvals for gasless order.
+        // openFor is relayed by a DIFFERENT address (otherPerson) than the signed user (keeper), so the
+        // ERC-7683 adapter funds via the per-intent Account's allowance (the only way to safely pull from
+        // an arbitrary funder — a proxy-allowance arbitrary-funder pull would be an unauthenticated theft
+        // vector). So the signed user approves the (deterministic) intent Account, not the proxy. openFor
+        // derives source == block.chainid == sourceChainId, destination == chainId (cross-chain).
         await tokenA.connect(keeper).mint(keeper.address, mintAmount)
         await tokenB.connect(keeper).mint(keeper.address, mintAmount * 2n)
-        await tokenA
-          .connect(keeper)
-          .approve(await originSettler.getAddress(), mintAmount)
-        await tokenB
-          .connect(keeper)
-          .approve(await originSettler.getAddress(), mintAmount * 2n)
+        const openForAccount = await portal.intentAccountAddress({
+          protocolVersion: 1,
+          source: sourceChainId,
+          destination: chainId,
+          route,
+          reward,
+        })
+        await tokenA.connect(keeper).approve(openForAccount, mintAmount)
+        await tokenB.connect(keeper).approve(openForAccount, mintAmount * 2n)
 
         await expect(
           originSettler

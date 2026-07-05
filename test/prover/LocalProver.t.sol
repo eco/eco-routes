@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 import {LocalPolicy} from "../../contracts/prover/LocalPolicy.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {ERC7683Implementation} from "../../contracts/ERC7683/ERC7683Implementation.sol";
 import {PortalProxy} from "../../contracts/PortalProxy.sol";
 import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
@@ -49,7 +50,7 @@ contract LocalProverTest is Test {
         // Deploy contracts (Portal behind a versioned PortalProxy, registered as version 1)
         PortalProxy _proxy = new PortalProxy(address(this));
         EcoAccount _acct = new EcoAccount(address(_proxy));
-        Portal _impl = new Portal(address(_acct));
+        Portal _impl = new Portal(address(_acct), address(new ERC7683Implementation()));
         _proxy.registerVersion(1, address(_impl));
         portal = Portal(payable(address(_proxy)));
         localProver = new LocalPolicy(address(portal));

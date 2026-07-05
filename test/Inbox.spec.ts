@@ -60,9 +60,12 @@ describe('Inbox Test', (): void => {
     const accountImpl = await (
       await ethers.getContractFactory('Account')
     ).deploy(await portalProxy.getAddress())
+    const erc7683Impl = await (
+      await ethers.getContractFactory('ERC7683Implementation')
+    ).deploy()
     const portalImpl = await (
       await ethers.getContractFactory('Portal')
-    ).deploy(await accountImpl.getAddress())
+    ).deploy(await accountImpl.getAddress(), await erc7683Impl.getAddress())
     await portalProxy.registerVersion(1, await portalImpl.getAddress())
     const portal = await ethers.getContractAt(
       'Portal',
@@ -248,9 +251,15 @@ describe('Inbox Test', (): void => {
       const anotherAccountImpl = await (
         await ethers.getContractFactory('Account')
       ).deploy(await anotherPortalProxy.getAddress())
+      const anotherErc7683Impl = await (
+        await ethers.getContractFactory('ERC7683Implementation')
+      ).deploy()
       const anotherPortalImpl = await (
         await ethers.getContractFactory('Portal')
-      ).deploy(await anotherAccountImpl.getAddress())
+      ).deploy(
+        await anotherAccountImpl.getAddress(),
+        await anotherErc7683Impl.getAddress(),
+      )
       await anotherPortalProxy.registerVersion(
         1,
         await anotherPortalImpl.getAddress(),

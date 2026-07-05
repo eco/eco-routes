@@ -7,6 +7,7 @@ import {IInbox} from "../../contracts/interfaces/IInbox.sol";
 import {IPortalProxy, VERSION_EXPIRY} from "../../contracts/interfaces/IPortalProxy.sol";
 import {PortalProxy} from "../../contracts/PortalProxy.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {ERC7683Implementation} from "../../contracts/ERC7683/ERC7683Implementation.sol";
 import {Intent, Reward, RewardToken} from "../../contracts/types/Intent.sol";
 import {Call} from "../../contracts/interfaces/IRuntime.sol";
 
@@ -162,7 +163,7 @@ contract ProtocolVersioningTest is BaseTest {
         address addrV1 = portal.accountAddress(hash, x.source);
 
         // A genuinely different Portal implementation, sharing the same Account clone template.
-        Portal impl2 = new Portal(accountImplementation);
+        Portal impl2 = new Portal(accountImplementation, address(new ERC7683Implementation()));
         assertTrue(
             address(impl2) != portalImplementation,
             "impl2 must differ from v1"

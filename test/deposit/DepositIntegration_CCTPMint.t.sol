@@ -6,6 +6,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {DepositFactory_CCTPMint_Arc} from "../../contracts/deposit/DepositFactory_CCTPMint_Arc.sol";
 import {DepositAddress_CCTPMint_Arc} from "../../contracts/deposit/DepositAddress_CCTPMint_Arc.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {ERC7683Implementation} from "../../contracts/ERC7683/ERC7683Implementation.sol";
 import {PortalProxy} from "../../contracts/PortalProxy.sol";
 import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {LocalPolicy} from "../../contracts/prover/LocalPolicy.sol";
@@ -85,7 +86,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         // Deploy Portal
         PortalProxy _proxy = new PortalProxy(address(this));
         EcoAccount _acct = new EcoAccount(address(_proxy));
-        Portal _impl = new Portal(address(_acct));
+        Portal _impl = new Portal(address(_acct), address(new ERC7683Implementation()));
         _proxy.registerVersion(1, address(_impl));
         portal = Portal(payable(address(_proxy)));
 
