@@ -26,12 +26,16 @@ abstract contract DestinationSettler is IDestinationSettler {
         bytes calldata originData,
         bytes calldata fillerData
     ) external payable {
-        // originData carries the origin-emitted intent data: the committed `source` chain id (Model C —
-        // hashed into the intent), the encoded route, and the full reward (needed for the reward-leg
-        // authentication + conservation snapshot at fulfill). The `destination` is this chain
-        // (block.chainid) — the fill happens on the destination chain.
-        (uint64 source, bytes memory encodedRoute, Reward memory reward) = abi
-            .decode(originData, (uint64, bytes, Reward));
+        // originData carries the origin-emitted intent data: the creator-declared `protocolVersion` and the
+        // committed `source` chain id (both Model C — hashed into the intent), the encoded route, and the
+        // full reward (needed for the reward-leg authentication + conservation snapshot at fulfill). The
+        // `destination` is this chain (block.chainid) — the fill happens on the destination chain.
+        (
+            uint32 protocolVersion,
+            uint64 source,
+            bytes memory encodedRoute,
+            Reward memory reward
+        ) = abi.decode(originData, (uint32, uint64, bytes, Reward));
 
         emit OrderFilled(orderId, msg.sender);
 
@@ -49,6 +53,7 @@ abstract contract DestinationSettler is IDestinationSettler {
             );
 
         fulfillAndProve(
+            protocolVersion,
             source,
             uint64(block.chainid),
             abi.decode(encodedRoute, (Route)),
@@ -64,6 +69,7 @@ abstract contract DestinationSettler is IDestinationSettler {
     /**
      * @notice Fulfills an intent and initiates proving in one transaction
      * @dev Abstract function to be implemented by concrete settlement contracts
+     * @param protocolVersion Creator-declared Portal implementation version committed in the intent hash
      * @param source The origin chain ID committed in the intent hash (Model C)
      * @param destination The destination chain ID committed in the intent hash (must equal block.chainid)
      * @param route The route information for the intent
@@ -76,6 +82,7 @@ abstract contract DestinationSettler is IDestinationSettler {
      * @return The runtime's raw return data
      */
     function fulfillAndProve(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         Route memory route,

@@ -15,6 +15,11 @@ import {AddressConverter} from "../contracts/libs/AddressConverter.sol";
 // Core (no ctor args => CREATE2, identical address on every chain)
 import {Portal} from "../contracts/Portal.sol";
 import {PortalTron} from "../contracts/tron/PortalTron.sol";
+import {PortalProxy} from "../contracts/PortalProxy.sol";
+// Aliased: forge-std's StdCheats defines a `struct Account` that shadows this import in Script-derived
+// contracts.
+import {Account as EcoAccount} from "../contracts/account/Account.sol";
+import {AccountTron} from "../contracts/tron/AccountTron.sol";
 import {MulticallRuntime} from "../contracts/runtime/MulticallRuntime.sol";
 
 // Same-chain settlement (portal-only ctor)
@@ -116,7 +121,8 @@ contract DeployV3 is Script {
     }
 
     struct Deployment {
-        address portal;
+        address portal; // the permanent PortalProxy (what everything references as "the Portal")
+        address portalImplementation; // the versioned implementation registered as version 1
         address runtime;
         address localPolicy;
         address hyperPolicy;
@@ -156,15 +162,58 @@ contract DeployV3 is Script {
     function deploy(Config memory cfg) public returns (Deployment memory dep) {
         _ensureCreate3Deployer(cfg.isTron);
 
-        // 1. Core (CREATE2, no ctor args).
+        // 1. Core: a permanent PortalProxy in front of a versioned implementation (PR9).
+        //    - The PortalProxy is the PERMANENT, stable "Portal" address that every intent, account, and
+        //      downstream policy anchors to. Deployed at `cfg.salt` (the canonical address) with the
+        //      deployer as protocol owner. Deployed FIRST because both the shared Account implementation
+        //      (bound to the proxy as its authorized caller) and the Portal implementation reference it.
+        //    - The Account implementation is SHARED across all Portal versions and bound to the proxy, so
+        //      every version derives the same per-intent Account addresses (address-stability invariant).
+        //    - The Portal implementation (Portal / PortalTron) carries ALL the logic; it references the
+        //      shared Account implementation as its clone template. Deployed at a derived salt.
         dep.portal = _deployCreate2(
-            cfg.isTron
-                ? type(PortalTron).creationCode
-                : type(Portal).creationCode,
+            abi.encodePacked(
+                type(PortalProxy).creationCode,
+                abi.encode(cfg.deployer) // initialOwner = deployer (protocol owner)
+            ),
             cfg.salt,
             cfg.isTron
         );
-        console.log("Portal:", dep.portal);
+        console.log("PortalProxy (permanent Portal):", dep.portal);
+
+        address accountImplementation = _deployCreate2(
+            abi.encodePacked(
+                cfg.isTron
+                    ? type(AccountTron).creationCode
+                    : type(EcoAccount).creationCode,
+                abi.encode(dep.portal) // Account.portal = the proxy (its authorized caller)
+            ),
+            _contractSalt(cfg.salt, "ACCOUNT_IMPLEMENTATION"),
+            cfg.isTron
+        );
+        console.log("Account implementation (shared):", accountImplementation);
+
+        dep.portalImplementation = _deployCreate2(
+            abi.encodePacked(
+                cfg.isTron
+                    ? type(PortalTron).creationCode
+                    : type(Portal).creationCode,
+                abi.encode(accountImplementation) // shared Account clone template
+            ),
+            _contractSalt(cfg.salt, "PORTAL_IMPLEMENTATION_V1"),
+            cfg.isTron
+        );
+        console.log("Portal implementation (v1):", dep.portalImplementation);
+
+        // Bootstrap version 1 -> implementation (owner-only; broadcasting as the deployer/owner).
+        // Idempotent on re-run: re-registration would revert VersionAlreadyRegistered, so skip if set.
+        (address registered, ) = PortalProxy(payable(dep.portal)).versions(1);
+        if (registered == address(0)) {
+            PortalProxy(payable(dep.portal)).registerVersion(
+                1,
+                dep.portalImplementation
+            );
+        }
 
         dep.runtime = _deployCreate2(
             type(MulticallRuntime).creationCode,
@@ -471,6 +520,7 @@ contract DeployV3 is Script {
             return;
         }
         _writeLine(path, dep.portal, "Portal");
+        _writeLine(path, dep.portalImplementation, "PortalImplementation");
         _writeLine(path, dep.runtime, "MulticallRuntime");
         _writeLine(path, dep.localPolicy, "LocalPolicy");
         _writeLine(path, dep.hyperPolicy, "HyperPolicy");

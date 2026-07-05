@@ -210,6 +210,7 @@ interface IIntentSource {
 
     /**
      * @notice Computes the hash components of an intent
+     * @param protocolVersion Creator-declared Portal implementation version
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
@@ -219,6 +220,7 @@ interface IIntentSource {
      * @return rewardHash Hash of the reward specifications
      */
     function getIntentHash(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -239,6 +241,7 @@ interface IIntentSource {
 
     /**
      * @notice Computes the deterministic (source/escrow) account address for an intent
+     * @param protocolVersion Creator-declared Portal implementation version
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
@@ -246,6 +249,7 @@ interface IIntentSource {
      * @return Predicted account address (the source-side escrow account)
      */
     function intentAccountAddress(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -270,6 +274,7 @@ interface IIntentSource {
      * @return True if the intent is properly funded
      */
     function isIntentFunded(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -298,6 +303,7 @@ interface IIntentSource {
      * @return account Address of the created account
      */
     function publish(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -327,6 +333,7 @@ interface IIntentSource {
      * @return account Address of the created account
      */
     function publishAndFund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -344,6 +351,7 @@ interface IIntentSource {
      * @return intentHash The hash of the funded intent
      */
     function fund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -363,6 +371,7 @@ interface IIntentSource {
      * @return intentHash The hash of the funded intent
      */
     function fundFor(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -401,6 +410,7 @@ interface IIntentSource {
      * @return account Address of the created account
      */
     function publishAndFundFor(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -422,6 +432,7 @@ interface IIntentSource {
      * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
      */
     function settle(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -438,6 +449,7 @@ interface IIntentSource {
      * @param reward The reward specification
      */
     function refund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -453,6 +465,7 @@ interface IIntentSource {
      * @param refundee Address to receive the refunded rewards
      */
     function refundTo(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -470,6 +483,7 @@ interface IIntentSource {
      * @param token The address of the token to recover
      */
     function recoverToken(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -513,6 +527,7 @@ interface IIntentSource {
      *        slice preimages (opaque to the Portal; decoded by the policy)
      */
     function settleStream(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -532,6 +547,7 @@ interface IIntentSource {
      * @param reward The reward specification (must name a {IStreamingPolicy} at `reward.prover`)
      */
     function closeStream(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,

@@ -225,6 +225,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
 
         // Combine into Intent. Published on this (source) chain; fulfilled on Arc.
         intent = Intent({
+            protocolVersion: 1, // pinned to protocol version 1 (registered on the PortalProxy at deploy)
             source: uint64(block.chainid),
             destination: arcChainId,
             route: route,
@@ -320,6 +321,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
 
         // Combine into Intent. CCTP burn is fulfilled locally on the source chain (source == dest).
         intent = Intent({
+            protocolVersion: 1, // pinned to protocol version 1 (registered on the PortalProxy at deploy)
             source: uint64(block.chainid),
             destination: destChain,
             route: route,

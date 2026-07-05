@@ -148,6 +148,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
      * @notice Challenges an intent proof (not applicable for same-chain intents)
      */
     function challengeIntentProof(
+        uint32 /* protocolVersion */,
         uint64 /* source */,
         uint64 /* destination */,
         bytes32 /* routeHash */,
@@ -176,6 +177,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
      * @return results The runtime's raw return data from the fulfill execution
      */
     function flashFulfill(
+        uint32 protocolVersion,
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant
@@ -188,6 +190,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 rewardHash = keccak256(abi.encode(reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            protocolVersion,
             _CHAIN_ID,
             _CHAIN_ID,
             routeHash,
@@ -210,6 +213,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
         }
 
         results = _PORTAL.fulfill{value: msg.value}(
+            protocolVersion,
             _CHAIN_ID,
             _CHAIN_ID,
             route,
@@ -222,6 +226,7 @@ contract LocalPolicy is ILocalPolicy, Semver, ReentrancyGuard {
         // Settle: pays the claimant the owed reward from the account, sweeps residual to the keeper.
         // `providedAmounts` is the committed `fulfilled[]`, so the preimage matches the recorded fact.
         _PORTAL.settle(
+            protocolVersion,
             _CHAIN_ID,
             _CHAIN_ID,
             routeHash,

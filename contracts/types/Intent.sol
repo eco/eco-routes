@@ -142,13 +142,18 @@ struct Reward {
  * @dev Main structure used to process and execute cross-chain messages. Both `source` and `destination`
  *      are HASHED into the intent hash (Model C), so an A->B intent is distinct from an A'->B intent
  *      (kills cross-chain replay) and the two chain-parameterized Account addresses separate the escrow
- *      (source) from the execution leftovers (destination).
+ *      (source) from the execution leftovers (destination). `protocolVersion` is the FIRST field and is
+ *      also hashed in, so it selects which registered Portal implementation the {PortalProxy} dispatches
+ *      to and pins the intent to that implementation's code for its whole lifetime.
+ * @param protocolVersion Creator-declared Portal implementation version this intent targets. Committed in
+ *        the intent hash and validated at {IIntentSource-publish} (must be registered and not expired).
  * @param source Origin chain ID where the reward is escrowed and settled
  * @param destination Target chain ID where the intent should be executed
  * @param route Routing and execution instructions
  * @param reward Reward and validation parameters
  */
 struct Intent {
+    uint32 protocolVersion;
     uint64 source;
     uint64 destination;
     Route route;
@@ -219,10 +224,12 @@ library IntentLib {
     error RewardShorterThanMinTokens(uint256 rewardCount, uint256 minTokensCount);
 
     /**
-     * @notice Canonical intent hash from its chain ids and component hashes.
-     * @dev `keccak256(abi.encodePacked(source, destination, routeHash, rewardHash))`. Both chain ids are
-     *      committed so the hash (and thus both chain-parameterized Account addresses) separates by
-     *      direction.
+     * @notice Canonical intent hash from its protocol version, chain ids and component hashes.
+     * @dev `keccak256(abi.encodePacked(protocolVersion, source, destination, routeHash, rewardHash))`.
+     *      `protocolVersion` leads the preimage (it is the first `Intent` field) so it selects the Portal
+     *      implementation and pins the intent to it; both chain ids are committed so the hash (and thus both
+     *      chain-parameterized Account addresses) separates by direction.
+     * @param protocolVersion Creator-declared Portal implementation version.
      * @param source Origin chain ID (where the reward is escrowed/settled).
      * @param destination Destination chain ID (where the route executes).
      * @param routeHash Hash of the route component.
@@ -230,6 +237,7 @@ library IntentLib {
      * @return The intent hash.
      */
     function hashIntent(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -237,7 +245,13 @@ library IntentLib {
     ) internal pure returns (bytes32) {
         return
             keccak256(
-                abi.encodePacked(source, destination, routeHash, rewardHash)
+                abi.encodePacked(
+                    protocolVersion,
+                    source,
+                    destination,
+                    routeHash,
+                    rewardHash
+                )
             );
     }
 

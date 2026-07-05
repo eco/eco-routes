@@ -147,6 +147,7 @@ interface IInbox {
      * @return The runtime's raw return data
      */
     function fulfill(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         Route memory route,
@@ -184,6 +185,7 @@ interface IInbox {
      *      the correct domain ID for the source chain.
      */
     function fulfillAndProve(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         Route memory route,
@@ -210,6 +212,7 @@ interface IInbox {
      * @return The runtime's raw return data
      */
     function executeAsOwner(
+        uint32 protocolVersion,
         uint64 source,
         Route memory route,
         bytes32 rewardHash,

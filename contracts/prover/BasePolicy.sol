@@ -243,12 +243,14 @@ abstract contract BasePolicy is IPolicy, ERC165 {
      * @param rewardHash The hash of the reward specification
      */
     function challengeIntentProof(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
         bytes32 rewardHash
     ) external {
         bytes32 intentHash = IntentLib.hashIntent(
+            protocolVersion,
             source,
             destination,
             routeHash,

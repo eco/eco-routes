@@ -11,6 +11,7 @@ import {IStreamingPolicy} from "./interfaces/IStreamingPolicy.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IAccount} from "./interfaces/IAccount.sol";
 import {IPermit} from "./interfaces/IPermit.sol";
+import {IPortalProxy, requireValidProtocolVersion, isProtocolVersionExpired} from "./interfaces/IPortalProxy.sol";
 
 import {Intent, Reward, RewardToken, IntentLib} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
@@ -107,6 +108,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     {
         return
             getIntentHash(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 abi.encode(intent.route),
@@ -116,6 +118,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
 
     /**
      * @notice Calculates the hash of an intent and its components
+     * @param protocolVersion Creator-declared Portal implementation version
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes for cross-VM compatibility
@@ -125,6 +128,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return rewardHash Hash of the reward component
      */
     function getIntentHash(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -135,6 +139,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash)
     {
         (intentHash, routeHash, rewardHash) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             keccak256(route),
@@ -144,6 +149,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
 
     /**
      * @notice Calculates intent hash from route hash and reward components
+     * @param protocolVersion Creator-declared Portal implementation version
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param _routeHash Pre-computed hash of the route component
@@ -153,6 +159,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return rewardHash Hash of the reward component
      */
     function getIntentHash(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 _routeHash,
@@ -165,6 +172,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         routeHash = _routeHash;
         rewardHash = keccak256(abi.encode(reward));
         intentHash = IntentLib.hashIntent(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -182,6 +190,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     ) public view returns (address) {
         return
             intentAccountAddress(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 abi.encode(intent.route),
@@ -193,6 +202,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @notice Calculates the deterministic address of the intent's SOURCE (escrow) account
      * @dev The source-side account salt uses `intent.source` as the role chain id (Model C). Source-side
      *      operations (fund/settle/refund/recover/executeAsOwner) all resolve to this address.
+     * @param protocolVersion Creator-declared Portal implementation version
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
@@ -200,12 +210,14 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return Address of the source-side escrow account
      */
     function intentAccountAddress(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
         Reward calldata reward
     ) public view returns (address) {
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             route,
@@ -223,6 +235,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     function isIntentFunded(Intent calldata intent) public view returns (bool) {
         return
             isIntentFunded(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 abi.encode(intent.route),
@@ -235,16 +248,22 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
+     * @param protocolVersion Creator-declared Portal implementation version
+     * @param source Origin chain ID for the intent
+     * @param destination Destination chain ID for the intent
+     * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
      * @return True if intent is completely funded, false otherwise
      */
     function isIntentFunded(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
         Reward calldata reward
     ) public view returns (bool) {
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             route,
@@ -274,6 +293,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     ) public returns (bytes32 intentHash, address account) {
         return
             publish(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 abi.encode(intent.route),
@@ -283,6 +303,8 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
 
     /**
      * @notice Creates an intent without funding
+     * @param protocolVersion Creator-declared Portal implementation version (must be registered and not
+     *        expired)
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
@@ -291,17 +313,30 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return account Address of the created (source/escrow) account
      */
     function publish(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
         Reward memory reward
     ) public returns (bytes32 intentHash, address account) {
+        // A NEW intent may only be created under a currently-valid protocol version: registered, and not
+        // past its expiry (an expired version is sweepable by the protocol owner, so a fresh intent must
+        // never be created already-sweepable). Read against `address(this)` — behind the {PortalProxy} that
+        // IS the proxy, so this reads the proxy's version registry.
+        requireValidProtocolVersion(address(this), protocolVersion);
+
         // Validate reward legs on the source. The route is treated as opaque bytes (cross-VM
         // compatibility), so only the route-free checks run here (uniqueness + bound); `minTokens` ordering
         // is enforced at the destination fulfill.
         IntentLib.requireUniqueRewardTokens(reward.tokens);
 
-        (intentHash, , ) = getIntentHash(source, destination, route, reward);
+        (intentHash, , ) = getIntentHash(
+            protocolVersion,
+            source,
+            destination,
+            route,
+            reward
+        );
         account = accountAddress(intentHash, source);
 
         _validatePublish(intentHash);
@@ -321,6 +356,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     ) public payable returns (bytes32 intentHash, address account) {
         return
             publishAndFund(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 abi.encode(intent.route),
@@ -340,6 +376,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return account Address of the created account
      */
     function publishAndFund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -353,6 +390,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     {
         return
             _publishAndFund(
+                protocolVersion,
                 source,
                 destination,
                 route,
@@ -372,6 +410,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return intentHash Hash of the funded intent
      */
     function fund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -379,6 +418,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bool allowPartial
     ) external payable onlySourceChain(source) returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -408,6 +448,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return intentHash Hash of the funded intent
      */
     function fundFor(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -417,6 +458,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         address permitContract
     ) external payable onlySourceChain(source) returns (bytes32 intentHash) {
         (intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -451,6 +493,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     ) public payable returns (bytes32 intentHash, address account) {
         return
             publishAndFundFor(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 abi.encode(intent.route),
@@ -474,6 +517,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return account Address of the created account
      */
     function publishAndFundFor(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -487,7 +531,13 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         onlySourceChain(source)
         returns (bytes32 intentHash, address account)
     {
-        (intentHash, ) = publish(source, destination, route, reward);
+        (intentHash, ) = publish(
+            protocolVersion,
+            source,
+            destination,
+            route,
+            reward
+        );
 
         account = _fundIntentFor(
             reward,
@@ -514,6 +564,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
      */
     function settle(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -521,7 +572,15 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bytes32 claimant,
         uint256[] calldata fulfilled
     ) public onlySourceChain(source) {
-        _settle(source, destination, routeHash, reward, claimant, fulfilled);
+        _settle(
+            protocolVersion,
+            source,
+            destination,
+            routeHash,
+            reward,
+            claimant,
+            fulfilled
+        );
     }
 
     /**
@@ -537,6 +596,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
      */
     function _settle(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -545,6 +605,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         uint256[] memory fulfilled
     ) internal {
         (bytes32 intentHash, , bytes32 rewardHash) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -561,6 +622,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
             proof.fulfillmentHash != bytes32(0)
         ) {
             IPolicy(reward.prover).challengeIntentProof(
+                protocolVersion,
                 source,
                 destination,
                 routeHash,
@@ -611,12 +673,14 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @param reward Reward structure of the intent
      */
     function refund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
     ) external onlySourceChain(source) {
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -635,6 +699,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @param refundee Address to receive the refunded rewards
      */
     function refundTo(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -646,6 +711,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         }
 
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -665,6 +731,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @param token Token address for handling incorrect account transfers
      */
     function recoverToken(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -672,6 +739,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         address token
     ) external onlySourceChain(source) {
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -722,7 +790,20 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         onlySourceChain(intent.source)
         returns (bytes memory)
     {
-        if (msg.sender != intent.reward.keeper) {
+        // Two independent authorities may cook the source (escrow) Account:
+        //   (1) the reward keeper (the account owner), any time; or
+        //   (2) the PROTOCOL OWNER, but ONLY once this intent's protocol version is EXPIRED — the
+        //       narrowly-scoped deployer sweep for stuck funds parked under a retired implementation.
+        // This is only an ALTERNATE authorization: the UNCHANGED AccountLocked escrow/proof lock below runs
+        // identically regardless of which branch authorized the call, so the deployer can never sweep an
+        // account whose intent still has a live reward escrow or an honored-but-unsettled proof — the
+        // sweep is gated on BOTH an expired version AND an independently-dead account, and that second
+        // condition falls out for free from the already-hardened lock (no new, less-reviewed check).
+        bool isKeeper = msg.sender == intent.reward.keeper;
+        bool isDeployerSweep = msg.sender ==
+            IPortalProxy(address(this)).owner() &&
+            isProtocolVersionExpired(address(this), intent.protocolVersion);
+        if (!isKeeper && !isDeployerSweep) {
             revert NotAccountOwner(msg.sender);
         }
 
@@ -770,6 +851,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      *      is the anti-replay, so no status transition is needed.
      */
     function settleStream(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -777,6 +859,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bytes calldata batchData
     ) external onlySourceChain(source) {
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -812,6 +895,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      *      reclaim path, distinct from {refund}).
      */
     function closeStream(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
@@ -822,6 +906,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         }
 
         (bytes32 intentHash, , ) = getIntentHash(
+            protocolVersion,
             source,
             destination,
             routeHash,
@@ -881,6 +966,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      * @return account Address of the created account
      */
     function _publishAndFund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,
@@ -888,7 +974,13 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         bool allowPartial,
         address funder
     ) internal override returns (bytes32 intentHash, address account) {
-        (intentHash, account) = publish(source, destination, route, reward);
+        (intentHash, account) = publish(
+            protocolVersion,
+            source,
+            destination,
+            route,
+            reward
+        );
 
         _fundIntent(
             intentHash,

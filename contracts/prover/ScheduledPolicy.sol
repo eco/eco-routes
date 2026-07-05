@@ -121,12 +121,14 @@ abstract contract ScheduledPolicy is IPolicy, Whitelist, Semver, ERC165 {
      *      same-chain synthesized fact (destination == {CHAIN_ID}) is never challengeable.
      */
     function challengeIntentProof(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
         bytes32 rewardHash
     ) external {
         bytes32 intentHash = IntentLib.hashIntent(
+            protocolVersion,
             source,
             destination,
             routeHash,

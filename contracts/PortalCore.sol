@@ -53,6 +53,7 @@ abstract contract PortalCore is IntentSource, Inbox, Semver {
         // fulfillment into the keeper-committed prover. For a same-chain intent this recorded fact IS the
         // proof the settle reads below (no relay, no cross-chain round-trip).
         (bytes memory result, uint256[] memory fulfilled, ) = _fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -67,6 +68,7 @@ abstract contract PortalCore is IntentSource, Inbox, Semver {
         // recorded and pays out without a cross-chain hash round-trip.
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         _settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
