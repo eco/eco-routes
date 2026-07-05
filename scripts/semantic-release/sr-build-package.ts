@@ -35,9 +35,17 @@ import { zeroAddress } from 'viem'
 // This is used for both CSV headers and TypeScript type definitions
 export const CONTRACT_TYPES = [
   'Portal',
+  'MulticallRuntime',
+  'LocalPolicy',
   'HyperPolicy',
   'MetaPolicy',
   'LayerZeroPolicy',
+  'CCIPPolicy',
+  'PolymerPolicy',
+  'StreamingPolicy',
+  'VestingPolicy',
+  'MilestonePolicy',
+  'DutchDecayPolicy',
 ] as const
 
 const execPromise = promisify(exec)

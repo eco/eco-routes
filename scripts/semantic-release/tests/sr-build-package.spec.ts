@@ -8,7 +8,7 @@ jest.mock('../sr-build-package', () => {
   const originalModule = jest.requireActual('../sr-build-package')
   return {
     ...originalModule,
-    CONTRACT_TYPES: ['IntentSource', 'Inbox', 'HyperPolicy'],
+    CONTRACT_TYPES: jest.requireActual('../sr-build-package').CONTRACT_TYPES,
     buildPackage: jest.fn().mockImplementation(async (context) => {
       if (context?.nextRelease) {
         if (context.mock_should_fail) {
@@ -146,11 +146,16 @@ describe('Semantic Release Build Package', () => {
 
   describe('CONTRACT_TYPES constant', () => {
     it('should contain the expected contract types', () => {
-      // Assert: Check CONTRACT_TYPES values
-      expect(CONTRACT_TYPES).toContain('IntentSource')
-      expect(CONTRACT_TYPES).toContain('Inbox')
+      // Assert: the v3 contract set (Prover→Policy rename, full deployed set)
+      expect(CONTRACT_TYPES).toContain('Portal')
+      expect(CONTRACT_TYPES).toContain('MulticallRuntime')
       expect(CONTRACT_TYPES).toContain('HyperPolicy')
-      expect(CONTRACT_TYPES.length).toBe(3)
+      expect(CONTRACT_TYPES).toContain('CCIPPolicy')
+      expect(CONTRACT_TYPES).toContain('PolymerPolicy')
+      expect(CONTRACT_TYPES).toContain('VestingPolicy')
+      // No pre-rename names remain.
+      expect(CONTRACT_TYPES).not.toContain('HyperProver')
+      expect(CONTRACT_TYPES.length).toBe(12)
     })
   })
 })

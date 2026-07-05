@@ -42,19 +42,33 @@ const CREATE_X_ABI = [
 ]
 
 type Contract = {
-  name: 'Portal' | 'HyperPolicy'
+  name:
+    | 'Portal'
+    | 'MulticallRuntime'
+    | 'HyperPolicy'
+    | 'MetaPolicy'
+    | 'LayerZeroPolicy'
+    | 'CCIPPolicy'
+    | 'PolymerPolicy'
   path: string
   args: any[]
 }
 
-// List of contracts to deploy
+// Contracts whose deterministic address is a pure function of (bytecode, salt) via CREATE2 — i.e. the
+// no-constructor-arg core contracts. The transport policies deploy via CREATE3 (address independent of
+// bytecode/ctor-args, a function of deployer+salt only), so their addresses are NOT derived here — see
+// scripts/DeployV3.s.sol and docs/v3/08-deploy-and-release.md.
 const CONTRACTS_TO_DEPLOY: Contract[] = [
   {
     name: 'Portal',
     args: [],
     path: 'contracts/Portal.sol:Portal',
   },
-  // { name: 'HyperPolicy', args: [], path: 'contracts/prover/HyperPolicy.sol:HyperPolicy' },
+  {
+    name: 'MulticallRuntime',
+    args: [],
+    path: 'contracts/runtime/MulticallRuntime.sol:MulticallRuntime',
+  },
 ]
 
 /**
