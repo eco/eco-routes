@@ -19,11 +19,13 @@ const config: HardhatUserConfig = {
           viaIR: true,
           optimizer: {
             enabled: true,
-            // Kept in lockstep with foundry.toml `optimizer_runs`. PR6 lowered this from 20000 to 1000
-            // so the Portal (which gained the streaming settle/close entry points) stays under the
-            // 24,576 B EIP-170 limit; PR9 lowered it again from 1000 to 400 (the Portal grew with the
-            // per-entry-point `protocolVersion` param + version validation + deployer-sweep branch).
-            // See docs/v3/09-protocol-versioning.md ("Size budget").
+            // Kept in lockstep with foundry.toml `optimizer_runs`. This had been ratcheted DOWN as the
+            // combined Portal grew (PR6: 20000 -> 1000 for the streaming settle/close entry points;
+            // PR9: 1000 -> 400 for the per-entry-point `protocolVersion` param + version validation +
+            // deployer-sweep branch). PR10 RESTORED it to 1,000,000: splitting the ERC-7683 Settlers out
+            // into ERC7683Implementation reclaimed ~5.5 KB of Portal bytecode, so all contracts once again
+            // fit under the 24,576 B EIP-170 limit at the maximum standard setting (Portal 23,564 B).
+            // See docs/v3/10-erc7683-adapter-split.md ("Sizes and optimizer_runs").
             runs: 1000000,
           },
         },
