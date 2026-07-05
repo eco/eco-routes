@@ -54,13 +54,25 @@ lockstep). Bytecode SIZE plateaus at the ceiling for high runs; below the platea
 little runtime gas for real bytecode headroom. Externalizing the struct-heavy decode to the policy/Account
 (opaque `bytes` at the Portal boundary) already recovered ~1 KB; the valve closes the rest.
 
-## 5. Deposit-address migration — DEFERRED (PR6b)
+## 5. Accepted residual: relay-mistag wipe via `challengeIntentProof`
+
+`challengeIntentProof` is permissionless and deletes all of an intent's `_srcBatches` when the recorded
+`srcDestination` doesn't match the intent's real `destination`. `recordBatch` takes `intentHash` and
+`destination` as independent arguments, so a **whitelisted** relay that records a genuine batch under the
+wrong `destination` lets anyone permissionlessly wipe that intent's accumulated, proven-but-unsettled
+batches — the solver only recovers by re-proving. This requires an already-trusted relay to misbehave or
+have a bug (the same trust bar the relay whitelist already assumes for censorship-resistance), not an
+unprivileged attacker, and it's the wrong-destination scrub working as designed for the honest case — but
+it's a sharp correctness dependency on relay-supplied metadata worth calling out explicitly rather than
+leaving implicit.
+
+## 6. Deposit-address migration — DEFERRED (PR6b)
 
 Migrating the reusable deposit-address templates onto standing streaming intents is deferred to a PR6b
 follow-up. In the meantime the H2 guard protects every reusable deposit address, and all deposit families
 stay functional. See `migration-loss-inventory.md`.
 
-## 6. Tests
+## 7. Tests
 
 `test/core/Streaming.t.sol` (10): batch flow, `settleStream` full-or-revert (L1), dedup (M1), no-stranding
 (H1), `closeStream` C2 anti-rug, keeper reclaim; plus the H2 `NothingToFulfill` cases in
