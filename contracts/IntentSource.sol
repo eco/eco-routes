@@ -629,14 +629,19 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
      *      (`block.chainid == intent.source`) — the escrow Account lives there. The Account is derived
      *      from the source role chain id, so this operates on the escrow account (the keeper's own funds),
      *      NOT the destination execution account (that has its own {Inbox-executeAsOwner} gated by
-     *      `route.keeper`). Anti-rug ESCROW/PROOF LOCK: while a Funded intent's reward is still LIVE — it
-     *      has reward legs AND is before the reward deadline — or it already carries a valid destination
-     *      proof (a solver may be owed the escrow), the cook reverts {AccountLocked}. It is permitted in
-     *      the other states: Initial (nothing escrowed), Withdrawn / Refunded (escrow gone), or Funded
-     *      once the escrow is truly free (past the deadline with no live legs and no valid proof, or an
-     *      empty-reward intent that owes no solver). The delegatecall bubbles the runtime's raw
-     *      return/revert verbatim. Used as the source-side stray-fund rescue and consumed by the deposit
-     *      self-service flows.
+     *      `route.keeper`). Anti-rug ESCROW/PROOF LOCK: while a reward is still LIVE — it has reward legs
+     *      AND is before the reward deadline — or it already carries a valid destination proof (a solver
+     *      may be owed the escrow), the cook reverts {AccountLocked}, in EVERY non-terminal status
+     *      (Initial or Funded) — not just Funded: `fund`/`fundFor` are permissionless and need no prior
+     *      `publish`, so an `Initial` intent can still be funded later, and an arbitrary runtime run while
+     *      Initial could otherwise plant a persistent side effect (e.g. a token approval) that survives
+     *      independently of the account's balance and is exercisable once real escrow lands. It is
+     *      permitted in: Withdrawn / Refunded (escrow gone, and terminal — `onlyFundable` makes funding
+     *      structurally impossible again), or any status once the escrow is truly free (past the deadline
+     *      with no live legs and no valid proof, or an empty-reward intent that owes no solver). The
+     *      delegatecall bubbles the runtime's raw return/revert verbatim. Used as the source-side
+     *      stray-fund rescue and consumed by the deposit self-service flows (which use empty-reward
+     *      intents, so they are unaffected — never locked regardless of status).
      * @param intent The complete intent specification (identifies the Account + owner)
      * @param runtime The delegatecall target to run against the Account
      * @param payload The opaque program forwarded to `runtime`
@@ -657,15 +662,27 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         (bytes32 intentHash, , ) = getIntentHash(intent);
 
         Status status = rewardStatuses[intentHash];
-        if (status == Status.Funded) {
+        // The lock is evaluated for every NON-TERMINAL status (Initial AND Funded), not just Funded.
+        // `fund`/`fundFor` are permissionless and require no prior `publish` (main's long-standing
+        // "hash-triple identity" design), so an `Initial` intent can be funded by ANYONE at ANY time —
+        // gating the lock on `Funded` alone let a keeper run an arbitrary runtime on the escrow Account
+        // WHILE it was still Initial and use it to plant a PERSISTENT side effect (e.g. an ERC20 `approve`
+        // to themselves) that survives independently of the account's balance. That approval is later
+        // exercisable via a plain `transferFrom` at any point after real reward escrow lands — completely
+        // bypassing this lock, which only ever gated a fresh `executeAsOwner` call, never a pre-planted
+        // allowance. Terminal states (Withdrawn/Refunded) are the only ones where funding is structurally
+        // impossible again (`onlyFundable` rejects them), so they remain unconditionally unlocked.
+        if (status != Status.Withdrawn && status != Status.Refunded) {
             bool hasRewardLegs = intent.reward.tokens.length != 0;
             bool beforeDeadline = block.timestamp < intent.reward.deadline;
             IPolicy.ProofData memory proof = IPolicy(intent.reward.prover)
                 .provenIntents(intentHash);
             bool provenForThisDest = proof.fulfillmentHash != bytes32(0) &&
                 proof.destination == intent.destination;
-            // Locked while a real reward escrow is live (has legs AND before the deadline), or whenever a
-            // valid destination proof exists (a solver may be owed — never rug an honored fulfillment).
+            // Locked while a real reward escrow is (or could still become) live (has legs AND before the
+            // deadline), or whenever a valid destination proof exists (a solver may be owed — never rug an
+            // honored fulfillment). An empty-reward intent (deposit / owner-cook) has no legs, so this is
+            // never locked for it, regardless of status.
             if ((hasRewardLegs && beforeDeadline) || provenForThisDest) {
                 revert AccountLocked(intentHash);
             }

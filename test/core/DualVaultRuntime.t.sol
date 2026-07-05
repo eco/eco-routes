@@ -110,12 +110,17 @@ contract DualVaultRuntimeTest is BaseTest {
     /// @notice Outside an in-flight execute, any calldata to the account reverts FallbackNotInExecute.
     function test_fallback_revertsOutsideExecute() public {
         // Deploy the account (funding only sends tokens to the counterfactual address; executeAsOwner on
-        // an Initial intent deploys the clone) then poke it while NO execute is on the stack.
-        bytes32 hash = _hashIntent(intent);
-        address account = portal.accountAddress(hash, intent.source);
+        // an Initial intent deploys the clone) then poke it while NO execute is on the stack. Use an
+        // empty-reward variant: the AccountLocked anti-rug lock applies to Initial too (not just Funded)
+        // once there are live reward legs, and this test is exercising the fallback mechanism, not the
+        // lock — an empty-reward intent (like a deposit/owner-cook intent) is never locked.
+        Intent memory x = intent;
+        x.reward.tokens = new RewardToken[](0);
+        bytes32 hash = _hashIntent(x);
+        address account = portal.accountAddress(hash, x.source);
         vm.prank(keeper);
         intentSource.executeAsOwner(
-            intent,
+            x,
             address(probe),
             abi.encodeWithSelector(ProbeRuntime.run.selector)
         );
@@ -130,12 +135,15 @@ contract DualVaultRuntimeTest is BaseTest {
 
     /// @notice Bare native transfers (empty calldata) are accepted by receive() (counterfactual funding).
     function test_receive_acceptsBareNative() public {
-        bytes32 hash = _hashIntent(intent);
-        address account = portal.accountAddress(hash, intent.source);
+        // Empty-reward variant — see test_fallback_revertsOutsideExecute for why.
+        Intent memory x = intent;
+        x.reward.tokens = new RewardToken[](0);
+        bytes32 hash = _hashIntent(x);
+        address account = portal.accountAddress(hash, x.source);
         // Deploy the clone first so the transfer reaches the Account's receive() (not a codeless address).
         vm.prank(keeper);
         intentSource.executeAsOwner(
-            intent,
+            x,
             address(probe),
             abi.encodeWithSelector(ProbeRuntime.run.selector)
         );
@@ -149,15 +157,18 @@ contract DualVaultRuntimeTest is BaseTest {
 
     /// @notice During execute, a callback re-entering the account is FORWARDED to the in-execute runtime.
     function test_fallback_forwardsCallbackDuringExecute() public {
-        // executeAsOwner on an Initial (unfunded) intent is permitted (no live escrow). It deploys the
-        // source account and delegatecalls the ProbeRuntime, which calls back into the account; the gated
-        // fallback forwards that callback to the ProbeRuntime, which writes a sentinel to account storage.
-        bytes32 hash = _hashIntent(intent);
-        address account = portal.accountAddress(hash, intent.source);
+        // executeAsOwner on an empty-reward intent is permitted regardless of status (no live escrow ever
+        // possible). It deploys the source account and delegatecalls the ProbeRuntime, which calls back
+        // into the account; the gated fallback forwards that callback to the ProbeRuntime, which writes a
+        // sentinel to account storage.
+        Intent memory x = intent;
+        x.reward.tokens = new RewardToken[](0);
+        bytes32 hash = _hashIntent(x);
+        address account = portal.accountAddress(hash, x.source);
 
         vm.prank(keeper);
         intentSource.executeAsOwner(
-            intent,
+            x,
             address(probe),
             abi.encodeWithSelector(ProbeRuntime.run.selector)
         );
@@ -167,6 +178,55 @@ contract DualVaultRuntimeTest is BaseTest {
             uint256(vm.load(account, probe.SENTINEL_SLOT())),
             probe.SENTINEL()
         );
+    }
+
+    // --------------------------------------------------------------------
+    // executeAsOwner escrow/proof lock — Initial-status pre-plant regression
+    // --------------------------------------------------------------------
+
+    /// @notice Adversarial-sweep regression: a keeper cannot run executeAsOwner on an Initial (unfunded)
+    ///         intent that still has live reward legs to plant a persistent side effect (e.g. an ERC20
+    ///         approval) that would later let them drain escrow a solver is owed, once the intent is
+    ///         funded and fulfilled. The lock must apply to Initial too, not just Funded.
+    function test_executeAsOwner_lockedWhileInitial_hasLiveRewardLegs() public {
+        // Status is Initial: publishAndFund/fund has NOT been called for `intent` yet.
+        Call[] memory _calls = new Call[](1);
+        _calls[0] = Call({
+            target: address(tokenA), // tokenA is intent.reward.tokens[0].token
+            value: 0,
+            data: abi.encodeWithSignature(
+                "approve(address,uint256)",
+                keeper,
+                type(uint256).max
+            )
+        });
+
+        vm.prank(keeper);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.AccountLocked.selector,
+                _hashIntent(intent)
+            )
+        );
+        intentSource.executeAsOwner(
+            intent,
+            address(multicallRuntime),
+            abi.encode(_calls)
+        );
+
+        // Confirm no approval was planted: fund normally, then verify the keeper cannot pull the escrow
+        // via the (never-granted) allowance.
+        vm.prank(keeper);
+        intentSource.publishAndFund(intent, false);
+        address account = intentSource.intentAccountAddress(intent);
+        assertEq(
+            tokenA.allowance(account, keeper),
+            0,
+            "no approval must have been planted"
+        );
+        vm.expectRevert();
+        vm.prank(keeper);
+        tokenA.transferFrom(account, keeper, MINT_AMOUNT);
     }
 
     // --------------------------------------------------------------------
