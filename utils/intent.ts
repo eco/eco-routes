@@ -44,7 +44,7 @@ export type Reward = {
   prover: string
   deadline: number | bigint
   tokens: RewardToken[]
-  // Opaque creator-committed delegate-hook data (hash-affecting). Empty ('0x') = no hooks.
+  // Opaque keeper-committed delegate-hook data (hash-affecting). Empty ('0x') = no hooks.
   // Default encoding is abi.encode(Hook[2]): index 0 = reward hook (settle), index 1 = refund hook.
   hooks: string
 }
