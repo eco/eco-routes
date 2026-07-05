@@ -86,3 +86,20 @@ Downstream gas/size expectations should use the per-branch value, not a single g
   the governance docs) is a doc-only follow-up larger than PR8's budget. The canonical v3 reference is
   `docs/v3/` (see [`00-overview.md`](./00-overview.md)).
 - TVM broadcast tooling for `runTron()` (see [`08-deploy-and-release.md`](./08-deploy-and-release.md)).
+
+## Accepted residual risk: anti-lock refund vs. cross-chain in-flight window
+`IntentSource._validateRefund` makes the reward **always refundable after `reward.deadline`**, regardless of
+proof state (a terminal/proven intent still allows a dust-recovery refund). This is a deliberate trade: the
+hash-only fact model gives the source no way to introspect a fulfillment's claimant before settlement, so a
+bad-claimant fulfillment could otherwise permanently lock the keeper's funds — the deadline is the one
+definitive settlement window instead.
+
+The trade's edge case: a solver who fulfills a **cross-chain** intent shortly before `reward.deadline`, whose
+proof has not yet been bridged and settled back to the source chain by the time the deadline passes, can be
+refunded out by the keeper — the solver delivered but is not paid. (Same-chain and already-settled intents are
+unaffected; streaming intents are additionally protected pre-deadline by `StreamingPolicy.provenIntents`
+correctly reporting an unsettled batch as a valid proof, which blocks the generic `refund()` path the same way
+`closeStream`'s explicit gate does.) Mitigation is operational, not code: **`reward.deadline` should be set
+with enough margin over the slowest bridge's expected settlement time** for the intent's route. This narrow
+window is unchanged in spirit from the pre-v3 design and was reviewed and accepted, not newly introduced by
+this train.
