@@ -71,6 +71,23 @@ interface IIntentSource {
      */
     error InvalidFulfillmentProof(bytes32 intentHash);
 
+    /// @notice Thrown when {executeAsOwner} is called by someone other than the reward keeper
+    /// @param caller The unauthorized caller
+    error NotAccountOwner(address caller);
+
+    /// @notice Thrown when a source-side op is called on a chain other than the intent's `source`
+    /// @param expected The chain id the op must run on (`intent.source`)
+    error WrongSourceChain(uint64 expected);
+
+    /**
+     * @notice Thrown when {executeAsOwner} is attempted while the Account holds a LIVE escrow
+     * @dev Anti-rug: a Funded intent whose reward is still live (has legs and before the deadline) or
+     *      that already carries a valid destination proof may be owed to a solver, so the keeper cannot
+     *      cook their own Account out from under it.
+     * @param intentHash The hash of the locked intent
+     */
+    error AccountLocked(bytes32 intentHash);
+
     /**
      * @notice Signals the creation of a new cross-chain intent
      * @param intentHash Unique identifier of the intent
@@ -152,6 +169,7 @@ interface IIntentSource {
 
     /**
      * @notice Computes the hash components of an intent
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
@@ -160,6 +178,7 @@ interface IIntentSource {
      * @return rewardHash Hash of the reward specifications
      */
     function getIntentHash(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward memory reward
@@ -169,22 +188,24 @@ interface IIntentSource {
         returns (bytes32 intentHash, bytes32 routeHash, bytes32 rewardHash);
 
     /**
-     * @notice Computes the deterministic account address for an intent
+     * @notice Computes the deterministic (source/escrow) account address for an intent
      * @param intent The intent to calculate the account address for
-     * @return Predicted account address
+     * @return Predicted account address (the source-side escrow account)
      */
     function intentAccountAddress(
         Intent calldata intent
     ) external view returns (address);
 
     /**
-     * @notice Computes the deterministic account address for an intent
+     * @notice Computes the deterministic (source/escrow) account address for an intent
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
-     * @return Predicted account address
+     * @return Predicted account address (the source-side escrow account)
      */
     function intentAccountAddress(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward calldata reward
@@ -201,12 +222,14 @@ interface IIntentSource {
 
     /**
      * @notice Checks if an intent's rewards are valid and fully funded
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
      * @return True if the intent is properly funded
      */
     function isIntentFunded(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward calldata reward
@@ -226,6 +249,7 @@ interface IIntentSource {
     /**
      * @notice Creates a new cross-chain intent with associated rewards
      * @dev Intent must be proven on source chain before expiration for valid reward claims
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
@@ -233,6 +257,7 @@ interface IIntentSource {
      * @return account Address of the created account
      */
     function publish(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward memory reward
@@ -252,6 +277,7 @@ interface IIntentSource {
 
     /**
      * @notice Creates and funds an intent in a single transaction
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
@@ -260,6 +286,7 @@ interface IIntentSource {
      * @return account Address of the created account
      */
     function publishAndFund(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward memory reward,
@@ -268,6 +295,7 @@ interface IIntentSource {
 
     /**
      * @notice Funds an existing intent
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
@@ -275,6 +303,7 @@ interface IIntentSource {
      * @return intentHash The hash of the funded intent
      */
     function fund(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
@@ -283,6 +312,7 @@ interface IIntentSource {
 
     /**
      * @notice Funds an intent on behalf of another address using permit
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
@@ -292,6 +322,7 @@ interface IIntentSource {
      * @return intentHash The hash of the funded intent
      */
     function fundFor(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
@@ -318,6 +349,7 @@ interface IIntentSource {
 
     /**
      * @notice Creates and funds an intent on behalf of another address
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
@@ -328,6 +360,7 @@ interface IIntentSource {
      * @return account Address of the created account
      */
     function publishAndFundFor(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward calldata reward,
@@ -340,6 +373,7 @@ interface IIntentSource {
      * @notice Settles rewards for a successfully fulfilled and proven intent
      * @dev The caller supplies the proven `(claimant, fulfilled[])` preimage, verified against the
      *      prover's hash-only fact before payout.
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
@@ -347,6 +381,7 @@ interface IIntentSource {
      * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
      */
     function settle(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
@@ -356,11 +391,13 @@ interface IIntentSource {
 
     /**
      * @notice Returns rewards to the intent keeper
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      */
     function refund(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward
@@ -368,12 +405,14 @@ interface IIntentSource {
 
     /**
      * @notice Returns rewards to a specified address (only callable by reward keeper)
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      * @param refundee Address to receive the refunded rewards
      */
     function refundTo(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
@@ -381,17 +420,37 @@ interface IIntentSource {
     ) external;
 
     /**
-     * @notice Recovers mistakenly transferred tokens from the intent account
+     * @notice Recovers mistakenly transferred tokens from the intent (source/escrow) account
      * @dev Token must not be part of the intent's reward structure
+     * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param routeHash The hash of the intent's route component
      * @param reward The reward specification
      * @param token The address of the token to recover
      */
     function recoverToken(
+        uint64 source,
         uint64 destination,
         bytes32 routeHash,
         Reward calldata reward,
         address token
     ) external;
+
+    /**
+     * @notice Owner-cook: the reward keeper runs an arbitrary runtime against their OWN (source/escrow)
+     *         Account via delegatecall
+     * @dev Only `intent.reward.keeper` may call, and only on the intent's SOURCE chain
+     *      (`block.chainid == intent.source`). Guarded so it cannot drain escrow owed to a solver: a
+     *      Funded intent whose reward is still live (has legs and before the deadline) or that carries a
+     *      valid destination proof reverts {AccountLocked}. Used as the source-side stray-fund rescue.
+     * @param intent The complete intent specification (identifies the Account + owner)
+     * @param runtime The delegatecall target to run against the Account
+     * @param payload The opaque program forwarded to `runtime`
+     * @return The runtime's raw return data
+     */
+    function executeAsOwner(
+        Intent calldata intent,
+        address runtime,
+        bytes calldata payload
+    ) external payable returns (bytes memory);
 }

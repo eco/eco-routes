@@ -7,7 +7,8 @@ import {DepositFactory_CCTPMint_Arc} from "../../contracts/deposit/DepositFactor
 import {DepositAddress_CCTPMint_Arc} from "../../contracts/deposit/DepositAddress_CCTPMint_Arc.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {LocalPolicy} from "../../contracts/prover/LocalPolicy.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
@@ -199,6 +200,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                 );
 
                 Route memory route = abi.decode(routeBytes, (Route));
+                Call[] memory calls = abi.decode(route.payload, (Call[]));
 
                 if (eventIdx == 0) {
                     // Intent 2 (Gateway deposit on Arc) - published first
@@ -208,7 +210,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                     // Native USDC folds into a single native (address(0)) min-tokens leg.
                     assertEq(route.minTokens.length, 1, "Intent 2 route should have one native min-tokens leg (native USDC)");
                     assertEq(route.minTokens[0].token, address(0), "Intent 2 route min-tokens leg should be native (address(0))");
-                    assertEq(route.calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
+                    assertEq(calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
                     assertEq(rewardTokens.length, 1, "Intent 2 reward should have one native leg (native USDC)");
                     assertEq(rewardTokens[0].token, address(0), "Intent 2 reward leg should be native (address(0))");
                 } else {
@@ -220,7 +222,7 @@ contract DepositIntegration_CCTPMintTest is Test {
                     assertEq(route.minTokens.length, 1, "Intent 1 route should have one min-tokens leg");
                     assertEq(route.minTokens[0].token, address(token), "Intent 1 route min-tokens token should be source USDC");
                     assertEq(route.minTokens[0].amount, depositAmount, "Intent 1 route min-tokens amount should match deposit");
-                    assertEq(route.calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
+                    assertEq(calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
                     assertEq(rewardTokens.length, 1, "Intent 1 reward should have one token");
                     assertEq(rewardTokens[0].token, address(token), "Intent 1 reward token should be source USDC");
                     assertEq(rewardTokens[0].flat, depositAmount, "Intent 1 reward flat should match deposit");
@@ -472,7 +474,10 @@ contract DepositIntegration_CCTPMintTest is Test {
 
         // --- Derive account2 address ---
         // account2 is the reward account for Intent 2; CCTP mints native USDC here on Arc
-        address account2 = portal.intentAccountAddress(localChainId, abi.encode(route2), reward2);
+        // Intent 2's source is always `uint64(block.chainid)` (the depositor's source chain) per
+        // DepositAddress_CCTPMint_Arc's _constructGatewayIntent; this test sets ARC_CHAIN_ID ==
+        // block.chainid for local provability, so source == destination == localChainId here.
+        address account2 = portal.intentAccountAddress(localChainId, localChainId, abi.encode(route2), reward2);
         assertTrue(account2 != address(0), "account2 address should be non-zero");
 
         // --- Simulate CCTP mint: fund account2 with native ETH (= native USDC on Arc) ---

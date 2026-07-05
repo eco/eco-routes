@@ -56,7 +56,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: cs,
+            runtime: address(multicallRuntime),
+            payload: abi.encode(cs),
             minTokens: minTokensLegs
         });
 
@@ -70,7 +71,12 @@ contract RewardLegsTest is BaseTest {
             tokens: legs
         });
 
-        _intent = Intent({destination: uint64(block.chainid), route: r, reward: rw});
+        _intent = Intent({
+            source: uint64(block.chainid),
+            destination: uint64(block.chainid),
+            route: r,
+            reward: rw
+        });
     }
 
     // Fulfill `_intent` with the solver providing exactly `provided` tokenA of input.
@@ -85,6 +91,7 @@ contract RewardLegsTest is BaseTest {
         vm.startPrank(solver);
         tokenA.approve(address(portal), provided);
         portal.fulfill(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -157,6 +164,7 @@ contract RewardLegsTest is BaseTest {
         uint256 keeperBefore = tokenA.balanceOf(keeper);
 
         intentSource.settle(
+            _intent.source,
             uint64(block.chainid),
             keccak256(abi.encode(_intent.route)),
             _intent.reward,
@@ -188,6 +196,7 @@ contract RewardLegsTest is BaseTest {
         uint256 claimantBefore = tokenA.balanceOf(claimant);
 
         intentSource.settle(
+            _intent.source,
             uint64(block.chainid),
             keccak256(abi.encode(_intent.route)),
             _intent.reward,
@@ -267,6 +276,7 @@ contract RewardLegsTest is BaseTest {
             )
         );
         portal.fulfill(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -290,6 +300,7 @@ contract RewardLegsTest is BaseTest {
         );
         vm.prank(solver);
         portal.fulfill(
+            _intent.source,
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
@@ -326,6 +337,7 @@ contract RewardLegsTest is BaseTest {
             )
         );
         intentSource.settle(
+            _intent.source,
             uint64(block.chainid),
             keccak256(abi.encode(_intent.route)),
             _intent.reward,
@@ -347,6 +359,7 @@ contract RewardLegsTest is BaseTest {
             tokens: legs
         });
         Intent memory _intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: route,
             reward: rw
@@ -380,6 +393,7 @@ contract RewardLegsTest is BaseTest {
             tokens: legs
         });
         Intent memory _intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: route,
             reward: rw
@@ -409,7 +423,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: new Call[](0),
+            runtime: address(multicallRuntime),
+            payload: abi.encode(new Call[](0)),
             minTokens: mi
         });
         RewardToken[] memory legs = new RewardToken[](2);
@@ -422,6 +437,7 @@ contract RewardLegsTest is BaseTest {
             tokens: legs
         });
         Intent memory _intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: r,
             reward: rw
@@ -432,6 +448,7 @@ contract RewardLegsTest is BaseTest {
             abi.encodeWithSelector(IntentLib.MinTokensNotSorted.selector, hi, lo)
         );
         portal.fulfill(
+            _intent.source,
             intentHash,
             r,
             keccak256(abi.encode(rw)),
@@ -452,7 +469,8 @@ contract RewardLegsTest is BaseTest {
             deadline: uint64(block.timestamp + 1000),
             portal: address(portal),
             keeper: keeper,
-            calls: new Call[](0),
+            runtime: address(multicallRuntime),
+            payload: abi.encode(new Call[](0)),
             minTokens: mi
         });
         Reward memory rw = Reward({
@@ -462,6 +480,7 @@ contract RewardLegsTest is BaseTest {
             tokens: new RewardToken[](0)
         });
         Intent memory _intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: r,
             reward: rw
@@ -476,6 +495,7 @@ contract RewardLegsTest is BaseTest {
             )
         );
         portal.fulfill(
+            _intent.source,
             intentHash,
             r,
             keccak256(abi.encode(rw)),

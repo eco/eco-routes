@@ -1,12 +1,19 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Portal, TestPolicy, Inbox } from '../typechain-types'
+import {
+  TestERC20,
+  Portal,
+  TestPolicy,
+  Inbox,
+  MulticallRuntime,
+} from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, Provider, AbiCoder } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
 import {
   encodeRoute,
+  encodeCalls,
   Call,
   TokenAmount,
   RewardToken,
@@ -30,6 +37,7 @@ describe('Origin Settler Test', (): void => {
   let portal: Portal
   let prover: TestPolicy
   let inbox: Inbox
+  let multicallRuntime: MulticallRuntime
   let tokenA: TestERC20
   let tokenB: TestERC20
   let keeper: SignerWithAddress
@@ -39,6 +47,7 @@ describe('Origin Settler Test', (): void => {
   let salt: BytesLike
   let nonce: number
   let chainId: number
+  let sourceChainId: number
   let routeTokens: TokenAmount[]
   let calls: Call[]
   let expiry_open: number
@@ -66,6 +75,7 @@ describe('Origin Settler Test', (): void => {
     originSettler: Portal
     portal: Portal
     prover: TestPolicy
+    multicallRuntime: MulticallRuntime
     tokenA: TestERC20
     tokenB: TestERC20
     keeper: SignerWithAddress
@@ -82,6 +92,11 @@ describe('Origin Settler Test', (): void => {
       await ethers.getContractFactory('TestPolicy')
     ).deploy(await inbox.getAddress())
 
+    // deploy the default v3 route runtime
+    const multicallRuntime = await (
+      await ethers.getContractFactory('MulticallRuntime')
+    ).deploy()
+
     // Use portal as the originSettler since OriginSettler is now abstract
     const originSettler = portal
 
@@ -94,6 +109,7 @@ describe('Origin Settler Test', (): void => {
       originSettler,
       portal,
       prover,
+      multicallRuntime,
       tokenA,
       tokenB,
       keeper,
@@ -110,8 +126,16 @@ describe('Origin Settler Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ originSettler, portal, prover, tokenA, tokenB, keeper, otherPerson } =
-      await loadFixture(deploySourceFixture))
+    ;({
+      originSettler,
+      portal,
+      prover,
+      multicallRuntime,
+      tokenA,
+      tokenB,
+      keeper,
+      otherPerson,
+    } = await loadFixture(deploySourceFixture))
 
     // fund the keeper and approve it to create an intent
     await mintAndApprove()
@@ -127,6 +151,9 @@ describe('Origin Settler Test', (): void => {
       expiry_open = (await time.latest()) + 12345
       expiry_fill = expiry_open + 12345
       chainId = 1
+      // `open()`/`openFor()` commit `source == block.chainid` (Model C) at open time, which is the
+      // *actual* local network's chain id -- distinct from the fixture's arbitrary `destination` (1).
+      sourceChainId = Number((await ethers.provider.getNetwork()).chainId)
       routeTokens = [{ token: await tokenA.getAddress(), amount: mintAmount }]
       calls = [
         {
@@ -149,7 +176,8 @@ describe('Origin Settler Test', (): void => {
         deadline: expiry_fill,
         portal: await inbox.getAddress(),
         keeper: keeper.address,
-        calls,
+        runtime: await multicallRuntime.getAddress(),
+        payload: encodeCalls(calls),
         minTokens: routeTokens,
       }
       reward = {
@@ -158,7 +186,12 @@ describe('Origin Settler Test', (): void => {
         deadline: expiry_fill,
         tokens: rewardTokens,
       }
-      intent = { destination: chainId, route: route, reward: reward }
+      intent = {
+        source: sourceChainId,
+        destination: chainId,
+        route: route,
+        reward: reward,
+      }
       intentHash = hashIntent(intent).intentHash
 
       onchainCrosschainOrderData = {
@@ -190,7 +223,11 @@ describe('Origin Settler Test', (): void => {
                 reward.deadline, // reward.deadline
                 reward.keeper, // reward.keeper (address, not bytes32)
                 reward.prover, // reward.prover (address, not bytes32)
-                reward.tokens.map((token) => [token.token, token.rate, token.flat]), // TokenAmount[] with proper structure
+                reward.tokens.map((token) => [
+                  token.token,
+                  token.rate,
+                  token.flat,
+                ]), // TokenAmount[] with proper structure
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
               expiry_fill, // routeDeadline
@@ -239,7 +276,11 @@ describe('Origin Settler Test', (): void => {
                 reward.deadline, // reward.deadline
                 reward.keeper, // reward.keeper (address, not bytes32)
                 reward.prover, // reward.prover (address, not bytes32)
-                reward.tokens.map((token) => [token.token, token.rate, token.flat]), // TokenAmount[] with proper structure
+                reward.tokens.map((token) => [
+                  token.token,
+                  token.rate,
+                  token.flat,
+                ]), // TokenAmount[] with proper structure
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
               expiry_fill, // routeDeadline
@@ -298,7 +339,11 @@ describe('Origin Settler Test', (): void => {
                   reward.deadline, // reward.deadline
                   reward.keeper, // reward.keeper
                   reward.prover, // reward.prover
-                  reward.tokens.map((token) => [token.token, token.rate, token.flat]), // TokenAmount[] with proper structure
+                  reward.tokens.map((token) => [
+                    token.token,
+                    token.rate,
+                    token.flat,
+                  ]), // TokenAmount[] with proper structure
                 ],
                 ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
                 expiry_fill, // routeDeadline
@@ -321,6 +366,7 @@ describe('Origin Settler Test', (): void => {
         const provider: Provider = originSettler.runner!.provider!
         expect(
           await portal.isIntentFunded({
+            source: sourceChainId,
             destination: chainId,
             route,
             reward,
@@ -356,6 +402,7 @@ describe('Origin Settler Test', (): void => {
           .to.emit(originSettler, 'Open')
         expect(
           await portal.isIntentFunded({
+            source: sourceChainId,
             destination: chainId,
             route,
             reward,
@@ -364,6 +411,7 @@ describe('Origin Settler Test', (): void => {
         expect(
           await provider.getBalance(
             await portal.intentAccountAddress({
+              source: sourceChainId,
               destination: chainId,
               route,
               reward,
@@ -378,6 +426,7 @@ describe('Origin Settler Test', (): void => {
         const provider: Provider = originSettler.runner!.provider!
 
         const accountAddress = await portal.intentAccountAddress({
+          source: sourceChainId,
           destination: chainId,
           route,
           reward,
@@ -395,6 +444,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(
           await portal.isIntentFunded({
+            source: sourceChainId,
             destination: chainId,
             route,
             reward,
@@ -423,6 +473,7 @@ describe('Origin Settler Test', (): void => {
       })
       it('publishes without transferring if intent is already funded', async () => {
         const accountAddress = await portal.intentAccountAddress({
+          source: sourceChainId,
           destination: chainId,
           route,
           reward,
@@ -436,6 +487,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(
           await portal.isIntentFunded({
+            source: sourceChainId,
             destination: chainId,
             route,
             reward,
@@ -493,9 +545,7 @@ describe('Origin Settler Test', (): void => {
           )
         }
 
-        expect(resolvedOrder.minReceived.length).to.eq(
-          reward.tokens.length,
-        )
+        expect(resolvedOrder.minReceived.length).to.eq(reward.tokens.length)
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
             ethers.zeroPadValue(reward.tokens[i].token, 32),
@@ -529,7 +579,8 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           onchainCrosschainOrderData.routePortal,
         )
-        // originData should be (route, rewardHash) not the full intent
+        // originData is (source, route, rewardHash) -- Model C carries the committed `source` chain
+        // id so the destination fill can re-derive the same hash.
         const rewardForEncoding = [
           reward.deadline,
           reward.keeper,
@@ -537,8 +588,9 @@ describe('Origin Settler Test', (): void => {
           reward.tokens.map((token) => [token.token, token.rate, token.flat]),
         ]
         const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
-          ['bytes', 'bytes32'],
+          ['uint64', 'bytes', 'bytes32'],
           [
+            sourceChainId,
             encodeRoute(route),
             keccak256(
               AbiCoder.defaultAbiCoder().encode(
@@ -558,6 +610,7 @@ describe('Origin Settler Test', (): void => {
       it('creates via openFor', async () => {
         expect(
           await portal.isIntentFunded({
+            source: sourceChainId,
             destination: chainId,
             route,
             reward,
@@ -586,6 +639,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(
           await portal.isIntentFunded({
+            source: sourceChainId,
             destination: chainId,
             route,
             reward,
@@ -646,9 +700,7 @@ describe('Origin Settler Test', (): void => {
             gaslessCrosschainOrderData.maxSpent[i].chainId,
           )
         }
-        expect(resolvedOrder.minReceived.length).to.eq(
-          reward.tokens.length,
-        )
+        expect(resolvedOrder.minReceived.length).to.eq(reward.tokens.length)
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
             ethers.zeroPadValue(reward.tokens[i].token, 32),
@@ -682,7 +734,8 @@ describe('Origin Settler Test', (): void => {
         expect(fillInstruction.destinationSettler).to.eq(
           gaslessCrosschainOrderData.routePortal,
         )
-        // originData should be (route, rewardHash) not the full intent
+        // originData is (source, route, rewardHash) -- Model C carries the committed `source` chain
+        // id so the destination fill can re-derive the same hash.
         const rewardForEncoding = [
           reward.deadline,
           reward.keeper,
@@ -690,8 +743,9 @@ describe('Origin Settler Test', (): void => {
           reward.tokens.map((token) => [token.token, token.rate, token.flat]),
         ]
         const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
-          ['bytes', 'bytes32'],
+          ['uint64', 'bytes', 'bytes32'],
           [
+            sourceChainId,
             encodeRoute(route),
             keccak256(
               AbiCoder.defaultAbiCoder().encode(

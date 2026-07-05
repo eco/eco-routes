@@ -12,6 +12,7 @@ import {
   IIntentSource,
   TestERC20,
   TestMetaRouter,
+  MulticallRuntime,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
 import {
@@ -21,6 +22,7 @@ import {
   Intent,
   hashIntent,
   hashFulfillment,
+  encodeCalls,
 } from '../utils/intent'
 import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
 
@@ -67,6 +69,7 @@ describe('MetaPolicy Test', (): void => {
   let router: TestMetaRouter
   let metaProver: MetaPolicy
   let token: TestERC20
+  let multicallRuntime: MulticallRuntime
   let owner: SignerWithAddress
   let solver: SignerWithAddress
   let claimant: SignerWithAddress
@@ -119,6 +122,7 @@ describe('MetaPolicy Test', (): void => {
     metaProver: MetaPolicy
     router: TestMetaRouter
     token: TestERC20
+    multicallRuntime: MulticallRuntime
     owner: SignerWithAddress
     solver: SignerWithAddress
     claimant: SignerWithAddress
@@ -135,6 +139,10 @@ describe('MetaPolicy Test', (): void => {
       await ethers.getContractFactory('TestERC20')
     ).deploy('token', 'tkn')
 
+    const multicallRuntime = await (
+      await ethers.getContractFactory('MulticallRuntime')
+    ).deploy()
+
     const metaProver = await (
       await ethers.getContractFactory('MetaPolicy')
     ).deploy(
@@ -149,6 +157,7 @@ describe('MetaPolicy Test', (): void => {
       metaProver,
       router,
       token,
+      multicallRuntime,
       owner,
       solver,
       claimant,
@@ -156,8 +165,16 @@ describe('MetaPolicy Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, metaProver, router, token, owner, solver, claimant } =
-      await loadFixture(deployMetaProverFixture))
+    ;({
+      inbox,
+      metaProver,
+      router,
+      token,
+      multicallRuntime,
+      owner,
+      solver,
+      claimant,
+    } = await loadFixture(deployMetaProverFixture))
   })
 
   describe('1. Constructor', () => {
@@ -354,6 +371,9 @@ describe('MetaPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        source: Number(
+          (await metaProver.runner?.provider?.getNetwork())?.chainId,
+        ),
         destination: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -363,20 +383,25 @@ describe('MetaPolicy Test', (): void => {
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -399,6 +424,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           rewardHash,
@@ -466,6 +492,9 @@ describe('MetaPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        source: Number(
+          (await metaProver.runner?.provider?.getNetwork())?.chainId,
+        ),
         destination: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -475,20 +504,25 @@ describe('MetaPolicy Test', (): void => {
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -511,6 +545,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           rewardHash,
@@ -565,6 +600,9 @@ describe('MetaPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        source: Number(
+          (await metaProver.runner?.provider?.getNetwork())?.chainId,
+        ),
         destination: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -574,20 +612,25 @@ describe('MetaPolicy Test', (): void => {
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: [{ token: await token.getAddress(), amount: amount }],
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -610,6 +653,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent.source,
           intentHash,
           intent.route,
           rewardHash,
@@ -831,6 +875,9 @@ describe('MetaPolicy Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
       const intent: Intent = {
+        source: Number(
+          (await metaProver.runner?.provider?.getNetwork())?.chainId,
+        ),
         destination: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -840,20 +887,25 @@ describe('MetaPolicy Test', (): void => {
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: routeTokens,
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -896,6 +948,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          intent.source,
           intentHash,
           route,
           rewardHash,
@@ -951,6 +1004,9 @@ describe('MetaPolicy Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
       const intent: Intent = {
+        source: Number(
+          (await metaProver.runner?.provider?.getNetwork())?.chainId,
+        ),
         destination: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -960,20 +1016,25 @@ describe('MetaPolicy Test', (): void => {
           portal: await inbox.getAddress(),
           keeper: await owner.getAddress(),
           minTokens: routeTokens,
-          calls: [
+          runtime: await multicallRuntime.getAddress(),
+          payload: encodeCalls([
             {
               target: await token.getAddress(),
               data: calldata,
               value: 0,
             },
-          ],
+          ]),
         },
         reward: {
           keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
           tokens: [
-            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+            {
+              token: ethers.ZeroAddress,
+              rate: 0n,
+              flat: ethers.parseEther('0.01'),
+            },
           ],
         },
       }
@@ -1022,6 +1083,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          intent.source,
           intentHash,
           route,
           rewardHash,
@@ -1034,7 +1096,10 @@ describe('MetaPolicy Test', (): void => {
         )
 
       // Simulate the cross-chain message being received back to record the proof
-      const msgBodyForReturn = encodeMessageBody([intentHash], [fulfillmentHash])
+      const msgBodyForReturn = encodeMessageBody(
+        [intentHash],
+        [fulfillmentHash],
+      )
 
       await router.simulateHandleMessage(
         sourceChainID,
@@ -1115,20 +1180,25 @@ describe('MetaPolicy Test', (): void => {
         portal: await inbox.getAddress(),
         keeper: await owner.getAddress(),
         minTokens: routeTokens,
-        calls: [
+        runtime: await multicallRuntime.getAddress(),
+        payload: encodeCalls([
           {
             target: await token.getAddress(),
             data: calldata,
             value: 0,
           },
-        ],
+        ]),
       }
       const reward = {
         keeper: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
-          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          {
+            token: ethers.ZeroAddress,
+            rate: 0n,
+            flat: ethers.parseEther('0.01'),
+          },
         ],
       }
 
@@ -1136,6 +1206,7 @@ describe('MetaPolicy Test', (): void => {
         (await metaProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent0: Intent = {
+        source: destination,
         destination,
         route,
         reward,
@@ -1159,6 +1230,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent0.source,
           intentHash0,
           route,
           rewardHash0,
@@ -1174,23 +1246,29 @@ describe('MetaPolicy Test', (): void => {
         portal: await inbox.getAddress(),
         keeper: await owner.getAddress(),
         minTokens: routeTokens,
-        calls: [
+        runtime: await multicallRuntime.getAddress(),
+        payload: encodeCalls([
           {
             target: await token.getAddress(),
             data: calldata,
             value: 0,
           },
-        ],
+        ]),
       }
       const reward1 = {
         keeper: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
         tokens: [
-          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          {
+            token: ethers.ZeroAddress,
+            rate: 0n,
+            flat: ethers.parseEther('0.01'),
+          },
         ],
       }
       const intent1: Intent = {
+        source: destination,
         destination,
         route: route1,
         reward: reward1,
@@ -1210,6 +1288,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          intent1.source,
           intentHash1,
           route1,
           rewardHash1,
@@ -1223,8 +1302,12 @@ describe('MetaPolicy Test', (): void => {
 
       // Hash-only fulfillment commitments carried on the wire (per intent, same claimant)
       const claimant32 = addressToBytes32(await claimant.getAddress())
-      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [amount])
-      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [amount])
+      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [
+        amount,
+      ])
+      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [
+        amount,
+      ])
 
       const msgbody = encodeMessageBody(
         [intentHash0, intentHash1],

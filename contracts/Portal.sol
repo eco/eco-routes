@@ -6,28 +6,20 @@ import {Semver} from "./libs/Semver.sol";
 
 import {IntentSource} from "./IntentSource.sol";
 import {Inbox} from "./Inbox.sol";
+import {AccountDeployer} from "./account/AccountDeployer.sol";
 import {Account} from "./account/Account.sol";
 
 /**
  * @title Portal
  * @notice Portal contract combining IntentSource and Inbox functionality
- * @dev Main entry point for intent publishing, fulfillment, and proving
+ * @dev Main entry point for intent publishing, fulfillment, and proving. Both halves inherit the shared
+ *      {AccountDeployer}, whose constructor args (the Account clone template + CREATE2 prefix) are
+ *      supplied here once via C3 linearization.
  */
 contract Portal is IntentSource, Inbox, Semver {
     /**
      * @notice Initializes the Portal contract
      * @dev Creates a unified entry point combining source and destination chain functionality
      */
-    constructor() IntentSource(address(new Account()), bytes1(0xff)) {}
-
-    /**
-     * @notice Deterministic address of the intent's per-intent Account (composition-root wiring).
-     * @dev Lets the destination-side {Inbox} address the same CREATE2 account the source-side
-     *      {IntentSource} escrow uses, so unconsumed solver input lands with the intent.
-     */
-    function _predictAccount(
-        bytes32 intentHash
-    ) internal view override returns (address) {
-        return _getAccount(intentHash);
-    }
+    constructor() AccountDeployer(address(new Account()), bytes1(0xff)) {}
 }

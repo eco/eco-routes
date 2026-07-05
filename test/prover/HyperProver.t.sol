@@ -5,7 +5,8 @@ import "../BaseTest.sol";
 import {HyperPolicy} from "../../contracts/prover/HyperPolicy.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
@@ -420,6 +421,7 @@ contract HyperProverTest is BaseTest {
         // because intent.destination (1) != proof.destination (31337)
         vm.prank(keeper);
         hyperProver.challengeIntentProof(
+            intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
             keccak256(abi.encode(intent.reward))
@@ -464,6 +466,7 @@ contract HyperProverTest is BaseTest {
         // Challenge with correct chain (destination matches proof) should do nothing
         vm.prank(keeper);
         hyperProver.challengeIntentProof(
+            localIntent.source,
             localIntent.destination,
             keccak256(abi.encode(localIntent.route)),
             keccak256(abi.encode(localIntent.reward))

@@ -3,7 +3,8 @@ pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
@@ -88,13 +89,15 @@ contract InboxAdvancedTest is BaseTest {
         });
 
         Intent memory intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
                 keeper: keeper,
-                calls: calls,
+                runtime: address(multicallRuntime),
+                payload: abi.encode(calls),
                 minTokens: minTokensLegs
             }),
             reward: Reward({
@@ -107,12 +110,16 @@ contract InboxAdvancedTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -141,13 +148,15 @@ contract InboxAdvancedTest is BaseTest {
         calls[0] = Call({target: address(tokenA), data: complexData, value: 0});
 
         Intent memory intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
                 keeper: keeper,
-                calls: calls,
+                runtime: address(multicallRuntime),
+                payload: abi.encode(calls),
                 minTokens: minTokensLegs
             }),
             reward: Reward({
@@ -160,12 +169,16 @@ contract InboxAdvancedTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -199,13 +212,15 @@ contract InboxAdvancedTest is BaseTest {
         calls[1] = Call({target: recipient2, data: "", value: ethAmount});
 
         Intent memory intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
                 keeper: keeper,
-                calls: calls,
+                runtime: address(multicallRuntime),
+                payload: abi.encode(calls),
                 minTokens: minTokensLegs
             }),
             reward: Reward({
@@ -218,8 +233,11 @@ contract InboxAdvancedTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         uint256 initialBalance = recipient2.balance;
@@ -227,6 +245,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         vm.deal(solver, ethAmount);
         portal.fulfill{value: ethAmount}(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -253,6 +272,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             malformedHash,
             intent.route,
             rewardHash,
@@ -265,12 +285,11 @@ contract InboxAdvancedTest is BaseTest {
     function testValidationWithMismatchedRouteData() public {
         Intent memory intent = _createBasicIntent();
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(
-                intent.destination,
-                keccak256(abi.encode(intent.route)),
-                rewardHash
-            )
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            rewardHash
         );
 
         // Create mismatched route
@@ -280,6 +299,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             mismatchedRoute,
             rewardHash,
@@ -295,13 +315,17 @@ contract InboxAdvancedTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -315,13 +339,17 @@ contract InboxAdvancedTest is BaseTest {
         Intent memory intent = _createBasicIntent();
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -337,13 +365,17 @@ contract InboxAdvancedTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -402,13 +434,15 @@ contract InboxAdvancedTest is BaseTest {
         });
 
         Intent memory intent = Intent({
+            source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
                 keeper: keeper,
-                calls: calls,
+                runtime: address(multicallRuntime),
+                payload: abi.encode(calls),
                 minTokens: minTokensLegs
             }),
             reward: Reward({
@@ -421,12 +455,16 @@ contract InboxAdvancedTest is BaseTest {
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(intent.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            intent.source,
+            intent.destination,
+            routeHash,
+            rewardHash
         );
 
         vm.prank(solver);
         portal.fulfill(
+            intent.source,
             intentHash,
             intent.route,
             rewardHash,
@@ -457,14 +495,18 @@ contract InboxAdvancedTest is BaseTest {
 
             bytes32 routeHash = keccak256(abi.encode(intent.route));
             bytes32 rewardHash = keccak256(abi.encode(intent.reward));
-            bytes32 intentHash = keccak256(
-                abi.encodePacked(intent.destination, routeHash, rewardHash)
+            bytes32 intentHash = IntentLib.hashIntent(
+                intent.source,
+                intent.destination,
+                routeHash,
+                rewardHash
             );
             intentHashes[i] = intentHash;
 
             // Fulfill each intent
             vm.prank(solver);
             portal.fulfill(
+                intent.source,
                 intentHash,
                 intent.route,
                 rewardHash,
@@ -523,13 +565,15 @@ contract InboxAdvancedTest is BaseTest {
 
         return
             Intent({
+                source: uint64(block.chainid),
                 destination: uint64(block.chainid),
                 route: Route({
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
                     keeper: keeper,
-                    calls: calls,
+                    runtime: address(multicallRuntime),
+                    payload: abi.encode(calls),
                     minTokens: minTokensLegs
                 }),
                 reward: Reward({

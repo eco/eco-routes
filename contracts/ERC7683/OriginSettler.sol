@@ -9,9 +9,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
 
-import {Reward, RewardToken} from "../types/Intent.sol";
+import {Reward, RewardToken, IntentLib} from "../types/Intent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction, OrderData, ORDER_DATA_TYPEHASH} from "../types/ERC7683.sol";
-import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
  * @title Eco7683OriginSettler
@@ -23,7 +22,6 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 abstract contract OriginSettler is IOriginSettler, EIP712 {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
-    using AddressConverter for bytes32;
 
     /// @notice typehash for gasless crosschain order
     bytes32 public GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
@@ -54,6 +52,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
         (bytes32 orderId, ) = _publishAndFund(
+            uint64(block.chainid),
             orderData.destination,
             orderData.route,
             orderData.reward,
@@ -107,6 +106,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         // 2) If intent is Initial, it publishes and funds
         // 3) If intent is Funded, it publishes and does nothing
         (bytes32 orderId, ) = _publishAndFund(
+            uint64(block.chainid),
             orderData.destination,
             orderData.route,
             orderData.reward,
@@ -204,14 +204,25 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             );
         }
 
+        // The order is opened on the origin chain, so the intent's committed `source` is `block.chainid`
+        // (Model C — source is in the hash). It is carried in `originData` so the destination fill can
+        // re-derive the same hash.
+        uint64 source = uint64(block.chainid);
         bytes32 routeHash = keccak256(orderData.route);
         bytes32 rewardHash = keccak256(abi.encode(orderData.reward));
-        bytes32 intentHash = keccak256(
-            abi.encodePacked(orderData.destination, routeHash, rewardHash)
+        bytes32 intentHash = IntentLib.hashIntent(
+            source,
+            orderData.destination,
+            routeHash,
+            rewardHash
         );
 
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
-        bytes memory originData = abi.encode(orderData.route, rewardHash);
+        bytes memory originData = abi.encode(
+            source,
+            orderData.route,
+            rewardHash
+        );
         fillInstructions[0] = FillInstruction(
             orderData.destination,
             orderData.routePortal,
@@ -243,6 +254,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @dev Provides replay protection through account state checking in funding logic
      * @dev Should handle excess ETH return for optimal user experience
      * @dev Called by both open() and openFor() methods to ensure consistent behavior
+     * @param source Origin chain ID (block.chainid at open time) committed in the intent hash
      * @param destination Destination chain ID where the intent should be executed
      * @param route Encoded route data containing execution instructions for destination chain
      * @param reward The reward structure containing token amounts, keeper, prover, and deadline
@@ -252,6 +264,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @return account Address of the intent's account contract for reward escrow
      */
     function _publishAndFund(
+        uint64 source,
         uint64 destination,
         bytes memory route,
         Reward memory reward,

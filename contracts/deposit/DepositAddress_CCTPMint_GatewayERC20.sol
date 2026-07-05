@@ -4,7 +4,8 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount} from "../types/Intent.sol";
+import {Call} from "../interfaces/IRuntime.sol";
 import {DepositFactory_CCTPMint_GatewayERC20 as DepositFactory} from "./DepositFactory_CCTPMint_GatewayERC20.sol";
 
 /**
@@ -255,13 +256,15 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route (delivery is via the Gateway call; the ERC20 input funds it)
+        // Construct route: delivery is via the Gateway call; the calls run in the destination Account via
+        // the default MulticallRuntime (payload == abi.encode(Call[])) and the ERC20 input funds it.
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
             keeper: depositor,
-            calls: calls,
+            runtime: FACTORY.MULTICALL_RUNTIME(),
+            payload: abi.encode(calls),
             minTokens: minTokens
         });
 
@@ -281,8 +284,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             tokens: rewardTokens
         });
 
-        // Combine into Intent
+        // Combine into Intent. Published on this (source) chain; fulfilled on the destination.
         intent = Intent({
+            source: uint64(block.chainid),
             destination: destinationChainId,
             route: route,
             reward: reward
@@ -355,13 +359,15 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route (CCTP burn on source; the calls consume the full source-USDC input)
+        // Construct route (CCTP burn on source; the calls consume the full source-USDC input). The calls
+        // run in the destination Account via the default MulticallRuntime (payload == abi.encode(Call[])).
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
             keeper: depositor,
-            calls: calls,
+            runtime: FACTORY.MULTICALL_RUNTIME(),
+            payload: abi.encode(calls),
             minTokens: minTokens
         });
 
@@ -381,8 +387,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             tokens: rewardTokens
         });
 
-        // Combine into Intent
+        // Combine into Intent. CCTP burn is fulfilled locally on the source chain (source == dest).
         intent = Intent({
+            source: uint64(block.chainid),
             destination: destChain,
             route: route,
             reward: reward

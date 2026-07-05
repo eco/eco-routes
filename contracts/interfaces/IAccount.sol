@@ -20,6 +20,23 @@ interface IAccount {
     /// @notice Thrown when native token transfer fails
     error NativeTransferFailed(address to, uint256 amount);
 
+    /// @notice Thrown when the gated fallback forwarder is hit outside an in-flight {execute}
+    /// @param caller The address whose callback was rejected
+    error FallbackNotInExecute(address caller);
+
+    /**
+     * @notice Runs a runtime against this Account's own funds via `delegatecall`
+     * @dev Delegatecalls `runtime` with `payload` (forwarded verbatim), bubbling the raw return/revert.
+     *      While in progress the gated fallback forwards in-flight callbacks to `runtime`.
+     * @param runtime The delegatecall target (committed in the route hash)
+     * @param payload The opaque program forwarded to `runtime`
+     * @return The runtime's raw return data
+     */
+    function execute(
+        address runtime,
+        bytes calldata payload
+    ) external payable returns (bytes memory);
+
     /**
      * @notice Funds the account with reward legs
      * @param reward The reward structure containing the legs

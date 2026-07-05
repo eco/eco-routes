@@ -3,7 +3,8 @@ pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
 import {IDestinationSettler} from "../../contracts/interfaces/ERC7683/IDestinationSettler.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Call} from "../../contracts/interfaces/IRuntime.sol";
 
 // Simple concrete implementation for testing
 contract TestDestinationSettler is IDestinationSettler {
