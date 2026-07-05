@@ -32,11 +32,12 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
         );
 
-    /**
-     * @notice Initializes the Eco7683OriginSettler with EIP-712 domain
-     * @dev Sets up EIP-712 domain for signature verification with "EcoPortal" name and version "1"
-     */
-    constructor() EIP712("EcoPortal", "1") {}
+    // @dev No constructor here: {EIP712}'s domain args ("EcoPortal", "1") are supplied by the most-derived
+    //      concrete contract ({ERC7683Implementation}). Passing them here too would give {EIP712}'s base
+    //      constructor its arguments twice ("Base constructor arguments given twice"). {OriginSettler}
+    //      still inherits {EIP712} (so the 2-slot layout + immutables are contributed), just does not
+    //      initialize it — every runtime call takes EIP712's proxy-safe `address(this) != cachedThis`
+    //      rebuild branch anyway.
 
     /**
      * @notice Opens an Eco intent directly on chain via ERC-7683 interface

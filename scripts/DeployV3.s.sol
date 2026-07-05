@@ -16,6 +16,7 @@ import {AddressConverter} from "../contracts/libs/AddressConverter.sol";
 import {Portal} from "../contracts/Portal.sol";
 import {PortalTron} from "../contracts/tron/PortalTron.sol";
 import {PortalProxy} from "../contracts/PortalProxy.sol";
+import {ERC7683Implementation} from "../contracts/ERC7683/ERC7683Implementation.sol";
 // Aliased: forge-std's StdCheats defines a `struct Account` that shadows this import in Script-derived
 // contracts.
 import {Account as EcoAccount} from "../contracts/account/Account.sol";
@@ -123,6 +124,7 @@ contract DeployV3 is Script {
     struct Deployment {
         address portal; // the permanent PortalProxy (what everything references as "the Portal")
         address portalImplementation; // the versioned implementation registered as version 1
+        address erc7683Implementation; // the ERC-7683 adapter the Portal falls back to (PR10)
         address runtime;
         address localPolicy;
         address hyperPolicy;
@@ -193,12 +195,26 @@ contract DeployV3 is Script {
         );
         console.log("Account implementation (shared):", accountImplementation);
 
+        // ERC-7683 adapter (PR10): the open/openFor/resolve/resolveFor/fill surface lives OUTSIDE the lean
+        // Portal implementation, which delegatecalls it via {PortalCore-fallback}. It takes NO constructor
+        // args (it holds no version/account state — it resolves + delegatecalls the pinned implementation
+        // per call), and a SINGLE instance serves BOTH the EVM and TRON Portal (no TRON-specific variant).
+        dep.erc7683Implementation = _deployCreate2(
+            type(ERC7683Implementation).creationCode,
+            _contractSalt(cfg.salt, "ERC7683_IMPLEMENTATION"),
+            cfg.isTron
+        );
+        console.log("ERC7683 implementation:", dep.erc7683Implementation);
+
         dep.portalImplementation = _deployCreate2(
             abi.encodePacked(
                 cfg.isTron
                     ? type(PortalTron).creationCode
                     : type(Portal).creationCode,
-                abi.encode(accountImplementation) // shared Account clone template
+                abi.encode(
+                    accountImplementation, // shared Account clone template
+                    dep.erc7683Implementation // ERC-7683 adapter for the fallback
+                )
             ),
             _contractSalt(cfg.salt, "PORTAL_IMPLEMENTATION_V1"),
             cfg.isTron
@@ -521,6 +537,7 @@ contract DeployV3 is Script {
         }
         _writeLine(path, dep.portal, "Portal");
         _writeLine(path, dep.portalImplementation, "PortalImplementation");
+        _writeLine(path, dep.erc7683Implementation, "ERC7683Implementation");
         _writeLine(path, dep.runtime, "MulticallRuntime");
         _writeLine(path, dep.localPolicy, "LocalPolicy");
         _writeLine(path, dep.hyperPolicy, "HyperPolicy");

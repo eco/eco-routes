@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {ERC7683Implementation} from "../../contracts/ERC7683/ERC7683Implementation.sol";
 import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../../contracts/types/Intent.sol";
 import {Call} from "../../contracts/interfaces/IRuntime.sol";
@@ -47,7 +48,7 @@ contract InboxTest is BaseTest {
         vm.chainId(validChainId);
 
         // This should not revert
-        Portal newPortal = new Portal(address(new EcoAccount(address(this))));
+        Portal newPortal = new Portal(address(new EcoAccount(address(this))), address(new ERC7683Implementation()));
         assertTrue(address(newPortal) != address(0));
     }
 

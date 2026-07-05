@@ -10,6 +10,7 @@ import {AddressConverter} from "../../../contracts/libs/AddressConverter.sol";
 
 import {Portal} from "../../../contracts/Portal.sol";
 import {PortalProxy} from "../../../contracts/PortalProxy.sol";
+import {ERC7683Implementation} from "../../../contracts/ERC7683/ERC7683Implementation.sol";
 // Aliased: forge-std's StdCheats defines a `struct Account` that shadows this import in Test contracts.
 import {Account as EcoAccount} from "../../../contracts/account/Account.sol";
 import {MulticallRuntime} from "../../../contracts/runtime/MulticallRuntime.sol";
@@ -159,13 +160,24 @@ contract DeployV3Test is Test {
             ),
             _contractSalt(SALT, "ACCOUNT_IMPLEMENTATION")
         );
-        // The version-1 Portal implementation references the shared Account implementation.
+        // The ERC-7683 adapter (PR10) is deployed at a derived salt with no constructor args.
+        address erc7683Impl = _predictCreate2(
+            type(ERC7683Implementation).creationCode,
+            _contractSalt(SALT, "ERC7683_IMPLEMENTATION")
+        );
+        assertEq(
+            dep.erc7683Implementation,
+            erc7683Impl,
+            "erc7683 implementation CREATE2"
+        );
+        // The version-1 Portal implementation references the shared Account implementation AND the ERC-7683
+        // adapter (its fallback target).
         assertEq(
             dep.portalImplementation,
             _predictCreate2(
                 abi.encodePacked(
                     type(Portal).creationCode,
-                    abi.encode(accountImpl)
+                    abi.encode(accountImpl, erc7683Impl)
                 ),
                 _contractSalt(SALT, "PORTAL_IMPLEMENTATION_V1")
             ),

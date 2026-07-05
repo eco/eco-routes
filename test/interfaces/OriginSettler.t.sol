@@ -5,6 +5,7 @@ import "../BaseTest.sol";
 import {IOriginSettler} from "../../contracts/interfaces/ERC7683/IOriginSettler.sol";
 import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction} from "../../contracts/types/ERC7683.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {ERC7683Implementation} from "../../contracts/ERC7683/ERC7683Implementation.sol";
 import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {OriginSettler} from "../../contracts/ERC7683/OriginSettler.sol";
 
@@ -196,24 +197,24 @@ contract OriginSettlerTest is BaseTest {
 
     function testDomainSeparatorV4() public {
         // Test that the Portal's domainSeparatorV4 returns the correct EIP-712 domain separator
-        bytes32 domainSeparator = portal.domainSeparatorV4();
+        bytes32 domainSeparator = ERC7683Implementation(address(portal)).domainSeparatorV4();
 
         // Verify domain separator is not zero (basic sanity check)
         assertNotEq(domainSeparator, bytes32(0));
 
         // The domain separator should be deterministic for the same contract
         // Call it again to ensure consistency
-        bytes32 domainSeparator2 = portal.domainSeparatorV4();
+        bytes32 domainSeparator2 = ERC7683Implementation(address(portal)).domainSeparatorV4();
         assertEq(domainSeparator, domainSeparator2);
 
         // The domain separator should be unique to this contract instance
         // Deploy another Portal and verify they have different domain separators
         PortalProxy _proxy2 = new PortalProxy(address(this));
         EcoAccount _acct2 = new EcoAccount(address(_proxy2));
-        Portal _impl2 = new Portal(address(_acct2));
+        Portal _impl2 = new Portal(address(_acct2), address(new ERC7683Implementation()));
         _proxy2.registerVersion(1, address(_impl2));
         Portal portal2 = Portal(payable(address(_proxy2)));
-        bytes32 domainSeparator3 = portal2.domainSeparatorV4();
+        bytes32 domainSeparator3 = ERC7683Implementation(address(portal2)).domainSeparatorV4();
 
         // Domain separators should be different due to different contract addresses
         assertNotEq(domainSeparator, domainSeparator3);
@@ -221,7 +222,7 @@ contract OriginSettlerTest is BaseTest {
 
     function testDomainSeparatorV4Structure() public view {
         // Test that the domain separator follows EIP-712 structure
-        bytes32 domainSeparator = portal.domainSeparatorV4();
+        bytes32 domainSeparator = ERC7683Implementation(address(portal)).domainSeparatorV4();
 
         // Calculate expected domain separator manually
         bytes32 typeHash = keccak256(
@@ -248,16 +249,16 @@ contract OriginSettlerTest is BaseTest {
 
     function testDomainSeparatorV4ChainDependency() public {
         // Test that domain separator is dependent on chain ID by deploying on different chains
-        bytes32 domainSeparator1 = portal.domainSeparatorV4();
+        bytes32 domainSeparator1 = ERC7683Implementation(address(portal)).domainSeparatorV4();
 
         // Deploy a new Portal on a different chain ID
         vm.chainId(999);
         PortalProxy _proxyDiff = new PortalProxy(address(this));
         EcoAccount _acctDiff = new EcoAccount(address(_proxyDiff));
-        Portal _implDiff = new Portal(address(_acctDiff));
+        Portal _implDiff = new Portal(address(_acctDiff), address(new ERC7683Implementation()));
         _proxyDiff.registerVersion(1, address(_implDiff));
         Portal portalDifferentChain = Portal(payable(address(_proxyDiff)));
-        bytes32 domainSeparator2 = portalDifferentChain.domainSeparatorV4();
+        bytes32 domainSeparator2 = ERC7683Implementation(address(portalDifferentChain)).domainSeparatorV4();
 
         // Domain separators should be different on different chains
         assertNotEq(domainSeparator1, domainSeparator2);
@@ -266,10 +267,10 @@ contract OriginSettlerTest is BaseTest {
         vm.chainId(1);
         PortalProxy _proxySame = new PortalProxy(address(this));
         EcoAccount _acctSame = new EcoAccount(address(_proxySame));
-        Portal _implSame = new Portal(address(_acctSame));
+        Portal _implSame = new Portal(address(_acctSame), address(new ERC7683Implementation()));
         _proxySame.registerVersion(1, address(_implSame));
         Portal portalSameChain = Portal(payable(address(_proxySame)));
-        bytes32 domainSeparator3 = portalSameChain.domainSeparatorV4();
+        bytes32 domainSeparator3 = ERC7683Implementation(address(portalSameChain)).domainSeparatorV4();
 
         // Domain separator should be different from the first portal due to different addresses
         // but should follow the same calculation pattern for the same chain

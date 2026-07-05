@@ -18,11 +18,17 @@ import {AccountDeployer} from "./account/AccountDeployer.sol";
  */
 contract Portal is PortalCore {
     /**
-     * @notice Wires the shared Account clone template.
+     * @notice Wires the shared Account clone template and the ERC-7683 adapter implementation.
      * @param accountImplementation The shared {Account} implementation (bound to the proxy) that
      *        per-intent clones delegate to.
+     * @param erc7683Implementation The {ERC7683Implementation} the lean Portal delegates its ERC-7683
+     *        surface to via {PortalCore-fallback}.
      */
     constructor(
-        address accountImplementation
-    ) AccountDeployer(accountImplementation, bytes1(0xff)) {}
+        address accountImplementation,
+        address erc7683Implementation
+    )
+        AccountDeployer(accountImplementation, bytes1(0xff))
+        PortalCore(erc7683Implementation)
+    {}
 }

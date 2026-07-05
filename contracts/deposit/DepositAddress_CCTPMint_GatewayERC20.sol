@@ -112,7 +112,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         // ---- Step 1: Construct and publish Intent 2 (Gateway deposit on destination) ----
         // Hoisted into a helper so `_executeIntent` keeps its local-variable count below the
         // 16-stack-slot Yul limit imposed by the 12-field config + fee locals.
-        Portal portalContract = Portal(portalAddress);
+        Portal portalContract = Portal(payable(portalAddress));
         address account2 = _publishGatewayIntent(
             portalContract,
             destinationChainId,

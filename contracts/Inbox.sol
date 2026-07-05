@@ -13,7 +13,6 @@ import {Route, Reward} from "./types/Intent.sol";
 import {IntentLib} from "./types/Intent.sol";
 import {Refund} from "./libs/Refund.sol";
 
-import {DestinationSettler} from "./ERC7683/DestinationSettler.sol";
 import {AccountDeployer} from "./account/AccountDeployer.sol";
 
 /**
@@ -34,7 +33,7 @@ import {AccountDeployer} from "./account/AccountDeployer.sol";
  *      destination Account (leftover stays WITH THE INTENT for `route.keeper`). The Inbox commits
  *      `(intentHash, claimant, fulfilled[])` into a HASH-ONLY fact and records it into the named prover.
  */
-abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
+abstract contract Inbox is AccountDeployer, IInbox {
     using SafeERC20 for IERC20;
 
     /**
@@ -125,7 +124,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
         address prover,
         uint64 sourceChainDomainID,
         bytes memory data
-    ) public payable override(DestinationSettler, IInbox) returns (bytes memory) {
+    ) public payable override(IInbox) returns (bytes memory) {
         (bytes memory result, , bytes32 intentHash) = _fulfill(
             protocolVersion,
             source,

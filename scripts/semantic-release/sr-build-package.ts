@@ -36,6 +36,7 @@ import { zeroAddress } from 'viem'
 export const CONTRACT_TYPES = [
   'Portal',
   'PortalImplementation',
+  'ERC7683Implementation',
   'MulticallRuntime',
   'LocalPolicy',
   'HyperPolicy',

@@ -100,9 +100,12 @@ describe('HyperPolicy Test', (): void => {
     const accountImpl = await (
       await ethers.getContractFactory('Account')
     ).deploy(await portalProxy.getAddress())
+    const erc7683Impl = await (
+      await ethers.getContractFactory('ERC7683Implementation')
+    ).deploy()
     const portalImpl = await (
       await ethers.getContractFactory('Portal')
-    ).deploy(await accountImpl.getAddress())
+    ).deploy(await accountImpl.getAddress(), await erc7683Impl.getAddress())
     await portalProxy.registerVersion(1, await portalImpl.getAddress())
     const portal = await ethers.getContractAt(
       'Portal',

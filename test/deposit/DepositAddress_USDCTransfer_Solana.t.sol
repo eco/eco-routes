@@ -7,6 +7,7 @@ import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol
 import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
 import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {ERC7683Implementation} from "../../contracts/ERC7683/ERC7683Implementation.sol";
 import {PortalProxy} from "../../contracts/PortalProxy.sol";
 import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
@@ -39,7 +40,7 @@ contract DepositAddressTest is Test {
         // Deploy Portal
         PortalProxy _proxy = new PortalProxy(address(this));
         EcoAccount _acct = new EcoAccount(address(_proxy));
-        Portal _impl = new Portal(address(_acct));
+        Portal _impl = new Portal(address(_acct), address(new ERC7683Implementation()));
         _proxy.registerVersion(1, address(_impl));
         portal = Portal(payable(address(_proxy)));
 

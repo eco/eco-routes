@@ -11,6 +11,7 @@ import {FakePermit} from "../contracts/test/FakePermit.sol";
 import {TestPolicy} from "../contracts/test/TestPolicy.sol";
 import {Portal} from "../contracts/Portal.sol";
 import {PortalProxy} from "../contracts/PortalProxy.sol";
+import {ERC7683Implementation} from "../contracts/ERC7683/ERC7683Implementation.sol";
 // Aliased: forge-std's StdCheats defines a `struct Account` that shadows this import in Test-derived
 // contracts, so the contract type is imported under a distinct name.
 import {Account as EcoAccount} from "../contracts/account/Account.sol";
@@ -43,6 +44,7 @@ contract BaseTest is Test {
     PortalProxy internal portalProxy;
     address internal portalImplementation;
     address internal accountImplementation; // shared Account clone template (bound to the proxy)
+    address internal erc7683Implementation; // ERC-7683 adapter the Portal falls back to (PR10)
     IIntentSource internal intentSource; // Interface for Portal
     Inbox internal inbox; // Backward compatibility alias
     TestPolicy internal prover;
@@ -86,7 +88,11 @@ contract BaseTest is Test {
         // registered Portal version derives the same per-intent Account addresses.
         portalProxy = new PortalProxy(deployer);
         EcoAccount accountImpl = new EcoAccount(address(portalProxy));
-        Portal implementation = new Portal(address(accountImpl));
+        erc7683Implementation = address(new ERC7683Implementation());
+        Portal implementation = new Portal(
+            address(accountImpl),
+            erc7683Implementation
+        );
         portalProxy.registerVersion(PROTOCOL_VERSION, address(implementation));
         accountImplementation = address(accountImpl);
         portalImplementation = address(implementation);
