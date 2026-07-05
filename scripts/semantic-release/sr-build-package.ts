@@ -35,6 +35,7 @@ import { zeroAddress } from 'viem'
 // This is used for both CSV headers and TypeScript type definitions
 export const CONTRACT_TYPES = [
   'Portal',
+  'PortalImplementation',
   'MulticallRuntime',
   'LocalPolicy',
   'HyperPolicy',

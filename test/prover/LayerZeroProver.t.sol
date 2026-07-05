@@ -452,6 +452,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
         bytes32 intentHash = IntentLib.hashIntent(
+            PROTOCOL_VERSION,
             actualDestination,
             actualDestination,
             routeHash,
@@ -497,6 +498,7 @@ contract LayerZeroProverTest is BaseTest {
         emit IPolicy.IntentProofInvalidated(intentHash);
 
         lzProver.challengeIntentProof(
+            PROTOCOL_VERSION,
             actualDestination,
             actualDestination,
             routeHash,
@@ -521,6 +523,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
         bytes32 intentHash = IntentLib.hashIntent(
+            PROTOCOL_VERSION,
             correctDestination,
             correctDestination,
             routeHash,
@@ -563,6 +566,7 @@ contract LayerZeroProverTest is BaseTest {
 
         // Challenge the proof with correct destination (should do nothing)
         lzProver.challengeIntentProof(
+            PROTOCOL_VERSION,
             correctDestination,
             correctDestination,
             routeHash,
@@ -587,6 +591,7 @@ contract LayerZeroProverTest is BaseTest {
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
         bytes32 intentHash = IntentLib.hashIntent(
+            PROTOCOL_VERSION,
             actualDestination,
             actualDestination,
             routeHash,
@@ -621,6 +626,7 @@ contract LayerZeroProverTest is BaseTest {
         emit IPolicy.IntentProofInvalidated(intentHash);
 
         lzProver.challengeIntentProof(
+            PROTOCOL_VERSION,
             actualDestination,
             actualDestination,
             routeHash,

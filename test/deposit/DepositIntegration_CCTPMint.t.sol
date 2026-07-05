@@ -6,6 +6,8 @@ import {Vm} from "forge-std/Vm.sol";
 import {DepositFactory_CCTPMint_Arc} from "../../contracts/deposit/DepositFactory_CCTPMint_Arc.sol";
 import {DepositAddress_CCTPMint_Arc} from "../../contracts/deposit/DepositAddress_CCTPMint_Arc.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {PortalProxy} from "../../contracts/PortalProxy.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {LocalPolicy} from "../../contracts/prover/LocalPolicy.sol";
 import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../../contracts/types/Intent.sol";
 import {Call} from "../../contracts/interfaces/IRuntime.sol";
@@ -81,7 +83,11 @@ contract DepositIntegration_CCTPMintTest is Test {
         token = new TestERC20("USD Coin", "USDC");
 
         // Deploy Portal
-        portal = new Portal();
+        PortalProxy _proxy = new PortalProxy(address(this));
+        EcoAccount _acct = new EcoAccount(address(_proxy));
+        Portal _impl = new Portal(address(_acct));
+        _proxy.registerVersion(1, address(_impl));
+        portal = Portal(payable(address(_proxy)));
 
         // Deploy LocalPolicy (for same-chain testing)
         prover = new LocalPolicy(address(portal));
@@ -478,7 +484,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         // Intent 2's source is always `uint64(block.chainid)` (the depositor's source chain) per
         // DepositAddress_CCTPMint_Arc's _constructGatewayIntent; this test sets ARC_CHAIN_ID ==
         // block.chainid for local provability, so source == destination == localChainId here.
-        address account2 = portal.intentAccountAddress(localChainId, localChainId, abi.encode(route2), reward2);
+        address account2 = portal.intentAccountAddress(1, localChainId, localChainId, abi.encode(route2), reward2);
         assertTrue(account2 != address(0), "account2 address should be non-zero");
 
         // --- Simulate CCTP mint: fund account2 with native ETH (= native USDC on Arc) ---
@@ -495,6 +501,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         vm.prank(solver);
         vm.recordLogs();
         arcProver.flashFulfill{value: nativeReward}(
+            1,
             route2,
             reward2,
             bytes32(uint256(uint160(solver)))

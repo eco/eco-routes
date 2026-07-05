@@ -94,7 +94,20 @@ describe('HyperPolicy Test', (): void => {
       await ethers.getContractFactory('TestMailbox')
     ).deploy(ethers.ZeroAddress) // No processor needed for these tests
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(owner.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
@@ -308,6 +321,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent: Intent = {
+        protocolVersion: 1,
         source: currentChain, // Current chain (same-chain default)
         destination: currentChain, // Current chain
         route: {
@@ -363,6 +377,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -451,6 +466,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent: Intent = {
+        protocolVersion: 1,
         source: currentChain, // Current chain (same-chain default)
         destination: currentChain, // Current chain
         route: {
@@ -506,6 +522,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -577,6 +594,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent: Intent = {
+        protocolVersion: 1,
         source: currentChain, // Current chain (same-chain default)
         destination: currentChain, // Current chain
         route: {
@@ -632,6 +650,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -899,6 +918,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent: Intent = {
+        protocolVersion: 1,
         source: currentChain, // Current chain (same-chain default)
         destination: currentChain,
         route: {
@@ -985,6 +1005,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          1,
           intent.source,
           intent.destination,
           route,
@@ -1045,6 +1066,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent: Intent = {
+        protocolVersion: 1,
         source: currentChain, // Current chain (same-chain default)
         destination: currentChain,
         route: {
@@ -1136,6 +1158,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          1,
           intent.source,
           intent.destination,
           route,
@@ -1260,6 +1283,7 @@ describe('HyperPolicy Test', (): void => {
         (await hyperProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent0: Intent = {
+        protocolVersion: 1,
         source: destination, // Current chain (same-chain default)
         destination,
         route,
@@ -1287,6 +1311,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent0.source,
           intent0.destination,
           route,
@@ -1327,6 +1352,7 @@ describe('HyperPolicy Test', (): void => {
         hooks: '0x',
       }
       const intent1: Intent = {
+        protocolVersion: 1,
         source: destination, // Current chain (same-chain default)
         destination,
         route: route1,
@@ -1349,6 +1375,7 @@ describe('HyperPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent1.source,
           intent1.destination,
           route1,
@@ -1451,6 +1478,7 @@ describe('HyperPolicy Test', (): void => {
     beforeEach(async () => {
       // Create a standard intent for testing
       intent = {
+        protocolVersion: 1,
         source: 42161, // Fixed to match `destination` so it's inherited unchanged by every
         // spread-derived variant below (only `destination` varies across those tests).
         destination: 42161, // Arbitrum
@@ -1508,6 +1536,7 @@ describe('HyperPolicy Test', (): void => {
 
       await expect(
         prover.challengeIntentProof(
+          1,
           intent.source,
           intent.destination,
           routeHash,
@@ -1545,6 +1574,7 @@ describe('HyperPolicy Test', (): void => {
       const rewardHash = hashIntent(intent).rewardHash
 
       await prover.challengeIntentProof(
+        1,
         intent.source,
         intent.destination,
         routeHash,
@@ -1566,6 +1596,7 @@ describe('HyperPolicy Test', (): void => {
       // Challenge non-existent proof should be a no-op
       await expect(
         prover.challengeIntentProof(
+          1,
           intent.source,
           intent.destination,
           routeHash,
@@ -1595,6 +1626,7 @@ describe('HyperPolicy Test', (): void => {
 
       // First challenge
       await prover.challengeIntentProof(
+        1,
         intent.source,
         intent.destination,
         routeHash,
@@ -1608,6 +1640,7 @@ describe('HyperPolicy Test', (): void => {
       // Second challenge (should be no-op)
       await expect(
         prover.challengeIntentProof(
+          1,
           intent.source,
           intent.destination,
           routeHash,
@@ -1638,6 +1671,7 @@ describe('HyperPolicy Test', (): void => {
         prover
           .connect(solver)
           .challengeIntentProof(
+            1,
             intent.source,
             intent.destination,
             routeHash,
@@ -1667,6 +1701,7 @@ describe('HyperPolicy Test', (): void => {
       // Challenge with chain ID 0
       await expect(
         prover.challengeIntentProof(
+          1,
           edgeIntent.source,
           edgeIntent.destination,
           hashIntent(edgeIntent).routeHash,
@@ -1704,6 +1739,7 @@ describe('HyperPolicy Test', (): void => {
       // Challenge both proofs
       await expect(
         prover.challengeIntentProof(
+          1,
           intent1.source,
           intent1.destination,
           hashIntent(intent1).routeHash,
@@ -1715,6 +1751,7 @@ describe('HyperPolicy Test', (): void => {
 
       await expect(
         prover.challengeIntentProof(
+          1,
           intent2.source,
           intent2.destination,
           hashIntent(intent2).routeHash,

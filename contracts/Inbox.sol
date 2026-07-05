@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPolicy} from "./interfaces/IPolicy.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {IAccount} from "./interfaces/IAccount.sol";
+import {IPortalProxy, isProtocolVersionExpired} from "./interfaces/IPortalProxy.sol";
 
 import {Route, Reward} from "./types/Intent.sol";
 import {IntentLib} from "./types/Intent.sol";
@@ -73,6 +74,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
      * @return The runtime's raw return data
      */
     function fulfill(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         Route memory route,
@@ -82,6 +84,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
         address prover
     ) external payable returns (bytes memory) {
         (bytes memory result, , ) = _fulfill(
+            protocolVersion,
             source,
             destination,
             route,
@@ -112,6 +115,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
      * @return The runtime's raw return data
      */
     function fulfillAndProve(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         Route memory route,
@@ -123,6 +127,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
         bytes memory data
     ) public payable override(DestinationSettler, IInbox) returns (bytes memory) {
         (bytes memory result, , bytes32 intentHash) = _fulfill(
+            protocolVersion,
             source,
             destination,
             route,
@@ -186,24 +191,38 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
      * @return The runtime's raw return data
      */
     function executeAsOwner(
+        uint32 protocolVersion,
         uint64 source,
         Route memory route,
         bytes32 rewardHash,
         address runtime,
         bytes calldata payload
     ) external payable returns (bytes memory) {
+        // CROSS-CHAIN ONLY, for BOTH authorities: on this chain the CHAIN_ID-keyed Account is / collapses
+        // with the SOURCE escrow Account, which only the reward-aware source-side executeAsOwner may cook.
+        // This restriction is caller-independent — it applies equally to the keeper and the deployer sweep.
         if (source == CHAIN_ID) {
             revert SourceChainOwnerOnly(source);
         }
         if (route.portal != address(this)) {
             revert InvalidPortal(route.portal);
         }
-        if (msg.sender != route.keeper) {
+        // Two independent authorities may cook the destination (leftover) Account: (1) `route.keeper`, any
+        // time; or (2) the PROTOCOL OWNER, but ONLY once this intent's protocol version is EXPIRED (the
+        // deployer sweep for stuck destination leftovers under a retired implementation). The cross-chain
+        // restriction above already guarantees this Account provably holds only unconsumed solver input,
+        // never escrow, so no reward-conservation lock is needed on this path for either authority.
+        bool isKeeper = msg.sender == route.keeper;
+        bool isDeployerSweep = msg.sender ==
+            IPortalProxy(address(this)).owner() &&
+            isProtocolVersionExpired(address(this), protocolVersion);
+        if (!isKeeper && !isDeployerSweep) {
             revert NotAccountKeeper(msg.sender);
         }
 
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 intentHash = IntentLib.hashIntent(
+            protocolVersion,
             source,
             CHAIN_ID,
             routeHash,
@@ -238,6 +257,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
      * @return intentHash The derived intent hash
      */
     function _fulfill(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         Route memory route,
@@ -274,6 +294,7 @@ abstract contract Inbox is AccountDeployer, DestinationSettler, IInbox {
         bytes32 routeHash = keccak256(abi.encode(route));
         bytes32 rewardHash = keccak256(abi.encode(reward));
         intentHash = IntentLib.hashIntent(
+            protocolVersion,
             source,
             destination,
             routeHash,

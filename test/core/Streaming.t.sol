@@ -90,6 +90,7 @@ contract StreamingTest is BaseTest {
         });
 
         _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: source,
             destination: destination,
             route: r,
@@ -119,6 +120,7 @@ contract StreamingTest is BaseTest {
         uint256[] memory provided = new uint256[](1);
         provided[0] = DELIVER;
         inbox.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -177,6 +179,7 @@ contract StreamingTest is BaseTest {
         slices[1] = _slice(claimant2, DELIVER);
 
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             CHAIN_ID,
             routeHash,
@@ -235,6 +238,7 @@ contract StreamingTest is BaseTest {
 
         // Settle the batch: pays both claimants from the SOURCE account.
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -302,6 +306,7 @@ contract StreamingTest is BaseTest {
 
         // Settle it once; re-delivery afterwards stays deduped (batchSeen permanent) so nothing wedges.
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -343,6 +348,7 @@ contract StreamingTest is BaseTest {
 
         // Settle the SECOND batch first (content-addressed, no FIFO): removes b1 by value, b0 remains.
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -354,6 +360,7 @@ contract StreamingTest is BaseTest {
 
         // Then settle the first batch.
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -387,10 +394,11 @@ contract StreamingTest is BaseTest {
                 intentHash
             )
         );
-        intentSource.closeStream(CHAIN_ID, FOREIGN, routeHash, it.reward);
+        intentSource.closeStream(it.protocolVersion, CHAIN_ID, FOREIGN, routeHash, it.reward);
 
         // The batch is settled to the solver's claimant first.
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -402,7 +410,7 @@ contract StreamingTest is BaseTest {
         // Now the keeper can close and reclaim the remainder.
         uint256 keeperBefore = tokenA.balanceOf(keeper);
         vm.prank(keeper);
-        intentSource.closeStream(CHAIN_ID, FOREIGN, routeHash, it.reward);
+        intentSource.closeStream(it.protocolVersion, CHAIN_ID, FOREIGN, routeHash, it.reward);
         assertEq(
             tokenA.balanceOf(keeper),
             keeperBefore + (BUDGET - DELIVER),
@@ -424,7 +432,7 @@ contract StreamingTest is BaseTest {
                 otherPerson
             )
         );
-        intentSource.closeStream(CHAIN_ID, FOREIGN, routeHash, it.reward);
+        intentSource.closeStream(it.protocolVersion, CHAIN_ID, FOREIGN, routeHash, it.reward);
     }
 
     // ---------------------------------------------------------------------
@@ -454,6 +462,7 @@ contract StreamingTest is BaseTest {
             )
         );
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -466,6 +475,7 @@ contract StreamingTest is BaseTest {
         // Keeper tops up; the same batch now settles fully -> shortfall recovered, not forfeited.
         tokenA.mint(account, DELIVER);
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,
@@ -502,6 +512,7 @@ contract StreamingTest is BaseTest {
             )
         );
         intentSource.settleStream(
+            it.protocolVersion,
             CHAIN_ID,
             FOREIGN,
             routeHash,

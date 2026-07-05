@@ -4,20 +4,25 @@ pragma solidity ^0.8.26;
 
 import {PortalCore} from "./PortalCore.sol";
 import {AccountDeployer} from "./account/AccountDeployer.sol";
-import {Account} from "./account/Account.sol";
 
 /**
  * @title Portal
- * @notice Portal contract combining IntentSource and Inbox functionality
- * @dev Main entry point for intent publishing, fulfillment, and proving. The combined-half logic
- *      (same-chain {PortalCore-fulfillAndSettle}) lives in {PortalCore}; this contract only supplies the
- *      shared {AccountDeployer} constructor args (the Account clone template + CREATE2 prefix) via C3
- *      linearization.
+ * @notice Portal IMPLEMENTATION combining IntentSource and Inbox functionality
+ * @dev A versioned implementation that runs behind the permanent {PortalProxy} (PR9): the proxy
+ *      `delegatecall`s into it, so `address(this)` in this contract is always the PROXY. The combined-half
+ *      logic (same-chain {PortalCore-fulfillAndSettle}) lives in {PortalCore}; this contract only supplies
+ *      the shared {AccountDeployer} constructor args (the Account clone template + CREATE2 prefix) via C3
+ *      linearization. The Account clone template is passed in (a SINGLE shared {Account} implementation,
+ *      bound to the proxy) rather than deployed here, so every registered Portal version derives the SAME
+ *      per-intent Account addresses.
  */
 contract Portal is PortalCore {
     /**
-     * @notice Initializes the Portal contract
-     * @dev Creates a unified entry point combining source and destination chain functionality
+     * @notice Wires the shared Account clone template.
+     * @param accountImplementation The shared {Account} implementation (bound to the proxy) that
+     *        per-intent clones delegate to.
      */
-    constructor() AccountDeployer(address(new Account()), bytes1(0xff)) {}
+    constructor(
+        address accountImplementation
+    ) AccountDeployer(accountImplementation, bytes1(0xff)) {}
 }

@@ -12,6 +12,7 @@ contract TestDestinationSettler is DestinationSettler {
     }
 
     function fulfillAndProve(
+        uint32 _protocolVersion,
         uint64 _source,
         uint64 _destination,
         Route memory _route,
@@ -25,6 +26,7 @@ contract TestDestinationSettler is DestinationSettler {
         // Call the portal's fulfillAndProve function
         return
             PORTAL.fulfillAndProve{value: msg.value}(
+                _protocolVersion,
                 _source,
                 _destination,
                 _route,

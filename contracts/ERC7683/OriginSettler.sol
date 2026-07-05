@@ -24,7 +24,10 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     using SafeERC20 for IERC20;
 
     /// @notice typehash for gasless crosschain order
-    bytes32 public GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
+    /// @dev `constant` (not a mutable state variable): the implementation runs via `delegatecall` from the
+    ///      {PortalProxy}, so anything in storage would read the proxy's (unwritten) slots. A `constant`
+    ///      lives in code and reads correctly under delegatecall.
+    bytes32 public constant GASLESS_CROSSCHAIN_ORDER_TYPEHASH =
         keccak256(
             "GaslessCrossChainOrder(address originSettler,address user,uint256 nonce,uint256 originChainId,uint32 openDeadline,uint32 fillDeadline,bytes32 orderDataType,bytes32 orderDataHash)"
         );
@@ -52,6 +55,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
         (bytes32 orderId, ) = _publishAndFund(
+            orderData.protocolVersion,
             uint64(block.chainid),
             orderData.destination,
             orderData.route,
@@ -106,6 +110,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         // 2) If intent is Initial, it publishes and funds
         // 3) If intent is Funded, it publishes and does nothing
         (bytes32 orderId, ) = _publishAndFund(
+            orderData.protocolVersion,
             uint64(block.chainid),
             orderData.destination,
             orderData.route,
@@ -211,6 +216,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         bytes32 routeHash = keccak256(orderData.route);
         bytes32 rewardHash = keccak256(abi.encode(orderData.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            orderData.protocolVersion,
             source,
             orderData.destination,
             routeHash,
@@ -218,10 +224,11 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         );
 
         FillInstruction[] memory fillInstructions = new FillInstruction[](1);
-        // originData carries the full reward (not just its hash): the destination fill needs the reward
-        // legs to authenticate them against the derived intent hash and to snapshot the reward escrow for
-        // the conservation postcondition.
+        // originData carries the protocol version + full reward (not just its hash): the destination fill
+        // needs the version to re-derive the same intent hash and the reward legs to authenticate them
+        // against it and to snapshot the reward escrow for the conservation postcondition.
         bytes memory originData = abi.encode(
+            orderData.protocolVersion,
             source,
             orderData.route,
             orderData.reward
@@ -257,6 +264,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @dev Provides replay protection through account state checking in funding logic
      * @dev Should handle excess ETH return for optimal user experience
      * @dev Called by both open() and openFor() methods to ensure consistent behavior
+     * @param protocolVersion Creator-declared Portal implementation version committed in the intent hash
      * @param source Origin chain ID (block.chainid at open time) committed in the intent hash
      * @param destination Destination chain ID where the intent should be executed
      * @param route Encoded route data containing execution instructions for destination chain
@@ -267,6 +275,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @return account Address of the intent's account contract for reward escrow
      */
     function _publishAndFund(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes memory route,

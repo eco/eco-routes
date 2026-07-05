@@ -77,6 +77,7 @@ contract VestingPolicyTest is BaseTest {
         });
 
         it = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: source,
             destination: destination,
             route: r,
@@ -100,6 +101,7 @@ contract VestingPolicyTest is BaseTest {
         uint256[] memory provided = new uint256[](1);
         provided[0] = DELIVER;
         inbox.fulfill(
+            it.protocolVersion,
             it.source,
             it.destination,
             it.route,
@@ -119,6 +121,7 @@ contract VestingPolicyTest is BaseTest {
 
     function _settle(Intent memory it, bytes32 routeHash) internal {
         intentSource.settleStream(
+            it.protocolVersion,
             it.source,
             it.destination,
             routeHash,
@@ -216,6 +219,7 @@ contract VestingPolicyTest is BaseTest {
             )
         );
         intentSource.settle(
+            it.protocolVersion,
             CHAIN_ID,
             CHAIN_ID,
             routeHash,

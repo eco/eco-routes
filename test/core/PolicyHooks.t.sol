@@ -64,6 +64,7 @@ contract PolicyHooksTest is BaseTest {
     function _settleDefault() internal {
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -75,6 +76,7 @@ contract PolicyHooksTest is BaseTest {
 
     function _refundDefault() internal {
         intentSource.refund(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -282,6 +284,7 @@ contract PolicyHooksTest is BaseTest {
         _addProof(hashA, CHAIN_ID, claimant);
         vm.prank(otherPerson);
         intentSource.settle(
+            intentA.protocolVersion,
             intentA.source,
             intentA.destination,
             keccak256(abi.encode(intentA.route)),
@@ -296,6 +299,7 @@ contract PolicyHooksTest is BaseTest {
         bytes memory reenterCd = abi.encodeCall(
             IIntentSource.settle,
             (
+                intentA.protocolVersion,
                 intentA.source,
                 intentA.destination,
                 keccak256(abi.encode(intentA.route)),
@@ -320,6 +324,7 @@ contract PolicyHooksTest is BaseTest {
         emit IIntentSource.HookReverted(hashB, 0);
         vm.prank(otherPerson);
         intentSource.settle(
+            intentB.protocolVersion,
             intentB.source,
             intentB.destination,
             keccak256(abi.encode(intentB.route)),

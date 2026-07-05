@@ -73,6 +73,7 @@ contract RewardLegsTest is BaseTest {
         });
 
         _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: r,
@@ -92,6 +93,7 @@ contract RewardLegsTest is BaseTest {
         vm.startPrank(solver);
         tokenA.approve(address(portal), provided);
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -167,6 +169,7 @@ contract RewardLegsTest is BaseTest {
         uint256 keeperBefore = tokenA.balanceOf(keeper);
 
         intentSource.settle(
+            _intent.protocolVersion,
             _intent.source,
             uint64(block.chainid),
             keccak256(abi.encode(_intent.route)),
@@ -199,6 +202,7 @@ contract RewardLegsTest is BaseTest {
         uint256 claimantBefore = tokenA.balanceOf(claimant);
 
         intentSource.settle(
+            _intent.protocolVersion,
             _intent.source,
             uint64(block.chainid),
             keccak256(abi.encode(_intent.route)),
@@ -278,6 +282,7 @@ contract RewardLegsTest is BaseTest {
             )
         );
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -301,6 +306,7 @@ contract RewardLegsTest is BaseTest {
         );
         vm.prank(solver);
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -338,6 +344,7 @@ contract RewardLegsTest is BaseTest {
             )
         );
         intentSource.settle(
+            _intent.protocolVersion,
             _intent.source,
             uint64(block.chainid),
             keccak256(abi.encode(_intent.route)),
@@ -361,6 +368,7 @@ contract RewardLegsTest is BaseTest {
             hooks: ""
         });
         Intent memory _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: route,
@@ -396,6 +404,7 @@ contract RewardLegsTest is BaseTest {
             hooks: ""
         });
         Intent memory _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: route,
@@ -441,6 +450,7 @@ contract RewardLegsTest is BaseTest {
             hooks: ""
         });
         Intent memory _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: r,
@@ -451,6 +461,7 @@ contract RewardLegsTest is BaseTest {
             abi.encodeWithSelector(IntentLib.MinTokensNotSorted.selector, hi, lo)
         );
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             r,
@@ -484,6 +495,7 @@ contract RewardLegsTest is BaseTest {
             hooks: ""
         });
         Intent memory _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: r,
@@ -498,6 +510,7 @@ contract RewardLegsTest is BaseTest {
             )
         );
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             r,

@@ -311,12 +311,14 @@ contract StreamingPolicy is IStreamingPolicy, Whitelist, Semver, ERC165 {
      *      other than the intent commits to, drop them all (they can never legitimately settle).
      */
     function challengeIntentProof(
+        uint32 protocolVersion,
         uint64 source,
         uint64 destination,
         bytes32 routeHash,
         bytes32 rewardHash
     ) external {
         bytes32 intentHash = IntentLib.hashIntent(
+            protocolVersion,
             source,
             destination,
             routeHash,

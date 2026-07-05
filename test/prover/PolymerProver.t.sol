@@ -655,6 +655,7 @@ contract PolymerProverTest is BaseTest {
 
         // Challenge with different destination (intent.destination = 1 from BaseTest, proof.destination = 10)
         polymerProver.challengeIntentProof(
+            intent.protocolVersion,
             intent.source,
             intent.destination, // 1
             keccak256(abi.encode(intent.route)),
@@ -698,6 +699,7 @@ contract PolymerProverTest is BaseTest {
 
         // Challenge with correct destination should do nothing
         polymerProver.challengeIntentProof(
+            localIntent.protocolVersion,
             localIntent.source,
             localIntent.destination,
             keccak256(abi.encode(localIntent.route)),

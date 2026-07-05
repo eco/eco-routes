@@ -4,6 +4,8 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 import {LocalPolicy} from "../../contracts/prover/LocalPolicy.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {PortalProxy} from "../../contracts/PortalProxy.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
@@ -44,8 +46,12 @@ contract LocalProverTest is Test {
         // Set CHAIN_ID to current chain
         CHAIN_ID = uint64(block.chainid);
 
-        // Deploy contracts
-        portal = new Portal();
+        // Deploy contracts (Portal behind a versioned PortalProxy, registered as version 1)
+        PortalProxy _proxy = new PortalProxy(address(this));
+        EcoAccount _acct = new EcoAccount(address(_proxy));
+        Portal _impl = new Portal(address(_acct));
+        _proxy.registerVersion(1, address(_impl));
+        portal = Portal(payable(address(_proxy)));
         localProver = new LocalPolicy(address(portal));
         secondaryProver = new TestPolicy(address(portal));
         token = new TestERC20("Test Token", "TEST");
@@ -108,6 +114,7 @@ contract LocalProverTest is Test {
 
         return
             Intent({
+                protocolVersion: 1,
                 source: CHAIN_ID,
                 destination: CHAIN_ID,
                 route: route,
@@ -157,6 +164,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.deal(solver, REWARD_AMOUNT);
         portal.fulfill{value: REWARD_AMOUNT}(
+            1,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -205,7 +213,7 @@ contract LocalProverTest is Test {
     // A3. challengeIntentProof()
     function test_challengeIntentProof_IsNoOp() public {
         // Test: challengeIntentProof() is a no-op (doesn't revert)
-        localProver.challengeIntentProof(0, 0, bytes32(0), bytes32(0));
+        localProver.challengeIntentProof(1, 0, 0, bytes32(0), bytes32(0));
         // Should not revert
     }
 
@@ -229,7 +237,7 @@ contract LocalProverTest is Test {
 
         vm.prank(solver);
         vm.expectRevert(ILocalPolicy.InvalidClaimant.selector);
-        localProver.flashFulfill(_intent.route, _intent.reward, bytes32(0));
+        localProver.flashFulfill(1, _intent.route, _intent.reward, bytes32(0));
     }
 
     function test_flashFulfill_RevertsIfIntentAlreadyFulfilled() public {
@@ -245,6 +253,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.deal(solver, REWARD_AMOUNT);
         portal.fulfill{value: REWARD_AMOUNT}(
+            1,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -257,6 +266,7 @@ contract LocalProverTest is Test {
         // Try flashFulfill
         vm.expectRevert();
         localProver.flashFulfill(
+            1,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -279,6 +289,7 @@ contract LocalProverTest is Test {
         vm.prank(solver);
         vm.expectRevert();
         localProver.flashFulfill(
+            1,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -304,6 +315,7 @@ contract LocalProverTest is Test {
         // Should succeed even though rejecter doesn't accept ETH transfers
         vm.prank(solver);
         localProver.flashFulfill(
+            1,
             _intent.route,
             _intent.reward,
             rejecterClaimant
@@ -353,6 +365,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            protocolVersion: 1,
             source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
@@ -370,7 +383,7 @@ contract LocalProverTest is Test {
         token.approve(address(localProver), TOKEN_AMOUNT);
 
         vm.prank(solver);
-        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
+        localProver.flashFulfill(1, _intent.route, _intent.reward, claimantBytes);
 
         // The route has no calls, so the provided TOKEN_AMOUNT is unconsumed and the Portal moves it to
         // the intent's Account (leftover stays with the intent); the executor ends drained. flashFulfill
@@ -425,6 +438,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            protocolVersion: 1,
             source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
@@ -445,7 +459,7 @@ contract LocalProverTest is Test {
 
         // FlashFulfill should succeed
         vm.prank(solver);
-        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
+        localProver.flashFulfill(1, _intent.route, _intent.reward, claimantBytes);
 
         // The route has no calls, so the provided token input is unconsumed and moved to the intent's
         // Account; settle then pays the claimant its flat token reward and sweeps the residual (the
@@ -498,6 +512,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            protocolVersion: 1,
             source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
@@ -518,7 +533,7 @@ contract LocalProverTest is Test {
 
         // FlashFulfill should succeed
         vm.prank(solver);
-        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
+        localProver.flashFulfill(1, _intent.route, _intent.reward, claimantBytes);
 
         // The route has no calls, so the provided route input (500) is unconsumed and moved to the
         // intent's Account; settle then pays the claimant its flat reward (1000) and sweeps the residual
@@ -556,6 +571,7 @@ contract LocalProverTest is Test {
             uint256(uint160(address(localProver)))
         );
         portal.fulfill{value: REWARD_AMOUNT}(
+            1,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -577,6 +593,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.expectRevert(); // Portal reverts with IntentAlreadyFulfilled
         localProver.flashFulfill(
+            1,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -590,6 +607,7 @@ contract LocalProverTest is Test {
         uint256 keeperBalanceBefore = keeper.balance;
         vm.prank(user);
         portal.refund(
+            1,
             _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
@@ -619,6 +637,7 @@ contract LocalProverTest is Test {
         vm.deal(attacker, REWARD_AMOUNT);
         bytes32 nonEVMBytes32 = bytes32(uint256(type(uint256).max)); // All 1s
         portal.fulfill{value: REWARD_AMOUNT}(
+            1,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -640,6 +659,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.expectRevert(); // Portal reverts with IntentAlreadyFulfilled
         localProver.flashFulfill(
+            1,
             _intent.route,
             _intent.reward,
             bytes32(uint256(uint160(solver)))
@@ -653,6 +673,7 @@ contract LocalProverTest is Test {
         uint256 keeperBalanceBefore = keeper.balance;
         vm.prank(user);
         portal.refund(
+            1,
             _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
@@ -683,6 +704,7 @@ contract LocalProverTest is Test {
             uint256(uint160(address(localProver)))
         );
         portal.fulfill{value: REWARD_AMOUNT}(
+            1,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -697,6 +719,7 @@ contract LocalProverTest is Test {
         vm.prank(user);
         vm.expectRevert(); // Portal reverts with InvalidStatusForRefund
         portal.refund(
+            1,
             _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
@@ -722,6 +745,7 @@ contract LocalProverTest is Test {
             uint256(uint160(address(localProver)))
         );
         portal.fulfill{value: REWARD_AMOUNT}(
+            1,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -741,6 +765,7 @@ contract LocalProverTest is Test {
 
         vm.prank(user);
         portal.refund(
+            1,
             _intent.source,
             _intent.destination,
             keccak256(abi.encode(_intent.route)),
@@ -774,6 +799,7 @@ contract LocalProverTest is Test {
         vm.startPrank(attacker);
         vm.expectRevert(ILocalPolicy.InvalidClaimant.selector);
         localProver.flashFulfill(
+            1,
             intent.route,
             intent.reward,
             localProverAsClaimant // Should revert - LocalPolicy cannot be claimant
@@ -797,6 +823,7 @@ contract LocalProverTest is Test {
         vm.startPrank(solver);
         vm.expectRevert(ILocalPolicy.InvalidProver.selector);
         localProver.flashFulfill(
+            1,
             intent.route,
             intent.reward,
             claimantBytes // Should revert - intent uses secondaryProver, not localProver
@@ -851,6 +878,7 @@ contract LocalProverTest is Test {
         });
 
         Intent memory _intent = Intent({
+            protocolVersion: 1,
             source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
@@ -875,7 +903,7 @@ contract LocalProverTest is Test {
                 address(token)
             )
         );
-        localProver.flashFulfill(_intent.route, _intent.reward, claimantBytes);
+        localProver.flashFulfill(1, _intent.route, _intent.reward, claimantBytes);
     }
 
     // ============ Helper Functions ============

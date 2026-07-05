@@ -52,6 +52,7 @@ export type Reward = {
 // v3 / Model C Intent: gained a `source` field (origin chain id), hashed FIRST (before `destination`)
 // into the intent hash.
 export type Intent = {
+  protocolVersion?: number | bigint
   source: number | bigint
   destination: number
   route: Route
@@ -125,6 +126,10 @@ export function encodeHooks(rewardHook: Hook, refundHook: Hook) {
 
 const IntentStruct = [
   {
+    name: 'protocolVersion',
+    type: 'uint32',
+  },
+  {
     name: 'source',
     type: 'uint64',
   },
@@ -172,22 +177,25 @@ export function encodeReward(reward: Reward) {
 
 /**
  * ABI-encodes the ERC-7683 `FillInstruction.originData` payload the same way
- * {OriginSettler-resolve} does: `abi.encode(source, routeBytes, reward)`, where `routeBytes` is the
- * ALREADY-ENCODED route (see {encodeRoute}) and `reward` is the full (unhashed) `Reward` struct.
+ * {OriginSettler-resolve} does: `abi.encode(protocolVersion, source, routeBytes, reward)`, where
+ * `routeBytes` is the ALREADY-ENCODED route (see {encodeRoute}) and `reward` is the full (unhashed)
+ * `Reward` struct.
  */
 export function encodeOriginData(
   source: number | bigint,
   routeBytes: string,
   reward: Reward,
+  protocolVersion: number | bigint = 1,
 ) {
   const abiCoder = AbiCoder.defaultAbiCoder()
   return abiCoder.encode(
     [
+      { name: 'protocolVersion', type: 'uint32' },
       { name: 'source', type: 'uint64' },
       { name: 'route', type: 'bytes' },
       { name: 'reward', type: 'tuple', components: RewardStruct },
     ],
-    [source, routeBytes, reward],
+    [protocolVersion, source, routeBytes, reward],
   )
 }
 
@@ -200,7 +208,7 @@ export function encodeIntent(intent: Intent) {
         components: IntentStruct,
       },
     ],
-    [intent],
+    [{ ...intent, protocolVersion: intent.protocolVersion ?? 1 }],
   )
 }
 
@@ -227,8 +235,14 @@ export function hashIntent(intent: Intent) {
 
   const intentHash = keccak256(
     solidityPacked(
-      ['uint64', 'uint64', 'bytes32', 'bytes32'],
-      [intent.source, intent.destination, routeHash, rewardHash],
+      ['uint32', 'uint64', 'uint64', 'bytes32', 'bytes32'],
+      [
+        intent.protocolVersion ?? 1,
+        intent.source,
+        intent.destination,
+        routeHash,
+        rewardHash,
+      ],
     ),
   )
 
@@ -265,5 +279,8 @@ export async function intentAccountAddress(
   intent: Intent,
 ) {
   const intentSource = await ethers.getContractAt('Portal', intentSourceAddress)
-  return intentSource.intentAccountAddress(intent)
+  return intentSource.intentAccountAddress({
+    ...intent,
+    protocolVersion: intent.protocolVersion ?? 1,
+  })
 }

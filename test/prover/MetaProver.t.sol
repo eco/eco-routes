@@ -830,6 +830,7 @@ contract MetaProverTest is BaseTest {
         // Anyone can challenge
         vm.prank(otherPerson);
         metaProver.challengeIntentProof(
+            testIntent.protocolVersion,
             testIntent.source,
             testIntent.destination,
             routeHash,
@@ -884,6 +885,7 @@ contract MetaProverTest is BaseTest {
 
         vm.prank(otherPerson);
         metaProver.challengeIntentProof(
+            testIntent.protocolVersion,
             testIntent.source,
             testIntent.destination,
             routeHash,
@@ -936,6 +938,7 @@ contract MetaProverTest is BaseTest {
         // Challenge the proof
         vm.prank(otherPerson);
         metaProver.challengeIntentProof(
+            testIntent.protocolVersion,
             testIntent.source,
             testIntent.destination,
             routeHash,

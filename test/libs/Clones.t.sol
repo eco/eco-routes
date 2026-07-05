@@ -158,7 +158,7 @@ contract ClonesTest is BaseTest {
     }
 
     function testCloneWithAccountImplementation() public {
-        EcoAccount accountImpl = new EcoAccount();
+        EcoAccount accountImpl = new EcoAccount(address(this));
 
         address clone = Clones.clone(address(accountImpl), TEST_SALT);
         address predicted = Clones.predict(

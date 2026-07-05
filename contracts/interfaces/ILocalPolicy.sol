@@ -42,12 +42,14 @@ interface ILocalPolicy is IPolicy {
      * @notice Atomically withdraws, fulfills an intent, and pays claimant the fulfillment reward
      * @dev Claimant receives all reward tokens and native (minus amounts consumed by route execution).
      *      Intent hash is computed from route and reward, no need to pass it separately.
+     * @param protocolVersion Creator-declared Portal implementation version committed in the intent hash
      * @param route Route information for the intent
      * @param reward Reward details for the intent
      * @param claimant Address that receives the fulfillment reward (ERC20 tokens + native ETH)
      * @return results The runtime's raw return data from the fulfill execution
      */
     function flashFulfill(
+        uint32 protocolVersion,
         Route calldata route,
         Reward calldata reward,
         bytes32 claimant

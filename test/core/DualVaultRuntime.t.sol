@@ -242,6 +242,7 @@ contract DualVaultRuntimeTest is BaseTest {
 
         uint256 before = tokenC.balanceOf(keeper);
         intentSource.recoverToken(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -263,6 +264,7 @@ contract DualVaultRuntimeTest is BaseTest {
             )
         );
         intentSource.recoverToken(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),

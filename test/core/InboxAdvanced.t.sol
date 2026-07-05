@@ -96,6 +96,7 @@ contract InboxAdvancedTest is BaseTest {
         });
 
         Intent memory intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
@@ -119,6 +120,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -127,6 +129,7 @@ contract InboxAdvancedTest is BaseTest {
 
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -156,6 +159,7 @@ contract InboxAdvancedTest is BaseTest {
         calls[0] = Call({target: address(tokenA), data: complexData, value: 0});
 
         Intent memory intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
@@ -179,6 +183,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -187,6 +192,7 @@ contract InboxAdvancedTest is BaseTest {
 
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -221,6 +227,7 @@ contract InboxAdvancedTest is BaseTest {
         calls[1] = Call({target: recipient2, data: "", value: ethAmount});
 
         Intent memory intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
@@ -244,6 +251,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -255,6 +263,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(solver);
         vm.deal(solver, ethAmount);
         portal.fulfill{value: ethAmount}(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -289,6 +298,7 @@ contract InboxAdvancedTest is BaseTest {
         );
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             wrongDestination,
             intent.route,
@@ -303,6 +313,7 @@ contract InboxAdvancedTest is BaseTest {
         Intent memory intent = _createBasicIntent();
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -316,6 +327,7 @@ contract InboxAdvancedTest is BaseTest {
         Route memory mismatchedRoute = intent.route;
         mismatchedRoute.salt = keccak256("different");
         bytes32 mismatchedHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(mismatchedRoute)),
@@ -328,6 +340,7 @@ contract InboxAdvancedTest is BaseTest {
 
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             mismatchedRoute,
@@ -352,6 +365,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -361,6 +375,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -376,6 +391,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -385,6 +401,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -402,6 +419,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -411,6 +429,7 @@ contract InboxAdvancedTest is BaseTest {
         vm.expectRevert();
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -470,6 +489,7 @@ contract InboxAdvancedTest is BaseTest {
         });
 
         Intent memory intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
@@ -493,6 +513,7 @@ contract InboxAdvancedTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -501,6 +522,7 @@ contract InboxAdvancedTest is BaseTest {
 
         vm.prank(solver);
         portal.fulfill(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             intent.route,
@@ -533,6 +555,7 @@ contract InboxAdvancedTest is BaseTest {
             bytes32 routeHash = keccak256(abi.encode(intent.route));
             bytes32 rewardHash = keccak256(abi.encode(intent.reward));
             bytes32 intentHash = IntentLib.hashIntent(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 routeHash,
@@ -543,6 +566,7 @@ contract InboxAdvancedTest is BaseTest {
             // Fulfill each intent
             vm.prank(solver);
             portal.fulfill(
+                intent.protocolVersion,
                 intent.source,
                 intent.destination,
                 intent.route,
@@ -602,6 +626,7 @@ contract InboxAdvancedTest is BaseTest {
 
         return
             Intent({
+                protocolVersion: PROTOCOL_VERSION,
                 source: uint64(block.chainid),
                 destination: uint64(block.chainid),
                 route: Route({

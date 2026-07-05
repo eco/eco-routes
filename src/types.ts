@@ -38,6 +38,7 @@ export interface Reward {
 }
 
 export interface Intent {
+  protocolVersion: number // uint32 — creator-declared Portal implementation version (first hashed field)
   source: bigint
   destination: bigint
   route: Route

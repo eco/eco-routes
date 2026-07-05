@@ -57,8 +57,20 @@ describe('Destination Settler Test', (): void => {
       await ethers.getContractFactory('TestMailbox')
     ).deploy(ethers.ZeroAddress)
     const [owner, keeper, solver, dstAddr] = await ethers.getSigners()
-    const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(owner.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const multicallRuntime = await (
       await ethers.getContractFactory('MulticallRuntime')
@@ -134,6 +146,7 @@ describe('Destination Settler Test', (): void => {
     }
     const _chainId = Number((await owner.provider.getNetwork()).chainId)
     const _intent: Intent = {
+      protocolVersion: 1,
       source: _chainId,
       destination: _chainId,
       route: _route,
@@ -173,6 +186,7 @@ describe('Destination Settler Test', (): void => {
       inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -204,6 +218,7 @@ describe('Destination Settler Test', (): void => {
       inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,

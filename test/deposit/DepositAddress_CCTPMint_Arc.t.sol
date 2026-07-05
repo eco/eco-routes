@@ -7,6 +7,8 @@ import {DepositFactory_CCTPMint_Arc} from "../../contracts/deposit/DepositFactor
 import {DepositAddress_CCTPMint_Arc} from "../../contracts/deposit/DepositAddress_CCTPMint_Arc.sol";
 import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {PortalProxy} from "../../contracts/PortalProxy.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {Intent, Route, Reward, RewardToken, TokenAmount} from "../../contracts/types/Intent.sol";
 import {Call} from "../../contracts/interfaces/IRuntime.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
@@ -39,7 +41,11 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
     function setUp() public {
         token = new TestERC20("Test USDC", "USDC");
-        portal = new Portal();
+        PortalProxy _proxy = new PortalProxy(address(this));
+        EcoAccount _acct = new EcoAccount(address(_proxy));
+        Portal _impl = new Portal(address(_acct));
+        _proxy.registerVersion(1, address(_impl));
+        portal = Portal(payable(address(_proxy)));
 
         factory = new DepositFactory_CCTPMint_Arc(
             address(token),

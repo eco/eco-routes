@@ -9,6 +9,9 @@ import {ICreate3Deployer} from "../../../contracts/tools/ICreate3Deployer.sol";
 import {AddressConverter} from "../../../contracts/libs/AddressConverter.sol";
 
 import {Portal} from "../../../contracts/Portal.sol";
+import {PortalProxy} from "../../../contracts/PortalProxy.sol";
+// Aliased: forge-std's StdCheats defines a `struct Account` that shadows this import in Test contracts.
+import {Account as EcoAccount} from "../../../contracts/account/Account.sol";
 import {MulticallRuntime} from "../../../contracts/runtime/MulticallRuntime.sol";
 import {HyperPolicy} from "../../../contracts/prover/HyperPolicy.sol";
 import {VestingPolicy} from "../../../contracts/prover/VestingPolicy.sol";
@@ -136,10 +139,37 @@ contract DeployV3Test is Test {
     function test_b_create2AddressesReDerivable() public {
         DeployV3.Deployment memory dep = script.deploy(_cfg());
 
+        // The PERMANENT Portal is the PortalProxy, deployed at SALT with the deployer as owner.
         assertEq(
             dep.portal,
-            _predictCreate2(type(Portal).creationCode, SALT),
-            "portal CREATE2"
+            _predictCreate2(
+                abi.encodePacked(
+                    type(PortalProxy).creationCode,
+                    abi.encode(address(script)) // cfg.deployer = owner
+                ),
+                SALT
+            ),
+            "portal proxy CREATE2"
+        );
+        // The shared Account implementation is bound to the proxy and deployed at a derived salt.
+        address accountImpl = _predictCreate2(
+            abi.encodePacked(
+                type(EcoAccount).creationCode,
+                abi.encode(dep.portal)
+            ),
+            _contractSalt(SALT, "ACCOUNT_IMPLEMENTATION")
+        );
+        // The version-1 Portal implementation references the shared Account implementation.
+        assertEq(
+            dep.portalImplementation,
+            _predictCreate2(
+                abi.encodePacked(
+                    type(Portal).creationCode,
+                    abi.encode(accountImpl)
+                ),
+                _contractSalt(SALT, "PORTAL_IMPLEMENTATION_V1")
+            ),
+            "portal implementation CREATE2"
         );
         assertEq(
             dep.runtime,

@@ -14,6 +14,12 @@ import {TronTransfer} from "../libs/TronTransfer.sol";
  */
 contract AccountTron is Account {
     /**
+     * @notice Creates the Tron Account implementation bound to its portal.
+     * @param _portal The authorized caller (the {PortalProxy}).
+     */
+    constructor(address _portal) Account(_portal) {}
+
+    /**
      * @inheritdoc Account
      */
     function _transferToken(

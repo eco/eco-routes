@@ -48,11 +48,18 @@ contract Account is IAccount {
         0xacc20dacae6b4d5949ef091bdce937ee4ae97c3312ea3d3826cb7ff678dcaca3;
 
     /**
-     * @notice Creates a new account instance
-     * @dev Sets the deployer (IntentSource) as the authorized portal contract
+     * @notice Creates a new account implementation bound to its portal.
+     * @dev `_portal` is the address authorized to drive every clone of this implementation
+     *      (fund/withdraw/refund/recover/execute/hooks). Under the PR9 {PortalProxy}, the implementations
+     *      run via `delegatecall` FROM the proxy, so `address(this)` at every account call site is the
+     *      PROXY — hence `_portal` must be the PROXY address (not a Portal implementation). A SINGLE Account
+     *      implementation is shared by every registered Portal version so that each intent's per-intent
+     *      Account address is stable across implementation versions (the address derives from the proxy +
+     *      this shared implementation, never from the active version).
+     * @param _portal The authorized caller (the {PortalProxy}).
      */
-    constructor() {
-        portal = msg.sender;
+    constructor(address _portal) {
+        portal = _portal;
     }
 
     /**

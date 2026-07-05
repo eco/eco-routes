@@ -109,6 +109,7 @@ struct FillInstruction {
  * @notice contains everything which, when combined with other aspects of GaslessCrossChainOrder
  * is sufficient to publish an intent via Eco Protocol
  * @dev the orderData field of GaslessCrossChainOrder should be decoded as OrderData
+ * @param protocolVersion creator-declared Portal implementation version committed in the intent hash
  * @param destination the destination chain ID for the intent
  * @param route the route data for execution on the destination chain
  * @param reward the reward structure containing keeper, prover, amounts, and deadline information
@@ -117,6 +118,7 @@ struct FillInstruction {
  * @param maxSpent the maximum outputs that the filler will send
  */
 struct OrderData {
+    uint32 protocolVersion;
     uint64 destination;
     bytes route;
     Reward reward;
@@ -127,5 +129,5 @@ struct OrderData {
 
 // EIP712 type hash (referenced struct types sorted alphabetically per EIP-712)
 bytes32 constant ORDER_DATA_TYPEHASH = keccak256(
-    "OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens,bytes hooks)RewardToken(address token,uint256 rate,uint256 flat)"
+    "OrderData(uint32 protocolVersion,uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens,bytes hooks)RewardToken(address token,uint256 rate,uint256 flat)"
 );

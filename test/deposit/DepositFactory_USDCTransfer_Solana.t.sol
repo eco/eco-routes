@@ -5,6 +5,8 @@ import {Test} from "forge-std/Test.sol";
 import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
 import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {PortalProxy} from "../../contracts/PortalProxy.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 
 contract DepositFactoryTest is Test {
     DepositFactory_USDCTransfer_Solana public factory;
@@ -29,7 +31,11 @@ contract DepositFactoryTest is Test {
 
     function setUp() public {
         // Deploy Portal
-        portal = new Portal();
+        PortalProxy _proxy = new PortalProxy(address(this));
+        EcoAccount _acct = new EcoAccount(address(_proxy));
+        Portal _impl = new Portal(address(_acct));
+        _proxy.registerVersion(1, address(_impl));
+        portal = Portal(payable(address(_proxy)));
 
         // Deploy factory
         factory = new DepositFactory_USDCTransfer_Solana(

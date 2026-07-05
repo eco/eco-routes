@@ -7,6 +7,8 @@ import {DepositAddress_CCTPMint_GatewayERC20} from "../../contracts/deposit/Depo
 import {BaseDepositFactory} from "../../contracts/deposit/BaseDepositFactory.sol";
 import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {PortalProxy} from "../../contracts/PortalProxy.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 
 contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
     DepositFactory_CCTPMint_GatewayERC20 public factory;
@@ -31,7 +33,11 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
     address constant DEPOSITOR_2 = address(0x4444);
 
     function setUp() public {
-        portal = new Portal();
+        PortalProxy _proxy = new PortalProxy(address(this));
+        EcoAccount _acct = new EcoAccount(address(_proxy));
+        Portal _impl = new Portal(address(_acct));
+        _proxy.registerVersion(1, address(_impl));
+        portal = Portal(payable(address(_proxy)));
 
         factory = new DepositFactory_CCTPMint_GatewayERC20(
             SOURCE_TOKEN,

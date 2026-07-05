@@ -148,6 +148,8 @@ describe('Semantic Release Build Package', () => {
     it('should contain the expected contract types', () => {
       // Assert: the v3 contract set (Prover→Policy rename, full deployed set)
       expect(CONTRACT_TYPES).toContain('Portal')
+      // PR9: the permanent proxy is "Portal"; the versioned implementation address is also recorded.
+      expect(CONTRACT_TYPES).toContain('PortalImplementation')
       expect(CONTRACT_TYPES).toContain('MulticallRuntime')
       expect(CONTRACT_TYPES).toContain('HyperPolicy')
       expect(CONTRACT_TYPES).toContain('CCIPPolicy')
@@ -155,7 +157,7 @@ describe('Semantic Release Build Package', () => {
       expect(CONTRACT_TYPES).toContain('VestingPolicy')
       // No pre-rename names remain.
       expect(CONTRACT_TYPES).not.toContain('HyperProver')
-      expect(CONTRACT_TYPES.length).toBe(12)
+      expect(CONTRACT_TYPES.length).toBe(13)
     })
   })
 })

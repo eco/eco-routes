@@ -120,6 +120,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
         // Call Portal.publishAndFund. Published on this (source) chain; fulfilled on Solana.
         Portal portalContract = Portal(portal);
         (intentHash,) = portalContract.publishAndFund(
+            1, // protocolVersion: pinned to protocol version 1 (registered on the PortalProxy at deploy)
             uint64(block.chainid),
             destChain,
             routeBytes,

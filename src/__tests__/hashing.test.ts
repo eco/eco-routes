@@ -6,6 +6,7 @@ import type { Intent } from '../types'
 // Solidity test (forge test --match-path test/v3/sdk/GoldenVector.t.sol -vv) — this asserts TS<->Solidity
 // byte-parity of the hashing scheme.
 const INTENT: Intent = {
+  protocolVersion: 1,
   source: 8453n,
   destination: 10n,
   route: {
@@ -44,7 +45,7 @@ const GOLDEN = {
   rewardHash:
     '0x5435b4137cc49f6627e966eddc3be93118edac8c4732fcff5ded126b22788b81',
   intentHash:
-    '0xa5fc9f392a4c4f858e79502faa282dc4cc364d9c034138d7a36c54a74caa6db7',
+    '0x911a9cd64402c234a708c7a849125ab713d2edb18d4e0c02a2aa00266e0632d8',
 }
 
 // Build abi.encode(Hook[2]) exactly as the Solidity fixture does.

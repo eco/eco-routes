@@ -499,6 +499,7 @@ contract CCIPProverTest is BaseTest {
         // actually proven (block.chainid), so challenging with the intent's true fields should clear it.
         vm.prank(keeper);
         ccipProver.challengeIntentProof(
+            foreignIntent.protocolVersion,
             foreignIntent.source,
             foreignIntent.destination,
             keccak256(abi.encode(foreignIntent.route)),
@@ -536,7 +537,7 @@ contract CCIPProverTest is BaseTest {
         // Challenge with correct chain should do nothing
         vm.prank(keeper);
         ccipProver.challengeIntentProof(
-            localIntent.source, localIntent.destination, keccak256(abi.encode(localIntent.route)), keccak256(abi.encode(localIntent.reward))
+            localIntent.protocolVersion, localIntent.source, localIntent.destination, keccak256(abi.encode(localIntent.route)), keccak256(abi.encode(localIntent.reward))
         );
 
         // Verify proof is still there
