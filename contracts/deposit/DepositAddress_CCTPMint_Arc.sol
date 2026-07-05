@@ -116,7 +116,7 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
         );
 
         // Publish Intent 2 and get its account address
-        Portal portalContract = Portal(portalAddress);
+        Portal portalContract = Portal(payable(portalAddress));
         (, address account2) = portalContract.publish(intent2);
 
         // ---- Step 2: Construct, fund, and publish Intent 1 (CCTP burn on source chain) ----

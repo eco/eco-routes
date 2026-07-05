@@ -15,11 +15,18 @@ import {AccountDeployer} from "../account/AccountDeployer.sol";
  */
 contract PortalTron is PortalCore {
     /**
-     * @notice Wires the shared AccountTron clone template.
+     * @notice Wires the shared AccountTron clone template and the ERC-7683 adapter implementation.
      * @param accountImplementation The shared {AccountTron} implementation (bound to the proxy) that
      *        per-intent clones delegate to.
+     * @param erc7683Implementation The {ERC7683Implementation} the lean Portal delegates its ERC-7683
+     *        surface to via {PortalCore-fallback} (a SINGLE shared adapter serves both EVM and TRON — it
+     *        holds no account-derivation state, so it needs no TRON-specific variant).
      */
     constructor(
-        address accountImplementation
-    ) AccountDeployer(accountImplementation, bytes1(0x41)) {}
+        address accountImplementation,
+        address erc7683Implementation
+    )
+        AccountDeployer(accountImplementation, bytes1(0x41))
+        PortalCore(erc7683Implementation)
+    {}
 }

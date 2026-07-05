@@ -22,6 +22,56 @@ import {Refund} from "./libs/Refund.sol";
  */
 abstract contract PortalCore is IntentSource, Inbox, Semver {
     /**
+     * @notice The ERC-7683 adapter implementation this Portal falls back to.
+     * @dev Immutable, set at construction (2nd ctor arg alongside the Account clone template). The
+     *      ERC-7683 entry points ({open}/{openFor}/{resolve}/{resolveFor}/{fill}, plus the EIP-712
+     *      helpers {domainSeparatorV4}/{GASLESS_CROSSCHAIN_ORDER_TYPEHASH}) are NO LONGER real functions on
+     *      this lean Portal implementation — they live on {ERC7683Implementation}. A call for one of those
+     *      selectors misses Solidity's generated dispatcher and hits {fallback}, which `delegatecall`s it
+     *      here. Because this Portal is itself only ever reached via `delegatecall` from the {PortalProxy},
+     *      this is a SECOND nested delegatecall: `address(this)` stays the proxy and `msg.sender` stays the
+     *      original caller through both hops, so the adapter operates on the proxy's storage and identity.
+     *      This is the deliberate extra hop the ERC-7683 (lower-priority) path pays so the core Portal
+     *      reclaims the Settlers' bytecode.
+     */
+    address private immutable ERC7683_IMPLEMENTATION;
+
+    /**
+     * @notice Wires the ERC-7683 adapter implementation.
+     * @param erc7683Implementation The {ERC7683Implementation} this Portal delegates the ERC-7683 surface
+     *        to via {fallback}. A SINGLE shared instance serves every Portal version (it holds no
+     *        version-specific or account-derivation state — it resolves + delegatecalls the pinned
+     *        implementation for each call).
+     */
+    constructor(address erc7683Implementation) {
+        ERC7683_IMPLEMENTATION = erc7683Implementation;
+    }
+
+    /**
+     * @notice Delegates any selector this lean Portal does not implement to the ERC-7683 adapter.
+     * @dev Only the detached ERC-7683 surface reaches here (every real Portal function is matched by
+     *      Solidity's own dispatcher first). Mirrors {PortalProxy._delegate}: copy calldata, `delegatecall`
+     *      the adapter, bubble the raw return/revert verbatim. `assembly ("memory-safe")` is REQUIRED — the
+     *      via-IR pipeline otherwise drops the memory guard for this function and the inherited {_fulfill}'s
+     *      stack allocation overflows (stack-too-deep) at compile time.
+     */
+    fallback() external payable {
+        address impl = ERC7683_IMPLEMENTATION;
+        assembly ("memory-safe") {
+            calldatacopy(0, 0, calldatasize())
+            let ok := delegatecall(gas(), impl, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch ok
+            case 0 {
+                revert(0, returndatasize())
+            }
+            default {
+                return(0, returndatasize())
+            }
+        }
+    }
+
+    /**
      * @notice Atomically fulfills and settles a SAME-CHAIN intent in one transaction
      * @dev See {IPortal-fulfillAndSettle}. Requires `intent.source == intent.destination ==
      *      block.chainid`. Because source == destination the escrow Account and the execution Account are

@@ -118,7 +118,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
         IERC20(sourceToken).approve(portal, amount);
 
         // Call Portal.publishAndFund. Published on this (source) chain; fulfilled on Solana.
-        Portal portalContract = Portal(portal);
+        Portal portalContract = Portal(payable(portal));
         (intentHash,) = portalContract.publishAndFund(
             1, // protocolVersion: pinned to protocol version 1 (registered on the PortalProxy at deploy)
             uint64(block.chainid),

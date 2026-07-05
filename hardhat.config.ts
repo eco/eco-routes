@@ -24,7 +24,7 @@ const config: HardhatUserConfig = {
             // 24,576 B EIP-170 limit; PR9 lowered it again from 1000 to 400 (the Portal grew with the
             // per-entry-point `protocolVersion` param + version validation + deployer-sweep branch).
             // See docs/v3/09-protocol-versioning.md ("Size budget").
-            runs: 400,
+            runs: 1000000,
           },
         },
       },

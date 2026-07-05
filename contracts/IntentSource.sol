@@ -17,7 +17,6 @@ import {Intent, Reward, RewardToken, IntentLib} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
-import {OriginSettler} from "./ERC7683/OriginSettler.sol";
 import {AccountDeployer} from "./account/AccountDeployer.sol";
 
 /**
@@ -30,7 +29,7 @@ import {AccountDeployer} from "./account/AccountDeployer.sol";
  *      keeper. The source-side escrow Account is chain-parameterized by `intent.source` (Model C), so it
  *      is address-separated from the destination execution Account for a cross-chain intent.
  */
-abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource {
+abstract contract IntentSource is AccountDeployer, IIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for address;
     using AddressConverter for bytes32;
@@ -955,7 +954,17 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
     }
 
     /**
-     * @notice Core OriginSettler implementation for atomic intent creation and funding
+     * @notice Core atomic intent creation + funding (proxy-allowance funding path)
+     * @dev The source-side funding primitive: `publish` + `_fundIntent`, where `_fundIntent` pulls each
+     *      ERC20 leg from `funder` via THIS contract's (the proxy's) allowance
+     *      (`safeTransferFrom(funder, account)` executed by the Portal). Callers must have established that
+     *      `funder` authorized this pull — either `funder == msg.sender` ({publishAndFund}) or a verified
+     *      signature (the ERC-7683 `openFor` path). It is intentionally NOT exposed as a public
+     *      arbitrary-`funder` entry point: that would let anyone drain any address that has approved the
+     *      proxy. The public arbitrary-`funder` path is {publishAndFundFor}, which pulls via the per-intent
+     *      Account's own allowance instead (safe because the funder must have approved that specific
+     *      Account). No longer overrides an abstract hook — the ERC-7683 Settlers now live in a separate
+     *      implementation (see {ERC7683Implementation}).
      * @param source Origin chain ID for the intent
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
@@ -973,7 +982,7 @@ abstract contract IntentSource is AccountDeployer, OriginSettler, IIntentSource 
         Reward memory reward,
         bool allowPartial,
         address funder
-    ) internal override returns (bytes32 intentHash, address account) {
+    ) internal returns (bytes32 intentHash, address account) {
         (intentHash, account) = publish(
             protocolVersion,
             source,
