@@ -640,6 +640,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         bool allowPartial
     ) internal onlyFundable(intentHash) {
+        // Reject a duplicate reward-token leg regardless of entry point. `publish` already checks this,
+        // but `fund`/`fundFor` can escrow an intent directly without a prior `publish` call — without this
+        // check here too, a duplicate leg would silently underpay the claimant (the settle-side per-leg
+        // residual sweep pays only the first matching leg and sweeps the rest to the keeper).
+        IntentLib.requireUniqueRewardTokens(reward.tokens);
+
         bool fullyFunded = true;
 
         uint256 rewardsLength = reward.tokens.length;
