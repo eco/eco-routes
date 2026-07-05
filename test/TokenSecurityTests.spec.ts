@@ -116,6 +116,7 @@ describe('Token Security Tests', () => {
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
+      hooks: '0x',
     }
 
     const intent = {
@@ -185,6 +186,7 @@ describe('Token Security Tests', () => {
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
+      hooks: '0x',
     }
 
     const intent = {
@@ -249,6 +251,7 @@ describe('Token Security Tests', () => {
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
+      hooks: '0x',
     }
 
     const intent = {
@@ -327,6 +330,7 @@ describe('Token Security Tests', () => {
       prover: await prover.getAddress(),
       deadline: expiry,
       tokens: rewardTokens,
+      hooks: '0x',
     }
 
     const intent = {

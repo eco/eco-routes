@@ -281,7 +281,8 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             deadline: deadline,
             keeper: depositor,
             prover: destinationProverAddress,
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         // Combine into Intent. Published on this (source) chain; fulfilled on the destination.
@@ -384,7 +385,8 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             deadline: deadline,
             keeper: depositor,
             prover: proverAddress,
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         // Combine into Intent. CCTP burn is fulfilled locally on the source chain (source == dest).

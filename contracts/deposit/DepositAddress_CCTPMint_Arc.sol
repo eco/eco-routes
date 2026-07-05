@@ -219,7 +219,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             deadline: deadline,
             keeper: depositor,
             prover: arcProverAddress,
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         // Combine into Intent. Published on this (source) chain; fulfilled on Arc.
@@ -313,7 +314,8 @@ contract DepositAddress_CCTPMint_Arc is BaseDepositAddress {
             deadline: deadline,
             keeper: depositor,
             prover: proverAddress,
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         // Combine into Intent. CCTP burn is fulfilled locally on the source chain (source == dest).

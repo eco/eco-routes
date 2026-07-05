@@ -253,6 +253,7 @@ async function createIntent(
       keeper: wallet.address,
       prover: evmProver,
       tokens: [{ token: evmUsdcAddr, rate: 0n, flat: REWARD_AMOUNT }],
+      hooks: '0x',
     },
   }
 
@@ -328,6 +329,7 @@ async function fulfillAndProveOnTron(
     keeper: keeperHex,
     prover: evmProver,
     tokens: [{ token: evmUsdcAddr, rate: 0n, flat: REWARD_AMOUNT }] as any[],
+    hooks: '0x',
   }
 
   const rewardHash = ethers.keccak256(

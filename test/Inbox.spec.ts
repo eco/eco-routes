@@ -127,6 +127,7 @@ describe('Inbox Test', (): void => {
             flat: amount,
           },
         ],
+        hooks: '0x',
       },
     }
 

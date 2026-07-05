@@ -392,6 +392,7 @@ describe('LayerZeroPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -515,6 +516,7 @@ describe('LayerZeroPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -750,6 +752,7 @@ describe('LayerZeroPolicy Test', (): void => {
               flat: ethers.parseEther('0.01'),
             },
           ],
+          hooks: '0x',
         },
       }
 
@@ -890,6 +893,7 @@ describe('LayerZeroPolicy Test', (): void => {
             flat: ethers.parseEther('0.01'),
           },
         ],
+        hooks: '0x',
       }
 
       const destination = Number(
@@ -958,6 +962,7 @@ describe('LayerZeroPolicy Test', (): void => {
             flat: ethers.parseEther('0.01'),
           },
         ],
+        hooks: '0x',
       }
       const intent1: Intent = {
         source,
@@ -1082,6 +1087,7 @@ describe('LayerZeroPolicy Test', (): void => {
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
           tokens: [{ token: await token.getAddress(), rate: 0n, flat: amount }],
+          hooks: '0x',
         },
       }
 
@@ -1205,6 +1211,7 @@ describe('LayerZeroPolicy Test', (): void => {
         reward: {
           ...intent.reward,
           prover: await layerZeroProver.getAddress(),
+          hooks: '0x',
         },
       }
 

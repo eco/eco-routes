@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import {IAccount} from "../interfaces/IAccount.sol";
 import {IPermit} from "../interfaces/IPermit.sol";
 import {IPolicy} from "../interfaces/IPolicy.sol";
-import {Reward, RewardToken} from "../types/Intent.sol";
+import {Reward, RewardToken, Hook} from "../types/Intent.sol";
 
 /**
  * @title Account
@@ -251,6 +251,59 @@ contract Account is IAccount {
                 returndatacopy(add(out, 0x40), 0, len)
                 return(out, add(0x40, len))
             }
+        }
+    }
+
+    /**
+     * @notice Runs a keeper-committed delegate hook against this Account via `delegatecall`.
+     * @dev `onlyPortal`. Reuses the {execute} sandbox exactly: the default `hooks` encoding is
+     *      `abi.encode(Hook[2])`, and `index` selects the slot (0 = reward hook, run after a successful
+     *      settle; 1 = refund hook, run after a refund). An empty `hooks` (length 0) or a slot with
+     *      `target == address(0)` returns without doing anything. Otherwise it stores the hook target in
+     *      {_IN_EXECUTE_SLOT} (so the gated {fallback} forwards any in-flight callback to it),
+     *      `delegatecall`s `Hook.target` with `Hook.data`, and clears the slot on success; on failure the
+     *      raw revert is bubbled verbatim and the slot write rolls back with the frame.
+     *
+     *      The heavy work (decoding `Hook[2]`, the delegatecall) lives HERE, in the Account, not the Portal:
+     *      the Portal only wraps `runHook` in a try/catch, so a malformed `hooks` (a decode revert) or a
+     *      reverting hook is caught there and can never break settle/refund. Decoding into a fixed-size
+     *      `Hook[2]` means a `hooks` that is non-empty but not a valid `Hook[2]` reverts here (and is
+     *      caught by the Portal), never silently mis-parsed.
+     * @param hooks The opaque `Reward.hooks` bytes (default: `abi.encode(Hook[2])`)
+     * @param index Which hook slot to run (0 = reward, 1 = refund)
+     */
+    function runHook(
+        bytes calldata hooks,
+        uint256 index
+    ) external onlyPortal {
+        if (hooks.length == 0) {
+            return;
+        }
+        Hook[2] memory parsed = abi.decode(hooks, (Hook[2]));
+        address target = parsed[index].target;
+        if (target == address(0)) {
+            return;
+        }
+        bytes memory data = parsed[index].data;
+        assembly ("memory-safe") {
+            // Mark in-execute with the hook target so {fallback} forwards in-flight callbacks to it.
+            sstore(_IN_EXECUTE_SLOT, target)
+            let ok := delegatecall(
+                gas(),
+                target,
+                add(data, 0x20),
+                mload(data),
+                0,
+                0
+            )
+            if iszero(ok) {
+                // Bubble the raw revert verbatim, rolling back the slot write above.
+                let p := mload(0x40)
+                returndatacopy(p, 0, returndatasize())
+                revert(p, returndatasize())
+            }
+            // Success: clear the in-execute slot. The hook's return data is not needed by the Portal.
+            sstore(_IN_EXECUTE_SLOT, 0)
         }
     }
 

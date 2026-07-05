@@ -123,7 +123,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.prank(portal);
@@ -147,7 +148,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.prank(portal);
@@ -170,7 +172,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -198,7 +201,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.deal(portal, 1 ether);
@@ -222,7 +226,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -252,7 +257,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -282,7 +288,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.prank(unauthorized);
@@ -304,7 +311,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -332,7 +340,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 500);
@@ -364,7 +373,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -394,7 +404,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -428,7 +439,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -458,7 +470,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -486,7 +499,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.prank(portal);
@@ -502,7 +516,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -530,7 +545,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -553,7 +569,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 500);
@@ -572,7 +589,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.deal(address(account), 1 ether);
@@ -595,7 +613,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -628,7 +647,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.prank(unauthorized);
@@ -647,7 +667,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.warp(block.timestamp + 2000);
@@ -665,7 +686,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -695,7 +717,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -720,7 +743,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.warp(block.timestamp + 2000);
@@ -741,7 +765,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(keeper, 1000);
@@ -779,7 +804,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -807,7 +833,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.warp(block.timestamp + 2000);
@@ -828,7 +855,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         vm.warp(block.timestamp + 2000);
@@ -894,7 +922,8 @@ contract AccountTest is Test {
             keeper: keeper, // Normal address that accepts ETH
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -931,7 +960,8 @@ contract AccountTest is Test {
             keeper: keeper, // Normal keeper address
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         token.mint(address(account), 1000);
@@ -1000,7 +1030,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         // Base Account uses SafeERC20 and will revert when TronUSDTMock.transfer()
@@ -1039,7 +1070,8 @@ contract AccountTest is Test {
             keeper: keeper,
             prover: address(prover),
             deadline: uint64(block.timestamp + 1000),
-            tokens: tokens
+            tokens: tokens,
+            hooks: ""
         });
 
         // AccountTron uses a raw call so it succeeds even though

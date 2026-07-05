@@ -98,6 +98,20 @@ struct Route {
 }
 
 /**
+ * @notice A single delegate hook: `target` is delegatecalled by the intent's Account with `data`.
+ * @dev Encoded inside `Reward.hooks` (see below). Because the Account reaches `target` by
+ *      `delegatecall`, the hook runs AS the intent's own Account (`address(this)`, balances and approvals
+ *      are the Account's) and the gated Account fallback forwards any in-flight callbacks to it — the same
+ *      execution sandbox as the route `runtime`. A `target == address(0)` slot is a no-op (skipped).
+ * @param target The delegatecall target the Account runs (keeper-committed via the reward hash).
+ * @param data The opaque calldata forwarded to `target` verbatim.
+ */
+struct Hook {
+    address target;
+    bytes data;
+}
+
+/**
  * @notice Defines the reward and validation parameters for cross-chain execution
  * @dev `tokens` is POSITIONALLY PAIRED with `Route.minTokens` for its first `minTokens.length` entries and
  *      `tokens.length >= minTokens.length`. Legs split into PAIRED (rate+flat on `fulfilled[j]`) and EXTRA
@@ -106,12 +120,21 @@ struct Route {
  * @param keeper Address that created the intent and receives remainders / refunds
  * @param prover Address of the prover (settlement policy) that must approve execution
  * @param tokens Reward legs escrowed in the Account: paired with `Route.minTokens` then optional flat-only extras
+ * @param hooks Opaque, keeper-committed delegate-hook data run by the Account after the reward/refund core
+ *        effects. Empty (`length == 0`) means NO hooks (the common case). The DEFAULT encoding is
+ *        `abi.encode(Hook[2])`: index 0 is invoked after a successful settle (the REWARD hook) and index
+ *        1 after a refund (the REFUND hook). A `Hook.target == address(0)` slot is skipped. `hooks` is
+ *        HASH-AFFECTING (part of `rewardHash` -> `intentHash`), so it is committed by the keeper and
+ *        inspectable by solvers before anyone fulfills; a hostile hook only makes the intent unattractive
+ *        (self-harm), exactly like the committed `route.runtime`. Hook invocation is best-effort: a
+ *        reverting hook is caught so it can never strand an already-paid solver or lock a keeper's refund.
  */
 struct Reward {
     uint64 deadline;
     address keeper;
     address prover;
     RewardToken[] tokens;
+    bytes hooks;
 }
 
 /**

@@ -130,6 +130,7 @@ describe('Destination Settler Test', (): void => {
           flat: amount,
         },
       ],
+      hooks: '0x',
     }
     const _chainId = Number((await owner.provider.getNetwork()).chainId)
     const _intent: Intent = {

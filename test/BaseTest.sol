@@ -157,7 +157,8 @@ contract BaseTest is Test {
             deadline: uint64(expiry),
             keeper: keeper,
             prover: address(prover),
-            tokens: rewardTokensMemory
+            tokens: rewardTokensMemory,
+            hooks: ""
         });
 
         // Setup intent (default is same-chain: source == destination == CHAIN_ID)

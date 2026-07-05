@@ -110,7 +110,8 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
             deadline: uint64(block.timestamp + deadlineDuration),
             keeper: depositor, // Depositor receives refunds through normal intent flow
             prover: prover,
-            tokens: rewardTokens
+            tokens: rewardTokens,
+            hooks: ""
         });
 
         // Approve Portal to spend tokens
