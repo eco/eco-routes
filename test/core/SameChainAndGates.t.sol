@@ -81,6 +81,7 @@ contract SameChainAndGatesTest is BaseTest {
 
         return
             Intent({
+                protocolVersion: PROTOCOL_VERSION,
                 source: uint64(block.chainid),
                 destination: uint64(block.chainid),
                 route: Route({
@@ -134,6 +135,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -162,6 +164,7 @@ contract SameChainAndGatesTest is BaseTest {
 
         vm.prank(solver);
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             _intent.route,
@@ -223,6 +226,7 @@ contract SameChainAndGatesTest is BaseTest {
         legs[0] = RewardToken({token: address(tokenA), rate: 0, flat: rewardFlat});
 
         Intent memory _intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: uint64(block.chainid),
             destination: uint64(block.chainid),
             route: Route({
@@ -314,6 +318,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         intentSource.fund(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -347,6 +352,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         intentSource.settle(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -368,6 +374,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         intentSource.refund(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -387,6 +394,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         intentSource.recoverToken(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -432,6 +440,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         portal.fulfill(
+            _intent.protocolVersion,
             _intent.source,
             wrongDestination,
             _intent.route,
@@ -464,6 +473,7 @@ contract SameChainAndGatesTest is BaseTest {
 
         vm.prank(keeper);
         portal.executeAsOwner(
+            _intent.protocolVersion,
             _intent.source,
             _intent.route,
             rewardHash,
@@ -493,6 +503,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         portal.executeAsOwner(
+            _intent.protocolVersion,
             _intent.source, // == block.chainid (same-chain)
             _intent.route,
             rewardHash,
@@ -513,6 +524,7 @@ contract SameChainAndGatesTest is BaseTest {
             )
         );
         portal.executeAsOwner(
+            _intent.protocolVersion,
             _intent.source,
             _intent.route,
             rewardHash,
@@ -551,6 +563,7 @@ contract SameChainAndGatesTest is BaseTest {
         vm.startPrank(attacker);
         vm.expectRevert(wrongSource);
         intentSource.settle(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -560,6 +573,7 @@ contract SameChainAndGatesTest is BaseTest {
         );
         vm.expectRevert(wrongSource);
         intentSource.refund(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -567,6 +581,7 @@ contract SameChainAndGatesTest is BaseTest {
         );
         vm.expectRevert(wrongSource);
         intentSource.recoverToken(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -591,6 +606,7 @@ contract SameChainAndGatesTest is BaseTest {
         vm.startPrank(attacker);
         vm.expectRevert(wrongSource);
         intentSource.fund(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,
@@ -599,6 +615,7 @@ contract SameChainAndGatesTest is BaseTest {
         );
         vm.expectRevert(wrongSource);
         intentSource.refund(
+            _intent.protocolVersion,
             _intent.source,
             _intent.destination,
             routeHash,

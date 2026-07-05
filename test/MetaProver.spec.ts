@@ -132,7 +132,20 @@ describe('MetaPolicy Test', (): void => {
       await ethers.getContractFactory('TestMetaRouter')
     ).deploy(ethers.ZeroAddress)
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(owner.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
@@ -371,6 +384,7 @@ describe('MetaPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -425,6 +439,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -493,6 +508,7 @@ describe('MetaPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -547,6 +563,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -602,6 +619,7 @@ describe('MetaPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -656,6 +674,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -878,6 +897,7 @@ describe('MetaPolicy Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -952,6 +972,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          1,
           intent.source,
           intent.destination,
           route,
@@ -1008,6 +1029,7 @@ describe('MetaPolicy Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await metaProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -1088,6 +1110,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          1,
           intent.source,
           intent.destination,
           route,
@@ -1212,6 +1235,7 @@ describe('MetaPolicy Test', (): void => {
         (await metaProver.runner?.provider?.getNetwork())?.chainId,
       )
       const intent0: Intent = {
+        protocolVersion: 1,
         source: destination,
         destination,
         route,
@@ -1236,6 +1260,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent0.source,
           intent0.destination,
           route,
@@ -1275,6 +1300,7 @@ describe('MetaPolicy Test', (): void => {
         hooks: '0x',
       }
       const intent1: Intent = {
+        protocolVersion: 1,
         source: destination,
         destination,
         route: route1,
@@ -1295,6 +1321,7 @@ describe('MetaPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent1.source,
           intent1.destination,
           route1,

@@ -65,8 +65,9 @@ export function hashReward(reward: Reward): Hex {
   return keccak256(encodeAbiParameters([REWARD_ABI], [reward]))
 }
 
-/** `keccak256(abi.encodePacked(uint64 source, uint64 destination, bytes32 routeHash, bytes32 rewardHash))`. */
+/** `keccak256(abi.encodePacked(uint32 protocolVersion, uint64 source, uint64 destination, bytes32 routeHash, bytes32 rewardHash))`. */
 export function hashIntentComponents(
+  protocolVersion: number,
   source: bigint,
   destination: bigint,
   routeHash: Hex,
@@ -74,15 +75,16 @@ export function hashIntentComponents(
 ): Hex {
   return keccak256(
     encodePacked(
-      ['uint64', 'uint64', 'bytes32', 'bytes32'],
-      [source, destination, routeHash, rewardHash],
+      ['uint32', 'uint64', 'uint64', 'bytes32', 'bytes32'],
+      [protocolVersion, source, destination, routeHash, rewardHash],
     ),
   )
 }
 
-/** Full intent hash: hashes the route + reward, then combines with source/destination. */
+/** Full intent hash: hashes the route + reward, then combines with protocolVersion/source/destination. */
 export function hashIntent(intent: Intent): Hex {
   return hashIntentComponents(
+    intent.protocolVersion,
     intent.source,
     intent.destination,
     hashRoute(intent.route),

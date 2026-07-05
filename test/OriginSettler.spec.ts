@@ -68,7 +68,7 @@ describe('Origin Settler Test', (): void => {
   // Use the correct ORDER_DATA_TYPEHASH from the contract (v3 rate+flat Reward shape)
   const ORDER_DATA_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens,bytes hooks)RewardToken(address token,uint256 rate,uint256 flat)',
+      'OrderData(uint32 protocolVersion,uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens,bytes hooks)RewardToken(address token,uint256 rate,uint256 flat)',
     ),
   )
 
@@ -84,8 +84,20 @@ describe('Origin Settler Test', (): void => {
   }> {
     const [keeper, owner, otherPerson] = await ethers.getSigners()
 
-    const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(keeper.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // deploy prover
@@ -189,6 +201,7 @@ describe('Origin Settler Test', (): void => {
         hooks: '0x',
       }
       intent = {
+        protocolVersion: 1,
         source: sourceChainId,
         destination: chainId,
         route: route,
@@ -215,10 +228,11 @@ describe('Origin Settler Test', (): void => {
         orderDataType: ORDER_DATA_TYPEHASH,
         orderData: AbiCoder.defaultAbiCoder().encode(
           [
-            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+            'tuple(uint32,uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
           ],
           [
             [
+              1, // protocolVersion
               chainId, // destination
               encodeRoute(route), // route bytes
               [
@@ -269,10 +283,11 @@ describe('Origin Settler Test', (): void => {
         orderDataType: ORDER_DATA_TYPEHASH,
         orderData: AbiCoder.defaultAbiCoder().encode(
           [
-            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+            'tuple(uint32,uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
           ],
           [
             [
+              1, // protocolVersion
               chainId, // destination
               encodeRoute(route), // route bytes
               [
@@ -333,10 +348,11 @@ describe('Origin Settler Test', (): void => {
         orderDataHash: keccak256(
           AbiCoder.defaultAbiCoder().encode(
             [
-              'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+              'tuple(uint32,uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[],bytes),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
             ],
             [
               [
+                1, // protocolVersion
                 chainId, // destination
                 encodeRoute(route), // route bytes
                 [
@@ -371,6 +387,7 @@ describe('Origin Settler Test', (): void => {
         const provider: Provider = originSettler.runner!.provider!
         expect(
           await portal.isIntentFunded({
+            protocolVersion: 1,
             source: sourceChainId,
             destination: chainId,
             route,
@@ -407,6 +424,7 @@ describe('Origin Settler Test', (): void => {
           .to.emit(originSettler, 'Open')
         expect(
           await portal.isIntentFunded({
+            protocolVersion: 1,
             source: sourceChainId,
             destination: chainId,
             route,
@@ -416,6 +434,7 @@ describe('Origin Settler Test', (): void => {
         expect(
           await provider.getBalance(
             await portal.intentAccountAddress({
+              protocolVersion: 1,
               source: sourceChainId,
               destination: chainId,
               route,
@@ -431,6 +450,7 @@ describe('Origin Settler Test', (): void => {
         const provider: Provider = originSettler.runner!.provider!
 
         const accountAddress = await portal.intentAccountAddress({
+          protocolVersion: 1,
           source: sourceChainId,
           destination: chainId,
           route,
@@ -449,6 +469,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(
           await portal.isIntentFunded({
+            protocolVersion: 1,
             source: sourceChainId,
             destination: chainId,
             route,
@@ -478,6 +499,7 @@ describe('Origin Settler Test', (): void => {
       })
       it('publishes without transferring if intent is already funded', async () => {
         const accountAddress = await portal.intentAccountAddress({
+          protocolVersion: 1,
           source: sourceChainId,
           destination: chainId,
           route,
@@ -492,6 +514,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(
           await portal.isIntentFunded({
+            protocolVersion: 1,
             source: sourceChainId,
             destination: chainId,
             route,
@@ -600,6 +623,7 @@ describe('Origin Settler Test', (): void => {
       it('creates via openFor', async () => {
         expect(
           await portal.isIntentFunded({
+            protocolVersion: 1,
             source: sourceChainId,
             destination: chainId,
             route,
@@ -629,6 +653,7 @@ describe('Origin Settler Test', (): void => {
 
         expect(
           await portal.isIntentFunded({
+            protocolVersion: 1,
             source: sourceChainId,
             destination: chainId,
             route,

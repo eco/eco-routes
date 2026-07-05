@@ -31,8 +31,20 @@ describe('Token Security Tests', () => {
     const [keeper, claimant] = await ethers.getSigners()
 
     // Deploy Portal (which includes IntentSource and Inbox)
-    const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(keeper.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     // Use the IIntentSource interface with the Portal implementation
     const intentSource = await ethers.getContractAt(
       'IIntentSource',
@@ -120,6 +132,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
+      protocolVersion: 1,
       source: chainId,
       destination: chainId + 1,
       route,
@@ -190,6 +203,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
+      protocolVersion: 1,
       source: chainId,
       destination: chainId + 1,
       route,
@@ -255,6 +269,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
+      protocolVersion: 1,
       source: chainId,
       destination: chainId + 1,
       route,
@@ -334,6 +349,7 @@ describe('Token Security Tests', () => {
     }
 
     const intent = {
+      protocolVersion: 1,
       source: chainId,
       destination: chainId + 1,
       route,

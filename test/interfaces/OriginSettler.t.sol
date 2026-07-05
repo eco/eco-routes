@@ -5,6 +5,7 @@ import "../BaseTest.sol";
 import {IOriginSettler} from "../../contracts/interfaces/ERC7683/IOriginSettler.sol";
 import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction} from "../../contracts/types/ERC7683.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {Account as EcoAccount} from "../../contracts/account/Account.sol";
 import {OriginSettler} from "../../contracts/ERC7683/OriginSettler.sol";
 
 // Simple concrete implementation for testing
@@ -207,7 +208,11 @@ contract OriginSettlerTest is BaseTest {
 
         // The domain separator should be unique to this contract instance
         // Deploy another Portal and verify they have different domain separators
-        Portal portal2 = new Portal();
+        PortalProxy _proxy2 = new PortalProxy(address(this));
+        EcoAccount _acct2 = new EcoAccount(address(_proxy2));
+        Portal _impl2 = new Portal(address(_acct2));
+        _proxy2.registerVersion(1, address(_impl2));
+        Portal portal2 = Portal(payable(address(_proxy2)));
         bytes32 domainSeparator3 = portal2.domainSeparatorV4();
 
         // Domain separators should be different due to different contract addresses
@@ -247,7 +252,11 @@ contract OriginSettlerTest is BaseTest {
 
         // Deploy a new Portal on a different chain ID
         vm.chainId(999);
-        Portal portalDifferentChain = new Portal();
+        PortalProxy _proxyDiff = new PortalProxy(address(this));
+        EcoAccount _acctDiff = new EcoAccount(address(_proxyDiff));
+        Portal _implDiff = new Portal(address(_acctDiff));
+        _proxyDiff.registerVersion(1, address(_implDiff));
+        Portal portalDifferentChain = Portal(payable(address(_proxyDiff)));
         bytes32 domainSeparator2 = portalDifferentChain.domainSeparatorV4();
 
         // Domain separators should be different on different chains
@@ -255,7 +264,11 @@ contract OriginSettlerTest is BaseTest {
 
         // Deploy another Portal on the original chain
         vm.chainId(1);
-        Portal portalSameChain = new Portal();
+        PortalProxy _proxySame = new PortalProxy(address(this));
+        EcoAccount _acctSame = new EcoAccount(address(_proxySame));
+        Portal _implSame = new Portal(address(_acctSame));
+        _proxySame.registerVersion(1, address(_implSame));
+        Portal portalSameChain = Portal(payable(address(_proxySame)));
         bytes32 domainSeparator3 = portalSameChain.domainSeparatorV4();
 
         // Domain separator should be different from the first portal due to different addresses

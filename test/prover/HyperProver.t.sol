@@ -430,6 +430,7 @@ contract HyperProverTest is BaseTest {
         // actually proven (block.chainid), so challenging with the intent's true fields should clear it.
         vm.prank(keeper);
         hyperProver.challengeIntentProof(
+            foreignIntent.protocolVersion,
             foreignIntent.source,
             foreignIntent.destination,
             keccak256(abi.encode(foreignIntent.route)),
@@ -475,6 +476,7 @@ contract HyperProverTest is BaseTest {
         // Challenge with correct chain (destination matches proof) should do nothing
         vm.prank(keeper);
         hyperProver.challengeIntentProof(
+            localIntent.protocolVersion,
             localIntent.source,
             localIntent.destination,
             keccak256(abi.encode(localIntent.route)),

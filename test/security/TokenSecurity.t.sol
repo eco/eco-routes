@@ -90,6 +90,7 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -144,6 +145,7 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(attacker);
         vm.expectRevert();
         portal.fulfill(
+            destIntent.protocolVersion,
             destIntent.source,
             destIntent.destination,
             destIntent.route,
@@ -183,6 +185,7 @@ contract TokenSecurityTest is BaseTest {
         // IntentWithdrawn should succeed and state should be updated
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -223,6 +226,7 @@ contract TokenSecurityTest is BaseTest {
         vm.expectRevert(); // Should revert because fake permit doesn't actually transfer
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -279,6 +283,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -385,6 +390,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -440,6 +446,7 @@ contract TokenSecurityTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -493,6 +500,7 @@ contract TokenSecurityTest is BaseTest {
         vm.prank(keeper);
         vm.expectRevert();
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,

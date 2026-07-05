@@ -90,7 +90,20 @@ describe('LayerZeroPolicy Test', (): void => {
       .getContractFactory('TestLayerZeroEndpoint')
       .then((factory) => factory.deploy())
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(owner.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const multicallRuntime = await (
@@ -360,6 +373,7 @@ describe('LayerZeroPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await layerZeroProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -414,6 +428,7 @@ describe('LayerZeroPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -484,6 +499,7 @@ describe('LayerZeroPolicy Test', (): void => {
       const calldata = await encodeTransfer(await claimant.getAddress(), amount)
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await layerZeroProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -538,6 +554,7 @@ describe('LayerZeroPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent.source,
           intent.destination,
           intent.route,
@@ -720,6 +737,7 @@ describe('LayerZeroPolicy Test', (): void => {
       const routeTokens = [{ token: await token.getAddress(), amount: amount }]
 
       const intent: Intent = {
+        protocolVersion: 1,
         source: Number(
           (await layerZeroProver.runner?.provider?.getNetwork())?.chainId,
         ),
@@ -800,6 +818,7 @@ describe('LayerZeroPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfillAndProve(
+          1,
           intent.source,
           intent.destination,
           route,
@@ -901,6 +920,7 @@ describe('LayerZeroPolicy Test', (): void => {
       )
       const source = destination
       const intent0: Intent = {
+        protocolVersion: 1,
         source,
         destination,
         route,
@@ -925,6 +945,7 @@ describe('LayerZeroPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent0.source,
           intent0.destination,
           route,
@@ -965,6 +986,7 @@ describe('LayerZeroPolicy Test', (): void => {
         hooks: '0x',
       }
       const intent1: Intent = {
+        protocolVersion: 1,
         source,
         destination,
         route: route1,
@@ -985,6 +1007,7 @@ describe('LayerZeroPolicy Test', (): void => {
       await inbox
         .connect(solver)
         .fulfill(
+          1,
           intent1.source,
           intent1.destination,
           route1,
@@ -1065,6 +1088,7 @@ describe('LayerZeroPolicy Test', (): void => {
     beforeEach(async () => {
       // Create a standard intent for testing
       intent = {
+        protocolVersion: 1,
         source: 42161, // Arbitrum
         destination: 42161, // Arbitrum
         route: {
@@ -1121,6 +1145,7 @@ describe('LayerZeroPolicy Test', (): void => {
 
       await expect(
         prover.challengeIntentProof(
+          1,
           intent.source,
           intent.destination,
           routeHash,
@@ -1158,6 +1183,7 @@ describe('LayerZeroPolicy Test', (): void => {
       const rewardHash = hashIntent(intent).rewardHash
 
       await prover.challengeIntentProof(
+        1,
         intent.source,
         intent.destination,
         routeHash,
@@ -1179,6 +1205,7 @@ describe('LayerZeroPolicy Test', (): void => {
       // Challenge non-existent proof should be a no-op
       await expect(
         prover.challengeIntentProof(
+          1,
           intent.source,
           intent.destination,
           routeHash,

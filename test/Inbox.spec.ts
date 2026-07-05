@@ -54,8 +54,20 @@ describe('Inbox Test', (): void => {
     dstAddr: SignerWithAddress
   }> {
     const [owner, solver, dstAddr] = await ethers.getSigners()
-    const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portalProxy = await (
+      await ethers.getContractFactory('PortalProxy')
+    ).deploy(owner.address)
+    const accountImpl = await (
+      await ethers.getContractFactory('Account')
+    ).deploy(await portalProxy.getAddress())
+    const portalImpl = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(await accountImpl.getAddress())
+    await portalProxy.registerVersion(1, await portalImpl.getAddress())
+    const portal = await ethers.getContractAt(
+      'Portal',
+      await portalProxy.getAddress(),
+    )
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const multicallRuntime = await (
       await ethers.getContractFactory('MulticallRuntime')
@@ -99,6 +111,7 @@ describe('Inbox Test', (): void => {
 
     // Create intent directly. `source` defaults to same-chain (== destination) for these tests.
     const intent: Intent = {
+      protocolVersion: 1,
       source: chainId,
       destination: chainId,
       route: {
@@ -165,6 +178,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(owner)
           .fulfill(
+            1,
             chainId,
             wrongDestination,
             route,
@@ -193,6 +207,7 @@ describe('Inbox Test', (): void => {
         ),
       }
       const { intentHash: tamperedHash } = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -206,6 +221,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -226,9 +242,23 @@ describe('Inbox Test', (): void => {
       )
     })
     it('should revert via InvalidPortal if all intent data was input correctly, but the intent used a different portal on creation', async () => {
-      const anotherPortal = await (
+      const anotherPortalProxy = await (
+        await ethers.getContractFactory('PortalProxy')
+      ).deploy(owner.address)
+      const anotherAccountImpl = await (
+        await ethers.getContractFactory('Account')
+      ).deploy(await anotherPortalProxy.getAddress())
+      const anotherPortalImpl = await (
         await ethers.getContractFactory('Portal')
-      ).deploy()
+      ).deploy(await anotherAccountImpl.getAddress())
+      await anotherPortalProxy.registerVersion(
+        1,
+        await anotherPortalImpl.getAddress(),
+      )
+      const anotherPortal = await ethers.getContractAt(
+        'Portal',
+        await anotherPortalProxy.getAddress(),
+      )
       const anotherInbox = await ethers.getContractAt(
         'Inbox',
         await anotherPortal.getAddress(),
@@ -240,6 +270,7 @@ describe('Inbox Test', (): void => {
       }
 
       const _intentHash = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -250,6 +281,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -268,6 +300,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             route,
@@ -284,6 +317,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             route,
@@ -310,6 +344,7 @@ describe('Inbox Test', (): void => {
       }
 
       const _intentHash = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -319,6 +354,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -344,6 +380,7 @@ describe('Inbox Test', (): void => {
         ]),
       }
       const intentHash = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -353,6 +390,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -381,6 +419,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             route,
@@ -418,6 +457,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             route,
@@ -432,6 +472,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             route,
@@ -461,6 +502,7 @@ describe('Inbox Test', (): void => {
       }
 
       const intentHash = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -474,6 +516,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -492,6 +535,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -522,6 +566,7 @@ describe('Inbox Test', (): void => {
       }
 
       const intentHash = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -538,6 +583,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -581,6 +627,7 @@ describe('Inbox Test', (): void => {
       }
 
       const _intentHash = hashIntent({
+        protocolVersion: 1,
         source: chainId,
         destination: chainId,
         route: _route,
@@ -600,6 +647,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             _route,
@@ -636,6 +684,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfill(
+            1,
             chainId,
             chainId,
             route,
@@ -699,6 +748,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillAndProve(
+            1,
             chainId,
             chainId,
             route,
@@ -738,6 +788,7 @@ describe('Inbox Test', (): void => {
         inbox
           .connect(solver)
           .fulfillAndProve(
+            1,
             chainId,
             chainId,
             route,

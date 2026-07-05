@@ -10,6 +10,10 @@ import {BadERC20} from "../contracts/test/BadERC20.sol";
 import {FakePermit} from "../contracts/test/FakePermit.sol";
 import {TestPolicy} from "../contracts/test/TestPolicy.sol";
 import {Portal} from "../contracts/Portal.sol";
+import {PortalProxy} from "../contracts/PortalProxy.sol";
+// Aliased: forge-std's StdCheats defines a `struct Account` that shadows this import in Test-derived
+// contracts, so the contract type is imported under a distinct name.
+import {Account as EcoAccount} from "../contracts/account/Account.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
 import {Intent, Route, Reward, RewardToken, TokenAmount, IntentLib} from "../contracts/types/Intent.sol";
@@ -23,6 +27,8 @@ contract BaseTest is Test {
     uint256 internal constant REWARD_NATIVE_ETH = 2 ether;
     uint256 internal constant EXPIRY_DURATION = 123;
     uint64 internal constant CHAIN_ID = 1;
+    // Protocol version the tests publish under (registered on the PortalProxy in setUp).
+    uint32 internal constant PROTOCOL_VERSION = 1;
 
     // Test addresses
     address internal keeper;
@@ -30,8 +36,13 @@ contract BaseTest is Test {
     address internal otherPerson;
     address internal deployer;
 
-    // Core contracts
+    // Core contracts. `portal` is the PortalProxy address cast to the Portal type, so every test call
+    // routes through the proxy (which delegatecalls the registered implementation) — exactly as in
+    // production. `portalImplementation` is the version-1 implementation behind it.
     Portal internal portal;
+    PortalProxy internal portalProxy;
+    address internal portalImplementation;
+    address internal accountImplementation; // shared Account clone template (bound to the proxy)
     IIntentSource internal intentSource; // Interface for Portal
     Inbox internal inbox; // Backward compatibility alias
     TestPolicy internal prover;
@@ -68,8 +79,18 @@ contract BaseTest is Test {
 
         vm.startPrank(deployer);
 
-        // Deploy core contracts
-        portal = new Portal();
+        // Deploy the versioned implementation behind a permanent PortalProxy, register it as version 1,
+        // and point `portal` at the PROXY so all tests exercise the proxy-mediated path (delegatecall into
+        // the implementation) — not the implementation directly. `deployer` is the proxy's protocol owner.
+        // The Account implementation is shared and bound to the PROXY (its authorized `portal`), so every
+        // registered Portal version derives the same per-intent Account addresses.
+        portalProxy = new PortalProxy(deployer);
+        EcoAccount accountImpl = new EcoAccount(address(portalProxy));
+        Portal implementation = new Portal(address(accountImpl));
+        portalProxy.registerVersion(PROTOCOL_VERSION, address(implementation));
+        accountImplementation = address(accountImpl);
+        portalImplementation = address(implementation);
+        portal = Portal(payable(address(portalProxy)));
         // Set backward compatibility aliases
         intentSource = IIntentSource(address(portal));
         inbox = Inbox(payable(address(portal)));
@@ -163,6 +184,7 @@ contract BaseTest is Test {
 
         // Setup intent (default is same-chain: source == destination == CHAIN_ID)
         intent = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: CHAIN_ID,
             destination: CHAIN_ID,
             route: route,
@@ -228,6 +250,7 @@ contract BaseTest is Test {
         bytes32 rewardHash = keccak256(abi.encode(_intent.reward));
         return
             IntentLib.hashIntent(
+                _intent.protocolVersion,
                 _intent.source,
                 _intent.destination,
                 routeHash,
@@ -266,6 +289,7 @@ contract BaseTest is Test {
         address claimantAddr
     ) internal {
         intentSource.settle(
+            PROTOCOL_VERSION,
             source,
             destination,
             routeHash,

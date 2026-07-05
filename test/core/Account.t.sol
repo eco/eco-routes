@@ -91,7 +91,7 @@ contract AccountTest is Test {
         unauthorized = makeAddr("unauthorized");
 
         vm.prank(portal);
-        account = IAccount(address(new EcoAccount()).clone(bytes32(0)));
+        account = IAccount(address(new EcoAccount(portal)).clone(bytes32(0)));
 
         token = new TestERC20("Test Token", "TEST");
         mockPermit = new MockPermit();
@@ -1051,7 +1051,7 @@ contract AccountTest is Test {
         // vm.prank sets msg.sender for the constructor so portal is set correctly.
         vm.prank(portal);
         IAccount accountTron = IAccount(
-            address(new AccountTron()).clone(bytes32(uint256(1)))
+            address(new AccountTron(portal)).clone(bytes32(uint256(1)))
         );
 
         // Fund via transferFrom (returns true) — mirrors publishAndFund on-chain.

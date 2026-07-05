@@ -103,6 +103,7 @@ contract IntentSourceTest is BaseTest {
         vm.expectRevert();
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -131,6 +132,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -156,6 +158,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -173,6 +176,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -184,6 +188,7 @@ contract IntentSourceTest is BaseTest {
         vm.expectRevert();
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -204,6 +209,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -218,6 +224,7 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentRefunded(intentHash, keeper);
         vm.prank(otherPerson);
         intentSource.refund(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -238,6 +245,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.refund(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -263,6 +271,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -292,6 +301,7 @@ contract IntentSourceTest is BaseTest {
         bytes32 routeHash = keccak256(abi.encode(evmIntent.route));
         vm.prank(otherPerson);
         prover.challengeIntentProof(
+            evmIntent.protocolVersion,
             evmIntent.source,
             evmIntent.destination,
             routeHash,
@@ -318,6 +328,7 @@ contract IntentSourceTest is BaseTest {
             )
         );
         intentSource.refund(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -334,6 +345,7 @@ contract IntentSourceTest is BaseTest {
         vm.expectRevert();
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -363,6 +375,7 @@ contract IntentSourceTest is BaseTest {
         // batchWithdraw was removed in v3; settle each intent individually.
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -398,6 +411,7 @@ contract IntentSourceTest is BaseTest {
         // as the claimant, so the reward is paid to the keeper.
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -424,6 +438,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -453,6 +468,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -474,6 +490,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -504,6 +521,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -531,6 +549,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -685,6 +704,7 @@ contract IntentSourceTest is BaseTest {
         vm.prank(claimant);
         vm.expectRevert(BadERC20.TransferNotAllowed.selector);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -772,6 +792,7 @@ contract IntentSourceTest is BaseTest {
         vm.expectRevert();
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -838,6 +859,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -894,6 +916,7 @@ contract IntentSourceTest is BaseTest {
         // IntentWithdrawn should handle duplicates correctly
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -922,6 +945,7 @@ contract IntentSourceTest is BaseTest {
 
         // Intent 2: Funded but not proven (should be refunded after expiry)
         intents[1] = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: intent.source,
             destination: intent.destination,
             route: Route({
@@ -939,6 +963,7 @@ contract IntentSourceTest is BaseTest {
 
         // Intent 3: Proven but different claimant
         intents[2] = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: intent.source,
             destination: intent.destination,
             route: Route({
@@ -968,6 +993,7 @@ contract IntentSourceTest is BaseTest {
         // Intent 1: Proven with claimant - should succeed
         vm.prank(claimant);
         intentSource.settle(
+            intents[0].protocolVersion,
             intents[0].source,
             intents[0].destination,
             keccak256(abi.encode(intents[0].route)),
@@ -979,6 +1005,7 @@ contract IntentSourceTest is BaseTest {
         // Intent 2: No proof, expired - should refund
         vm.prank(keeper);
         intentSource.refund(
+            intents[1].protocolVersion,
             intents[1].source,
             intents[1].destination,
             keccak256(abi.encode(intents[1].route)),
@@ -988,6 +1015,7 @@ contract IntentSourceTest is BaseTest {
         // Intent 3: Proven with keeper as claimant - should succeed
         vm.prank(keeper);
         intentSource.settle(
+            intents[2].protocolVersion,
             intents[2].source,
             intents[2].destination,
             keccak256(abi.encode(intents[2].route)),
@@ -1044,6 +1072,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.fundFor(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -1061,6 +1090,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(claimant);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,
@@ -1101,6 +1131,7 @@ contract IntentSourceTest is BaseTest {
 
         return
             EVMIntent({
+                protocolVersion: _evmIntent.protocolVersion,
                 source: _evmIntent.source,
                 destination: _evmIntent.destination,
                 route: EVMRoute({
@@ -1139,6 +1170,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(keeper);
         intentSource.fund{value: 1 ether}(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1154,6 +1186,7 @@ contract IntentSourceTest is BaseTest {
         vm.warp(reward.deadline + 1);
         vm.prank(keeper);
         intentSource.refund(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1169,6 +1202,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(keeper);
         intentSource.fund{value: 1 ether}(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1193,6 +1227,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(claimant);
         intentSource.settle(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1213,6 +1248,7 @@ contract IntentSourceTest is BaseTest {
         vm.warp(reward.deadline + 1);
         vm.prank(keeper);
         intentSource.refund(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1228,6 +1264,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(claimant);
         intentSource.settle(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1263,6 +1300,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(claimant);
         intentSource.settle(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1286,6 +1324,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(keeper);
         intentSource.refund(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1322,6 +1361,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(keeper);
         intentSource.refund(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1343,6 +1383,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1372,6 +1413,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1398,6 +1440,7 @@ contract IntentSourceTest is BaseTest {
             )
         );
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1421,6 +1464,7 @@ contract IntentSourceTest is BaseTest {
             )
         );
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1442,6 +1486,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(keeper);
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1480,6 +1525,7 @@ contract IntentSourceTest is BaseTest {
             )
         );
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1496,6 +1542,7 @@ contract IntentSourceTest is BaseTest {
 
         vm.prank(otherPerson);
         intentSource.settle(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1512,6 +1559,7 @@ contract IntentSourceTest is BaseTest {
         emit IIntentSource.IntentRefunded(intentHash, refundee);
         vm.prank(keeper);
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1531,6 +1579,7 @@ contract IntentSourceTest is BaseTest {
         // First refund - gets original funds
         vm.prank(keeper);
         intentSource.refund(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1560,6 +1609,7 @@ contract IntentSourceTest is BaseTest {
         // again to the keeper).
         vm.prank(keeper);
         intentSource.refund(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1584,6 +1634,7 @@ contract IntentSourceTest is BaseTest {
         // First refundTo - gets original funds
         vm.prank(keeper);
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1615,6 +1666,7 @@ contract IntentSourceTest is BaseTest {
         address refundee2 = makeAddr("refundee2");
         vm.prank(keeper);
         intentSource.refundTo(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             keccak256(abi.encode(intent.route)),
@@ -1659,6 +1711,7 @@ contract IntentSourceTest is BaseTest {
         vm.warp(reward.deadline + 1);
         vm.prank(keeper);
         intentSource.refund(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1687,6 +1740,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(keeper);
         intentSource.recoverToken(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1709,6 +1763,7 @@ contract IntentSourceTest is BaseTest {
         );
         vm.prank(keeper);
         intentSource.recoverToken(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),
@@ -1741,6 +1796,7 @@ contract IntentSourceTest is BaseTest {
         // Settle the intent to the claimant
         vm.prank(claimant);
         intentSource.settle(
+            PROTOCOL_VERSION,
             CHAIN_ID,
             CHAIN_ID,
             keccak256(abi.encode(intent.route)),

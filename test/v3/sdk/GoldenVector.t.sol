@@ -59,6 +59,7 @@ contract GoldenVectorTest is Test {
         });
 
         intent = Intent({
+            protocolVersion: 1,
             source: 8453,
             destination: 10,
             route: route,
@@ -71,6 +72,7 @@ contract GoldenVectorTest is Test {
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
         bytes32 intentHash = IntentLib.hashIntent(
+            intent.protocolVersion,
             intent.source,
             intent.destination,
             routeHash,

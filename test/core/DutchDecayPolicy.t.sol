@@ -79,6 +79,7 @@ contract DutchDecayPolicyTest is BaseTest {
         });
 
         it = Intent({
+            protocolVersion: PROTOCOL_VERSION,
             source: source,
             destination: destination,
             route: r,
@@ -102,6 +103,7 @@ contract DutchDecayPolicyTest is BaseTest {
         uint256[] memory provided = new uint256[](1);
         provided[0] = DELIVER;
         inbox.fulfill(
+            it.protocolVersion,
             it.source,
             it.destination,
             it.route,
@@ -117,6 +119,7 @@ contract DutchDecayPolicyTest is BaseTest {
         uint256[] memory f = new uint256[](1);
         f[0] = DELIVER;
         intentSource.settle(
+            it.protocolVersion,
             it.source,
             it.destination,
             routeHash,
