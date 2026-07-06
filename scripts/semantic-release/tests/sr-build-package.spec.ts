@@ -157,9 +157,12 @@ describe('Semantic Release Build Package', () => {
       expect(CONTRACT_TYPES).toContain('CCIPPolicy')
       expect(CONTRACT_TYPES).toContain('PolymerPolicy')
       expect(CONTRACT_TYPES).toContain('VestingPolicy')
+      // PR11: the same-chain zero-capital flash policies are also recorded.
+      expect(CONTRACT_TYPES).toContain('SameChainFlashPolicy')
+      expect(CONTRACT_TYPES).toContain('StreamingFlashPolicy')
       // No pre-rename names remain.
       expect(CONTRACT_TYPES).not.toContain('HyperProver')
-      expect(CONTRACT_TYPES.length).toBe(14)
+      expect(CONTRACT_TYPES.length).toBe(16)
     })
   })
 })

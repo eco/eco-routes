@@ -27,6 +27,10 @@ import {MulticallRuntime} from "../contracts/runtime/MulticallRuntime.sol";
 import {LocalPolicy} from "../contracts/prover/LocalPolicy.sol";
 import {LocalPolicyTron} from "../contracts/tron/LocalPolicyTron.sol";
 
+// Same-chain zero-capital flash settlement (portal-only ctor; PR11)
+import {SameChainFlashPolicy} from "../contracts/prover/SameChainFlashPolicy.sol";
+import {StreamingFlashPolicy} from "../contracts/prover/StreamingFlashPolicy.sol";
+
 // Transport+settlement policies (chain-specific ctor args => CREATE3; self-referencing peer whitelist)
 import {HyperPolicy} from "../contracts/prover/HyperPolicy.sol";
 import {MetaPolicy} from "../contracts/prover/MetaPolicy.sol";
@@ -119,6 +123,8 @@ contract DeployV3 is Script {
         bytes32[] scheduleRelays; // authorized off-chain relayer addrs (bytes32, right-aligned)
         // same-chain settlement policy
         bool deployLocalPolicy;
+        // same-chain zero-capital flash policies (EVM only — no Tron variants yet)
+        bool deployFlashPolicies;
     }
 
     struct Deployment {
@@ -136,6 +142,8 @@ contract DeployV3 is Script {
         address vestingPolicy;
         address milestonePolicy;
         address dutchDecayPolicy;
+        address sameChainFlashPolicy;
+        address streamingFlashPolicy;
     }
 
     // --- Entry points -------------------------------------------------------
@@ -255,6 +263,31 @@ contract DeployV3 is Script {
                 _contractSalt(cfg.salt, "LOCAL_POLICY")
             );
             console.log("LocalPolicy:", dep.localPolicy);
+        }
+
+        // 2b. Same-chain zero-capital flash settlement (portal-only ctor, CREATE3; PR11). EVM only:
+        //     the flash policies have no Tron `_transferToken` subclass yet (mirrors why LocalPolicyTron
+        //     exists), so they are skipped on TRON until one ships.
+        if (cfg.deployFlashPolicies && !cfg.isTron) {
+            dep.sameChainFlashPolicy = _deployCreate3(
+                abi.encodePacked(
+                    type(SameChainFlashPolicy).creationCode,
+                    abi.encode(dep.portal)
+                ),
+                cfg.deployer,
+                _contractSalt(cfg.salt, "SAME_CHAIN_FLASH_POLICY")
+            );
+            console.log("SameChainFlashPolicy:", dep.sameChainFlashPolicy);
+
+            dep.streamingFlashPolicy = _deployCreate3(
+                abi.encodePacked(
+                    type(StreamingFlashPolicy).creationCode,
+                    abi.encode(dep.portal)
+                ),
+                cfg.deployer,
+                _contractSalt(cfg.salt, "STREAMING_FLASH_POLICY")
+            );
+            console.log("StreamingFlashPolicy:", dep.streamingFlashPolicy);
         }
 
         // 3. Transport policies (CREATE3, self-referencing right-aligned whitelist).
@@ -513,6 +546,7 @@ contract DeployV3 is Script {
         cfg.ccipCrossVm = _envPeers("CCIP_CROSS_VM_PROVERS");
         cfg.polymerCrossVm = _envPeers("POLYMER_CROSS_VM_PROVERS");
         cfg.deployLocalPolicy = vm.envOr("DEPLOY_LOCAL_POLICY", true);
+        cfg.deployFlashPolicies = vm.envOr("DEPLOY_FLASH_POLICIES", true);
         cfg.deploySchedulePolicies = vm.envOr(
             "DEPLOY_SCHEDULE_POLICIES",
             false
@@ -549,6 +583,8 @@ contract DeployV3 is Script {
         _writeLine(path, dep.vestingPolicy, "VestingPolicy");
         _writeLine(path, dep.milestonePolicy, "MilestonePolicy");
         _writeLine(path, dep.dutchDecayPolicy, "DutchDecayPolicy");
+        _writeLine(path, dep.sameChainFlashPolicy, "SameChainFlashPolicy");
+        _writeLine(path, dep.streamingFlashPolicy, "StreamingFlashPolicy");
     }
 
     function _writeLine(

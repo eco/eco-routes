@@ -48,6 +48,8 @@ export const CONTRACT_TYPES = [
   'VestingPolicy',
   'MilestonePolicy',
   'DutchDecayPolicy',
+  'SameChainFlashPolicy',
+  'StreamingFlashPolicy',
 ] as const
 
 const execPromise = promisify(exec)
