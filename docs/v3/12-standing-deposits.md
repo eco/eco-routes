@@ -127,9 +127,22 @@ a new env-gated (`DEPLOY_DEPOSIT_FACTORIES`, off by default) block deploys the t
   delivering; keeper honesty). Inherent to cross-chain streaming; the flash CCTP legs are atomic and
   immune.
 - **Epoch rotation vs in-flight CCTP** — a burn under epoch N names `account2(N)` as `mintRecipient`; if
-  the keeper `closeStream`+`reopen`s to N+1 while that CCTP message is in flight, the late mint lands at a
-  now-terminal `account2(N)` (recoverable only via destination `recoverToken`). **Rotate epochs only
-  after in-flight CCTP has drained.**
+  the keeper `closeStream`+`reopen`s to N+1 while that CCTP message is in flight, the late mint lands at
+  `account2(N)` on the destination chain. Note `reopen` closes only intent 1 (the source pool — see the
+  cross-chain-keeper item below), so `account2(N)` (intent 2) is **not** closed and the late mint is fully
+  recoverable: the primary path is a normal `flashSlice(intent2 N)` on the destination chain, which
+  delivers the mint to the intended end-user; the fallback is a keeper `closeStream(intent2 N)`, which
+  refunds it to `reward.keeper` (the depositor). Note `recoverToken` does **not** apply here — the minted
+  token is intent 2's reward-leg token, which `_validateRecover` rejects (`InvalidRecoverToken`).
+  Operationally, **rotate epochs only after in-flight CCTP has drained.**
+- **Deposit sweep during the `close`→`reopen` window** — `sweep`/`fundPool` are permissionless and route
+  the clone's balance into the *current-epoch* pool Account. Between a keeper's `closeStream(intent1 N)`
+  and `reopen` (which bumps the epoch), the current-epoch account is the now-closed `account1(N)`, so a
+  straggler sweep parks funds there and `flashSlice`/`settleStream` on it revert (closed/terminal). No
+  funds are lost or misdirected: `closeStream` has no status gate and `hasUnsettledFulfillment` is always
+  false for a flash pool, so the keeper re-invokes `closeStream(intent1 N)` to refund the swept balance to
+  the depositor, and `reopen` still proceeds (its gate only requires intent 1 `Refunded`). Mitigation:
+  pause deposits during rotation, or batch `closeStream`+`reopen` atomically from a contract keeper.
 - **Cross-chain keeper UX for CCTP intent 2** — its `closeStream`, status, and dust-reclaim are all
   destination-chain (Arc) keeper actions, so `reopen`'s gate only checks intent 1 (the source pool);
   intent 2's destination-side `Refunded` status is not readable on the source chain. A depositor who

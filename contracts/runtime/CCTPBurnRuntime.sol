@@ -72,7 +72,9 @@ contract CCTPBurnRuntime {
         uint256 x = IERC20(token).balanceOf(address(this));
 
         // CCTP fast-deposit fee, rounded UP so the user never overpays and the burn is never rejected for
-        // an under-quoted fee. (A deployer-supplied `maxFeeBps < FEE_DENOMINATOR` keeps `maxFee < x`.)
+        // an under-quoted fee. A deployer-supplied `maxFeeBps < FEE_DENOMINATOR` keeps `maxFee <= x`
+        // (equality only at the pathological boundary of a near-100% fee on a near-dust slice, itself
+        // blocked by the `MIN_SLICE_1` floor in StreamingFlashPolicy before this runtime runs).
         uint256 maxFee = (x * maxFeeBps + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
 
         IERC20(token).forceApprove(messenger, x);
