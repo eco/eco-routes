@@ -23,6 +23,14 @@ import {Account as EcoAccount} from "../contracts/account/Account.sol";
 import {AccountTron} from "../contracts/tron/AccountTron.sol";
 import {MulticallRuntime} from "../contracts/runtime/MulticallRuntime.sol";
 
+// Standing-deposit balance-reading runtime (destination Gateway leg; PR12)
+import {GatewayDepositRuntime} from "../contracts/runtime/GatewayDepositRuntime.sol";
+
+// Standing-deposit factories (PR12; deploy their own CCTPBurnRuntime / clone template)
+import {StandingDepositFactory_CCTPMint_Arc} from "../contracts/deposit/StandingDepositFactory_CCTPMint_Arc.sol";
+import {StandingDepositFactory_CCTPMint_GatewayERC20} from "../contracts/deposit/StandingDepositFactory_CCTPMint_GatewayERC20.sol";
+import {StandingDepositFactory_USDCTransfer_Solana} from "../contracts/deposit/StandingDepositFactory_USDCTransfer_Solana.sol";
+
 // Same-chain settlement (portal-only ctor)
 import {LocalPolicy} from "../contracts/prover/LocalPolicy.sol";
 import {LocalPolicyTron} from "../contracts/tron/LocalPolicyTron.sol";
@@ -125,6 +133,31 @@ contract DeployV3 is Script {
         bool deployLocalPolicy;
         // same-chain zero-capital flash policies (EVM only — no Tron variants yet)
         bool deployFlashPolicies;
+        // standing-deposit factories (PR12; env-driven, off by default — chain/route-specific config)
+        bool deployDepositFactories;
+        DepositConfig deposit;
+    }
+
+    /// @notice Route-specific config for the standing-deposit factories (all from env; PR12).
+    struct DepositConfig {
+        uint32 protocolVersion; // pinned intent protocol version
+        address sourceToken; // source USDC
+        // CCTP families (Arc + GatewayERC20 share the destination shape)
+        address cctpMessenger; // CCTP TokenMessengerV2 on source
+        uint32 cctpDomain; // CCTP destination domain
+        uint64 destChainId; // destination (Arc) chain id
+        address destUsdc; // arcUsdc / destination USDC (6-dec ERC20)
+        address gateway; // destination Gateway
+        uint256 minSlice1; // source-pool dust floor
+        uint256 minSlice2; // destination-pool dust floor
+        uint256 maxFeeBps; // CCTP fast-deposit fee cap
+        uint256 gatewayFeeBps; // GatewayERC20 protocol fee (0 == none)
+        // Solana family
+        bytes32 solanaDestToken;
+        bytes32 solanaDestPortal;
+        bytes32 solanaPortalPda;
+        bytes32 solanaExecutorAta;
+        uint256 solanaRewardRate; // >= WAD spread
     }
 
     struct Deployment {
@@ -144,6 +177,11 @@ contract DeployV3 is Script {
         address dutchDecayPolicy;
         address sameChainFlashPolicy;
         address streamingFlashPolicy;
+        // Standing-deposit runtime + factories (PR12)
+        address gatewayDepositRuntime;
+        address standingDepositFactoryArc;
+        address standingDepositFactoryGatewayERC20;
+        address standingDepositFactorySolana;
     }
 
     // --- Entry points -------------------------------------------------------
@@ -288,6 +326,15 @@ contract DeployV3 is Script {
                 _contractSalt(cfg.salt, "STREAMING_FLASH_POLICY")
             );
             console.log("StreamingFlashPolicy:", dep.streamingFlashPolicy);
+
+            // Destination-side balance-reading Gateway runtime (PR12). No ctor args => CREATE3 gives a
+            // uniform cross-chain address, committed into the CCTP standing intent-2 route hash -> account2.
+            dep.gatewayDepositRuntime = _deployCreate3(
+                type(GatewayDepositRuntime).creationCode,
+                cfg.deployer,
+                _contractSalt(cfg.salt, "GATEWAY_DEPOSIT_RUNTIME")
+            );
+            console.log("GatewayDepositRuntime:", dep.gatewayDepositRuntime);
         }
 
         // 3. Transport policies (CREATE3, self-referencing right-aligned whitelist).
@@ -297,6 +344,89 @@ contract DeployV3 is Script {
         if (cfg.deploySchedulePolicies) {
             _deploySchedulePolicies(cfg, dep);
         }
+
+        // 5. Standing-deposit factories (PR12; env-driven, off by default).
+        if (cfg.deployDepositFactories) {
+            _deployDepositFactories(cfg, dep);
+        }
+    }
+
+    // --- Standing-deposit factories (PR12) ---------------------------------
+
+    /**
+     * @notice Deploy the three NEW standing-deposit factories. Each is chain/route-specific config, so
+     *         they use plain `new` (no cross-chain address matching). The CCTP factories self-deploy their
+     *         own source-side {CCTPBurnRuntime}; the Solana factory deploys no runtime.
+     * @dev Requires the flash policies (CCTP) and the streaming policy (Solana) to have been deployed.
+     */
+    function _deployDepositFactories(
+        Config memory cfg,
+        Deployment memory dep
+    ) internal {
+        DepositConfig memory d = cfg.deposit;
+
+        dep.standingDepositFactoryArc = address(
+            new StandingDepositFactory_CCTPMint_Arc(
+                d.sourceToken,
+                dep.portal,
+                d.protocolVersion,
+                dep.streamingFlashPolicy,
+                dep.gatewayDepositRuntime,
+                d.destChainId,
+                d.cctpDomain,
+                d.cctpMessenger,
+                d.destUsdc,
+                d.gateway,
+                d.minSlice1,
+                d.minSlice2,
+                d.maxFeeBps
+            )
+        );
+        console.log(
+            "StandingDepositFactory_CCTPMint_Arc:",
+            dep.standingDepositFactoryArc
+        );
+
+        dep.standingDepositFactoryGatewayERC20 = address(
+            new StandingDepositFactory_CCTPMint_GatewayERC20(
+                d.sourceToken,
+                dep.portal,
+                d.protocolVersion,
+                dep.streamingFlashPolicy,
+                dep.gatewayDepositRuntime,
+                d.destChainId,
+                d.cctpDomain,
+                d.cctpMessenger,
+                d.destUsdc,
+                d.gateway,
+                d.minSlice1,
+                d.minSlice2,
+                d.maxFeeBps,
+                d.gatewayFeeBps
+            )
+        );
+        console.log(
+            "StandingDepositFactory_CCTPMint_GatewayERC20:",
+            dep.standingDepositFactoryGatewayERC20
+        );
+
+        dep.standingDepositFactorySolana = address(
+            new StandingDepositFactory_USDCTransfer_Solana(
+                d.sourceToken,
+                d.solanaDestToken,
+                dep.portal,
+                dep.streamingPolicy,
+                d.solanaDestPortal,
+                d.solanaPortalPda,
+                d.solanaExecutorAta,
+                d.protocolVersion,
+                d.solanaRewardRate
+            )
+        );
+        console.log(
+            "StandingDepositFactory_USDCTransfer_Solana:",
+            dep.standingDepositFactorySolana
+        );
     }
 
     // --- Transport policies -------------------------------------------------
@@ -552,6 +682,36 @@ contract DeployV3 is Script {
             false
         );
         cfg.scheduleRelays = _envPeers("SCHEDULE_RELAYS");
+        cfg.deployDepositFactories = vm.envOr(
+            "DEPLOY_DEPOSIT_FACTORIES",
+            false
+        );
+        if (cfg.deployDepositFactories) {
+            cfg.deposit = _readDepositConfig();
+        }
+    }
+
+    function _readDepositConfig()
+        internal
+        view
+        returns (DepositConfig memory d)
+    {
+        d.protocolVersion = uint32(vm.envOr("DEPOSIT_PROTOCOL_VERSION", uint256(1)));
+        d.sourceToken = vm.envOr("DEPOSIT_SOURCE_TOKEN", address(0));
+        d.cctpMessenger = vm.envOr("DEPOSIT_CCTP_MESSENGER", address(0));
+        d.cctpDomain = uint32(vm.envOr("DEPOSIT_CCTP_DOMAIN", uint256(0)));
+        d.destChainId = uint64(vm.envOr("DEPOSIT_DEST_CHAIN_ID", uint256(0)));
+        d.destUsdc = vm.envOr("DEPOSIT_DEST_USDC", address(0));
+        d.gateway = vm.envOr("DEPOSIT_GATEWAY", address(0));
+        d.minSlice1 = vm.envOr("DEPOSIT_MIN_SLICE_1", uint256(0));
+        d.minSlice2 = vm.envOr("DEPOSIT_MIN_SLICE_2", uint256(0));
+        d.maxFeeBps = vm.envOr("DEPOSIT_MAX_FEE_BPS", uint256(0));
+        d.gatewayFeeBps = vm.envOr("DEPOSIT_GATEWAY_FEE_BPS", uint256(0));
+        d.solanaDestToken = vm.envOr("DEPOSIT_SOLANA_DEST_TOKEN", bytes32(0));
+        d.solanaDestPortal = vm.envOr("DEPOSIT_SOLANA_DEST_PORTAL", bytes32(0));
+        d.solanaPortalPda = vm.envOr("DEPOSIT_SOLANA_PORTAL_PDA", bytes32(0));
+        d.solanaExecutorAta = vm.envOr("DEPOSIT_SOLANA_EXECUTOR_ATA", bytes32(0));
+        d.solanaRewardRate = vm.envOr("DEPOSIT_SOLANA_REWARD_RATE", uint256(0));
     }
 
     function _envPeers(
@@ -585,6 +745,31 @@ contract DeployV3 is Script {
         _writeLine(path, dep.dutchDecayPolicy, "DutchDecayPolicy");
         _writeLine(path, dep.sameChainFlashPolicy, "SameChainFlashPolicy");
         _writeLine(path, dep.streamingFlashPolicy, "StreamingFlashPolicy");
+        _writeLine(path, dep.gatewayDepositRuntime, "GatewayDepositRuntime");
+        // The CCTP factories self-deploy their CCTPBurnRuntime; record the Arc factory's instance.
+        if (dep.standingDepositFactoryArc != address(0)) {
+            _writeLine(
+                path,
+                StandingDepositFactory_CCTPMint_Arc(dep.standingDepositFactoryArc)
+                    .CCTP_BURN_RUNTIME(),
+                "CCTPBurnRuntime"
+            );
+        }
+        _writeLine(
+            path,
+            dep.standingDepositFactoryArc,
+            "StandingDepositFactory_CCTPMint_Arc"
+        );
+        _writeLine(
+            path,
+            dep.standingDepositFactoryGatewayERC20,
+            "StandingDepositFactory_CCTPMint_GatewayERC20"
+        );
+        _writeLine(
+            path,
+            dep.standingDepositFactorySolana,
+            "StandingDepositFactory_USDCTransfer_Solana"
+        );
     }
 
     function _writeLine(

@@ -50,6 +50,12 @@ export const CONTRACT_TYPES = [
   'DutchDecayPolicy',
   'SameChainFlashPolicy',
   'StreamingFlashPolicy',
+  // PR12: standing-deposit balance-reading runtimes + standing factories
+  'CCTPBurnRuntime',
+  'GatewayDepositRuntime',
+  'StandingDepositFactory_CCTPMint_Arc',
+  'StandingDepositFactory_CCTPMint_GatewayERC20',
+  'StandingDepositFactory_USDCTransfer_Solana',
 ] as const
 
 const execPromise = promisify(exec)
