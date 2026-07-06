@@ -122,14 +122,21 @@ never terminate the pool — `closeStream` is the sole exit.
 
 A standing pool's slice size varies with the pool, so the committed `route.payload` cannot embed
 amounts — it commits **CONFIG only** (e.g. "sweep this token to this recipient"), and the runtime reads
-the Account balance at execution time. That is safe because of two stacked guarantees:
+the Account balance at execution time. That is safe **by construction**, not by the conservation check:
 
-1. **`escrowBefore == 0`** — the full-pool advance emptied the Account before `_fulfill` snapshots it,
-   so the only balance a balance-reading runtime can see (and burn) is **exactly the staged `slice`**.
-2. **Conservation as backstop** — if anything re-inflates the Account mid-execution and the runtime
-   over-consumes, the reward-conservation postcondition (`live >= escrowBefore`) plus the session's
-   strict `recordFulfillment` unwind the whole slice. Money can be *not moved*; it can never be
-   *wrongly moved*.
+1. **The Account holds only the staged `slice`.** The full-pool advance (step 2) empties the escrow
+   Account of every reward-leg token *before* `_fulfill` stages `slice` back into it, so the only balance
+   a balance-reading runtime can see — and the most it can possibly burn — is exactly `slice`.
+2. **The margin never enters the Account.** `pool − slice` stays on the policy for the whole `fulfill`
+   and is forwarded to the claimant only after it returns, so no runtime can reach the solver's margin.
+   The `slice` itself is the keeper's own pool money, so a misbehaving runtime that wastes it is
+   keeper self-harm bounded to one slice (`route.runtime` is committed in the intent hash — the pool's
+   funder chose it; for the PR12 deposit templates it is template-authored, so no third party can
+   supply it at all).
+
+Note the reward-conservation postcondition (`live >= escrowBefore`) is **vacuous** in this path:
+`escrowBefore == 0` after the advance, so `live >= 0` always holds. The safety argument above does
+**not** lean on it — it is the empty-Account-then-stage-`slice` construction that bounds consumption.
 
 ### Everything is inert outside a session
 
@@ -180,6 +187,18 @@ claimant as pure margin), and `rate == 0` reverts (`ZeroRateLeg`).
   avoidance is simulation, as with any committed hook/runtime.
 - **Front-running** — `flashFulfill`/`flashSlice` are permissionless; standard MEV behavior in intent
   systems (v2 carried the same warning).
+- **Mid-session `refund` by a malicious runtime.** `Portal.settle`/`fulfill`/`refund` carry no reentrancy
+  guard, and the session's synthetic fact is live for the whole `fulfill` (it is served until
+  `recordFulfillment` runs, which `Inbox._fulfill` does *after* `execute`). A `route.runtime` could
+  therefore, mid-`fulfill`, call `Portal.refund` for its own session intent — the synthetic fact makes
+  `_validateRefund` take the "already settled: allow" branch (status is `Withdrawn`), draining the just-
+  staged `slice`/floors. This is **keeper self-harm only**: `route.runtime` is committed in the intent
+  hash (the pool's / intent's own funder authored it), `refund` routes exclusively to `reward.keeper`,
+  and — critically — the escrow was already advanced out to the policy, so the drain hits only the
+  keeper's own re-staged input, never the solver (whose margin sits on the policy) and never any other
+  intent (`provenIntents` serves a fact only for the single `_sessionIntentHash`, inside one atomic
+  `nonReentrant` tx). For the PR12 deposit templates the runtime is template-authored, so no third party
+  can reach this path at all. Same trust model as every v3 runtime/hook; avoidance is simulation.
 
 ## Deploy + release
 

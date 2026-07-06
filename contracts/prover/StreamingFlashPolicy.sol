@@ -42,9 +42,14 @@ interface IAccountAddress {
  *           returns `[this -> P]`, so {IAccount-withdrawStream} pays the WHOLE pool to this policy
  *           (full-or-revert exact), the status stays `Funded`, and the escrow Account is EMPTY.
  *        3. Stage `X` back as the route input (directly from the advance, or via the caller's
- *           {IFlashSolver} swap callback) and run the real `fulfill`: the conservation snapshot is 0, so
- *           a BALANCE-READING runtime (payloads commit CONFIG only — no amounts) legitimately consumes
- *           exactly the staged `X`; any over-consumption trips conservation and reverts everything.
+ *           {IFlashSolver} swap callback) and run the real `fulfill`. Safety here is BY CONSTRUCTION, not
+ *           via the conservation check: the advance already emptied the Account, so the only balance a
+ *           BALANCE-READING runtime (payloads commit CONFIG only — no amounts) can see or burn is exactly
+ *           the staged `X`, and the margin `pool - X` never enters the Account (it stays on this policy
+ *           until forwarded after `fulfill`). `X` is the keeper's own pool money, so a misbehaving
+ *           committed runtime is keeper self-harm bounded to one slice. (The reward-conservation
+ *           postcondition is vacuous in this path — `escrowBefore == 0`, so `live >= 0` always holds; the
+ *           bound is the empty-Account-then-stage-`X` construction, not that check.)
  *           {recordFulfillment} accepts only the session's expected real-claimant fact and the slice is
  *           CONSUMED AT BIRTH — it never enters an unsettled store, so it can never be settled again and
  *           never blocks {IIntentSource-closeStream}.
