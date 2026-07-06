@@ -160,9 +160,19 @@ describe('Semantic Release Build Package', () => {
       // PR11: the same-chain zero-capital flash policies are also recorded.
       expect(CONTRACT_TYPES).toContain('SameChainFlashPolicy')
       expect(CONTRACT_TYPES).toContain('StreamingFlashPolicy')
+      // PR12: standing-deposit balance-reading runtimes + standing factories.
+      expect(CONTRACT_TYPES).toContain('CCTPBurnRuntime')
+      expect(CONTRACT_TYPES).toContain('GatewayDepositRuntime')
+      expect(CONTRACT_TYPES).toContain('StandingDepositFactory_CCTPMint_Arc')
+      expect(CONTRACT_TYPES).toContain(
+        'StandingDepositFactory_CCTPMint_GatewayERC20',
+      )
+      expect(CONTRACT_TYPES).toContain(
+        'StandingDepositFactory_USDCTransfer_Solana',
+      )
       // No pre-rename names remain.
       expect(CONTRACT_TYPES).not.toContain('HyperProver')
-      expect(CONTRACT_TYPES.length).toBe(16)
+      expect(CONTRACT_TYPES.length).toBe(21)
     })
   })
 })
