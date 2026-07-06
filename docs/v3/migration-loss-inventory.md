@@ -87,7 +87,15 @@ Downstream gas/size expectations should use the per-branch value, not a single g
 
 ## Deferred (tracked, not lost)
 - Deposit-address migration onto standing streaming intents — deferred to a PR6b follow-up; the H2
-  anti-poison guard and all deposit families stay functional in the meantime.
+  anti-poison guard and all deposit families stay functional in the meantime. **DELIVERED in PR12**
+  ([`12-standing-deposits.md`](./12-standing-deposits.md)): NEW standing templates/factories +
+  balance-reading runtimes, ZERO core diffs; the three OLD one-shot templates/factories are left in place
+  (deletion deferred to a human deploy-confirmation). Remaining residuals from PR12 (all documented in
+  `12-standing-deposits.md`): the Solana placeholder Borsh route is not executable until the out-of-repo
+  SVM streaming program lands; the Solana relay is fully trusted for pool integrity (bridge-backed
+  subclass is the production hardening); the cross-chain close window and epoch-vs-in-flight-CCTP boundary
+  are off-chain-mitigated; CCTP intent-2 (destination pool) close/reclaim is a destination-chain keeper
+  action, so `reopen` only gates on the source pool.
 - Root/generated docs (`README.md`, `contracts/README.md`, `localprover_flows.md`,
   `deposit_address_userflow.md`, and the `CLAUDE.md`/`SECURITY.md` policy docs) still carry v2/pre-rename
   wording (`Vault`, `Prover`, `.creator`) and pre-v3 architecture. PR8 authors the NEW v3 docs
