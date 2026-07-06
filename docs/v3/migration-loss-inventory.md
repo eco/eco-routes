@@ -10,6 +10,15 @@ preimage, and — decisively — the PR4 reward-conservation postcondition forbi
 the escrow. So same-chain solving (`fulfillAndSettle`) is capital-EFFICIENT (one tx) but the solver must
 supply the route input capital. Accepted: the zero-capital flow is out of scope for this stack.
 
+**RESTORED by PR11** (`v3/11-same-chain-flash`, `docs/v3/11-same-chain-flash.md`): v2's
+withdraw-before-fulfill session returns as two standalone policies with zero core diffs —
+`SameChainFlashPolicy.flashFulfill` (one-shot, session self-vouching through `provenIntents`) and
+`StreamingFlashPolicy.flashSlice` (standing pools, full-pool advance through a session-scoped
+`consumeStreamClaims`). The advance empties the escrow BEFORE `fulfill`, so the PR4 conservation
+snapshot is ~0 and the flow coexists with (rather than fights) the escrow protection. The core paths
+(`fulfillAndSettle`, `LocalPolicy.flashFulfill`) remain capital-efficient-not-capital-free as described
+above.
+
 ## Destination leftover retrieval on same-chain is escrow-locked
 Under the unopinionated core there is no `recipient` and no auto-sweep; unconsumed solver input stays in
 the intent's Account. Cross-chain, `route.keeper` retrieves it via the destination
