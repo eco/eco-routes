@@ -922,7 +922,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             }
         }
 
-        if (NATIVE_ERC20 != address(0) && token == NATIVE_ERC20 && nativeLegPresent) {
+        if (token == NATIVE_ERC20 && nativeLegPresent) {
             revert InvalidRecoverToken(token);
         }
     }
