@@ -274,7 +274,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         // Validate reward legs on the source. The route is treated as opaque bytes (cross-VM
         // compatibility), so only the route-free checks run here (uniqueness + bound); `minTokens` ordering
         // is enforced at the destination fulfill.
-        IntentLib.requireUniqueRewardTokens(reward.tokens);
+        IntentLib.requireUniqueRewardTokens(reward.tokens, NATIVE_ERC20);
 
         (intentHash, , ) = getIntentHash(destination, route, reward);
         account = _getAccount(intentHash);
@@ -659,7 +659,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         // but `fund`/`fundFor` can escrow an intent directly without a prior `publish` call — without this
         // check here too, a duplicate leg would silently underpay the claimant (the settle-side per-leg
         // residual sweep pays only the first matching leg and sweeps the rest to the keeper).
-        IntentLib.requireUniqueRewardTokens(reward.tokens);
+        IntentLib.requireUniqueRewardTokens(reward.tokens, NATIVE_ERC20);
 
         bool fullyFunded = true;
 
@@ -762,6 +762,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         address permitContract
     ) internal onlyFundable(intentHash) returns (address account) {
+        // Reject a duplicate/conflicting reward-token leg regardless of entry point — see the matching
+        // check and comment in {_fundIntent}.
+        IntentLib.requireUniqueRewardTokens(reward.tokens, NATIVE_ERC20);
+
         account = _getOrDeployAccount(intentHash);
         bool fullyFunded = IAccount(account).fundFor{value: msg.value}(
             reward,

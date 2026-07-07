@@ -271,15 +271,27 @@ library IntentLib {
      *      not checkable here (the source treats the route as opaque bytes for cross-VM compatibility);
      *      it is a keeper-side canonical form, while `minTokens` dedup is enforced at the destination
      *      fulfill via {requireStrictlyAscending}.
+     *
+     *      On a deployment where `nativeErc20` is configured (non-zero), its ERC20 balance mirrors the
+     *      account's native balance 1:1 — a native (`address(0)`) leg and a `nativeErc20` leg are two
+     *      interfaces onto the SAME underlying funds, not two independent legs. Funding one would
+     *      silently satisfy the other's balance check for free, and payout would then short whichever
+     *      leg is processed second against an already-drained pool. Having both legs present at once is
+     *      therefore treated the same as a literal duplicate.
      * @param rewardTokens The reward legs to validate.
+     * @param nativeErc20 The deployment's configured native/ERC20 alias, or `address(0)` if none.
      */
     function requireUniqueRewardTokens(
-        RewardToken[] memory rewardTokens
+        RewardToken[] memory rewardTokens,
+        address nativeErc20
     ) internal pure {
         uint256 total = rewardTokens.length;
         if (total > MAX_REWARD_TOKENS) {
             revert TooManyRewardTokens(total, MAX_REWARD_TOKENS);
         }
+
+        bool nativeLegPresent;
+        bool nativeErc20LegPresent;
         for (uint256 a = 0; a < total; ++a) {
             address ta = rewardTokens[a].token;
             for (uint256 b = a + 1; b < total; ++b) {
@@ -287,6 +299,15 @@ library IntentLib {
                     revert RewardTokensNotUnique(ta);
                 }
             }
+            if (ta == address(0)) {
+                nativeLegPresent = true;
+            } else if (nativeErc20 != address(0) && ta == nativeErc20) {
+                nativeErc20LegPresent = true;
+            }
+        }
+
+        if (nativeLegPresent && nativeErc20LegPresent) {
+            revert RewardTokensNotUnique(nativeErc20);
         }
     }
 

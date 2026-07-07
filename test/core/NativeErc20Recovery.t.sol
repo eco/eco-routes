@@ -6,13 +6,15 @@ import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
-import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
 
 /**
  * @title NativeErc20RecoveryTest
  * @notice Covers the {IntentSource-NATIVE_ERC20} recovery-eligibility check: on a deployment where the
  *         native asset is configured to be aliased to an ERC20 token, {IntentSource-recoverToken} must
- *         treat the alias token and a native reward leg as the same underlying asset.
+ *         treat the alias token and a native reward leg as the same underlying asset. Also covers the
+ *         matching funding-time guard: a reward may not declare both a native leg and an alias-token leg
+ *         at once, on every entry point that can escrow a reward (publish, fund, fundFor).
  */
 contract NativeErc20RecoveryTest is BaseTest {
     Portal internal aliasPortal;
@@ -47,7 +49,17 @@ contract NativeErc20RecoveryTest is BaseTest {
     ) internal view returns (Intent memory) {
         RewardToken[] memory tokens = new RewardToken[](1);
         tokens[0] = rewardLeg;
+        return _buildAliasIntentMultiLeg(saltValue, tokens);
+    }
 
+    /**
+     * @notice Same as {_buildAliasIntent} but for an arbitrary reward-leg array, so callers can
+     *         construct a reward with more than one leg (e.g. a native leg alongside an alias-token leg).
+     */
+    function _buildAliasIntentMultiLeg(
+        bytes32 saltValue,
+        RewardToken[] memory rewardLegs
+    ) internal view returns (Intent memory) {
         Route memory aliasRoute = Route({
             salt: saltValue,
             deadline: uint64(expiry),
@@ -61,7 +73,7 @@ contract NativeErc20RecoveryTest is BaseTest {
             deadline: uint64(expiry),
             keeper: keeper,
             prover: address(aliasProver),
-            tokens: tokens
+            tokens: rewardLegs
         });
 
         return Intent({destination: CHAIN_ID, route: aliasRoute, reward: aliasReward});
@@ -191,5 +203,70 @@ contract NativeErc20RecoveryTest is BaseTest {
 
         assertEq(unrelatedToken.balanceOf(keeper), MINT_AMOUNT);
         assertEq(unrelatedToken.balanceOf(account), 0);
+    }
+
+    /**
+     * @notice A native leg and an alias-token leg mirror the same underlying balance — a reward may not
+     *         declare both at once. `publish` must reject it up front.
+     */
+    function testPublish_revertsWhenNativeAndAliasLegsBothPresent() public {
+        RewardToken[] memory tokens = new RewardToken[](2);
+        tokens[0] = RewardToken({token: address(0), rate: 0, flat: NATIVE_FLAT});
+        tokens[1] = RewardToken({
+            token: address(aliasToken),
+            rate: 0,
+            flat: ERC20_FLAT
+        });
+
+        Intent memory doubleLegIntent = _buildAliasIntentMultiLeg(
+            keccak256("double-leg-publish"),
+            tokens
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IntentLib.RewardTokensNotUnique.selector,
+                address(aliasToken)
+            )
+        );
+        vm.prank(keeper);
+        aliasIntentSource.publish(doubleLegIntent);
+    }
+
+    /**
+     * @notice The same guard applies on `fundFor`, which can escrow a reward directly without a prior
+     *         `publish` call — the check must not be bypassable through that entry point.
+     */
+    function testFundFor_revertsWhenNativeAndAliasLegsBothPresent_withoutPriorPublish()
+        public
+    {
+        RewardToken[] memory tokens = new RewardToken[](2);
+        tokens[0] = RewardToken({token: address(0), rate: 0, flat: NATIVE_FLAT});
+        tokens[1] = RewardToken({
+            token: address(aliasToken),
+            rate: 0,
+            flat: ERC20_FLAT
+        });
+
+        Intent memory doubleLegIntent = _buildAliasIntentMultiLeg(
+            keccak256("double-leg-fundfor"),
+            tokens
+        );
+        bytes32 routeHash = keccak256(abi.encode(doubleLegIntent.route));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IntentLib.RewardTokensNotUnique.selector,
+                address(aliasToken)
+            )
+        );
+        aliasIntentSource.fundFor(
+            doubleLegIntent.destination,
+            routeHash,
+            doubleLegIntent.reward,
+            false,
+            keeper,
+            address(0)
+        );
     }
 }
