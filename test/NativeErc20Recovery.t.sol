@@ -61,6 +61,41 @@ contract NativeErc20RecoveryTest is BaseTest {
         return Intent({destination: CHAIN_ID, route: _route, reward: _reward});
     }
 
+    /// @notice Builds an intent whose reward carries BOTH a native amount and an explicit token leg
+    ///         for the alias token — the shape the funding-time guard must reject.
+    function _aliasIntentWithTokenLeg(
+        bytes32 saltValue,
+        uint256 nativeAmount,
+        uint256 tokenLegAmount
+    ) internal view returns (Intent memory) {
+        TokenAmount[] memory noTokens = new TokenAmount[](0);
+        TokenAmount[] memory tokenLeg = new TokenAmount[](1);
+        tokenLeg[0] = TokenAmount({
+            token: address(aliasToken),
+            amount: tokenLegAmount
+        });
+        Call[] memory noCalls = new Call[](0);
+
+        Route memory _route = Route({
+            salt: saltValue,
+            deadline: uint64(expiry),
+            portal: address(aliasPortal),
+            nativeAmount: 0,
+            tokens: noTokens,
+            calls: noCalls
+        });
+
+        Reward memory _reward = Reward({
+            deadline: uint64(expiry),
+            creator: creator,
+            prover: address(prover),
+            nativeAmount: nativeAmount,
+            tokens: tokenLeg
+        });
+
+        return Intent({destination: CHAIN_ID, route: _route, reward: _reward});
+    }
+
     function _publishAndFundAlias(
         Intent memory _intent
     ) internal returns (bytes32 intentHash, address vault) {
@@ -161,5 +196,51 @@ contract NativeErc20RecoveryTest is BaseTest {
 
         assertEq(unrelatedToken.balanceOf(vault), 0);
         assertEq(unrelatedToken.balanceOf(creator), MINT_AMOUNT);
+    }
+
+    /// @notice A reward's native amount and an explicit alias-token leg mirror the same underlying
+    ///         funds — a reward may not declare both at once. `publish` must reject it up front.
+    function testPublish_revertsWhenNativeAndAliasLegsBothPresent() public {
+        Intent memory doubleLegIntent = _aliasIntentWithTokenLeg(
+            bytes32(uint256(4)),
+            NATIVE_LEG_AMOUNT,
+            MINT_AMOUNT
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.RewardTokensNotUnique.selector,
+                address(aliasToken)
+            )
+        );
+        aliasIntentSource.publish(doubleLegIntent);
+    }
+
+    /// @notice The same guard applies on `fundFor`, which can escrow a reward directly without a
+    ///         prior `publish` call — the check must not be bypassable through that entry point.
+    function testFundFor_revertsWhenNativeAndAliasLegsBothPresent_withoutPriorPublish()
+        public
+    {
+        Intent memory doubleLegIntent = _aliasIntentWithTokenLeg(
+            bytes32(uint256(5)),
+            NATIVE_LEG_AMOUNT,
+            MINT_AMOUNT
+        );
+        bytes32 routeHash = keccak256(abi.encode(doubleLegIntent.route));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.RewardTokensNotUnique.selector,
+                address(aliasToken)
+            )
+        );
+        aliasIntentSource.fundFor(
+            doubleLegIntent.destination,
+            routeHash,
+            doubleLegIntent.reward,
+            false,
+            creator,
+            address(0)
+        );
     }
 }

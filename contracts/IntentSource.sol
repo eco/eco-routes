@@ -258,6 +258,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bytes memory route,
         Reward memory reward
     ) public returns (bytes32 intentHash, address vault) {
+        _requireNoNativeAliasConflict(reward);
+
         (intentHash, , ) = getIntentHash(destination, route, reward);
         vault = _getVault(intentHash);
 
@@ -628,6 +630,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         bool allowPartial
     ) internal onlyFundable(intentHash) {
+        // Reject a reward-token leg regardless of entry point. `publish` already checks this, but
+        // `fund`/`fundFor` can escrow an intent directly without a prior `publish` call.
+        _requireNoNativeAliasConflict(reward);
+
         bool fullyFunded = _fundNative(vault, reward.nativeAmount);
 
         uint256 rewardsLength = reward.tokens.length;
@@ -723,6 +729,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         address funder,
         address permitContract
     ) internal onlyFundable(intentHash) returns (address vault) {
+        // Reject a reward-token leg regardless of entry point — see the matching check and comment in
+        // {_fundIntent}.
+        _requireNoNativeAliasConflict(reward);
+
         vault = _getOrDeployVault(intentHash);
         bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
             reward,
@@ -765,6 +775,30 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         }
 
         return true;
+    }
+
+    /**
+     * @notice Reverts if a reward's native amount and its token legs both claim the same underlying
+     *         funds
+     * @dev On a deployment where {NATIVE_ERC20} is configured (non-zero), its ERC20 balance mirrors the
+     *      vault's native balance 1:1 — a native amount and a {NATIVE_ERC20} leg are two interfaces onto
+     *      the SAME underlying funds, not two independent amounts. Funding one would silently satisfy
+     *      the other's balance check for free, and payout would then short whichever is processed second
+     *      against an already-drained vault. No-op unless {NATIVE_ERC20} is configured and the reward
+     *      actually carries a non-zero native amount.
+     * @param reward Reward structure to validate
+     */
+    function _requireNoNativeAliasConflict(Reward memory reward) internal view {
+        if (NATIVE_ERC20 == address(0) || reward.nativeAmount == 0) {
+            return;
+        }
+
+        uint256 rewardsLength = reward.tokens.length;
+        for (uint256 i; i < rewardsLength; ++i) {
+            if (reward.tokens[i].token == NATIVE_ERC20) {
+                revert RewardTokensNotUnique(NATIVE_ERC20);
+            }
+        }
     }
 
     /**

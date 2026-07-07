@@ -65,6 +65,11 @@ interface IIntentSource {
     /// @notice Thrown when caller is not the reward creator
     error NotCreatorCaller(address caller);
 
+    /// @notice Thrown when a reward token duplicates value already committed elsewhere in the reward
+    ///         (e.g. it is this deployment's configured native/ERC20 alias while the reward also carries
+    ///         a non-zero native amount)
+    error RewardTokensNotUnique(address token);
+
     /**
      * @notice Signals the creation of a new cross-chain intent
      * @param intentHash Unique identifier of the intent
