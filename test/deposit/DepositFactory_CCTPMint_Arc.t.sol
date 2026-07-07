@@ -30,7 +30,7 @@ contract DepositFactory_CCTPMint_ArcTest is Test {
     address constant DEPOSITOR_2 = address(0x4444);
 
     function setUp() public {
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         factory = new DepositFactory_CCTPMint_Arc(
             SOURCE_TOKEN,

@@ -47,7 +47,7 @@ describe('Inbox Test', (): void => {
   }> {
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const executor = await ethers.getContractAt(
       'Executor',
@@ -189,7 +189,7 @@ describe('Inbox Test', (): void => {
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
       const anotherPortal = await (
         await ethers.getContractFactory('Portal')
-      ).deploy()
+      ).deploy(ethers.ZeroAddress)
       const anotherInbox = await ethers.getContractAt(
         'Inbox',
         await anotherPortal.getAddress(),

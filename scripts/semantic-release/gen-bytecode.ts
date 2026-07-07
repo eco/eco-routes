@@ -51,7 +51,8 @@ type Contract = {
 const CONTRACTS_TO_DEPLOY: Contract[] = [
   {
     name: 'Portal',
-    args: [],
+    // nativeErc20 = zero address: no native/ERC20 alias on this deployment
+    args: ['0x0000000000000000000000000000000000000000'],
     path: 'contracts/Portal.sol:Portal',
   },
   // { name: 'HyperProver', args: [], path: 'contracts/prover/HyperProver.sol:HyperProver' },

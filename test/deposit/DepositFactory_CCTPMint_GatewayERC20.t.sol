@@ -31,7 +31,7 @@ contract DepositFactory_CCTPMint_GatewayERC20Test is Test {
     address constant DEPOSITOR_2 = address(0x4444);
 
     function setUp() public {
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         factory = new DepositFactory_CCTPMint_GatewayERC20(
             SOURCE_TOKEN,

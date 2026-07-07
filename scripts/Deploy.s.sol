@@ -253,8 +253,9 @@ contract Deploy is Script {
     function deployPortal(
         DeploymentContext memory ctx
     ) internal returns (address portal) {
+        // No native/ERC20 alias on this deployment (nativeErc20 = address(0)).
         (ctx.portal) = deployWithCreate2(
-            type(Portal).creationCode,
+            abi.encodePacked(type(Portal).creationCode, abi.encode(address(0))),
             ctx.portalSalt
         );
         console.log("Portal :", ctx.portal);

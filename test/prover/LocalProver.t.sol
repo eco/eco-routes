@@ -42,7 +42,7 @@ contract LocalProverTest is Test {
         CHAIN_ID = uint64(block.chainid);
 
         // Deploy contracts
-        portal = new Portal();
+        portal = new Portal(address(0));
         localProver = new LocalProver(address(portal));
         secondaryProver = new TestProver(address(portal));
         token = new TestERC20("Test Token", "TEST");
