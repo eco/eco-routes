@@ -58,7 +58,7 @@ contract BaseTest is Test {
         vm.startPrank(deployer);
 
         // Deploy core contracts
-        portal = new Portal();
+        portal = new Portal(address(0));
         // Set backward compatibility aliases
         intentSource = IIntentSource(address(portal));
         inbox = Inbox(payable(address(portal)));

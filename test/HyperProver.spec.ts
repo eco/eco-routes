@@ -83,7 +83,7 @@ describe('HyperProver Test', (): void => {
       await ethers.getContractFactory('TestMailbox')
     ).deploy(ethers.ZeroAddress) // No processor needed for these tests
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const portal = await (await ethers.getContractFactory('Portal')).deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (

@@ -34,6 +34,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /// @dev Implementation contract address for vault cloning
     address private immutable VAULT_IMPLEMENTATION;
+    /// @dev ERC20 token address that this deployment's native asset is aliased to (i.e. its balance
+    ///      mirrors `address(this).balance` on every vault), or `address(0)` if this deployment has no
+    ///      such alias. Used only to keep {recoverToken} from treating the native and aliased-ERC20
+    ///      views of the same underlying balance as two independent, separately recoverable assets.
+    address private immutable NATIVE_ERC20;
     /// @dev Tracks the lifecycle status of each intent's rewards
     mapping(bytes32 => Status) private rewardStatuses;
 
@@ -41,10 +46,17 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @notice Initializes the IntentSource contract
      * @param vaultImplementation Address of the vault implementation used for cloning
      * @param create2Prefix CREATE2 prefix byte for the target chain (0xff for EVM, 0x41 for Tron)
+     * @param nativeErc20 ERC20 token address aliased to this deployment's native asset, or
+     *        `address(0)` if none. See {NATIVE_ERC20}.
      */
-    constructor(address vaultImplementation, bytes1 create2Prefix) {
+    constructor(
+        address vaultImplementation,
+        bytes1 create2Prefix,
+        address nativeErc20
+    ) {
         VAULT_IMPLEMENTATION = vaultImplementation;
         CREATE2_PREFIX = create2Prefix;
+        NATIVE_ERC20 = nativeErc20;
     }
 
     /**
@@ -825,14 +837,19 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Validates that token can be recovered (not zero address and not a reward token)
-     * @dev Prevents recovery of reward tokens and zero address, allows recovery of mistaken transfers
+     * @dev Prevents recovery of reward tokens and zero address, allows recovery of mistaken transfers.
+     *      On a deployment where {NATIVE_ERC20} is configured, its ERC20 balance mirrors
+     *      `address(this).balance` on every vault — they are two views of one underlying balance, not
+     *      independent balances. A reward's native amount and a {NATIVE_ERC20} leg are therefore treated
+     *      as the same asset here: recovery of {NATIVE_ERC20} is also blocked whenever the reward carries
+     *      a non-zero native amount, even though `token` never literally appears in `reward.tokens`.
      * @param reward Reward structure containing token list
      * @param token Address of the token to recover
      */
     function _validateRecover(
         Reward calldata reward,
         address token
-    ) internal pure {
+    ) internal view {
         if (token == address(0)) {
             revert InvalidRecoverToken(token);
         }
@@ -842,6 +859,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             if (reward.tokens[i].token == token) {
                 revert InvalidRecoverToken(token);
             }
+        }
+
+        if (
+            NATIVE_ERC20 != address(0) &&
+            token == NATIVE_ERC20 &&
+            reward.nativeAmount != 0
+        ) {
+            revert InvalidRecoverToken(token);
         }
     }
 

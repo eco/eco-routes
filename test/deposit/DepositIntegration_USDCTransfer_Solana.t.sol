@@ -52,7 +52,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         token = new TestERC20("Test Token", "TEST");
 
         // Deploy Portal
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         // Deploy prover
         prover = new TestProver(address(portal));

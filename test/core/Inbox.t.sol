@@ -38,7 +38,7 @@ contract InboxTest is BaseTest {
         vm.chainId(validChainId);
 
         // This should not revert
-        Portal newPortal = new Portal();
+        Portal newPortal = new Portal(address(0));
         assertTrue(address(newPortal) != address(0));
     }
 

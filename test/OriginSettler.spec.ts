@@ -73,7 +73,7 @@ describe('Origin Settler Test', (): void => {
     const [creator, owner, otherPerson] = await ethers.getSigners()
 
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // deploy prover
