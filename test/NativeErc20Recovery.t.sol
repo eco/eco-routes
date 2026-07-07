@@ -243,4 +243,31 @@ contract NativeErc20RecoveryTest is BaseTest {
             address(0)
         );
     }
+
+    /// @notice The same guard applies on `fund`, which can also escrow a reward directly without a
+    ///         prior `publish` call — the check must not be bypassable through that entry point either.
+    function testFund_revertsWhenNativeAndAliasLegsBothPresent_withoutPriorPublish()
+        public
+    {
+        Intent memory doubleLegIntent = _aliasIntentWithTokenLeg(
+            bytes32(uint256(6)),
+            NATIVE_LEG_AMOUNT,
+            MINT_AMOUNT
+        );
+        bytes32 routeHash = keccak256(abi.encode(doubleLegIntent.route));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.RewardTokensNotUnique.selector,
+                address(aliasToken)
+            )
+        );
+        vm.prank(creator);
+        aliasIntentSource.fund(
+            doubleLegIntent.destination,
+            routeHash,
+            doubleLegIntent.reward,
+            false
+        );
+    }
 }

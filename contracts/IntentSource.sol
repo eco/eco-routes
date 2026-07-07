@@ -895,11 +895,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             }
         }
 
-        if (
-            NATIVE_ERC20 != address(0) &&
-            token == NATIVE_ERC20 &&
-            reward.nativeAmount != 0
-        ) {
+        if (token == NATIVE_ERC20 && reward.nativeAmount != 0) {
             revert InvalidRecoverToken(token);
         }
     }
