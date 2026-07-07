@@ -17,8 +17,12 @@ contract Portal is IntentSource, Inbox, Semver {
     /**
      * @notice Initializes the Portal contract
      * @dev Creates a unified entry point combining source and destination chain functionality
+     * @param nativeErc20 ERC20 token address aliased to this deployment's native asset, or
+     *        `address(0)` if none. See {IntentSource-NATIVE_ERC20}.
      */
-    constructor() IntentSource(address(new Account()), bytes1(0xff)) {}
+    constructor(
+        address nativeErc20
+    ) IntentSource(address(new Account()), bytes1(0xff), nativeErc20) {}
 
     /**
      * @notice Deterministic address of the intent's per-intent Account (composition-root wiring).

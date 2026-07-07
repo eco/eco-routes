@@ -80,7 +80,7 @@ contract DepositIntegration_CCTPMintTest is Test {
         token = new TestERC20("USD Coin", "USDC");
 
         // Deploy Portal
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         // Deploy LocalPolicy (for same-chain testing)
         prover = new LocalPolicy(address(portal));

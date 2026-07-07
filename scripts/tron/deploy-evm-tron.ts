@@ -261,13 +261,21 @@ class EvmDeployer {
 
     const { bytecode } = loadArtifact('Portal')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
+    const constructorArgs = this.abiCoder.encode(
+      ['address'],
+      [ethers.ZeroAddress],
+    )
+    const initCode = ethers.concat([
+      ethers.getBytes(creationCode),
+      ethers.getBytes(constructorArgs),
+    ])
     const create3 = new ethers.Contract(
       this.cfg.create3Deployer,
       CREATE3_ABI,
       this.wallet,
     )
     console.log(`  ${this.tag()} Deploying Portal via CREATE3...`)
-    const tx = await create3.deploy(creationCode, portalSalt)
+    const tx = await create3.deploy(initCode, portalSalt)
     const receipt = await tx.wait()
 
     const finalCode = await this.provider.getCode(predicted)
@@ -474,6 +482,10 @@ class TronDeployer {
 
     const { abi, bytecode } = loadArtifact('PortalTron')
     const bytecodeHex = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder()
+    const rawParameter = abiCoder
+      .encode(['address'], [ethers.ZeroAddress])
+      .slice(2)
 
     console.log('  [Tron] Deploying PortalTron via createSmartContract...')
     const deployerHex = this.tronWeb.defaultAddress.hex as string
@@ -485,6 +497,7 @@ class TronDeployer {
         callValue: 0,
         userFeePercentage: 100,
         originEnergyLimit: 10_000_000,
+        rawParameter,
       },
       deployerHex,
     )

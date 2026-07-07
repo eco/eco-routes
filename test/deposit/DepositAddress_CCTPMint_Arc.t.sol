@@ -38,7 +38,7 @@ contract DepositAddress_CCTPMint_ArcTest is Test {
 
     function setUp() public {
         token = new TestERC20("Test USDC", "USDC");
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         factory = new DepositFactory_CCTPMint_Arc(
             address(token),

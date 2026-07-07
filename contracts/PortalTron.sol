@@ -14,7 +14,14 @@ import {AccountTron} from "./tron/AccountTron.sol";
  *      tokens such as Tron USDT.
  */
 contract PortalTron is IntentSource, Inbox, Semver {
-    constructor() IntentSource(address(new AccountTron()), bytes1(0x41)) {}
+    /**
+     * @notice Initializes the PortalTron contract
+     * @param nativeErc20 ERC20 token address aliased to this deployment's native asset, or
+     *        `address(0)` if none. See {IntentSource-NATIVE_ERC20}.
+     */
+    constructor(
+        address nativeErc20
+    ) IntentSource(address(new AccountTron()), bytes1(0x41), nativeErc20) {}
 
     /**
      * @notice Deterministic address of the intent's per-intent Account (composition-root wiring).
