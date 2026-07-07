@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {BadERC20} from "../../contracts/test/BadERC20.sol";
 import {TestUSDT} from "../../contracts/test/TestUSDT.sol";
@@ -34,9 +34,9 @@ contract InboxAdvancedTest is BaseTest {
         vm.prank(deployer);
         usdtToken = new TestUSDT("USDT", "USDT");
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
         _mintAndApprove(solver, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _fundUserNative(keeper, 10 ether);
         _fundUserNative(solver, 10 ether);
 
         // Mint and approve bad tokens (use deployer as god for BadERC20)
@@ -55,13 +55,17 @@ contract InboxAdvancedTest is BaseTest {
     // ===== MESSAGE ROUTING TESTS =====
 
     function testMessageRoutingWithMultipleRecipients() public {
-        // Create intent with multiple recipients
-        TokenAmount[] memory tokens = new TokenAmount[](2);
-        tokens[0] = TokenAmount({
+        // Create intent with multiple recipients. minTokens must be strictly ascending by token address.
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](2);
+        minTokensLegs[0] = TokenAmount({
             token: address(tokenA),
             amount: MINT_AMOUNT / 2
         });
-        tokens[1] = TokenAmount({token: address(tokenB), amount: MINT_AMOUNT});
+        minTokensLegs[1] = TokenAmount({
+            token: address(tokenB),
+            amount: MINT_AMOUNT
+        });
+        minTokensLegs = _sortTokenAmounts(minTokensLegs);
 
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
@@ -89,16 +93,15 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: 0,
-                tokens: tokens,
-                calls: calls
+                keeper: keeper,
+                calls: calls,
+                minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
 
@@ -114,6 +117,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -130,8 +134,8 @@ contract InboxAdvancedTest is BaseTest {
             MINT_AMOUNT
         );
 
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](1);
+        minTokensLegs[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({target: address(tokenA), data: complexData, value: 0});
@@ -142,16 +146,15 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: 0,
-                tokens: tokens,
-                calls: calls
+                keeper: keeper,
+                calls: calls,
+                minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
 
@@ -167,6 +170,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -177,8 +181,10 @@ contract InboxAdvancedTest is BaseTest {
     function testMessageRoutingWithNativeETHAndTokens() public {
         uint256 ethAmount = 1 ether;
 
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        // minTokens: native leg (address(0), sorts first) + tokenA. Both are provided as input.
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](2);
+        minTokensLegs[0] = TokenAmount({token: address(0), amount: ethAmount});
+        minTokensLegs[1] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
@@ -198,21 +204,17 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: ethAmount,
-                tokens: tokens,
-                calls: calls
+                keeper: keeper,
+                calls: calls,
+                minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
-
-        // Fund portal with ETH
-        vm.deal(address(portal), ethAmount);
 
         bytes32 routeHash = keccak256(abi.encode(intent.route));
         bytes32 rewardHash = keccak256(abi.encode(intent.reward));
@@ -229,6 +231,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -254,6 +257,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -280,6 +284,7 @@ contract InboxAdvancedTest is BaseTest {
             mismatchedRoute,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -301,6 +306,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -320,6 +326,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(0), // Zero claimant
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -341,6 +348,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
     }
@@ -348,20 +356,21 @@ contract InboxAdvancedTest is BaseTest {
     // ===== COMPLEX SCENARIOS =====
 
     function testComplexScenarioWithMultipleTokenTypes() public {
-        // Test with ERC20, bad token, and USDT-like token
-        TokenAmount[] memory tokens = new TokenAmount[](3);
-        tokens[0] = TokenAmount({
+        // Test with ERC20, bad token, and USDT-like token. minTokens must be strictly ascending by address.
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](3);
+        minTokensLegs[0] = TokenAmount({
             token: address(tokenA),
             amount: MINT_AMOUNT / 3
         });
-        tokens[1] = TokenAmount({
+        minTokensLegs[1] = TokenAmount({
             token: address(tokenB),
             amount: MINT_AMOUNT / 3
         });
-        tokens[2] = TokenAmount({
+        minTokensLegs[2] = TokenAmount({
             token: address(usdtToken),
             amount: MINT_AMOUNT / 3
         });
+        minTokensLegs = _sortTokenAmounts(minTokensLegs);
 
         Call[] memory calls = new Call[](3);
         calls[0] = Call({
@@ -398,16 +407,15 @@ contract InboxAdvancedTest is BaseTest {
                 salt: salt,
                 deadline: uint64(expiry),
                 portal: address(portal),
-                nativeAmount: 0,
-                tokens: tokens,
-                calls: calls
+                keeper: keeper,
+                calls: calls,
+                minTokens: minTokensLegs
             }),
             reward: Reward({
                 deadline: uint64(expiry),
-                creator: creator,
+                keeper: keeper,
                 prover: address(prover),
-                nativeAmount: 0,
-                tokens: new TokenAmount[](0)
+                tokens: new RewardToken[](0)
             })
         });
 
@@ -423,6 +431,7 @@ contract InboxAdvancedTest is BaseTest {
             intent.route,
             rewardHash,
             bytes32(uint256(uint160(recipient))),
+            _providedFromMinTokens(intent.route),
             address(prover)
         );
 
@@ -460,24 +469,46 @@ contract InboxAdvancedTest is BaseTest {
                 intent.route,
                 rewardHash,
                 bytes32(uint256(uint160(recipient))),
+                _providedFromMinTokens(intent.route),
                 address(prover)
             );
         }
 
-        // Verify all intents were fulfilled
+        // Verify all intents were fulfilled: the destination store now holds the fulfillmentHash
+        // commitment (not the raw claimant). fulfilled[] == the provided input ([MINT_AMOUNT] for the
+        // single tokenA min-tokens leg of the basic intent).
+        uint256[] memory basicFulfilled = new uint256[](1);
+        basicFulfilled[0] = MINT_AMOUNT;
         for (uint256 i = 0; i < 3; i++) {
             assertEq(
                 prover.destFulfillment(intentHashes[i]),
-                bytes32(uint256(uint160(recipient)))
+                IntentLib.fulfillmentHash(
+                    intentHashes[i],
+                    bytes32(uint256(uint160(recipient))),
+                    basicFulfilled
+                )
             );
         }
     }
 
     // ===== HELPER FUNCTIONS =====
 
+    /**
+     * @notice Builds exact-provision `providedAmounts` (each `= minTokens[j].amount`), aligned with the
+     *         route's `minTokens` order.
+     */
+    function _providedFromMinTokens(
+        Route memory r
+    ) internal pure returns (uint256[] memory provided) {
+        provided = new uint256[](r.minTokens.length);
+        for (uint256 i = 0; i < r.minTokens.length; ++i) {
+            provided[i] = r.minTokens[i].amount;
+        }
+    }
+
     function _createBasicIntent() internal view returns (Intent memory) {
-        TokenAmount[] memory tokens = new TokenAmount[](1);
-        tokens[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
+        TokenAmount[] memory minTokensLegs = new TokenAmount[](1);
+        minTokensLegs[0] = TokenAmount({token: address(tokenA), amount: MINT_AMOUNT});
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
@@ -497,16 +528,15 @@ contract InboxAdvancedTest is BaseTest {
                     salt: salt,
                     deadline: uint64(expiry),
                     portal: address(portal),
-                    nativeAmount: 0,
-                    tokens: tokens,
-                    calls: calls
+                    keeper: keeper,
+                    calls: calls,
+                    minTokens: minTokensLegs
                 }),
                 reward: Reward({
                     deadline: uint64(expiry),
-                    creator: creator,
+                    keeper: keeper,
                     prover: address(prover),
-                    nativeAmount: 0,
-                    tokens: new TokenAmount[](0)
+                    tokens: new RewardToken[](0)
                 })
             });
     }

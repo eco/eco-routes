@@ -4,15 +4,15 @@ pragma solidity ^0.8.26;
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ILayerZeroReceiver} from "../interfaces/layerzero/ILayerZeroReceiver.sol";
 import {ILayerZeroEndpointV2} from "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
-import {MessageBridgeProver} from "./MessageBridgeProver.sol";
+import {MessageBridgePolicy} from "./MessageBridgePolicy.sol";
 import {Semver} from "../libs/Semver.sol";
 
 /**
- * @title LayerZeroProver
+ * @title LayerZeroPolicy
  * @notice Prover implementation using LayerZero's cross-chain messaging system
  * @dev Processes proof messages from LayerZero endpoint and records proven intents
  */
-contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
+contract LayerZeroPolicy is ILayerZeroReceiver, MessageBridgePolicy, Semver {
     using SafeCast for uint256;
     /**
      * @notice Struct for unpacked data from _data parameter
@@ -74,7 +74,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         address portal,
         bytes32[] memory provers,
         uint256 minGasLimit
-    ) MessageBridgeProver(portal, provers, minGasLimit) {
+    ) MessageBridgePolicy(portal, provers, minGasLimit) {
         if (endpoint == address(0)) revert EndpointCannotBeZeroAddress();
         if (delegate == address(0)) revert DelegateCannotBeZeroAddress();
 

@@ -2,14 +2,14 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
-import {HyperProver} from "../../contracts/prover/HyperProver.sol";
-import {LayerZeroProver} from "../../contracts/prover/LayerZeroProver.sol";
-import {MessageBridgeProver} from "../../contracts/prover/MessageBridgeProver.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {IMessageBridgePolicy} from "../../contracts/interfaces/IMessageBridgePolicy.sol";
+import {HyperPolicy} from "../../contracts/prover/HyperPolicy.sol";
+import {LayerZeroPolicy} from "../../contracts/prover/LayerZeroPolicy.sol";
+import {MessageBridgePolicy} from "../../contracts/prover/MessageBridgePolicy.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {MockLayerZeroEndpoint} from "../../contracts/test/MockLayerZeroEndpoint.sol";
-import {TestMessageBridgeProver} from "../../contracts/test/TestMessageBridgeProver.sol";
+import {TestMessagePolicy} from "../../contracts/test/TestMessagePolicy.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
 /**
@@ -21,12 +21,12 @@ contract CrossChainProverIntegrationTest is BaseTest {
     using AddressConverter for address;
     using AddressConverter for bytes32;
 
-    HyperProver internal hyperProver;
-    LayerZeroProver internal layerZeroProver;
-    MessageBridgeProver internal messageBridgeProver;
+    HyperPolicy internal hyperProver;
+    LayerZeroPolicy internal layerZeroProver;
+    MessageBridgePolicy internal messageBridgeProver;
     TestMailbox internal mailbox;
     MockLayerZeroEndpoint internal lzEndpoint;
-    TestMessageBridgeProver internal testBridgeProver;
+    TestMessagePolicy internal testBridgeProver;
 
     address internal relayer;
     address internal validator;
@@ -51,7 +51,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
         lzEndpoint = new MockLayerZeroEndpoint();
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(address(prover))));
-        testBridgeProver = new TestMessageBridgeProver(
+        testBridgeProver = new TestMessagePolicy(
             address(portal),
             provers,
             200000
@@ -60,14 +60,14 @@ contract CrossChainProverIntegrationTest is BaseTest {
         // Deploy provers
         bytes32[] memory hyperProvers = new bytes32[](1);
         hyperProvers[0] = bytes32(uint256(uint160(address(prover))));
-        hyperProver = new HyperProver(
+        hyperProver = new HyperPolicy(
             address(mailbox),
             address(portal),
             hyperProvers
         );
         bytes32[] memory lzProvers = new bytes32[](1);
         lzProvers[0] = bytes32(uint256(uint160(address(prover))));
-        layerZeroProver = new LayerZeroProver(
+        layerZeroProver = new LayerZeroPolicy(
             address(lzEndpoint),
             address(this), // delegate
             address(portal),
@@ -85,13 +85,20 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
         // Test basic proof addition
         vm.prank(relayer);
-        testBridgeProver.addProvenIntent(intentHash, claimant, CHAIN_ID);
+        testBridgeProver.addProvenIntent(
+            intentHash,
+            bytes32(uint256(uint160(claimant))),
+            CHAIN_ID
+        );
 
         // Verify proof was added by checking proof data
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+        IPolicy.ProofData memory proofData = testBridgeProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(
+            proofData.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofData.destination, CHAIN_ID);
     }
 
@@ -111,17 +118,20 @@ contract CrossChainProverIntegrationTest is BaseTest {
         for (uint256 i = 0; i < intentHashes.length; i++) {
             testBridgeProver.addProvenIntent(
                 intentHashes[i],
-                claimant,
+                bytes32(uint256(uint160(claimant))),
                 CHAIN_ID
             );
         }
 
         // Verify all proofs were processed
         for (uint256 i = 0; i < intentHashes.length; i++) {
-            IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+            IPolicy.ProofData memory proofData = testBridgeProver.provenIntents(
                 intentHashes[i]
             );
-            assertEq(proofData.claimant, claimant);
+            assertEq(
+                proofData.fulfillmentHash,
+                bytes32(uint256(uint160(claimant)))
+            );
             assertEq(proofData.destination, CHAIN_ID);
         }
     }
@@ -131,24 +141,38 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
         // Test with different provers
         vm.prank(relayer);
-        testBridgeProver.addProvenIntent(intentHash, claimant, CHAIN_ID);
+        testBridgeProver.addProvenIntent(
+            intentHash,
+            bytes32(uint256(uint160(claimant))),
+            CHAIN_ID
+        );
 
         // Verify proof state
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+        IPolicy.ProofData memory proofData = testBridgeProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(
+            proofData.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofData.destination, CHAIN_ID);
 
         // Test with second prover (different intent)
         bytes32 intentHash2 = keccak256(abi.encodePacked(intentHash, "second"));
         vm.prank(relayer);
-        testBridgeProver.addProvenIntent(intentHash2, claimant, CHAIN_ID);
+        testBridgeProver.addProvenIntent(
+            intentHash2,
+            bytes32(uint256(uint160(claimant))),
+            CHAIN_ID
+        );
 
-        IProver.ProofData memory proofData2 = testBridgeProver.provenIntents(
+        IPolicy.ProofData memory proofData2 = testBridgeProver.provenIntents(
             intentHash2
         );
-        assertEq(proofData2.claimant, claimant);
+        assertEq(
+            proofData2.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofData2.destination, CHAIN_ID);
     }
 
@@ -157,13 +181,20 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
         // Test message bridge proving
         vm.prank(bridgeOperator);
-        testBridgeProver.addProvenIntent(intentHash, claimant, CHAIN_ID);
+        testBridgeProver.addProvenIntent(
+            intentHash,
+            bytes32(uint256(uint160(claimant))),
+            CHAIN_ID
+        );
 
         // Verify message was handled
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+        IPolicy.ProofData memory proofData = testBridgeProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(
+            proofData.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofData.destination, CHAIN_ID);
     }
 
@@ -172,13 +203,20 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
         // Test proof with invalid chain ID should be handled gracefully
         vm.prank(relayer);
-        testBridgeProver.addProvenIntent(intentHash, claimant, 999);
+        testBridgeProver.addProvenIntent(
+            intentHash,
+            bytes32(uint256(uint160(claimant))),
+            999
+        );
 
         // Verify proof state (test prover accepts all proofs)
-        IProver.ProofData memory proofData = testBridgeProver.provenIntents(
+        IPolicy.ProofData memory proofData = testBridgeProver.provenIntents(
             intentHash
         );
-        assertEq(proofData.claimant, claimant);
+        assertEq(
+            proofData.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofData.destination, 999);
     }
 
@@ -199,7 +237,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
             try
                 testBridgeProver.addProvenIntent(
                     intentHashes[i],
-                    claimant,
+                    bytes32(uint256(uint160(claimant))),
                     CHAIN_ID
                 )
             {

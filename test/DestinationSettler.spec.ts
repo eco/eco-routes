@@ -1,7 +1,7 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Inbox, TestProver } from '../typechain-types'
+import { TestERC20, Inbox, TestPolicy } from '../typechain-types'
 import {
   time,
   loadFixture,
@@ -21,13 +21,13 @@ describe('Destination Settler Test', (): void => {
   let inbox: Inbox
   let erc20: TestERC20
   let owner: SignerWithAddress
-  let creator: SignerWithAddress
+  let keeper: SignerWithAddress
   let solver: SignerWithAddress
   let route: Route
   let reward: Reward
   let intent: Intent
   let intentHash: string
-  let prover: TestProver
+  let prover: TestPolicy
   let fillerData: BytesLike
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
@@ -39,21 +39,21 @@ describe('Destination Settler Test', (): void => {
 
   async function deployInboxFixture(): Promise<{
     inbox: Inbox
-    prover: TestProver
+    prover: TestPolicy
     erc20: TestERC20
     owner: SignerWithAddress
-    creator: SignerWithAddress
+    keeper: SignerWithAddress
     solver: SignerWithAddress
   }> {
     const mailbox = await (
       await ethers.getContractFactory('TestMailbox')
     ).deploy(ethers.ZeroAddress)
-    const [owner, creator, solver, dstAddr] = await ethers.getSigners()
+    const [owner, keeper, solver, dstAddr] = await ethers.getSigners()
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const prover = await (
-      await ethers.getContractFactory('TestProver')
+      await ethers.getContractFactory('TestPolicy')
     ).deploy(await inbox.getAddress())
     // deploy ERC20 test
     const erc20Factory = await ethers.getContractFactory('TestERC20')
@@ -65,7 +65,7 @@ describe('Destination Settler Test', (): void => {
       prover,
       erc20,
       owner,
-      creator,
+      keeper,
       solver,
     }
   }
@@ -82,7 +82,7 @@ describe('Destination Settler Test', (): void => {
     erc20Address = await erc20.getAddress()
     const _timestamp = (await time.latest()) + timeDelta
 
-    const _calldata1 = await encodeTransferPayable(creator.address, mintAmount)
+    const _calldata1 = await encodeTransferPayable(keeper.address, mintAmount)
     const routeTokens = [
       { token: await erc20.getAddress(), amount: mintAmount },
     ]
@@ -94,23 +94,27 @@ describe('Destination Settler Test', (): void => {
       },
     ]
 
+    // v3 minTokens: native folds in as the address(0) leg (sorts first), then the ERC20 route tokens.
     const _route: Route = {
       salt,
       deadline: _timestamp,
       portal: await inbox.getAddress(),
-      nativeAmount: _nativeAmount,
-      tokens: routeTokens,
+      keeper: keeper.address,
       calls: _calls,
+      minTokens: [
+        { token: ethers.ZeroAddress, amount: _nativeAmount },
+        ...routeTokens,
+      ],
     }
     const _reward: Reward = {
-      creator: creator.address,
+      keeper: keeper.address,
       prover: await prover.getAddress(),
       deadline: _timestamp,
-      nativeAmount: BigInt(0),
       tokens: [
         {
           token: erc20Address,
-          amount: amount,
+          rate: 0n,
+          flat: amount,
         },
       ],
     }
@@ -133,7 +137,7 @@ describe('Destination Settler Test', (): void => {
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ inbox, prover, erc20, owner, creator, solver } =
+    ;({ inbox, prover, erc20, owner, keeper, solver } =
       await loadFixture(deployInboxFixture))
     ;({ route, reward, intent, intentHash } = await createIntentDataNative(
       mintAmount,
@@ -157,6 +161,7 @@ describe('Destination Settler Test', (): void => {
           intent.route,
           hashIntent(intent).rewardHash,
           ethers.zeroPadValue(solver.address, 32),
+          [nativeAmount, mintAmount],
           await prover.getAddress(),
           {
             value: nativeAmount,
@@ -186,6 +191,7 @@ describe('Destination Settler Test', (): void => {
           intent.route,
           hashIntent(intent).rewardHash,
           ethers.zeroPadValue(solver.address, 32),
+          [nativeAmount, mintAmount],
           await prover.getAddress(),
           {
             value: nativeAmount,
@@ -195,6 +201,6 @@ describe('Destination Settler Test', (): void => {
       .to.emit(inbox, 'IntentFulfilled')
       .withArgs(intentHash, ethers.zeroPadValue(solver.address, 32))
 
-    expect(await erc20.balanceOf(creator.address)).to.equal(mintAmount)
+    expect(await erc20.balanceOf(keeper.address)).to.equal(mintAmount)
   })
 })

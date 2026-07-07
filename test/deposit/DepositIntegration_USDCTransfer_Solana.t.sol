@@ -6,16 +6,16 @@ import {Vm} from "forge-std/Vm.sol";
 import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
 import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
+import {Reward, RewardToken, TokenAmount} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
-import {TestProver} from "../../contracts/test/TestProver.sol";
+import {TestPolicy} from "../../contracts/test/TestPolicy.sol";
 
 contract DepositIntegration_USDCTransfer_SolanaTest is Test {
     DepositFactory_USDCTransfer_Solana public factory;
     Portal public portal;
     TestERC20 public token;
-    TestProver public prover;
+    TestPolicy public prover;
 
     // Configuration parameters
     bytes32 constant DESTINATION_TOKEN = bytes32(uint256(0x5678));
@@ -34,11 +34,10 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         bytes32 indexed intentHash,
         uint64 destination,
         bytes route,
-        address indexed creator,
+        address indexed keeper,
         address indexed prover,
         uint64 deadline,
-        uint256 nativeAmount,
-        TokenAmount[] tokens
+        RewardToken[] rewardTokens
     );
 
     event IntentFunded(
@@ -52,10 +51,10 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         token = new TestERC20("Test Token", "TEST");
 
         // Deploy Portal
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         // Deploy prover
-        prover = new TestProver(address(portal));
+        prover = new TestPolicy(address(portal));
 
         // Deploy factory
         factory = new DepositFactory_USDCTransfer_Solana(
@@ -95,11 +94,11 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         bytes32 intentHash = depositAddress.createIntent();
         assertTrue(intentHash != bytes32(0));
 
-        // 5. Verify tokens moved from deposit address to vault
+        // 5. Verify tokens moved from deposit address to account
         assertEq(token.balanceOf(depositAddr), 0);
 
-        // 6. Verify intent was funded (tokens moved to vault)
-        // Note: We can't easily compute the exact vault address without knowing
+        // 6. Verify intent was funded (tokens moved to account)
+        // Note: We can't easily compute the exact account address without knowing
         // the exact route encoding, but we can verify intent status
         IIntentSource.Status status = portal.getRewardStatus(intentHash);
         assertEq(
@@ -186,7 +185,7 @@ contract DepositIntegration_USDCTransfer_SolanaTest is Test {
         // Fast forward past deadline
         vm.warp(block.timestamp + INTENT_DEADLINE_DURATION + 1);
 
-        // Note: Depositor can now call Portal.refund() directly since they are the intent creator
+        // Note: Depositor can now call Portal.refund() directly since they are the intent keeper
         // This allows refunds through the normal intent flow without a separate function
         // Full refund testing is covered in Portal/IntentSource tests
 

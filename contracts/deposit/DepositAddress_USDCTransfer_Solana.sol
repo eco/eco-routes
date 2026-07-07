@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
-import {Reward, TokenAmount} from "../types/Intent.sol";
+import {Reward, RewardToken} from "../types/Intent.sol";
 import {DepositFactory_USDCTransfer_Solana as DepositFactory} from "./DepositFactory_USDCTransfer_Solana.sol";
 import {Endian} from "../libs/Endian.sol";
 
@@ -103,15 +103,15 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
             executorATA
         );
 
-        // Construct Reward
+        // Construct Reward (source USDC as a single flat leg, rate 0)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({token: sourceToken, rate: 0, flat: amount});
         Reward memory reward = Reward({
             deadline: uint64(block.timestamp + deadlineDuration),
-            creator: depositor, // Depositor receives refunds through normal intent flow
+            keeper: depositor, // Depositor receives refunds through normal intent flow
             prover: prover,
-            nativeAmount: 0,
-            tokens: new TokenAmount[](1)
+            tokens: rewardTokens
         });
-        reward.tokens[0] = TokenAmount({token: sourceToken, amount: amount});
 
         // Approve Portal to spend tokens
         IERC20(sourceToken).approve(portal, amount);
@@ -142,7 +142,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
      * @param amount Amount of tokens to transfer
      * @param destinationToken Token mint address on destination chain
      * @param destPortal Portal program ID on destination chain
-     * @param portalPDA Portal's PDA vault authority (owns Executor ATA)
+     * @param portalPDA Portal's PDA account authority (owns Executor ATA)
      * @param deadlineDuration Deadline duration in seconds
      * @param executorATA Executor's Associated Token Account (source)
      * @return routeBytes Encoded route bytes
@@ -203,7 +203,7 @@ contract DepositAddress_USDCTransfer_Solana is BaseDepositAddress {
             bytes1(0x01), // is_writable = true
 
             // accounts[3]: Executor authority (Portal PDA) - read-only, not signer
-            portalPDA, // 32 bytes (Portal's PDA vault authority)
+            portalPDA, // 32 bytes (Portal's PDA account authority)
             bytes1(0x00), // is_signer = false
             bytes1(0x00) // is_writable = false
         );

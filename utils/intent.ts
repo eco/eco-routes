@@ -12,21 +12,28 @@ export type TokenAmount = {
   amount: number | bigint
 }
 
+// v3 reward leg: rate+flat curve. A fixed reward of `amount` is `{token, rate: 0, flat: amount}`.
+// Native folds in as a leg with `token == ZeroAddress`.
+export type RewardToken = {
+  token: string
+  rate: number | bigint
+  flat: number | bigint
+}
+
 export type Route = {
   salt: string
   deadline: number | bigint
   portal: string
-  nativeAmount: number | bigint
-  tokens: TokenAmount[]
+  keeper: string
   calls: Call[]
+  minTokens: TokenAmount[]
 }
 
 export type Reward = {
-  creator: string
+  keeper: string
   prover: string
   deadline: number | bigint
-  nativeAmount: bigint
-  tokens: TokenAmount[]
+  tokens: RewardToken[]
 }
 
 export type Intent = {
@@ -35,42 +42,48 @@ export type Intent = {
   reward: Reward
 }
 
+const TokenAmountComponents = [
+  { name: 'token', type: 'address' },
+  { name: 'amount', type: 'uint256' },
+]
+
+const CallComponents = [
+  { name: 'target', type: 'address' },
+  { name: 'data', type: 'bytes' },
+  { name: 'value', type: 'uint256' },
+]
+
+const RewardTokenComponents = [
+  { name: 'token', type: 'address' },
+  { name: 'rate', type: 'uint256' },
+  { name: 'flat', type: 'uint256' },
+]
+
 const RouteStruct = [
   { name: 'salt', type: 'bytes32' },
   { name: 'deadline', type: 'uint64' },
   { name: 'portal', type: 'address' },
-  { name: 'nativeAmount', type: 'uint256' },
-  {
-    name: 'tokens',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-  },
+  { name: 'keeper', type: 'address' },
   {
     name: 'calls',
     type: 'tuple[]',
-    components: [
-      { name: 'target', type: 'address' },
-      { name: 'data', type: 'bytes' },
-      { name: 'value', type: 'uint256' },
-    ],
+    components: CallComponents,
+  },
+  {
+    name: 'minTokens',
+    type: 'tuple[]',
+    components: TokenAmountComponents,
   },
 ]
 
 const RewardStruct = [
   { name: 'deadline', type: 'uint64' },
-  { name: 'creator', type: 'address' },
+  { name: 'keeper', type: 'address' },
   { name: 'prover', type: 'address' },
-  { name: 'nativeAmount', type: 'uint256' },
   {
     name: 'tokens',
     type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
+    components: RewardTokenComponents,
   },
 ]
 
@@ -82,47 +95,12 @@ const IntentStruct = [
   {
     name: 'route',
     type: 'tuple',
-    components: [
-      { name: 'salt', type: 'bytes32' },
-      { name: 'deadline', type: 'uint64' },
-      { name: 'portal', type: 'address' },
-      { name: 'nativeAmount', type: 'uint256' },
-      {
-        name: 'tokens',
-        type: 'tuple[]',
-        components: [
-          { name: 'token', type: 'address' },
-          { name: 'amount', type: 'uint256' },
-        ],
-      },
-      {
-        name: 'calls',
-        type: 'tuple[]',
-        components: [
-          { name: 'target', type: 'address' },
-          { name: 'data', type: 'bytes' },
-          { name: 'value', type: 'uint256' },
-        ],
-      },
-    ],
+    components: RouteStruct,
   },
   {
     name: 'reward',
     type: 'tuple',
-    components: [
-      { name: 'deadline', type: 'uint64' },
-      { name: 'creator', type: 'address' },
-      { name: 'prover', type: 'address' },
-      { name: 'nativeAmount', type: 'uint256' },
-      {
-        name: 'tokens',
-        type: 'tuple[]',
-        components: [
-          { name: 'token', type: 'address' },
-          { name: 'amount', type: 'uint256' },
-        ],
-      },
-    ],
+    components: RewardStruct,
   },
 ]
 
@@ -179,12 +157,31 @@ export function hashIntent(intent: Intent) {
   return { routeHash, rewardHash, intentHash }
 }
 
-export async function intentVaultAddress(
+/**
+ * Computes the v3 hash-only fulfillment commitment:
+ *   fulfillmentHash = keccak256(abi.encode(intentHash, claimant, fulfilled))
+ * `claimant` must be a 32-byte value (use addressToBytes32 / zeroPadValue for an EVM address).
+ * `fulfilled` is the per-leg delivered amounts (empty for no-min-out intents).
+ */
+export function hashFulfillment(
+  intentHash: string,
+  claimant: string,
+  fulfilled: Array<number | bigint> = [],
+) {
+  return keccak256(
+    AbiCoder.defaultAbiCoder().encode(
+      ['bytes32', 'bytes32', 'uint256[]'],
+      [intentHash, claimant, fulfilled],
+    ),
+  )
+}
+
+export async function intentAccountAddress(
   intentSourceAddress: string,
   intent: Intent,
 ) {
   const { routeHash, intentHash } = hashIntent(intent)
-  const intentVaultFactory = await ethers.getContractFactory('Vault')
+  const intentAccountFactory = await ethers.getContractFactory('Account')
   const abiCoder = AbiCoder.defaultAbiCoder()
 
   return getCreate2Address(
@@ -194,7 +191,7 @@ export async function intentVaultAddress(
       solidityPacked(
         ['bytes', 'bytes'],
         [
-          intentVaultFactory.bytecode,
+          intentAccountFactory.bytecode,
           abiCoder.encode(
             [
               'bytes32',

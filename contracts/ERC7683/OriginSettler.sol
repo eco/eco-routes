@@ -9,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IOriginSettler} from "../interfaces/ERC7683/IOriginSettler.sol";
 
-import {Reward} from "../types/Intent.sol";
+import {Reward, RewardToken} from "../types/Intent.sol";
 import {OnchainCrossChainOrder, ResolvedCrossChainOrder, GaslessCrossChainOrder, Output, FillInstruction, OrderData, ORDER_DATA_TYPEHASH} from "../types/ERC7683.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 
@@ -18,7 +18,7 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  * @notice Entry point to Eco Protocol via EIP-7683 with enhanced security and compliance
  * @dev Provides ERC-7683 compliant interface with replay protection and proper validation
  * @dev Features comprehensive validation, unified funding logic, and ERC-7683 compliance
- * @dev Includes protection against replay attacks through vault state checking
+ * @dev Includes protection against replay attacks through account state checking
  */
 abstract contract OriginSettler is IOriginSettler, EIP712 {
     using ECDSA for bytes32;
@@ -69,7 +69,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @notice Opens an Eco intent on behalf of a user via ERC-7683 gasless interface
      * @dev Called by a solver to create an intent for a user using their signature
      * @dev Performs comprehensive validation: deadlines, signature, chain IDs, origin settler
-     * @dev Includes replay protection through vault state checking in _publishAndFund
+     * @dev Includes replay protection through account state checking in _publishAndFund
      * @dev Uses unified _publishAndFund method for consistent behavior and security
      * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
      * @param order the GaslessCrossChainOrder containing user signature and OrderData
@@ -177,10 +177,12 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     /**
      * @notice Resolves order data into ERC-7683 compliant ResolvedCrossChainOrder format
      * @dev Converts Eco-specific OrderData into standardized format for off-chain solvers
-     * @dev Uses orderData.maxSpent directly instead of reconstructing from route
-     * @dev Correctly assigns chainIds: minReceived uses origin chain, native rewards use destination
-     * @dev FillInstruction.originData contains (route, rewardHash) instead of full intent
-     * @dev Addresses all ERC-7683 compliance issues identified in security review
+     * @dev Surfaces `minReceived` from the REWARD LEGS (the reward the filler receives), not from
+     *      maxSpent: each leg's floor is its `flat` — the guaranteed minimum. Native folds in as a leg
+     *      with token == address(0). The rate-scaled component depends on the measured fulfillment and
+     *      is not known at open time. Uses orderData.maxSpent directly for maxSpent. The route is kept
+     *      opaque (cross-VM), so it is not decoded here.
+     * @dev FillInstruction.originData contains (route, rewardHash)
      * @param openDeadline The deadline for opening the order
      * @param orderData The updated OrderData with maxSpent, routePortal, and routeDeadline
      * @return ResolvedCrossChainOrder ERC-7683 compliant format with proper field mappings
@@ -189,26 +191,16 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         uint32 openDeadline,
         OrderData memory orderData
     ) public view returns (ResolvedCrossChainOrder memory) {
-        uint256 rewardTokenCount = orderData.reward.tokens.length;
-        Output[] memory minReceived = new Output[](
-            rewardTokenCount + (orderData.reward.nativeAmount > 0 ? 1 : 0)
-        );
+        RewardToken[] memory legs = orderData.reward.tokens;
+        uint256 legCount = legs.length;
 
-        for (uint256 i = 0; i < rewardTokenCount; ++i) {
+        Output[] memory minReceived = new Output[](legCount);
+        for (uint256 i = 0; i < legCount; ++i) {
             minReceived[i] = Output(
-                bytes32(uint256(uint160(orderData.reward.tokens[i].token))), // token
-                orderData.reward.tokens[i].amount, // amount
-                bytes32(uint256(uint160(address(0)))), // recipient is zero address
-                block.chainid // chainId
-            );
-        }
-
-        if (orderData.reward.nativeAmount > 0) {
-            minReceived[rewardTokenCount] = Output(
-                bytes32(0), // token
-                orderData.reward.nativeAmount, // amount
-                bytes32(uint256(uint160(address(0)))), // recipient is zero address
-                block.chainid // chainId
+                bytes32(uint256(uint160(legs[i].token))), // token (address(0) => native)
+                legs[i].flat, // guaranteed floor the filler receives
+                bytes32(0), // recipient unknown at open time
+                block.chainid // reward is paid on the origin chain
             );
         }
 
@@ -228,7 +220,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
 
         return
             ResolvedCrossChainOrder(
-                orderData.reward.creator,
+                orderData.reward.keeper,
                 block.chainid,
                 openDeadline,
                 uint32(orderData.routeDeadline),
@@ -248,16 +240,16 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @notice Core method for atomic intent creation and funding
      * @dev Abstract method to be implemented by derived contracts for unified intent handling
      * @dev Must handle both publishing new intents and funding existing ones atomically
-     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Provides replay protection through account state checking in funding logic
      * @dev Should handle excess ETH return for optimal user experience
      * @dev Called by both open() and openFor() methods to ensure consistent behavior
      * @param destination Destination chain ID where the intent should be executed
      * @param route Encoded route data containing execution instructions for destination chain
-     * @param reward The reward structure containing token amounts, creator, prover, and deadline
+     * @param reward The reward structure containing token amounts, keeper, prover, and deadline
      * @param allowPartial Whether to accept partial funding if full funding is not possible
      * @param funder The address providing the funding (msg.sender for open(), order.user for openFor())
      * @return intentHash Unique identifier of the created or existing intent
-     * @return vault Address of the intent's vault contract for reward escrow
+     * @return account Address of the intent's account contract for reward escrow
      */
     function _publishAndFund(
         uint64 destination,
@@ -265,5 +257,5 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         Reward memory reward,
         bool allowPartial,
         address funder
-    ) internal virtual returns (bytes32 intentHash, address vault);
+    ) internal virtual returns (bytes32 intentHash, address account);
 }

@@ -46,7 +46,7 @@ contract DeployerTest is BaseTest {
         );
         bytes32 salt = keccak256("test-salt");
 
-        vm.prank(creator);
+        vm.prank(keeper);
         address payable deployed = deployerContract.deploy(initCode, salt);
 
         assertNotEq(deployed, address(0));
@@ -64,7 +64,7 @@ contract DeployerTest is BaseTest {
         );
         bytes32 salt = keccak256("test-salt");
 
-        vm.prank(creator);
+        vm.prank(keeper);
         address payable deployed1 = deployerContract.deploy(initCode, salt);
 
         vm.prank(claimant);
@@ -82,10 +82,10 @@ contract DeployerTest is BaseTest {
         bytes32 salt1 = keccak256("salt1");
         bytes32 salt2 = keccak256("salt2");
 
-        vm.prank(creator);
+        vm.prank(keeper);
         address payable deployed1 = deployerContract.deploy(initCode, salt1);
 
-        vm.prank(creator);
+        vm.prank(keeper);
         address payable deployed2 = deployerContract.deploy(initCode, salt2);
 
         // Should be different addresses
@@ -100,9 +100,9 @@ contract DeployerTest is BaseTest {
         bytes32 salt = keccak256("test-salt");
 
         vm.expectEmit(true, false, false, false);
-        emit Deployer.Deployed(creator, address(0)); // We don't know the exact address
+        emit Deployer.Deployed(keeper, address(0)); // We don't know the exact address
 
-        vm.prank(creator);
+        vm.prank(keeper);
         deployerContract.deploy(initCode, salt);
     }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {MessageBridgeProver} from "./MessageBridgeProver.sol";
+import {MessageBridgePolicy} from "./MessageBridgePolicy.sol";
 import {Semver} from "../libs/Semver.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {
@@ -15,11 +15,11 @@ import {
 } from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 
 /**
- * @title CCIPProver
+ * @title CCIPPolicy
  * @notice Prover implementation using Chainlink CCIP (Cross-Chain Interoperability Protocol)
- * @dev Extends MessageBridgeProver to send and receive intent proofs across chains via CCIP
+ * @dev Extends MessageBridgePolicy to send and receive intent proofs across chains via CCIP
  */
-contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
+contract CCIPPolicy is MessageBridgePolicy, IAny2EVMMessageReceiver, Semver {
     using AddressConverter for bytes32;
     using AddressConverter for address;
 
@@ -38,7 +38,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
     }
 
     /**
-     * @notice Constructs a new CCIPProver
+     * @notice Constructs a new CCIPPolicy
      * @param router The CCIP Router contract address
      * @param portal The portal contract address
      * @param provers Array of whitelisted prover addresses (as bytes32)
@@ -49,7 +49,7 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         address portal,
         bytes32[] memory provers,
         uint256 minGasLimit
-    ) MessageBridgeProver(portal, provers, minGasLimit) {
+    ) MessageBridgePolicy(portal, provers, minGasLimit) {
         if (router == address(0)) revert MessengerContractCannotBeZeroAddress();
         ROUTER = router;
     }

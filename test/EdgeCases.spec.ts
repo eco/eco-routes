@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
-import { TestProver } from '../typechain-types'
+import { TestPolicy } from '../typechain-types'
 
 describe('Edge Cases and Integration Tests', function () {
   let owner: SignerWithAddress
@@ -9,7 +9,7 @@ describe('Edge Cases and Integration Tests', function () {
   let solver: SignerWithAddress
   let portal: SignerWithAddress
 
-  let testProver: TestProver
+  let testProver: TestPolicy
 
   const sourceChain = 1
   const destChain = 137
@@ -18,8 +18,8 @@ describe('Edge Cases and Integration Tests', function () {
     ;[owner, user, solver, portal] = await ethers.getSigners()
 
     // Deploy test prover
-    const TestProver = await ethers.getContractFactory('TestProver')
-    testProver = await TestProver.deploy(portal.address)
+    const TestPolicy = await ethers.getContractFactory('TestPolicy')
+    testProver = await TestPolicy.deploy(portal.address)
 
     // Skip inbox and intent source deployment for edge case tests
     // as they're not needed for testing the prover interface directly
@@ -66,35 +66,35 @@ describe('Edge Cases and Integration Tests', function () {
     })
   })
 
-  describe('Invalid Claimant Address Tests', function () {
-    it('should skip invalid claimant address', async function () {
+  describe('Fulfillment-hash 2nd-word Tests', function () {
+    it('records a non-zero 2nd word as a fulfillmentHash (no claimant-shape check on receive)', async function () {
       const intentHash = ethers.id('test-intent')
-      const invalidClaimant =
-        '0x0000000100000000000000000000000000000000000000000000000000000001' // High bytes set
+      // v3: the 2nd word is now an opaque fulfillmentHash; any non-zero value is recorded as-is.
+      const fulfillmentHash =
+        '0x0000000100000000000000000000000000000000000000000000000000000001'
 
       // Get current chain ID
       const chainId = (await ethers.provider.getNetwork()).chainId
       const chainIdBytes = ethers.zeroPadValue(ethers.toBeHex(chainId), 8)
 
-      // Encode as chain ID + (intentHash, claimant)
+      // Encode as chain ID + (intentHash, fulfillmentHash)
       const encodedProofs = ethers.concat([
         chainIdBytes,
         intentHash,
-        invalidClaimant,
+        fulfillmentHash,
       ])
 
-      // Should succeed but skip the invalid claimant
       await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
-      // Verify intent was not proven
+      // Verify intent was proven with the supplied fulfillmentHash
       const proof = await testProver.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
-      expect(proof.destination).to.equal(0)
+      expect(proof.fulfillmentHash).to.equal(fulfillmentHash)
+      expect(proof.destination).to.equal(sourceChain)
     })
 
-    it('should skip zero claimant address', async function () {
+    it('should skip a zero 2nd word (fulfillmentHash)', async function () {
       const intentHash = ethers.id('test-intent')
-      const zeroClaimant = ethers.ZeroHash
+      const zeroFulfillment = ethers.ZeroHash
 
       // Get current chain ID
       const chainId = (await ethers.provider.getNetwork()).chainId
@@ -103,22 +103,22 @@ describe('Edge Cases and Integration Tests', function () {
       const encodedProofs = ethers.concat([
         chainIdBytes,
         intentHash,
-        zeroClaimant,
+        zeroFulfillment,
       ])
 
-      // Should succeed but skip the zero claimant
+      // Should succeed but skip the zero fulfillmentHash
       await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
       // Verify intent was not proven
       const proof = await testProver.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
       expect(proof.destination).to.equal(0)
     })
 
-    it('should skip non-EVM claimant addresses', async function () {
+    it('records a high-bytes (non-EVM shaped) 2nd word as a fulfillmentHash', async function () {
       const intentHash = ethers.id('cross-vm-intent')
-      // High bytes set - indicates non-EVM address
-      const crossVMClaimant = '0x' + 'F'.repeat(16) + '0'.repeat(47) + '1'
+      // High bytes set - previously treated as a non-EVM claimant to skip; now an opaque fulfillmentHash.
+      const fulfillmentHash = '0x' + 'f'.repeat(16) + '0'.repeat(47) + '1'
 
       // Get current chain ID
       const chainId = (await ethers.provider.getNetwork()).chainId
@@ -127,31 +127,32 @@ describe('Edge Cases and Integration Tests', function () {
       const encodedProofs = ethers.concat([
         chainIdBytes,
         intentHash,
-        crossVMClaimant,
+        fulfillmentHash,
       ])
 
       // Should not revert
       await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
-      // Verify intent was not proven (skipped)
+      // Verify intent was proven with the supplied fulfillmentHash
       const proof = await testProver.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
-      expect(proof.destination).to.equal(0)
+      expect(proof.fulfillmentHash).to.equal(fulfillmentHash)
+      expect(proof.destination).to.equal(sourceChain)
     })
   })
 
   describe('Malformed Proof Data Tests', function () {
-    it('should handle batch with mixed valid/invalid claimants', async function () {
+    it('should record all non-zero fulfillmentHashes in a batch', async function () {
       const hashes = [
         ethers.id('intent1'),
         ethers.id('intent2'),
         ethers.id('intent3'),
       ]
 
-      const claimants = [
-        ethers.zeroPadValue(solver.address, 32), // Valid
-        '0x0000000100000000000000000000000000000000000000000000000000000001', // Invalid - high bytes set
-        ethers.zeroPadValue(user.address, 32), // Valid
+      // v3: every non-zero 2nd word is recorded as a fulfillmentHash (no per-entry validity check).
+      const fulfillments = [
+        ethers.zeroPadValue(solver.address, 32),
+        '0x0000000100000000000000000000000000000000000000000000000000000001',
+        ethers.zeroPadValue(user.address, 32),
       ]
 
       // Get current chain ID
@@ -161,24 +162,20 @@ describe('Edge Cases and Integration Tests', function () {
       // Encode chain ID + all pairs
       let encodedProofs = chainIdBytes
       for (let i = 0; i < hashes.length; i++) {
-        encodedProofs = ethers.concat([encodedProofs, hashes[i], claimants[i]])
+        encodedProofs = ethers.concat([
+          encodedProofs,
+          hashes[i],
+          fulfillments[i],
+        ])
       }
 
-      // Should succeed but skip the invalid claimant
       await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
-      // Verify results - first and third should be proven, second skipped
+      // Verify results - all three should be proven with their fulfillmentHash
       for (let i = 0; i < hashes.length; i++) {
         const proof = await testProver.provenIntents(hashes[i])
-        if (i === 1) {
-          // Second one should be skipped (invalid claimant)
-          expect(proof.claimant).to.equal(ethers.ZeroAddress)
-          expect(proof.destination).to.equal(0)
-        } else {
-          // First and third should be proven
-          expect(proof.claimant).to.not.equal(ethers.ZeroAddress)
-          expect(proof.destination).to.equal(sourceChain)
-        }
+        expect(proof.fulfillmentHash).to.equal(fulfillments[i])
+        expect(proof.destination).to.equal(sourceChain)
       }
     })
 
@@ -193,9 +190,13 @@ describe('Edge Cases and Integration Tests', function () {
 
       for (let i = 0; i < numProofs; i++) {
         const intentHash = ethers.id(`intent-${i}`)
-        const claimant = ethers.zeroPadValue(ethers.toBeHex(1000 + i), 32)
+        const fulfillmentHash = ethers.zeroPadValue(ethers.toBeHex(1000 + i), 32)
 
-        encodedProofs = ethers.concat([encodedProofs, intentHash, claimant])
+        encodedProofs = ethers.concat([
+          encodedProofs,
+          intentHash,
+          fulfillmentHash,
+        ])
       }
 
       // Should process successfully
@@ -205,8 +206,8 @@ describe('Edge Cases and Integration Tests', function () {
       const checkHash = ethers.id('intent-25')
       const proof = await testProver.provenIntents(checkHash)
 
-      expect(proof.claimant).to.equal(
-        ethers.getAddress('0x' + (1025).toString(16).padStart(40, '0')),
+      expect(proof.fulfillmentHash).to.equal(
+        ethers.zeroPadValue(ethers.toBeHex(1025), 32),
       )
       expect(proof.destination).to.equal(sourceChain)
     })

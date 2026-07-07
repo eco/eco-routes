@@ -1,7 +1,7 @@
 /**
  * deploy-base-tron.ts
  *
- * Mainnet deployer: Portal + LayerZeroProver to any combination of
+ * Mainnet deployer: Portal + LayerZeroPolicy to any combination of
  * Arbitrum, Base, Optimism, Polygon, Ethereum + Tron.
  *
  * Solves the chicken-and-egg problem:
@@ -18,7 +18,7 @@
  * Skip-deployment env vars (if set, contract is reused):
  *   PORTAL_CONTRACT             existing Portal address (same on all EVM chains via CREATE3)
  *   TRON_PORTAL_CONTRACT        existing Tron Portal address
- *   TRON_LZ_PROVER              existing Tron LayerZeroProver address
+ *   TRON_LZ_PROVER              existing Tron LayerZeroPolicy address
  *
  * Optional env vars:
  *   TRON_LAYERZERO_ENDPOINT     Override Tron LZ endpoint (auto-resolved from lzDeployments.json)
@@ -261,13 +261,21 @@ class EvmDeployer {
 
     const { bytecode } = loadArtifact('Portal')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
+    const constructorArgs = this.abiCoder.encode(
+      ['address'],
+      [ethers.ZeroAddress],
+    )
+    const initCode = ethers.concat([
+      ethers.getBytes(creationCode),
+      ethers.getBytes(constructorArgs),
+    ])
     const create3 = new ethers.Contract(
       this.cfg.create3Deployer,
       CREATE3_ABI,
       this.wallet,
     )
     console.log(`  ${this.tag()} Deploying Portal via CREATE3...`)
-    const tx = await create3.deploy(creationCode, portalSalt)
+    const tx = await create3.deploy(initCode, portalSalt)
     const receipt = await tx.wait()
 
     const finalCode = await this.provider.getCode(predicted)
@@ -304,7 +312,7 @@ class EvmDeployer {
       return predicted
     }
 
-    const { bytecode } = loadArtifact('LayerZeroProver')
+    const { bytecode } = loadArtifact('LayerZeroPolicy')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
     const constructorArgs = this.abiCoder.encode(
       ['address', 'address', 'address', 'bytes32[]', 'uint256'],
@@ -405,7 +413,7 @@ class TronDeployer {
     whitelist: string[],
   ): { initCode: string; addr20hex: string } {
     const abiCoder = ethers.AbiCoder.defaultAbiCoder()
-    const { bytecode } = loadArtifact('LayerZeroProver')
+    const { bytecode } = loadArtifact('LayerZeroPolicy')
     const creationCode = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
     const constructorArgs = abiCoder.encode(
       ['address', 'address', 'address', 'bytes32[]', 'uint256'],
@@ -474,6 +482,10 @@ class TronDeployer {
 
     const { abi, bytecode } = loadArtifact('PortalTron')
     const bytecodeHex = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder()
+    const rawParameter = abiCoder
+      .encode(['address'], [ethers.ZeroAddress])
+      .slice(2)
 
     console.log('  [Tron] Deploying PortalTron via createSmartContract...')
     const deployerHex = this.tronWeb.defaultAddress.hex as string
@@ -485,6 +497,7 @@ class TronDeployer {
         callValue: 0,
         userFeePercentage: 100,
         originEnergyLimit: 10_000_000,
+        rawParameter,
       },
       deployerHex,
     )

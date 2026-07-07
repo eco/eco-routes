@@ -5,7 +5,7 @@ import {
   TestERC20,
   TestUSDT,
   Inbox,
-  TestProver,
+  TestPolicy,
   Executor,
 } from '../typechain-types'
 import {
@@ -14,7 +14,7 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers'
 import { encodeTransfer } from '../utils/encode'
 import { keccak256 } from 'ethers'
-import { hashIntent, Route, Reward, Intent } from '../utils/intent'
+import { hashIntent, hashFulfillment, Route, Reward, Intent } from '../utils/intent'
 import { addressToBytes32 } from '../utils/typeCasts'
 
 describe('Inbox Test', (): void => {
@@ -29,7 +29,7 @@ describe('Inbox Test', (): void => {
   let reward: Reward
   let rewardHash: string
   let intentHash: string
-  let mockProver: TestProver
+  let mockProver: TestPolicy
   const salt = ethers.encodeBytes32String('0x987')
   let erc20Address: string
   const timeDelta = 1000
@@ -47,7 +47,7 @@ describe('Inbox Test', (): void => {
   }> {
     const [owner, solver, dstAddr] = await ethers.getSigners()
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const executor = await ethers.getContractAt(
       'Executor',
@@ -97,8 +97,7 @@ describe('Inbox Test', (): void => {
         salt,
         deadline,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: [{ token: await erc20.getAddress(), amount: amount }],
+        keeper: solver.address,
         calls: [
           {
             target: erc20Address,
@@ -106,16 +105,17 @@ describe('Inbox Test', (): void => {
             value: 0,
           },
         ],
+        minTokens: [{ token: await erc20.getAddress(), amount: amount }],
       },
       reward: {
-        creator: solver.address,
+        keeper: solver.address,
         prover: solver.address,
         deadline,
-        nativeAmount: 0n,
         tokens: [
           {
             token: erc20Address,
-            amount: amount,
+            rate: 0n,
+            flat: amount,
           },
         ],
       },
@@ -140,7 +140,7 @@ describe('Inbox Test', (): void => {
       timeDelta,
     ))
 
-    const factory = await ethers.getContractFactory('TestProver')
+    const factory = await ethers.getContractFactory('TestPolicy')
     const inboxAddress = await inbox.getAddress()
     mockProver = await factory.deploy(inboxAddress)
   })
@@ -164,6 +164,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
@@ -184,6 +185,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidHash')
@@ -191,7 +193,7 @@ describe('Inbox Test', (): void => {
     it('should revert via InvalidHash if all intent data was input correctly, but the intent used a different inbox on creation', async () => {
       const anotherPortal = await (
         await ethers.getContractFactory('Portal')
-      ).deploy()
+      ).deploy(ethers.ZeroAddress)
       const anotherInbox = await ethers.getContractAt(
         'Inbox',
         await anotherPortal.getAddress(),
@@ -216,6 +218,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'InvalidPortal')
@@ -232,6 +235,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             ethers.ZeroHash,
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(inbox, 'ZeroClaimant')
@@ -246,6 +250,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(erc20, 'ERC20InsufficientAllowance')
@@ -278,6 +283,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(executor, 'CallFailed')
@@ -309,6 +315,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       )
@@ -317,8 +324,8 @@ describe('Inbox Test', (): void => {
     })
 
     it('should succeed with storage proving', async () => {
-      let claimant = await mockProver.destFulfillment(intentHash)
-      expect(claimant).to.equal(ethers.ZeroHash)
+      let fulfillment = await mockProver.destFulfillment(intentHash)
+      expect(fulfillment).to.equal(ethers.ZeroHash)
 
       expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
       expect(await erc20.balanceOf(dstAddr.address)).to.equal(0)
@@ -335,14 +342,19 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       )
         .to.emit(inbox, 'IntentFulfilled')
         .withArgs(intentHash, ethers.zeroPadValue(dstAddr.address, 32))
-      // should update the fulfilled hash
-      claimant = await mockProver.destFulfillment(intentHash)
-      expect(claimant).to.equal(ethers.zeroPadValue(dstAddr.address, 32))
+      // should update the fulfilled hash (hash-only fact: fulfillmentHash, not the claimant)
+      fulfillment = await mockProver.destFulfillment(intentHash)
+      expect(fulfillment).to.equal(
+        hashFulfillment(intentHash, addressToBytes32(dstAddr.address), [
+          mintAmount,
+        ]),
+      )
 
       // check balances
       expect(await erc20.balanceOf(solver.address)).to.equal(0)
@@ -350,8 +362,12 @@ describe('Inbox Test', (): void => {
     })
 
     it('should revert if the intent has already been fulfilled', async () => {
-      // transfer the tokens to the inbox so it can process the transaction
-      await erc20.connect(solver).approve(await inbox.getAddress(), mintAmount)
+      // Fund/approve enough for TWO executions so the 2nd fulfill reaches the prover's
+      // one-shot gate (recordFulfillment) rather than failing earlier on token transfer.
+      await erc20.mint(solver.address, mintAmount)
+      await erc20
+        .connect(solver)
+        .approve(await inbox.getAddress(), mintAmount * 2)
 
       // should emit an event
       await expect(
@@ -362,6 +378,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.not.be.reverted
@@ -374,6 +391,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.be.revertedWithCustomError(mockProver, 'IntentAlreadyFulfilled')
@@ -383,10 +401,10 @@ describe('Inbox Test', (): void => {
       const ethAmount = ethers.parseEther('1.0')
       const insufficientAmount = ethers.parseEther('0.5')
 
-      // Create intent with ETH amount
+      // Create intent with ETH amount (native folds in as the address(0) minTokens leg)
       const _route: Route = {
         ...route,
-        nativeAmount: ethAmount,
+        minTokens: [{ token: ethers.ZeroAddress, amount: ethAmount }],
         calls: [
           {
             target: dstAddr.address,
@@ -413,6 +431,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [ethAmount],
             await mockProver.getAddress(),
             { value: insufficientAmount },
           ),
@@ -429,6 +448,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [ethAmount],
             await mockProver.getAddress(),
           ),
       )
@@ -439,10 +459,10 @@ describe('Inbox Test', (): void => {
     it('should send ETH if one of the targets is an EOA', async () => {
       const ethAmount = ethers.parseEther('1.0')
 
-      // Create intent with ETH transfer to EOA
+      // Create intent with ETH transfer to EOA (native folds in as the address(0) minTokens leg)
       const _route: Route = {
         ...route,
-        nativeAmount: ethAmount, // Update nativeAmount to match the call value
+        minTokens: [{ token: ethers.ZeroAddress, amount: ethAmount }],
         calls: [
           {
             target: dstAddr.address,
@@ -472,6 +492,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [ethAmount],
             await mockProver.getAddress(),
             { value: ethAmount },
           ),
@@ -493,7 +514,7 @@ describe('Inbox Test', (): void => {
 
       const _route: Route = {
         ...route,
-        tokens: [
+        minTokens: [
           {
             token: await testUSDT.getAddress(),
             amount: mintAmount,
@@ -531,6 +552,7 @@ describe('Inbox Test', (): void => {
             _route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       )
@@ -565,6 +587,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
           ),
       ).to.not.be.reverted
@@ -590,8 +613,13 @@ describe('Inbox Test', (): void => {
       // Check the arrays separately
       const intentHashes = await mockProver.argIntentHashes(0)
       expect(intentHashes).to.equal(intentHash)
-      const claimants = await mockProver.argClaimants(0)
-      expect(claimants).to.equal(addressToBytes32(dstAddr.address))
+      // The 2nd wire word is now the fulfillmentHash, not the claimant
+      const fulfillments = await mockProver.argClaimants(0)
+      expect(fulfillments).to.equal(
+        hashFulfillment(intentHash, addressToBytes32(dstAddr.address), [
+          mintAmount,
+        ]),
+      )
     })
   })
 
@@ -621,6 +649,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(dstAddr.address),
+            [mintAmount],
             await mockProver.getAddress(),
             sourceChainID,
             '0x',
@@ -636,8 +665,13 @@ describe('Inbox Test', (): void => {
       // Check the arrays separately
       const intentHashes = await mockProver.argIntentHashes(0)
       expect(intentHashes).to.equal(intentHash)
-      const claimants = await mockProver.argClaimants(0)
-      expect(claimants).to.equal(addressToBytes32(dstAddr.address))
+      // The 2nd wire word is now the fulfillmentHash, not the claimant
+      const fulfillments = await mockProver.argClaimants(0)
+      expect(fulfillments).to.equal(
+        hashFulfillment(intentHash, addressToBytes32(dstAddr.address), [
+          mintAmount,
+        ]),
+      )
     })
 
     it('should handle fulfillAndProve with address claimant', async () => {
@@ -653,6 +687,7 @@ describe('Inbox Test', (): void => {
             route,
             rewardHash,
             addressToBytes32(validClaimant),
+            [mintAmount],
             await mockProver.getAddress(),
             sourceChainID,
             '0x',
@@ -661,9 +696,13 @@ describe('Inbox Test', (): void => {
         .to.emit(inbox, 'IntentFulfilled')
         .withArgs(intentHash, ethers.zeroPadValue(validClaimant, 32))
 
-      // Verify the claimant was stored correctly
-      const storedClaimant = await mockProver.destFulfillment(intentHash)
-      expect(storedClaimant).to.equal(ethers.zeroPadValue(validClaimant, 32))
+      // Verify the fulfillment fact (hash-only) was stored correctly
+      const storedFulfillment = await mockProver.destFulfillment(intentHash)
+      expect(storedFulfillment).to.equal(
+        hashFulfillment(intentHash, addressToBytes32(validClaimant), [
+          mintAmount,
+        ]),
+      )
     })
   })
 })

@@ -16,6 +16,7 @@ contract TestDestinationSettler is DestinationSettler {
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
+        uint256[] memory _providedAmounts,
         address _prover,
         uint64 _source,
         bytes memory _data
@@ -27,6 +28,7 @@ contract TestDestinationSettler is DestinationSettler {
                 _route,
                 _rewardHash,
                 _claimant,
+                _providedAmounts,
                 _prover,
                 _source,
                 _data

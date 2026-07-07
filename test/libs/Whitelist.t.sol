@@ -23,7 +23,7 @@ contract WhitelistTest is BaseTest {
         super.setUp();
 
         // Setup whitelist
-        whitelist.push(bytes32(uint256(uint160(creator))));
+        whitelist.push(bytes32(uint256(uint160(keeper))));
         whitelist.push(bytes32(uint256(uint160(claimant))));
 
         vm.startPrank(deployer);
@@ -33,7 +33,7 @@ contract WhitelistTest is BaseTest {
     }
 
     function testWhitelistBasicFunctionality() public view {
-        bytes32 addr1 = bytes32(uint256(uint160(creator)));
+        bytes32 addr1 = bytes32(uint256(uint160(keeper)));
         bytes32 addr2 = bytes32(uint256(uint160(claimant)));
         bytes32 addr3 = bytes32(uint256(uint160(otherPerson)));
 
@@ -50,12 +50,12 @@ contract WhitelistTest is BaseTest {
     function testWhitelistGetWhitelist() public view {
         bytes32[] memory retrieved = testWhitelist.getWhitelist();
         assertEq(retrieved.length, 2);
-        assertEq(retrieved[0], bytes32(uint256(uint160(creator))));
+        assertEq(retrieved[0], bytes32(uint256(uint160(keeper))));
         assertEq(retrieved[1], bytes32(uint256(uint160(claimant))));
     }
 
     function testWhitelistValidation() public {
-        bytes32 validAddr = bytes32(uint256(uint160(creator)));
+        bytes32 validAddr = bytes32(uint256(uint160(keeper)));
         bytes32 invalidAddr = bytes32(uint256(uint160(otherPerson)));
 
         // Should not revert for valid address
@@ -72,7 +72,7 @@ contract WhitelistTest is BaseTest {
     }
 
     function testWhitelistEmptyList() public {
-        bytes32 anyAddr = bytes32(uint256(uint160(creator)));
+        bytes32 anyAddr = bytes32(uint256(uint160(keeper)));
         assertFalse(emptyWhitelist.isWhitelisted(anyAddr));
 
         vm.expectRevert(
@@ -85,7 +85,7 @@ contract WhitelistTest is BaseTest {
     }
 
     function testWhitelistGasConsumption() public view {
-        bytes32 addr = bytes32(uint256(uint160(creator)));
+        bytes32 addr = bytes32(uint256(uint160(keeper)));
 
         uint256 gasBefore = gasleft();
         testWhitelist.isWhitelisted(addr);

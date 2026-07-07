@@ -8,7 +8,7 @@ jest.mock('../sr-build-package', () => {
   const originalModule = jest.requireActual('../sr-build-package')
   return {
     ...originalModule,
-    CONTRACT_TYPES: ['IntentSource', 'Inbox', 'HyperProver'],
+    CONTRACT_TYPES: ['IntentSource', 'Inbox', 'HyperPolicy'],
     buildPackage: jest.fn().mockImplementation(async (context) => {
       if (context?.nextRelease) {
         if (context.mock_should_fail) {
@@ -149,7 +149,7 @@ describe('Semantic Release Build Package', () => {
       // Assert: Check CONTRACT_TYPES values
       expect(CONTRACT_TYPES).toContain('IntentSource')
       expect(CONTRACT_TYPES).toContain('Inbox')
-      expect(CONTRACT_TYPES).toContain('HyperProver')
+      expect(CONTRACT_TYPES).toContain('HyperPolicy')
       expect(CONTRACT_TYPES.length).toBe(3)
     })
   })

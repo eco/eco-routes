@@ -2,15 +2,15 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {MetaProver} from "../../contracts/prover/MetaProver.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
+import {MetaPolicy} from "../../contracts/prover/MetaPolicy.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {IMessageBridgePolicy} from "../../contracts/interfaces/IMessageBridgePolicy.sol";
 import {TestMetaRouter} from "../../contracts/test/TestMetaRouter.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 
 contract MetaProverTest is BaseTest {
-    MetaProver internal metaProver;
+    MetaPolicy internal metaProver;
     TestMetaRouter internal metaRouter;
 
     address internal metaRouterAddress;
@@ -28,8 +28,8 @@ contract MetaProverTest is BaseTest {
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(address(prover))));
 
-        // Deploy MetaProver
-        metaProver = new MetaProver(
+        // Deploy MetaPolicy
+        metaProver = new MetaPolicy(
             metaRouterAddress,
             address(portal),
             provers,
@@ -38,14 +38,14 @@ contract MetaProverTest is BaseTest {
 
         vm.stopPrank();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
     }
 
     function _encodeProverData(
         bytes32 sourceChainProver,
         uint256 gasLimit
     ) internal pure returns (bytes memory) {
-        MetaProver.UnpackedData memory unpacked = MetaProver.UnpackedData({
+        MetaPolicy.UnpackedData memory unpacked = MetaPolicy.UnpackedData({
             sourceChainProver: sourceChainProver,
             gasLimit: gasLimit
         });
@@ -96,7 +96,7 @@ contract MetaProverTest is BaseTest {
     }
 
     function testImplementsIProverInterface() public view {
-        assertTrue(metaProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(metaProver.supportsInterface(type(IPolicy).interfaceId));
     }
 
     function testProveIntent() public {
@@ -107,7 +107,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -137,7 +137,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -160,7 +160,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -181,11 +181,11 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        vm.deal(creator, 1 ether);
+        vm.deal(keeper, 1 ether);
         vm.expectRevert(); // Should revert with access control error
-        vm.prank(creator);
+        vm.prank(keeper);
         metaProver.prove{value: 1 ether}(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             _encodeProverData(
@@ -205,7 +205,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -240,7 +240,7 @@ contract MetaProverTest is BaseTest {
                 _record(intentHashes, claimants);
             }
             _proveWithFunding(
-                creator,
+                keeper,
                 uint64(destinations[i]),
                 intentHashes,
                 claimants,
@@ -255,15 +255,15 @@ contract MetaProverTest is BaseTest {
         }
     }
 
-    function testProveIntentWithDifferentCreators() public {
-        address[] memory creators = new address[](3);
-        creators[0] = makeAddr("creator1");
-        creators[1] = makeAddr("creator2");
-        creators[2] = makeAddr("creator3");
+    function testProveIntentWithDifferentKeepers() public {
+        address[] memory keepers = new address[](3);
+        keepers[0] = makeAddr("keeper1");
+        keepers[1] = makeAddr("keeper2");
+        keepers[2] = makeAddr("keeper3");
 
-        for (uint256 i = 0; i < creators.length; i++) {
+        for (uint256 i = 0; i < keepers.length; i++) {
             Intent memory testIntent = intent;
-            testIntent.reward.creator = creators[i];
+            testIntent.reward.keeper = keepers[i];
             bytes32 intentHash = _hashIntent(testIntent);
 
             bytes32[] memory intentHashes = new bytes32[](1);
@@ -273,7 +273,7 @@ contract MetaProverTest is BaseTest {
 
             _record(intentHashes, claimants);
             _proveWithFunding(
-                creator,
+                keeper,
                 uint64(block.chainid),
                 intentHashes,
                 claimants,
@@ -315,7 +315,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes1, claimants1);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes1,
             claimants1,
@@ -327,7 +327,7 @@ contract MetaProverTest is BaseTest {
         );
         _record(intentHashes2, claimants2);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes2,
             claimants2,
@@ -354,7 +354,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             0,
             intentHashes,
             claimants,
@@ -380,7 +380,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             type(uint32).max,
             intentHashes,
             claimants,
@@ -394,9 +394,9 @@ contract MetaProverTest is BaseTest {
         assertEq(metaRouter.destinationDomain(), type(uint32).max);
     }
 
-    function testProveIntentWithZeroCreator() public {
+    function testProveIntentWithZeroKeeper() public {
         Intent memory testIntent = intent;
-        testIntent.reward.creator = address(0);
+        testIntent.reward.keeper = address(0);
         bytes32 intentHash = _hashIntent(testIntent);
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -406,7 +406,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -435,7 +435,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        // MetaProver stores proof data when it receives a message via handle(), not when prove() is called
+        // MetaPolicy stores proof data when it receives a message via handle(), not when prove() is called
         // Simulate receiving a message from the source chain prover
         vm.prank(address(metaRouter));
         metaProver.handle(
@@ -446,13 +446,13 @@ contract MetaProverTest is BaseTest {
             new bytes[](0)
         );
 
-        IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        IPolicy.ProofData memory proof = metaProver.provenIntents(intentHash);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destination, uint32(block.chainid));
     }
 
     function testSupportsInterface() public view {
-        assertTrue(metaProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(metaProver.supportsInterface(type(IPolicy).interfaceId));
         assertTrue(metaProver.supportsInterface(0x01ffc9a7)); // ERC165
     }
 
@@ -460,7 +460,7 @@ contract MetaProverTest is BaseTest {
         assertFalse(metaProver.supportsInterface(0x12345678));
     }
 
-    // MetaProver specific tests
+    // MetaPolicy specific tests
     function testMetaRouterIntegration() public {
         bytes32 intentHash = _hashIntent(intent);
 
@@ -471,7 +471,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -498,7 +498,7 @@ contract MetaProverTest is BaseTest {
         uint256 gasStart = gasleft();
 
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -527,7 +527,7 @@ contract MetaProverTest is BaseTest {
         _record(intentHashes, claimants);
         vm.expectRevert();
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -560,7 +560,7 @@ contract MetaProverTest is BaseTest {
         bytes32[] memory claimants = new bytes32[](0);
 
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -577,7 +577,7 @@ contract MetaProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(testIntent);
 
         // Test with gas limit encoded in data parameter
-        // MetaProver expects: sourceChainProver (32 bytes) + gasLimit (32 bytes)
+        // MetaPolicy expects: sourceChainProver (32 bytes) + gasLimit (32 bytes)
         bytes memory gasLimitData = abi.encode(
             bytes32(uint256(uint160(address(prover)))), // sourceChainProver
             uint256(200000) // custom gas limit
@@ -590,7 +590,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -611,12 +611,12 @@ contract MetaProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         uint256 overpayment = 5 ether;
-        vm.deal(creator, 10 ether);
-        uint256 initialBalance = creator.balance;
+        vm.deal(keeper, 10 ether);
+        uint256 initialBalance = keeper.balance;
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -629,7 +629,7 @@ contract MetaProverTest is BaseTest {
 
         // Should receive refund of overpayment minus actual fee
         // Fee is 0.001 ether, so refund should be 4.999 ether
-        assertEq(creator.balance, initialBalance + overpayment - 0.001 ether);
+        assertEq(keeper.balance, initialBalance + overpayment - 0.001 ether);
     }
 
     function testProveWithMinimumGasLimitEnforcement() public {
@@ -643,7 +643,7 @@ contract MetaProverTest is BaseTest {
         // destination store is one-shot per hash).
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -656,7 +656,7 @@ contract MetaProverTest is BaseTest {
 
         // Test with zero gas limit (should be automatically increased to MIN_GAS_LIMIT)
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -732,7 +732,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -772,7 +772,7 @@ contract MetaProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         _proveWithFunding(
-            creator,
+            keeper,
             uint64(block.chainid),
             intentHashes,
             claimants,
@@ -814,10 +814,13 @@ contract MetaProverTest is BaseTest {
         );
 
         // Verify proof exists with wrong chain ID
-        IProver.ProofData memory proofBefore = metaProver.provenIntents(
+        IPolicy.ProofData memory proofBefore = metaProver.provenIntents(
             intentHash
         );
-        assertEq(proofBefore.claimant, claimant);
+        assertEq(
+            proofBefore.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofBefore.destination, wrongDestinationChainId);
 
         // Challenge the proof with correct destination chain ID
@@ -833,10 +836,10 @@ contract MetaProverTest is BaseTest {
         );
 
         // Verify proof was cleared
-        IProver.ProofData memory proofAfter = metaProver.provenIntents(
+        IPolicy.ProofData memory proofAfter = metaProver.provenIntents(
             intentHash
         );
-        assertEq(proofAfter.claimant, address(0));
+        assertEq(proofAfter.fulfillmentHash, bytes32(0));
         assertEq(proofAfter.destination, 0);
     }
 
@@ -865,10 +868,13 @@ contract MetaProverTest is BaseTest {
         );
 
         // Verify proof exists
-        IProver.ProofData memory proofBefore = metaProver.provenIntents(
+        IPolicy.ProofData memory proofBefore = metaProver.provenIntents(
             intentHash
         );
-        assertEq(proofBefore.claimant, claimant);
+        assertEq(
+            proofBefore.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofBefore.destination, testIntent.destination);
 
         // Challenge the proof with same destination chain ID
@@ -883,10 +889,13 @@ contract MetaProverTest is BaseTest {
         );
 
         // Verify proof remains unchanged (correct chain ID)
-        IProver.ProofData memory proofAfter = metaProver.provenIntents(
+        IPolicy.ProofData memory proofAfter = metaProver.provenIntents(
             intentHash
         );
-        assertEq(proofAfter.claimant, claimant);
+        assertEq(
+            proofAfter.fulfillmentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
         assertEq(proofAfter.destination, testIntent.destination);
     }
 
@@ -920,7 +929,7 @@ contract MetaProverTest is BaseTest {
 
         // Expect event emission for proof clearing
         _expectEmit();
-        emit IProver.IntentProofInvalidated(intentHash);
+        emit IPolicy.IntentProofInvalidated(intentHash);
 
         // Challenge the proof
         vm.prank(otherPerson);

@@ -76,9 +76,9 @@ contract OriginSettlerTest is BaseTest {
         vm.prank(deployer);
         originSettler = new TestOriginSettler();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
+        _mintAndApprove(keeper, MINT_AMOUNT);
         _mintAndApprove(user, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _fundUserNative(keeper, 10 ether);
         _fundUserNative(user, 10 ether);
     }
 
@@ -207,7 +207,7 @@ contract OriginSettlerTest is BaseTest {
 
         // The domain separator should be unique to this contract instance
         // Deploy another Portal and verify they have different domain separators
-        Portal portal2 = new Portal();
+        Portal portal2 = new Portal(address(0));
         bytes32 domainSeparator3 = portal2.domainSeparatorV4();
 
         // Domain separators should be different due to different contract addresses
@@ -247,7 +247,7 @@ contract OriginSettlerTest is BaseTest {
 
         // Deploy a new Portal on a different chain ID
         vm.chainId(999);
-        Portal portalDifferentChain = new Portal();
+        Portal portalDifferentChain = new Portal(address(0));
         bytes32 domainSeparator2 = portalDifferentChain.domainSeparatorV4();
 
         // Domain separators should be different on different chains
@@ -255,7 +255,7 @@ contract OriginSettlerTest is BaseTest {
 
         // Deploy another Portal on the original chain
         vm.chainId(1);
-        Portal portalSameChain = new Portal();
+        Portal portalSameChain = new Portal(address(0));
         bytes32 domainSeparator3 = portalSameChain.domainSeparatorV4();
 
         // Domain separator should be different from the first portal due to different addresses

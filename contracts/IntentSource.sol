@@ -6,51 +6,69 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {IProver} from "./interfaces/IProver.sol";
+import {IPolicy} from "./interfaces/IPolicy.sol";
 import {IIntentSource} from "./interfaces/IIntentSource.sol";
-import {IVault} from "./interfaces/IVault.sol";
+import {IAccount} from "./interfaces/IAccount.sol";
 import {IPermit} from "./interfaces/IPermit.sol";
 
-import {Intent, Route, Reward} from "./types/Intent.sol";
+import {Intent, Reward, RewardToken, IntentLib} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
 import {OriginSettler} from "./ERC7683/OriginSettler.sol";
-import {Clones} from "./vault/Clones.sol";
+import {Clones} from "./account/Clones.sol";
 
 /**
  * @title IntentSource
  * @notice Abstract contract for managing cross-chain intents and their associated rewards on the source chain
- * @dev Base contract containing all core intent functionality for EVM chains
+ * @dev Base contract containing all core intent functionality for EVM chains. Rewards are rate+flat
+ *      legs escrowed in a per-intent Account. Settlement supplies the proven `(claimant, fulfilled[])`
+ *      preimage, which is checked against the prover's hash-only fact; the Account then consults the
+ *      prover (as a view) for the per-leg amounts and pays the claimant, sweeping the residual to the
+ *      keeper.
  */
 abstract contract IntentSource is OriginSettler, IIntentSource {
     using SafeERC20 for IERC20;
     using AddressConverter for address;
+    using AddressConverter for bytes32;
     using Clones for address;
     using Math for uint256;
 
     /// @dev CREATE2 prefix for deterministic address calculation (0xff for EVM, 0x41 for Tron)
     bytes1 private immutable CREATE2_PREFIX;
 
-    /// @dev Implementation contract address for vault cloning
-    address private immutable VAULT_IMPLEMENTATION;
+    /// @dev Implementation contract address for account cloning
+    address private immutable ACCOUNT_IMPLEMENTATION;
+
+    /// @dev ERC20 token address that this deployment's native asset is aliased to (i.e. its balance
+    ///      mirrors `address(this).balance` on every account), or `address(0)` if this deployment has
+    ///      no such alias. Used only to keep {recoverToken} from treating the native and
+    ///      aliased-ERC20 views of the same underlying balance as two independent, separately
+    ///      recoverable assets.
+    address private immutable NATIVE_ERC20;
+
     /// @dev Tracks the lifecycle status of each intent's rewards
     mapping(bytes32 => Status) private rewardStatuses;
 
     /**
      * @notice Initializes the IntentSource contract
-     * @param vaultImplementation Address of the vault implementation used for cloning
+     * @param accountImplementation Address of the account implementation used for cloning
      * @param create2Prefix CREATE2 prefix byte for the target chain (0xff for EVM, 0x41 for Tron)
+     * @param nativeErc20 ERC20 token address aliased to this deployment's native asset, or
+     *        `address(0)` if none. See {NATIVE_ERC20}.
      */
-    constructor(address vaultImplementation, bytes1 create2Prefix) {
-        VAULT_IMPLEMENTATION = vaultImplementation;
+    constructor(
+        address accountImplementation,
+        bytes1 create2Prefix,
+        address nativeErc20
+    ) {
+        ACCOUNT_IMPLEMENTATION = accountImplementation;
         CREATE2_PREFIX = create2Prefix;
+        NATIVE_ERC20 = nativeErc20;
     }
 
     /**
      * @notice Ensures intent can be funded based on its current status
-     * @dev Prevents funding of intents that are already withdrawn or refunded
-     *      Allows funding of Initial or Funded status intents (for partial funding)
      * @param intentHash Hash of the intent to validate for funding eligibility
      */
     modifier onlyFundable(bytes32 intentHash) {
@@ -151,15 +169,15 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Calculates the deterministic address of the intent vault
-     * @param intent Intent to calculate vault address for
-     * @return Address of the intent vault
+     * @notice Calculates the deterministic address of the intent account
+     * @param intent Intent to calculate account address for
+     * @return Address of the intent account
      */
-    function intentVaultAddress(
+    function intentAccountAddress(
         Intent calldata intent
     ) public view returns (address) {
         return
-            intentVaultAddress(
+            intentAccountAddress(
                 intent.destination,
                 abi.encode(intent.route),
                 intent.reward
@@ -167,20 +185,20 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Calculates the deterministic address of the intent vault
+     * @notice Calculates the deterministic address of the intent account
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
-     * @return Address of the intent vault
+     * @return Address of the intent account
      */
-    function intentVaultAddress(
+    function intentAccountAddress(
         uint64 destination,
         bytes memory route,
         Reward calldata reward
     ) public view returns (address) {
         (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
 
-        return _getVault(intentHash);
+        return _getAccount(intentHash);
     }
 
     /**
@@ -211,20 +229,27 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     ) public view returns (bool) {
         (bytes32 intentHash, , ) = getIntentHash(destination, route, reward);
 
+        if (rewardStatuses[intentHash] == Status.Funded) {
+            return true;
+        }
+
         return
-            rewardStatuses[intentHash] == Status.Funded ||
-            _isRewardFunded(reward, _getVault(intentHash));
+            _isRewardFunded(
+                reward,
+                _rewardTargets(reward.tokens),
+                _getAccount(intentHash)
+            );
     }
 
     /**
      * @notice Creates an intent without funding
      * @param intent The complete intent struct to be published
      * @return intentHash Hash of the created intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publish(
         Intent calldata intent
-    ) public returns (bytes32 intentHash, address vault) {
+    ) public returns (bytes32 intentHash, address account) {
         return
             publish(
                 intent.destination,
@@ -239,15 +264,20 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
      * @return intentHash Hash of the created intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publish(
         uint64 destination,
         bytes memory route,
         Reward memory reward
-    ) public returns (bytes32 intentHash, address vault) {
+    ) public returns (bytes32 intentHash, address account) {
+        // Validate reward legs on the source. The route is treated as opaque bytes (cross-VM
+        // compatibility), so only the route-free checks run here (uniqueness + bound); `minTokens` ordering
+        // is enforced at the destination fulfill.
+        IntentLib.requireUniqueRewardTokens(reward.tokens, NATIVE_ERC20);
+
         (intentHash, , ) = getIntentHash(destination, route, reward);
-        vault = _getVault(intentHash);
+        account = _getAccount(intentHash);
 
         _validatePublish(intentHash);
         _emitIntentPublished(intentHash, destination, route, reward);
@@ -258,12 +288,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param intent The complete intent struct to be published and funded
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFund(
         Intent calldata intent,
         bool allowPartial
-    ) public payable returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address account) {
         return
             publishAndFund(
                 intent.destination,
@@ -280,14 +310,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param reward The reward structure containing distribution details
      * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFund(
         uint64 destination,
         bytes memory route,
         Reward calldata reward,
         bool allowPartial
-    ) public payable returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address account) {
         return
             _publishAndFund(
                 destination,
@@ -316,8 +346,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         _fundIntent(
             intentHash,
-            _getVault(intentHash),
+            _getAccount(intentHash),
             reward,
+            _rewardTargets(reward.tokens),
             msg.sender,
             allowPartial
         );
@@ -329,9 +360,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the route component
      * @param reward Reward structure containing distribution details
+     * @param allowPartial Whether to allow partial funding
      * @param funder Address to fund the intent from
      * @param permitContract Address of the permitContract instance
-     * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the funded intent
      */
     function fundFor(
@@ -346,6 +377,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         _fundIntentFor(
             reward,
+            _rewardTargets(reward.tokens),
             intentHash,
             allowPartial,
             funder,
@@ -356,17 +388,18 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     /**
      * @notice Creates and funds an intent using permit/allowance
      * @param intent The complete intent struct
+     * @param allowPartial Whether to allow partial funding
      * @param funder Address to fund the intent from
      * @param permitContract Address of the permitContract instance
-     * @param allowPartial Whether to allow partial funding
      * @return intentHash Hash of the created and funded intent
+     * @return account Address of the created account
      */
     function publishAndFundFor(
         Intent calldata intent,
         bool allowPartial,
         address funder,
         address permitContract
-    ) public payable returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address account) {
         return
             publishAndFundFor(
                 intent.destination,
@@ -383,11 +416,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
+     * @param allowPartial Whether to accept partial funding
      * @param funder The address providing the funding
      * @param permitContract The permit contract for token approvals
-     * @param allowPartial Whether to accept partial funding
      * @return intentHash Hash of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function publishAndFundFor(
         uint64 destination,
@@ -396,11 +429,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         bool allowPartial,
         address funder,
         address permitContract
-    ) public payable returns (bytes32 intentHash, address vault) {
+    ) public payable returns (bytes32 intentHash, address account) {
         (intentHash, ) = publish(destination, route, reward);
 
-        vault = _fundIntentFor(
+        account = _fundIntentFor(
             reward,
+            _rewardTargets(reward.tokens),
             intentHash,
             allowPartial,
             funder,
@@ -409,15 +443,23 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Withdraws rewards associated with an intent to its claimant
+     * @notice Settles rewards for a proven intent to its claimant
+     * @dev Reads the prover's hash-only fact, verifies the supplied `(claimant, fulfilled[])` preimage
+     *      against it, then pays the owed reward (Account consults the prover's {IPolicy-previewRelease})
+     *      to the claimant and sweeps the residual to the keeper. Keeps the wrong-destination
+     *      {IPolicy-challengeIntentProof} escape hatch.
      * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
+     * @param claimant Cross-VM claimant identifier committed in the fulfillment
+     * @param fulfilled Per-leg delivered amounts committed in the fulfillment (paired prefix)
      */
-    function withdraw(
+    function settle(
         uint64 destination,
         bytes32 routeHash,
-        Reward calldata reward
+        Reward calldata reward,
+        bytes32 claimant,
+        uint256[] calldata fulfilled
     ) public {
         (bytes32 intentHash, , bytes32 rewardHash) = getIntentHash(
             destination,
@@ -425,15 +467,16 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             reward
         );
 
-        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
+        IPolicy.ProofData memory proof = IPolicy(reward.prover).provenIntents(
             intentHash
         );
-        address claimant = proof.claimant;
 
-        // If the intent has been proven on a different chain, challenge the proof
-        if (proof.destination != destination && claimant != address(0)) {
-            // Challenge the proof and emit event
-            IProver(reward.prover).challengeIntentProof(
+        // If the intent has been proven on a different chain, challenge the proof and stop.
+        if (
+            proof.destination != destination &&
+            proof.fulfillmentHash != bytes32(0)
+        ) {
+            IPolicy(reward.prover).challengeIntentProof(
                 destination,
                 routeHash,
                 rewardHash
@@ -442,39 +485,33 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             return;
         }
 
-        _validateWithdraw(intentHash, claimant);
+        // Verify the supplied preimage against the proven hash-only fact.
+        bytes32 fulfillmentHash = IntentLib.fulfillmentHash(
+            intentHash,
+            claimant,
+            fulfilled
+        );
+        if (fulfillmentHash != proof.fulfillmentHash) {
+            revert InvalidFulfillmentProof(intentHash);
+        }
+
+        // The claimant must be a valid EVM address to receive the payout on this chain.
+        if (!claimant.isValidAddress()) {
+            revert InvalidClaimant();
+        }
+        address claimantAddr = claimant.toAddress();
+
+        _validateWithdraw(intentHash, claimantAddr);
         rewardStatuses[intentHash] = Status.Withdrawn;
 
-        IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.withdraw(reward, claimant);
+        IAccount account = IAccount(_getOrDeployAccount(intentHash));
+        account.withdraw(reward, claimantAddr, fulfilled);
 
-        emit IntentWithdrawn(intentHash, claimant);
+        emit IntentWithdrawn(intentHash, claimantAddr);
     }
 
     /**
-     * @notice Batch withdraws multiple intents
-     * @param destinations Array of destination chain IDs for the intents
-     * @param routeHashes Array of route hashes for the intents
-     * @param rewards Array of reward structures for the intents
-     */
-    function batchWithdraw(
-        uint64[] calldata destinations,
-        bytes32[] calldata routeHashes,
-        Reward[] calldata rewards
-    ) external {
-        uint256 length = routeHashes.length;
-
-        if (length != rewards.length || length != destinations.length) {
-            revert ArrayLengthMismatch();
-        }
-
-        for (uint256 i = 0; i < length; ++i) {
-            withdraw(destinations[i], routeHashes[i], rewards[i]);
-        }
-    }
-
-    /**
-     * @notice Refunds rewards to the intent creator
+     * @notice Refunds rewards to the intent keeper
      * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
@@ -490,11 +527,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             reward
         );
 
-        _refund(intentHash, destination, reward, reward.creator);
+        _refund(intentHash, destination, reward, reward.keeper);
     }
 
     /**
-     * @notice Refunds rewards to a specified address (only callable by reward creator)
+     * @notice Refunds rewards to a specified address (only callable by reward keeper)
      * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
@@ -506,8 +543,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward calldata reward,
         address refundee
     ) external {
-        if (msg.sender != reward.creator) {
-            revert NotCreatorCaller(msg.sender);
+        if (msg.sender != reward.keeper) {
+            revert NotKeeperCaller(msg.sender);
         }
 
         (bytes32 intentHash, , ) = getIntentHash(
@@ -520,12 +557,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Recover tokens that were sent to the intent vault by mistake
+     * @notice Recover tokens that were sent to the intent account by mistake
      * @dev Must not be among the intent's rewards
      * @param destination Destination chain ID for the intent
      * @param routeHash Hash of the intent's route
      * @param reward Reward structure of the intent
-     * @param token Token address for handling incorrect vault transfers
+     * @param token Token address for handling incorrect account transfers
      */
     function recoverToken(
         uint64 destination,
@@ -541,15 +578,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         _validateRecover(reward, token);
 
-        IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.recover(reward.creator, token);
+        IAccount account = IAccount(_getOrDeployAccount(intentHash));
+        account.recover(reward.keeper, token);
 
-        emit IntentTokenRecovered(intentHash, reward.creator, token);
+        emit IntentTokenRecovered(intentHash, reward.keeper, token);
     }
 
     /**
      * @notice Separate function to emit the IntentPublished event
-     * @dev This helps avoid stack-too-deep errors in the calling function
      * @param intentHash Hash of the intent
      * @param destination Destination chain ID
      * @param route Encoded route data
@@ -565,26 +601,22 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             intentHash,
             destination,
             route,
-            reward.creator,
+            reward.keeper,
             reward.prover,
             reward.deadline,
-            reward.nativeAmount,
             reward.tokens
         );
     }
 
     /**
      * @notice Core OriginSettler implementation for atomic intent creation and funding
-     * @dev Implements the unified _publishAndFund method for both open() and openFor()
-     * @dev Provides replay protection through vault state checking in funding logic
-     * @dev Handles excess ETH return for optimal user experience
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
      * @param allowPartial Whether to accept partial funding
      * @param funder The address providing the funding
      * @return intentHash Hash of the created and funded intent
-     * @return vault Address of the created vault
+     * @return account Address of the created account
      */
     function _publishAndFund(
         uint64 destination,
@@ -592,39 +624,56 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward memory reward,
         bool allowPartial,
         address funder
-    ) internal override returns (bytes32 intentHash, address vault) {
-        (intentHash, vault) = publish(destination, route, reward);
+    ) internal override returns (bytes32 intentHash, address account) {
+        (intentHash, account) = publish(destination, route, reward);
 
-        _fundIntent(intentHash, vault, reward, funder, allowPartial);
+        _fundIntent(
+            intentHash,
+            account,
+            reward,
+            _rewardTargets(reward.tokens),
+            funder,
+            allowPartial
+        );
         Refund.excessNative();
     }
 
     /**
      * @notice Handles the funding of an intent - OriginSettler implementation
-     * @dev Called by _publishAndFund to atomically fund intents after creation
-     * @dev Updates reward status and validates funding completeness
      * @param intentHash Hash of the intent
-     * @param vault Address of the intent's vault
+     * @param account Address of the intent's account
      * @param reward Reward structure to fund
+     * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
      * @param funder Address providing the funds
      * @param allowPartial Whether to allow partial funding
      */
     function _fundIntent(
         bytes32 intentHash,
-        address vault,
+        address account,
         Reward memory reward,
+        uint256[] memory targets,
         address funder,
         bool allowPartial
     ) internal onlyFundable(intentHash) {
-        bool fullyFunded = _fundNative(vault, reward.nativeAmount);
+        // Reject a duplicate reward-token leg regardless of entry point. `publish` already checks this,
+        // but `fund`/`fundFor` can escrow an intent directly without a prior `publish` call — without this
+        // check here too, a duplicate leg would silently underpay the claimant (the settle-side per-leg
+        // residual sweep pays only the first matching leg and sweeps the rest to the keeper).
+        IntentLib.requireUniqueRewardTokens(reward.tokens, NATIVE_ERC20);
+
+        bool fullyFunded = true;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
-            IERC20 token = IERC20(reward.tokens[i].token);
+            address token = reward.tokens[i].token;
 
-            fullyFunded =
-                fullyFunded &&
-                _fundToken(vault, funder, token, reward.tokens[i].amount);
+            if (token == address(0)) {
+                fullyFunded = fullyFunded && _fundNative(account, targets[i]);
+            } else {
+                fullyFunded =
+                    fullyFunded &&
+                    _fundToken(account, funder, IERC20(token), targets[i]);
+            }
         }
 
         if (!allowPartial && !fullyFunded) {
@@ -639,16 +688,16 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Funds vault with native tokens (ETH)
-     * @param vault Address of the vault to fund
+     * @notice Funds account with native tokens (ETH)
+     * @param account Address of the account to fund
      * @param rewardAmount Required native token amount
-     * @return funded True if vault has sufficient native balance after funding attempt
+     * @return funded True if account has sufficient native balance after funding attempt
      */
     function _fundNative(
-        address vault,
+        address account,
         uint256 rewardAmount
     ) internal returns (bool funded) {
-        uint256 balance = vault.balance;
+        uint256 balance = account.balance;
 
         if (balance >= rewardAmount) {
             return true;
@@ -658,26 +707,26 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         uint256 transferAmount = remaining.min(msg.value);
 
         if (transferAmount > 0) {
-            payable(vault).transfer(transferAmount);
+            payable(account).transfer(transferAmount);
         }
 
         return transferAmount >= remaining;
     }
 
     /**
-     * @notice Funds vault with ERC20 tokens
-     * @param vault Address of the vault to fund
+     * @notice Funds account with ERC20 tokens
+     * @param account Address of the account to fund
      * @param token ERC20 token contract to transfer
      * @param rewardAmount Required token amount
-     * @return funded True if vault has sufficient token balance after funding attempt
+     * @return funded True if account has sufficient token balance after funding attempt
      */
     function _fundToken(
-        address vault,
+        address account,
         address funder,
         IERC20 token,
         uint256 rewardAmount
     ) internal returns (bool funded) {
-        uint256 balance = token.balanceOf(vault);
+        uint256 balance = token.balanceOf(account);
 
         if (balance >= rewardAmount) {
             return true;
@@ -689,7 +738,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             .min(token.balanceOf(funder));
 
         if (transferAmount > 0) {
-            token.safeTransferFrom(funder, vault, transferAmount);
+            token.safeTransferFrom(funder, account, transferAmount);
         }
 
         return balance + transferAmount >= rewardAmount;
@@ -698,22 +747,29 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     /**
      * @notice Funds an intent using a permit contract for gasless approvals
      * @param reward Reward structure containing funding requirements
+     * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
      * @param intentHash Hash of the intent to fund
+     * @param allowPartial Whether to allow partial funding
      * @param funder Address providing the funding
      * @param permitContract Address of permit contract for token approvals
-     * @param allowPartial Whether to allow partial funding
-     * @return vault Address of the funded vault
+     * @return account Address of the funded account
      */
     function _fundIntentFor(
         Reward calldata reward,
+        uint256[] memory targets,
         bytes32 intentHash,
         bool allowPartial,
         address funder,
         address permitContract
-    ) internal onlyFundable(intentHash) returns (address vault) {
-        vault = _getOrDeployVault(intentHash);
-        bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
+    ) internal onlyFundable(intentHash) returns (address account) {
+        // Reject a duplicate/conflicting reward-token leg regardless of entry point — see the matching
+        // check and comment in {_fundIntent}.
+        IntentLib.requireUniqueRewardTokens(reward.tokens, NATIVE_ERC20);
+
+        account = _getOrDeployAccount(intentHash);
+        bool fullyFunded = IAccount(account).fundFor{value: msg.value}(
             reward,
+            targets,
             funder,
             IPermit(permitContract)
         );
@@ -730,26 +786,26 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Validates that an intent's vault holds sufficient rewards
-     * @dev Checks both native token and ERC20 token balances
+     * @notice Validates that an intent's account holds sufficient rewards for each leg's target
      * @param reward Reward to validate
-     * @param vault Address of the intent's vault
-     * @return True if vault has sufficient funds, false otherwise
+     * @param targets Per-leg escrow targets, index-aligned with `reward.tokens`
+     * @param account Address of the intent's account
+     * @return True if account has sufficient funds, false otherwise
      */
     function _isRewardFunded(
         Reward calldata reward,
-        address vault
+        uint256[] memory targets,
+        address account
     ) internal view returns (bool) {
         uint256 rewardsLength = reward.tokens.length;
 
-        if (vault.balance < reward.nativeAmount) return false;
-
         for (uint256 i = 0; i < rewardsLength; ++i) {
             address token = reward.tokens[i].token;
-            uint256 amount = reward.tokens[i].amount;
-            uint256 balance = IERC20(token).balanceOf(vault);
+            uint256 balance = token == address(0)
+                ? account.balance
+                : IERC20(token).balanceOf(account);
 
-            if (balance < amount) return false;
+            if (balance < targets[i]) return false;
         }
 
         return true;
@@ -769,7 +825,13 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Validates that an intent can be refunded
-     * @dev Checks if intent has been proven/claimed to prevent invalid refunds
+     * @dev Hash-only anti-lock semantics: BEFORE the reward deadline, a fulfilled intent (valid proof)
+     *      must be settled, not refunded ({IntentNotClaimed}); an unfulfilled intent is not yet
+     *      refundable ({InvalidStatusForRefund}). AFTER the deadline, the reward is always refundable if
+     *      not already settled — the deadline is the definitive settlement window. This differs from v2,
+     *      where a proven intent could never be refunded: in the hash-only model the source cannot
+     *      introspect the committed claimant, so the anti-griefing guarantee (a bad-claimant fulfillment
+     *      cannot permanently lock the keeper's funds) is preserved by the deadline instead.
      * @param intentHash Hash of the intent to validate
      * @param destination Expected destination chain ID
      * @param reward Reward structure containing prover information
@@ -780,31 +842,36 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward calldata reward
     ) internal view {
         Status status = rewardStatuses[intentHash];
-        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
-            intentHash
-        );
 
-        // If proof is incorrect or no proof
-        if (proof.destination != destination || proof.claimant == address(0)) {
-            if (block.timestamp < reward.deadline) {
-                revert InvalidStatusForRefund(
-                    status,
-                    block.timestamp,
-                    reward.deadline
-                );
-            }
-
+        // After the deadline the reward is always refundable — this is the anti-lock guarantee: in the
+        // hash-only model the source cannot introspect the committed claimant, so a bad-claimant
+        // fulfillment cannot permanently lock the keeper's funds (the deadline is the definitive
+        // settlement window). A terminal (Withdrawn/Refunded) intent simply drains an already-empty
+        // account, so repeated refund / dust recovery stays reachable (v2 parity).
+        if (block.timestamp >= reward.deadline) {
             return;
         }
 
-        if (status == Status.Initial || status == Status.Funded) {
-            revert IntentNotClaimed(intentHash);
+        // Before the deadline: a fulfilled-but-unsettled intent must be settled, not refunded.
+        IPolicy.ProofData memory proof = IPolicy(reward.prover).provenIntents(
+            intentHash
+        );
+        bool hasValidProof = proof.destination == destination &&
+            proof.fulfillmentHash != bytes32(0);
+
+        if (hasValidProof) {
+            if (status == Status.Initial || status == Status.Funded) {
+                revert IntentNotClaimed(intentHash);
+            }
+            // Already settled: allow (drains any residual/dust to the refundee).
+            return;
         }
+
+        revert InvalidStatusForRefund(status, block.timestamp, reward.deadline);
     }
 
     /**
-     * @notice Validates that vault can be withdrawn from and claimant is valid
-     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant
+     * @notice Validates that account can be withdrawn from and claimant is valid
      * @param intentHash Hash of the intent
      * @param claimant Address that will receive the withdrawn rewards
      */
@@ -825,23 +892,38 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Validates that token can be recovered (not zero address and not a reward token)
-     * @dev Prevents recovery of reward tokens and zero address, allows recovery of mistaken transfers
+     * @dev Prevents recovery of reward tokens and zero address, allows recovery of mistaken transfers.
+     *      On a deployment where {NATIVE_ERC20} is configured, its ERC20 balance mirrors
+     *      `address(this).balance` on every account — they are two views of one underlying balance,
+     *      not independent balances. A native (`address(0)`) reward leg and a {NATIVE_ERC20} leg are
+     *      therefore treated as the same asset here: recovery of {NATIVE_ERC20} is also blocked
+     *      whenever the reward carries a native leg, even though `token` never literally appears in
+     *      `reward.tokens`.
      * @param reward Reward structure containing token list
      * @param token Address of the token to recover
      */
     function _validateRecover(
         Reward calldata reward,
         address token
-    ) internal pure {
+    ) internal view {
         if (token == address(0)) {
             revert InvalidRecoverToken(token);
         }
 
         uint256 rewardsLength = reward.tokens.length;
+        bool nativeLegPresent;
         for (uint256 i; i < rewardsLength; ++i) {
-            if (reward.tokens[i].token == token) {
+            address rewardToken = reward.tokens[i].token;
+            if (rewardToken == token) {
                 revert InvalidRecoverToken(token);
             }
+            if (rewardToken == address(0)) {
+                nativeLegPresent = true;
+            }
+        }
+
+        if (token == NATIVE_ERC20 && nativeLegPresent) {
+            revert InvalidRecoverToken(token);
         }
     }
 
@@ -861,32 +943,53 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         _validateRefund(intentHash, destination, reward);
         rewardStatuses[intentHash] = Status.Refunded;
 
-        IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.refund(reward, refundee);
+        IAccount account = IAccount(_getOrDeployAccount(intentHash));
+        account.refund(reward, refundee);
 
         emit IntentRefunded(intentHash, refundee);
     }
 
     /**
-     * @notice Gets existing vault address or deploys new one if needed
-     * @param intentHash Hash used as CREATE2 salt for deterministic addressing
-     * @return Address of the vault (existing or newly deployed)
+     * @notice Computes the per-leg escrow targets from the reward legs
+     * @dev Each leg's escrow target is its `flat` — the guaranteed floor reward. The source treats the
+     *      route as opaque bytes (cross-VM), so it cannot fold in the rate-scaled `minTokens` minimum; the
+     *      `rate` term is paid at settle only out of account balance in excess of the flats, always capped
+     *      at balance (money-safety). A fixed same-asset reward is `{token, rate: 0, flat: amount}`
+     *      (v2 parity). Guaranteeing a rate payout requires over-funding — refined when the per-intent
+     *      escrow budget (Pod) arrives in a later stage.
+     * @param rewardTokens The reward legs
+     * @return targets Per-leg escrow targets (each leg's `flat`), index-aligned with `rewardTokens`
      */
-    function _getOrDeployVault(bytes32 intentHash) internal returns (address) {
-        address vault = _getVault(intentHash);
-
-        return
-            vault.code.length > 0
-                ? vault
-                : VAULT_IMPLEMENTATION.clone(intentHash);
+    function _rewardTargets(
+        RewardToken[] memory rewardTokens
+    ) internal pure returns (uint256[] memory targets) {
+        uint256 len = rewardTokens.length;
+        targets = new uint256[](len);
+        for (uint256 j = 0; j < len; ++j) {
+            targets[j] = rewardTokens[j].flat;
+        }
     }
 
     /**
-     * @notice Calculates the deterministic vault address without deployment
-     * @param intentHash Hash used as CREATE2 salt for address calculation
-     * @return Predicted address of the vault
+     * @notice Gets existing account address or deploys new one if needed
+     * @param intentHash Hash used as CREATE2 salt for deterministic addressing
+     * @return Address of the account (existing or newly deployed)
      */
-    function _getVault(bytes32 intentHash) internal view returns (address) {
-        return VAULT_IMPLEMENTATION.predict(intentHash, CREATE2_PREFIX);
+    function _getOrDeployAccount(bytes32 intentHash) internal returns (address) {
+        address account = _getAccount(intentHash);
+
+        return
+            account.code.length > 0
+                ? account
+                : ACCOUNT_IMPLEMENTATION.clone(intentHash);
+    }
+
+    /**
+     * @notice Calculates the deterministic account address without deployment
+     * @param intentHash Hash used as CREATE2 salt for address calculation
+     * @return Predicted address of the account
+     */
+    function _getAccount(bytes32 intentHash) internal view returns (address) {
+        return ACCOUNT_IMPLEMENTATION.predict(intentHash, CREATE2_PREFIX);
     }
 }

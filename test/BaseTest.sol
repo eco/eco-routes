@@ -8,11 +8,11 @@ import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {TestERC20} from "../contracts/test/TestERC20.sol";
 import {BadERC20} from "../contracts/test/BadERC20.sol";
 import {FakePermit} from "../contracts/test/FakePermit.sol";
-import {TestProver} from "../contracts/test/TestProver.sol";
+import {TestPolicy} from "../contracts/test/TestPolicy.sol";
 import {Portal} from "../contracts/Portal.sol";
 import {Inbox} from "../contracts/Inbox.sol";
 import {IIntentSource} from "../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call, IntentLib} from "../contracts/types/Intent.sol";
 import {OrderData} from "../contracts/types/ERC7683.sol";
 
 contract BaseTest is Test {
@@ -23,7 +23,7 @@ contract BaseTest is Test {
     uint64 internal constant CHAIN_ID = 1;
 
     // Test addresses
-    address internal creator;
+    address internal keeper;
     address internal claimant;
     address internal otherPerson;
     address internal deployer;
@@ -32,7 +32,7 @@ contract BaseTest is Test {
     Portal internal portal;
     IIntentSource internal intentSource; // Interface for Portal
     Inbox internal inbox; // Backward compatibility alias
-    TestProver internal prover;
+    TestPolicy internal prover;
 
     // Test tokens
     TestERC20 internal tokenA;
@@ -41,16 +41,16 @@ contract BaseTest is Test {
     // Test data
     bytes32 internal salt;
     uint256 internal expiry;
-    TokenAmount[] internal routeTokens;
+    TokenAmount[] internal minTokens;
     Call[] internal calls;
-    TokenAmount[] internal rewardTokens;
+    RewardToken[] internal rewardTokens;
     Route internal route;
     Reward internal reward;
     Intent internal intent;
 
     function setUp() public virtual {
         // Setup test addresses
-        creator = makeAddr("creator");
+        keeper = makeAddr("keeper");
         claimant = makeAddr("claimant");
         otherPerson = makeAddr("otherPerson");
         deployer = makeAddr("deployer");
@@ -58,11 +58,11 @@ contract BaseTest is Test {
         vm.startPrank(deployer);
 
         // Deploy core contracts
-        portal = new Portal();
+        portal = new Portal(address(0));
         // Set backward compatibility aliases
         intentSource = IIntentSource(address(portal));
         inbox = Inbox(payable(address(portal)));
-        prover = new TestProver(address(portal));
+        prover = new TestPolicy(address(portal));
 
         // Deploy test tokens
         tokenA = new TestERC20("TokenA", "TKA");
@@ -78,8 +78,10 @@ contract BaseTest is Test {
         expiry = block.timestamp + EXPIRY_DURATION;
         salt = keccak256(abi.encodePacked(uint256(0), block.chainid));
 
-        // Setup route tokens
-        routeTokens.push(
+        // Setup the solver-input floor: one ERC20 leg (tokenA). The solver must provide at least
+        // MINT_AMOUNT of tokenA into the execution; the calls consume it (transfer to the beneficiary
+        // encoded in the call's calldata).
+        minTokens.push(
             TokenAmount({token: address(tokenA), amount: MINT_AMOUNT})
         );
 
@@ -89,27 +91,26 @@ contract BaseTest is Test {
                 target: address(tokenA),
                 data: abi.encodeWithSignature(
                     "transfer(address,uint256)",
-                    creator,
+                    keeper,
                     MINT_AMOUNT
                 ),
                 value: 0
             })
         );
 
-        // Setup reward tokens
+        // Setup reward legs (rate 0 => fixed `flat` reward, v2 parity). Leg 0 (tokenA) pairs positionally
+        // with minTokens[0]; leg 1 (tokenB) is a flat-only extra.
         rewardTokens.push(
-            TokenAmount({token: address(tokenA), amount: MINT_AMOUNT})
+            RewardToken({token: address(tokenA), rate: 0, flat: MINT_AMOUNT})
         );
         rewardTokens.push(
-            TokenAmount({token: address(tokenB), amount: MINT_AMOUNT * 2})
+            RewardToken({token: address(tokenB), rate: 0, flat: MINT_AMOUNT * 2})
         );
 
         // Create memory copies of arrays for struct assignment
-        TokenAmount[] memory routeTokensMemory = new TokenAmount[](
-            routeTokens.length
-        );
-        for (uint256 i = 0; i < routeTokens.length; i++) {
-            routeTokensMemory[i] = routeTokens[i];
+        TokenAmount[] memory minTokensMemory = new TokenAmount[](minTokens.length);
+        for (uint256 i = 0; i < minTokens.length; i++) {
+            minTokensMemory[i] = minTokens[i];
         }
 
         Call[] memory callsMemory = new Call[](calls.length);
@@ -117,34 +118,72 @@ contract BaseTest is Test {
             callsMemory[i] = calls[i];
         }
 
-        TokenAmount[] memory rewardTokensMemory = new TokenAmount[](
+        RewardToken[] memory rewardTokensMemory = new RewardToken[](
             rewardTokens.length
         );
         for (uint256 i = 0; i < rewardTokens.length; i++) {
             rewardTokensMemory[i] = rewardTokens[i];
         }
 
-        // Setup route
+        // Setup route (input-floor model: `minTokens` is what the solver provides; delivery is the job of
+        // the committed `calls`, and any unconsumed input is moved to the intent's Account).
         route = Route({
             salt: salt,
             deadline: uint64(expiry),
             portal: address(portal),
-            nativeAmount: 0,
-            tokens: routeTokensMemory,
-            calls: callsMemory
+            keeper: keeper,
+            calls: callsMemory,
+            minTokens: minTokensMemory
         });
 
         // Setup reward
         reward = Reward({
             deadline: uint64(expiry),
-            creator: creator,
+            keeper: keeper,
             prover: address(prover),
-            nativeAmount: 0,
             tokens: rewardTokensMemory
         });
 
         // Setup intent
         intent = Intent({destination: CHAIN_ID, route: route, reward: reward});
+    }
+
+    /**
+     * @notice Empty `fulfilled` / `providedAmounts` array (for intents that carry no min-tokens legs).
+     */
+    function _noFulfilled() internal pure returns (uint256[] memory) {
+        return new uint256[](0);
+    }
+
+    /**
+     * @notice Returns a copy of `arr` sorted strictly ascending by token address (native `address(0)`
+     *         first), as `Route.minTokens` requires. Insertion sort — arrays are tiny (<= MAX_IN_TOKENS).
+     */
+    function _sortTokenAmounts(
+        TokenAmount[] memory arr
+    ) internal pure returns (TokenAmount[] memory) {
+        uint256 n = arr.length;
+        for (uint256 i = 1; i < n; ++i) {
+            TokenAmount memory key = arr[i];
+            uint256 j = i;
+            while (j > 0 && uint160(arr[j - 1].token) > uint160(key.token)) {
+                arr[j] = arr[j - 1];
+                --j;
+            }
+            arr[j] = key;
+        }
+        return arr;
+    }
+
+    /**
+     * @notice The default intent's `fulfilled` / `providedAmounts`: one leg of MINT_AMOUNT, aligned with
+     *         the default `minTokens` (the solver provides exactly the floor). In the input-floor model
+     *         `fulfilled == providedAmounts`.
+     */
+    function _defaultFulfilled() internal pure returns (uint256[] memory) {
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = MINT_AMOUNT;
+        return amounts;
     }
 
     function _mintAndApprove(address user, uint256 amount) internal {
@@ -171,16 +210,41 @@ contract BaseTest is Test {
             );
     }
 
+    /**
+     * @notice Injects a proven (hash-only) fact for the default intent (fulfilled = [MINT_AMOUNT]).
+     * @param intentHash Intent hash
+     * @param destinationChainId Destination chain id
+     * @param recipient The claimant committed in the fulfillment
+     */
     function _addProof(
         bytes32 intentHash,
         uint96 destinationChainId,
         address recipient
     ) internal {
-        vm.prank(creator);
-        prover.addProvenIntent(
+        vm.prank(keeper);
+        prover.addProvenFulfillment(
             intentHash,
-            recipient,
+            bytes32(uint256(uint160(recipient))),
+            _defaultFulfilled(),
             uint64(destinationChainId)
+        );
+    }
+
+    /**
+     * @notice Settles the default intent (fulfilled = [MINT_AMOUNT]) to `claimantAddr`.
+     */
+    function _settle(
+        uint64 destination,
+        bytes32 routeHash,
+        Reward memory _reward,
+        address claimantAddr
+    ) internal {
+        intentSource.settle(
+            destination,
+            routeHash,
+            _reward,
+            bytes32(uint256(uint160(claimantAddr))),
+            _defaultFulfilled()
         );
     }
 
@@ -188,7 +252,7 @@ contract BaseTest is Test {
         Intent memory _intent,
         bool allowPartial
     ) internal {
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund(_intent, allowPartial);
     }
 
@@ -197,7 +261,7 @@ contract BaseTest is Test {
         bool allowPartial,
         uint256 value
     ) internal {
-        vm.prank(creator);
+        vm.prank(keeper);
         intentSource.publishAndFund{value: value}(_intent, allowPartial);
     }
 

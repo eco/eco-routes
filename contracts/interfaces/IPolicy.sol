@@ -2,22 +2,29 @@
 pragma solidity ^0.8.26;
 
 import {ISemver} from "./ISemver.sol";
+import {Reward} from "../types/Intent.sol";
 
 /**
- * @title IProver
- * @notice Interface for proving intent fulfillment
- * @dev Defines required functionality for proving intent execution with different
- * proof mechanisms (storage or Hyperlane)
+ * @title IPolicy
+ * @notice Interface for proving intent fulfillment and computing the reward release (v3 hash-only model)
+ * @dev The prover is the settlement policy on both chains. It records the destination fulfillment as a
+ *      HASH-ONLY fact — only `(intentHash, fulfillmentHash)` crosses chains, where
+ *      `fulfillmentHash = keccak256(abi.encode(intentHash, claimant, fulfilled))`. The `(claimant,
+ *      fulfilled[])` preimage is supplied as calldata at `settle` and verified against the proven hash;
+ *      the claimant is NOT stored in the fact. The prover also exposes {previewRelease}, a pure view the
+ *      Account consults to turn the verified `fulfilled[]` into per-leg reward amounts.
  */
-interface IProver is ISemver {
+interface IPolicy is ISemver {
     /**
      * @notice Proof data stored for each proven intent
-     * @param claimant Address eligible to claim the intent rewards
+     * @dev The claimant and per-leg amounts are NOT stored here — only their commitment
+     *      (`fulfillmentHash`) crosses chains. A zero `fulfillmentHash` means no proof was recorded.
      * @param destination Chain ID where the intent was proven
+     * @param fulfillmentHash Commitment to the proven `(intentHash, claimant, fulfilled[])` tuple
      */
     struct ProofData {
-        address claimant;
         uint64 destination;
+        bytes32 fulfillmentHash;
     }
 
     /**
@@ -60,13 +67,13 @@ interface IProver is ISemver {
      * @notice Emitted when an intent is successfully proven
      * @dev Emitted by the Prover on the source chain.
      * @param intentHash Hash of the proven intent
-     * @param claimant Address eligible to claim the intent rewards
      * @param destination Destination chain ID where the intent was proven
+     * @param fulfillmentHash Commitment to the proven `(intentHash, claimant, fulfilled[])` tuple
      */
     event IntentProven(
         bytes32 indexed intentHash,
-        address indexed claimant,
-        uint64 destination
+        uint64 indexed destination,
+        bytes32 fulfillmentHash
     );
 
     /**
@@ -90,42 +97,33 @@ interface IProver is ISemver {
 
     /**
      * @notice Records a destination-chain fulfillment for an intent
-     * @dev Called by the local Portal/Inbox after a successful {IInbox-fulfill}. The prover
-     *      is the owner of destination fulfillment storage: it records the claimant here and
-     *      later builds the cross-chain proof message from its own store. Enforces a one-shot
-     *      gate (a second fulfillment of the same intent reverts {IntentAlreadyFulfilled}).
-     *      Only the Portal may call this ({NotPortal} otherwise).
+     * @dev Called by the local Portal/Inbox after a successful {IInbox-fulfill}. Stores the hash-only
+     *      fulfillment fact (`fulfillmentHash`) and later builds the cross-chain proof message from its
+     *      own store. Enforces a one-shot gate ({IntentAlreadyFulfilled}). Only the Portal may call this
+     *      ({NotPortal} otherwise).
      * @param intentHash Hash of the fulfilled intent
      * @param destination Chain ID on which the fulfillment occurred (the local chain)
-     * @param claimant Cross-VM compatible claimant identifier eligible for the reward
+     * @param fulfillmentHash Commitment to the proven `(intentHash, claimant, fulfilled[])` tuple
      */
     function recordFulfillment(
         bytes32 intentHash,
         uint64 destination,
-        bytes32 claimant
+        bytes32 fulfillmentHash
     ) external;
 
     /**
      * @notice Initiates the proving process for intents from the destination chain
-     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer). The prover
-     *      builds the cross-chain proof message from its own destination fulfillment store, so the
-     *      caller supplies only the intent hashes to prove (each must have been recorded via
-     *      {recordFulfillment}).
+     * @dev The prover builds the cross-chain proof message from its own destination fulfillment store,
+     *      so the caller supplies only the intent hashes to prove (each must have been recorded via
+     *      {recordFulfillment}). The wire pairs are `(intentHash, fulfillmentHash)`.
      * @param sender Address of the original transaction sender
      * @param sourceChainDomainID Domain ID of the source chain
-     * @param intentHashes Intent hashes to prove; the (intentHash, claimant) wire pairs are read
+     * @param intentHashes Intent hashes to prove; the (intentHash, fulfillmentHash) wire pairs are read
      *        from this prover's destination fulfillment store
      * @param data Additional data specific to the proving implementation
      *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
-     *      Each bridge provider uses their own domain ID mapping system:
-     *      - Hyperlane: Uses custom domain IDs that may differ from chain IDs
-     *      - LayerZero: Uses endpoint IDs that map to chains differently
-     *      - Metalayer: Uses domain IDs specific to their routing system
-     *      - Polymer: Uses chainIDs
-     *      - CCIP: Uses chain selectors that are totally separate from chainIDs
-     *      You MUST consult the specific bridge provider's documentation to determine
-     *      the correct domain ID for the source chain.
+     *      Each bridge provider uses their own domain ID mapping system.
      */
     function prove(
         address sender,
@@ -137,16 +135,31 @@ interface IProver is ISemver {
     /**
      * @notice Returns the proof data for a given intent hash
      * @param intentHash Hash of the intent to query
-     * @return ProofData containing claimant and destination chain ID
+     * @return ProofData containing destination chain ID and the fulfillment commitment
      */
     function provenIntents(
         bytes32 intentHash
     ) external view returns (ProofData memory);
 
     /**
+     * @notice Computes the per-leg reward amounts owed for a set of delivered amounts (pure view)
+     * @dev The Account consults this (as a staticcall/view — no reentrancy surface) at settle to turn the
+     *      core-verified `fulfilled[]` into amounts. PAIRED legs (`j < fulfilled.length`) return
+     *      `fulfilled[j] * rate / WAD + flat`; EXTRA legs (`j >= fulfilled.length`) return `flat`. The
+     *      result is index-aligned with `reward.tokens`; the Account caps each entry at its own balance.
+     * @param reward The reward specification (its `tokens` legs define the curve)
+     * @param fulfilled The core-verified per-leg delivered amounts (paired prefix)
+     * @return payNow Per-leg uncapped reward amount, index-aligned with `reward.tokens`
+     */
+    function previewRelease(
+        Reward calldata reward,
+        uint256[] calldata fulfilled
+    ) external view returns (uint256[] memory payNow);
+
+    /**
      * @notice Challenge an intent proof if destination chain ID doesn't match
-     * @dev Can be called by anyone to remove invalid proofs. This is a safety mechanism to ensure
-     *      intents are only claimable when executed on their intended destination chains.
+     * @dev Can be called by anyone to remove invalid proofs. Safety mechanism ensuring intents are only
+     *      claimable when executed on their intended destination chains.
      * @param destination The intended destination chain ID
      * @param routeHash The hash of the intent's route
      * @param rewardHash The hash of the reward specification

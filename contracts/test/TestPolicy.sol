@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {BaseProver} from "../prover/BaseProver.sol";
-import {IProver} from "../interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../interfaces/IMessageBridgeProver.sol";
+import {BasePolicy} from "../prover/BasePolicy.sol";
+import {IPolicy} from "../interfaces/IPolicy.sol";
+import {IMessageBridgePolicy} from "../interfaces/IMessageBridgePolicy.sol";
+import {IntentLib} from "../types/Intent.sol";
 
 /**
- * @title TestProver
- * @notice Simple test implementation of BaseProver for unit testing
+ * @title TestPolicy
+ * @notice Simple test implementation of BasePolicy for unit testing
  * @dev Focuses on testing the core prove interface and proof storage
  */
-contract TestProver is BaseProver {
+contract TestPolicy is BasePolicy {
     // Track the last prove() call for testing
     struct ArgsCheck {
         address sender;
@@ -27,34 +28,60 @@ contract TestProver is BaseProver {
     bytes32[] public argIntentHashes;
     bytes32[] public argClaimants;
 
-    constructor(address _portal) BaseProver(_portal) {}
+    constructor(address _portal) BasePolicy(_portal) {}
 
     function version() external pure returns (string memory) {
         return "1.8.14-e2c12e7";
     }
 
     /**
-     * @notice Helper to manually add proven intents for testing
+     * @notice Helper to manually add a proven intent (hash-only fact) for testing
+     * @param _hash Intent hash
+     * @param _fulfillmentHash Fulfillment commitment
+     * @param _destination Destination chain id
      */
     function addProvenIntent(
         bytes32 _hash,
-        address _claimant,
+        bytes32 _fulfillmentHash,
         uint64 _destination
     ) public {
         _provenIntents[_hash] = ProofData({
-            claimant: _claimant,
-            destination: _destination
+            destination: _destination,
+            fulfillmentHash: _fulfillmentHash
         });
     }
 
     function addProvenIntentWithChain(
         bytes32 _hash,
-        address _claimant,
+        bytes32 _fulfillmentHash,
         uint64 _destination
     ) public {
         _provenIntents[_hash] = ProofData({
-            claimant: _claimant,
-            destination: _destination
+            destination: _destination,
+            fulfillmentHash: _fulfillmentHash
+        });
+    }
+
+    /**
+     * @notice Convenience helper: computes and stores the fulfillment commitment for a preimage
+     * @param _hash Intent hash
+     * @param _claimant Claimant identifier committed in the fulfillment
+     * @param _fulfilled Per-leg delivered amounts committed in the fulfillment
+     * @param _destination Destination chain id
+     */
+    function addProvenFulfillment(
+        bytes32 _hash,
+        bytes32 _claimant,
+        uint256[] memory _fulfilled,
+        uint64 _destination
+    ) public {
+        _provenIntents[_hash] = ProofData({
+            destination: _destination,
+            fulfillmentHash: IntentLib.fulfillmentHash(
+                _hash,
+                _claimant,
+                _fulfilled
+            )
         });
     }
 
@@ -122,10 +149,10 @@ contract TestProver is BaseProver {
 
         // Skip the first 8 bytes (chain ID) and extract proofs for test verification
         if (_encodedProofs.length < 8) {
-            revert IMessageBridgeProver.InvalidProofMessage();
+            revert IMessageBridgePolicy.InvalidProofMessage();
         }
         if ((_encodedProofs.length - 8) % 64 != 0) {
-            revert IProver.ArrayLengthMismatch();
+            revert IPolicy.ArrayLengthMismatch();
         }
 
         bytes calldata proofsData = _encodedProofs[8:];

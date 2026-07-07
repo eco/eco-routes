@@ -21,21 +21,23 @@ contract TestDestinationSettlerComplete is DestinationSettler {
         Route memory _route,
         bytes32 _rewardHash,
         bytes32 _claimant,
+        uint256[] memory _providedAmounts,
         address _prover,
         uint64 _source,
         bytes memory _data
     ) public payable override returns (bytes[] memory) {
-        // First, transfer tokens from the solver (msg.sender) to this contract
-        uint256 routeTokenCount = _route.tokens.length;
-        for (uint256 i = 0; i < routeTokenCount; ++i) {
-            TokenAmount memory token = _route.tokens[i];
-            IERC20(token.token).transferFrom(
-                msg.sender,
-                address(this),
-                token.amount
-            );
-            // Then approve the portal to spend these tokens
-            IERC20(token.token).approve(address(PORTAL), token.amount);
+        // Pull the provided input from the solver (msg.sender) and approve the portal to spend it.
+        uint256 inCount = _route.minTokens.length;
+        for (uint256 i = 0; i < inCount; ++i) {
+            address token = _route.minTokens[i].token;
+            if (token != address(0)) {
+                IERC20(token).transferFrom(
+                    msg.sender,
+                    address(this),
+                    _providedAmounts[i]
+                );
+                IERC20(token).approve(address(PORTAL), _providedAmounts[i]);
+            }
         }
 
         // Call the portal's fulfillAndProve function
@@ -45,6 +47,7 @@ contract TestDestinationSettlerComplete is DestinationSettler {
                 _route,
                 _rewardHash,
                 _claimant,
+                _providedAmounts,
                 _prover,
                 _source,
                 _data

@@ -67,20 +67,43 @@ interface IInbox {
     error ChainIdTooLarge(uint256 chainId);
 
     /**
-     * @notice Sent native amount is insufficient for route execution
+     * @notice Sent native amount is insufficient for the native `minTokens` leg the solver committed to
      * @param sent Amount of native tokens sent with the transaction
-     * @param required Minimum amount of native tokens required by the route
+     * @param required Native input the solver committed to provide (the native `minTokens` leg's provided
+     *        amount)
      */
     error InsufficientNativeAmount(uint256 sent, uint256 required);
 
     /**
+     * @notice The solver provided less than the min-tokens floor for a token
+     * @param token The min-tokens token (address(0) for native)
+     * @param provided The amount the solver offered to provide for this leg
+     * @param required The minimum input required by `route.minTokens`
+     */
+    error InsufficientTokens(
+        address token,
+        uint256 provided,
+        uint256 required
+    );
+
+    /**
+     * @notice `providedAmounts.length` does not match `route.minTokens.length`
+     * @param provided The supplied `providedAmounts` length
+     * @param expected The expected length (`route.minTokens.length`)
+     */
+    error ProvidedAmountsLengthMismatch(uint256 provided, uint256 expected);
+
+    /**
      * @notice Fulfills an intent, recording the fulfillment into the named prover
-     * @dev Validates intent hash, executes calls, and records the fulfillment into `prover`. The
-     *      solver names the prover (policy) that will settle the reward.
+     * @dev Validates intent hash, pulls the solver's provided input, executes calls, moves any unconsumed
+     *      input to the intent's Account, and records the fulfillment into `prover`. The solver names the
+     *      prover (policy) that will settle the reward.
      * @param intentHash The hash of the intent to fulfill
      * @param route Route information for the intent
      * @param rewardHash Hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
+     * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
+     *        `>= route.minTokens[j].amount`)
      * @param prover Prover (policy) to record the fulfillment into
      * @return Array of execution results
      */
@@ -89,16 +112,19 @@ interface IInbox {
         Route memory route,
         bytes32 rewardHash,
         bytes32 claimant,
+        uint256[] memory providedAmounts,
         address prover
     ) external payable returns (bytes[] memory);
 
     /**
      * @notice Fulfills an intent and initiates proving in one transaction
-     * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @dev Validates intent hash, pulls the solver's provided input, executes calls, and marks fulfilled
      * @param intentHash The hash of the intent to fulfill
      * @param route Route information for the intent
      * @param rewardHash Hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
+     * @param providedAmounts Per-leg input the solver provides, index-aligned with `route.minTokens` (each
+     *        `>= route.minTokens[j].amount`)
      * @param prover Address of prover on the destination chain
      * @param sourceChainDomainID Domain ID of the source chain where the intent was created
      * @param data Additional data for message formatting
@@ -119,6 +145,7 @@ interface IInbox {
         Route memory route,
         bytes32 rewardHash,
         bytes32 claimant,
+        uint256[] memory providedAmounts,
         address prover,
         uint64 sourceChainDomainID,
         bytes memory data

@@ -2,9 +2,9 @@
 pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
-import {CCIPProver} from "../../contracts/prover/CCIPProver.sol";
-import {IProver} from "../../contracts/interfaces/IProver.sol";
-import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
+import {CCIPPolicy} from "../../contracts/prover/CCIPPolicy.sol";
+import {IPolicy} from "../../contracts/interfaces/IPolicy.sol";
+import {IMessageBridgePolicy} from "../../contracts/interfaces/IMessageBridgePolicy.sol";
 import {TestCCIPRouter} from "../../contracts/test/TestCCIPRouter.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
@@ -15,7 +15,7 @@ contract CCIPProverTest is BaseTest {
     using AddressConverter for bytes32;
     using AddressConverter for address;
 
-    CCIPProver internal ccipProver;
+    CCIPPolicy internal ccipProver;
     TestCCIPRouter internal router;
 
     address internal whitelistedProver;
@@ -71,16 +71,16 @@ contract CCIPProverTest is BaseTest {
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = bytes32(uint256(uint160(whitelistedProver)));
 
-        // Deploy CCIPProver
-        ccipProver = new CCIPProver(address(router), address(portal), provers, 0);
+        // Deploy CCIPPolicy
+        ccipProver = new CCIPPolicy(address(router), address(portal), provers, 0);
 
         // Set the ccipProver as the processor for the router
         router.setProcessor(address(ccipProver));
 
         vm.stopPrank();
 
-        _mintAndApprove(creator, MINT_AMOUNT);
-        _fundUserNative(creator, 10 ether);
+        _mintAndApprove(keeper, MINT_AMOUNT);
+        _fundUserNative(keeper, 10 ether);
 
         // Fund the ccipProver contract for gas fees
         vm.deal(address(ccipProver), 10 ether);
@@ -90,7 +90,7 @@ contract CCIPProverTest is BaseTest {
 
     /**
      * @notice Helper to encode prover data for CCIP
-     * @dev Out-of-order execution is now always enabled in CCIPProver
+     * @dev Out-of-order execution is now always enabled in CCIPPolicy
      * @param sourceChainProver The prover address on the source chain
      * @param gasLimit The gas limit for execution
      * @return Encoded prover data
@@ -127,11 +127,11 @@ contract CCIPProverTest is BaseTest {
         provers[0] = bytes32(uint256(uint160(whitelistedProver)));
 
         vm.expectRevert();
-        new CCIPProver(address(0), address(portal), provers, 0);
+        new CCIPPolicy(address(0), address(portal), provers, 0);
     }
 
     function testImplementsIProverInterface() public view {
-        assertTrue(ccipProver.supportsInterface(type(IProver).interfaceId));
+        assertTrue(ccipProver.supportsInterface(type(IPolicy).interfaceId));
     }
 
     function testImplementsIAny2EVMMessageReceiverInterface() public view {
@@ -151,8 +151,8 @@ contract CCIPProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         vm.expectRevert();
-        vm.prank(creator);
-        ccipProver.prove(creator, uint64(block.chainid), intentHashes, "");
+        vm.prank(keeper);
+        ccipProver.prove(keeper, uint64(block.chainid), intentHashes, "");
     }
 
     function testProveWithValidInput() public {
@@ -171,7 +171,7 @@ contract CCIPProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         vm.prank(address(portal));
-        ccipProver.prove{value: expectedFee}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: expectedFee}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     function testProveEmitsIntentProvenEvent() public {
@@ -184,12 +184,16 @@ contract CCIPProverTest is BaseTest {
         _record(intentHashes, claimants);
 
         _expectEmit();
-        emit IProver.IntentProven(intentHash, claimant, uint64(block.chainid));
+        emit IPolicy.IntentProven(
+            intentHash,
+            uint64(block.chainid),
+            bytes32(uint256(uint160(claimant)))
+        );
 
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     function testProveBatchIntents() public {
@@ -207,12 +211,12 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
 
         // Check that all intents were proven
         for (uint256 i = 0; i < 3; i++) {
-            IProver.ProofData memory proof = ccipProver.provenIntents(intentHashes[i]);
-            assertEq(proof.claimant, claimant);
+            IPolicy.ProofData memory proof = ccipProver.provenIntents(intentHashes[i]);
+            assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         }
     }
 
@@ -223,7 +227,7 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     function testProveWithRefundHandling() public {
@@ -233,16 +237,16 @@ contract CCIPProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         uint256 overpayment = 2 ether;
-        uint256 initialBalance = creator.balance;
+        uint256 initialBalance = keeper.balance;
 
         _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: overpayment}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: overpayment}(keeper, uint64(block.chainid), intentHashes, proverData);
 
         // Should refund excess payment
-        assertTrue(creator.balance >= initialBalance - overpayment);
+        assertTrue(keeper.balance >= initialBalance - overpayment);
     }
 
     function testProveWithLargeArrays() public {
@@ -260,7 +264,7 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     // ============ ccipReceive Tests ============
@@ -275,7 +279,7 @@ contract CCIPProverTest is BaseTest {
         });
 
         vm.expectRevert();
-        vm.prank(creator);
+        vm.prank(keeper);
         ccipProver.ccipReceive(message);
     }
 
@@ -300,8 +304,8 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
 
-        IProver.ProofData memory proof = ccipProver.provenIntents(intentHashes[0]);
-        assertEq(proof.claimant, claimant);
+        IPolicy.ProofData memory proof = ccipProver.provenIntents(intentHashes[0]);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destination, CHAIN_ID);
     }
 
@@ -368,7 +372,7 @@ contract CCIPProverTest is BaseTest {
 
         // Second call should emit IntentAlreadyProven event
         _expectEmit();
-        emit IProver.IntentAlreadyProven(intentHash);
+        emit IPolicy.IntentAlreadyProven(intentHash);
 
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
@@ -386,7 +390,7 @@ contract CCIPProverTest is BaseTest {
             destTokenAmounts: new Client.EVMTokenAmount[](0)
         });
 
-        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        vm.expectRevert(IPolicy.ArrayLengthMismatch.selector);
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
     }
@@ -400,7 +404,7 @@ contract CCIPProverTest is BaseTest {
             destTokenAmounts: new Client.EVMTokenAmount[](0)
         });
 
-        vm.expectRevert(IMessageBridgeProver.MessageOriginChainDomainIDCannotBeZero.selector);
+        vm.expectRevert(IMessageBridgePolicy.MessageOriginChainDomainIDCannotBeZero.selector);
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
     }
@@ -414,7 +418,7 @@ contract CCIPProverTest is BaseTest {
             destTokenAmounts: new Client.EVMTokenAmount[](0)
         });
 
-        vm.expectRevert(IMessageBridgeProver.MessageSenderCannotBeZeroAddress.selector);
+        vm.expectRevert(IMessageBridgePolicy.MessageSenderCannotBeZeroAddress.selector);
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
     }
@@ -473,23 +477,23 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
 
         // Verify intent is proven (with chain ID = 31337 from the prove call)
-        IProver.ProofData memory proof = ccipProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != address(0));
+        IPolicy.ProofData memory proof = ccipProver.provenIntents(intentHash);
+        assertTrue(proof.fulfillmentHash != bytes32(0));
         assertEq(proof.destination, uint96(block.chainid)); // 31337
 
         // The original intent has destination = 1 (CHAIN_ID from BaseTest)
         // So challenging with the original intent should clear the proof
-        vm.prank(creator);
+        vm.prank(keeper);
         ccipProver.challengeIntentProof(
             intent.destination, keccak256(abi.encode(intent.route)), keccak256(abi.encode(intent.reward))
         );
 
         // Verify proof was cleared
         proof = ccipProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.fulfillmentHash, bytes32(0));
     }
 
     function testChallengeIntentProofWithCorrectChain() public {
@@ -508,22 +512,22 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
 
         // Verify intent is proven
-        IProver.ProofData memory proof = ccipProver.provenIntents(intentHash);
-        assertTrue(proof.claimant != address(0));
+        IPolicy.ProofData memory proof = ccipProver.provenIntents(intentHash);
+        assertTrue(proof.fulfillmentHash != bytes32(0));
         assertEq(proof.destination, uint96(block.chainid));
 
         // Challenge with correct chain should do nothing
-        vm.prank(creator);
+        vm.prank(keeper);
         ccipProver.challengeIntentProof(
             localIntent.destination, keccak256(abi.encode(localIntent.route)), keccak256(abi.encode(localIntent.reward))
         );
 
         // Verify proof is still there
         proof = ccipProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
     }
 
     // ============ Storage Tests ============
@@ -540,7 +544,7 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
 
         // Now simulate the message being received back by calling ccipReceive
         bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
@@ -556,8 +560,8 @@ contract CCIPProverTest is BaseTest {
         ccipProver.ccipReceive(message);
 
         // Now check the storage
-        IProver.ProofData memory proof = ccipProver.provenIntents(intentHash);
-        assertEq(proof.claimant, claimant);
+        IPolicy.ProofData memory proof = ccipProver.provenIntents(intentHash);
+        assertEq(proof.fulfillmentHash, bytes32(uint256(uint160(claimant))));
         assertEq(proof.destination, uint96(block.chainid));
     }
 
@@ -572,10 +576,13 @@ contract CCIPProverTest is BaseTest {
         vm.prank(address(portal));
         bytes memory proverData =
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
 
-        IProver.ProofData memory proof = ccipProver.provenIntents(intentHashes[0]);
-        assertEq(proof.claimant, nonEvmClaimant);
+        IPolicy.ProofData memory proof = ccipProver.provenIntents(intentHashes[0]);
+        assertEq(
+            proof.fulfillmentHash,
+            bytes32(uint256(uint160(nonEvmClaimant)))
+        );
     }
 
     // ============ Gas Configuration Tests ============
@@ -593,7 +600,7 @@ contract CCIPProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         vm.prank(address(portal));
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     function testProveWithOutOfOrderExecution() public {
@@ -607,7 +614,7 @@ contract CCIPProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         vm.prank(address(portal));
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     function testProveWithOutOfOrderExecutionDisabled() public {
@@ -621,7 +628,7 @@ contract CCIPProverTest is BaseTest {
 
         _record(intentHashes, claimants);
         vm.prank(address(portal));
-        ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), intentHashes, proverData);
+        ccipProver.prove{value: 1 ether}(keeper, uint64(block.chainid), intentHashes, proverData);
     }
 
     // ============ Helper Functions ============

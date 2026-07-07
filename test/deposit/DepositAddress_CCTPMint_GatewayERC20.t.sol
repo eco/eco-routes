@@ -7,7 +7,7 @@ import {DepositFactory_CCTPMint_GatewayERC20} from "../../contracts/deposit/Depo
 import {DepositAddress_CCTPMint_GatewayERC20} from "../../contracts/deposit/DepositAddress_CCTPMint_GatewayERC20.sol";
 import {BaseDepositAddress} from "../../contracts/deposit/BaseDepositAddress.sol";
 import {Portal} from "../../contracts/Portal.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
 
@@ -38,7 +38,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
     function setUp() public {
         token = new TestERC20("Test USDC", "USDC");
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         factory = new DepositFactory_CCTPMint_GatewayERC20(
             address(token),
@@ -160,7 +160,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint256 intentPublishedCount = 0;
@@ -182,7 +182,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         // Find the two IntentPublished events
@@ -192,9 +192,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == intentPublishedSig) {
-                (uint64 destination, , , , ) = abi.decode(
+                (uint64 destination, , , ) = abi.decode(
                     logs[i].data,
-                    (uint64, bytes, uint64, uint256, TokenAmount[])
+                    (uint64, bytes, uint64, RewardToken[])
                 );
 
                 if (eventIdx == 0) {
@@ -221,14 +221,14 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         // Find the first IntentPublished event (Intent 2 - Gateway deposit on destination)
         for (uint256 i = 0; i < logs.length; i++) {
             if (logs[i].topics[0] == intentPublishedSig) {
                 // Indexed fields
-                address creator = address(uint160(uint256(logs[i].topics[2])));
+                address keeper = address(uint160(uint256(logs[i].topics[2])));
                 address proverAddr = address(uint160(uint256(logs[i].topics[3])));
 
                 // Non-indexed fields
@@ -236,16 +236,15 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     uint64 destination,
                     bytes memory routeBytes,
                     , // rewardDeadline (verified in separate test)
-                    uint256 rewardNativeAmount,
-                    TokenAmount[] memory rewardTokens
+                    RewardToken[] memory rewardTokens
                 ) = abi.decode(
                     logs[i].data,
-                    (uint64, bytes, uint64, uint256, TokenAmount[])
+                    (uint64, bytes, uint64, RewardToken[])
                 );
 
                 // Verify Intent 2 targets destination chain
                 assertEq(destination, DESTINATION_CHAIN_ID, "Intent 2 destination should be destination chain");
-                assertEq(creator, DEPOSITOR, "Intent 2 creator should be depositor");
+                assertEq(keeper, DEPOSITOR, "Intent 2 keeper should be depositor");
                 assertEq(proverAddr, DESTINATION_PROVER_ADDRESS, "Intent 2 prover should be destination prover");
 
                 // Compute expected fee math: flatFee on intent1 route, CCTP maxFee on routeAmount.
@@ -253,13 +252,12 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                 uint256 maxFee = (routeAmount * MAX_FEE_BPS + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
                 uint256 netAmount = routeAmount - maxFee;
 
-                // Verify route — uses netAmount (intent2 is symmetric: reward == route == netAmount)
+                // Verify route — destination USDC is the single ERC20 min-tokens leg (intent2 is symmetric: reward == route == netAmount)
                 Route memory route = abi.decode(routeBytes, (Route));
                 assertEq(route.portal, address(portal), "Intent 2 route portal should be portal");
-                assertEq(route.nativeAmount, 0, "Intent 2 route nativeAmount should be 0 (ERC20 destination)");
-                assertEq(route.tokens.length, 1, "Intent 2 route should have one token (destination USDC)");
-                assertEq(route.tokens[0].token, DESTINATION_USDC, "Intent 2 route token should be destination USDC");
-                assertEq(route.tokens[0].amount, netAmount, "Intent 2 route token amount should be netAmount");
+                assertEq(route.minTokens.length, 1, "Intent 2 route should have one min-tokens leg (destination USDC)");
+                assertEq(route.minTokens[0].token, DESTINATION_USDC, "Intent 2 route min-tokens token should be destination USDC");
+                assertEq(route.minTokens[0].amount, netAmount, "Intent 2 route min-tokens amount should be netAmount");
                 assertEq(route.calls.length, 2, "Intent 2 route should have two calls (approve + depositFor)");
 
                 // Verify call 0: approve Gateway for USDC (netAmount)
@@ -286,10 +284,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                 assertEq(route.calls[1].data, expectedDepositForData, "Call 1 data should encode depositFor with netAmount");
 
                 // Verify reward — equals netAmount (intent2 reward and route are symmetric)
-                assertEq(rewardNativeAmount, 0, "Intent 2 reward nativeAmount should be 0 (ERC20 destination)");
                 assertEq(rewardTokens.length, 1, "Intent 2 reward should have one token (destination USDC)");
                 assertEq(rewardTokens[0].token, DESTINATION_USDC, "Intent 2 reward token should be destination USDC");
-                assertEq(rewardTokens[0].amount, netAmount, "Intent 2 reward token amount should be netAmount");
+                assertEq(rewardTokens[0].flat, netAmount, "Intent 2 reward token flat should be netAmount");
 
                 break;
             }
@@ -305,7 +302,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         // Find the second IntentPublished event (Intent 1 - CCTP burn on source chain)
@@ -316,7 +313,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     // This is the second IntentPublished event (Intent 1)
 
                     // Indexed fields
-                    address creator = address(uint160(uint256(logs[i].topics[2])));
+                    address keeper = address(uint160(uint256(logs[i].topics[2])));
                     address proverAddr = address(uint160(uint256(logs[i].topics[3])));
 
                     // Non-indexed fields
@@ -324,28 +321,26 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                         uint64 destination,
                         bytes memory routeBytes,
                         , // rewardDeadline (verified in separate test)
-                        uint256 rewardNativeAmount,
-                        TokenAmount[] memory rewardTokens
+                        RewardToken[] memory rewardTokens
                     ) = abi.decode(
                         logs[i].data,
-                        (uint64, bytes, uint64, uint256, TokenAmount[])
+                        (uint64, bytes, uint64, RewardToken[])
                     );
 
                     // Verify Intent 1 targets source chain
                     assertEq(destination, uint64(block.chainid), "Intent 1 destination should be source chain");
-                    assertEq(creator, DEPOSITOR, "Intent 1 creator should be depositor");
+                    assertEq(keeper, DEPOSITOR, "Intent 1 keeper should be depositor");
                     assertEq(proverAddr, PROVER_ADDRESS, "Intent 1 prover should be source chain prover");
 
                     // Compute expected route amount after flat fee
                     uint256 routeAmount = amount - FLAT_FEE;
 
-                    // Verify route
+                    // Verify route — source USDC is the single ERC20 min-tokens leg (routeAmount = amount - flat fee)
                     Route memory route = abi.decode(routeBytes, (Route));
                     assertEq(route.portal, address(portal), "Intent 1 route portal should be portal");
-                    assertEq(route.nativeAmount, 0, "Intent 1 route should have no native amount");
-                    assertEq(route.tokens.length, 1, "Intent 1 route should have one token");
-                    assertEq(route.tokens[0].token, address(token), "Intent 1 route token should be source USDC");
-                    assertEq(route.tokens[0].amount, routeAmount, "Intent 1 route token amount should equal amount minus flat fee");
+                    assertEq(route.minTokens.length, 1, "Intent 1 route should have one min-tokens leg");
+                    assertEq(route.minTokens[0].token, address(token), "Intent 1 route min-tokens token should be source USDC");
+                    assertEq(route.minTokens[0].amount, routeAmount, "Intent 1 route min-tokens amount should equal amount minus flat fee");
                     assertEq(route.calls.length, 2, "Intent 1 route should have two calls (approve + CCTP depositForBurn)");
 
                     // Verify approve call (calls[0])
@@ -357,10 +352,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     assertEq(route.calls[1].value, 0, "CCTP call should have no value");
 
                     // Verify reward (full deposit; flat fee delta vs route is solver profit)
-                    assertEq(rewardNativeAmount, 0, "Intent 1 reward should have no native amount");
                     assertEq(rewardTokens.length, 1, "Intent 1 reward should have one token");
                     assertEq(rewardTokens[0].token, address(token), "Intent 1 reward token should be source USDC");
-                    assertEq(rewardTokens[0].amount, amount, "Intent 1 reward amount should match full deposit");
+                    assertEq(rewardTokens[0].flat, amount, "Intent 1 reward flat should match full deposit");
 
                     break;
                 }
@@ -378,7 +372,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint256 eventIdx = 0;
@@ -390,10 +384,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                         ,
                         bytes memory routeBytes,
                         ,
-                        ,
                     ) = abi.decode(
                         logs[i].data,
-                        (uint64, bytes, uint64, uint256, TokenAmount[])
+                        (uint64, bytes, uint64, RewardToken[])
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
@@ -433,8 +426,8 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     assertEq(maxFee, expectedMaxFee, "CCTP maxFee should be 1.3 bps of routeAmount");
                     assertEq(minFinalityThreshold, 0, "CCTP minFinalityThreshold should be 0 (fast finality)");
 
-                    // mintRecipient should be vault2 encoded as bytes32
-                    // We can verify it is non-zero (vault addresses are always non-zero)
+                    // mintRecipient should be account2 encoded as bytes32
+                    // We can verify it is non-zero (account addresses are always non-zero)
                     assertTrue(mintRecipient != bytes32(0), "mintRecipient should not be zero");
 
                     break;
@@ -444,7 +437,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         }
     }
 
-    function test_createIntent_mintRecipient_matchesIntent2Vault() public {
+    function test_createIntent_mintRecipient_matchesIntent2Account() public {
         uint256 amount = 10_000 * 1e6;
         token.mint(address(depositAddress), amount);
 
@@ -453,7 +446,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         // Collect Intent 2's hash and decode Intent 1's mintRecipient
@@ -473,10 +466,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                         ,
                         bytes memory routeBytes,
                         ,
-                        ,
                     ) = abi.decode(
                         logs[i].data,
-                        (uint64, bytes, uint64, uint256, TokenAmount[])
+                        (uint64, bytes, uint64, RewardToken[])
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
@@ -500,11 +492,11 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         }
 
         // Verify that the address encoded in mintRecipient is non-zero and represents an address
-        address vault2Address = address(uint160(uint256(mintRecipient)));
-        assertTrue(vault2Address != address(0), "Intent 2 vault address should not be zero");
+        address account2Address = address(uint160(uint256(mintRecipient)));
+        assertTrue(account2Address != address(0), "Intent 2 account address should not be zero");
 
-        // The vault2 should be consistent with what portal would predict for intent2Hash
-        assertEq(mintRecipient, bytes32(uint256(uint160(vault2Address))), "mintRecipient should be properly encoded vault2 address");
+        // The account2 should be consistent with what portal would predict for intent2Hash
+        assertEq(mintRecipient, bytes32(uint256(uint160(account2Address))), "mintRecipient should be properly encoded account2 address");
     }
 
     function test_createIntent_bothIntentsUseSameSalt() public {
@@ -516,7 +508,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         bytes32 salt1;
@@ -529,10 +521,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     ,
                     bytes memory routeBytes,
                     ,
-                    ,
                 ) = abi.decode(
                     logs[i].data,
-                    (uint64, bytes, uint64, uint256, TokenAmount[])
+                    (uint64, bytes, uint64, RewardToken[])
                 );
 
                 Route memory route = abi.decode(routeBytes, (Route));
@@ -558,7 +549,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint64 rewardDeadline1;
@@ -573,10 +564,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     ,
                     bytes memory routeBytes,
                     uint64 rewardDeadline,
-                    ,
                 ) = abi.decode(
                     logs[i].data,
-                    (uint64, bytes, uint64, uint256, TokenAmount[])
+                    (uint64, bytes, uint64, RewardToken[])
                 );
 
                 Route memory route = abi.decode(routeBytes, (Route));
@@ -622,7 +612,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         // Intent 1 is the second IntentPublished event
@@ -634,23 +624,22 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                         ,
                         bytes memory routeBytes,
                         ,
-                        ,
-                        TokenAmount[] memory rewardTokens
+                        RewardToken[] memory rewardTokens
                     ) = abi.decode(
                         logs[i].data,
-                        (uint64, bytes, uint64, uint256, TokenAmount[])
+                        (uint64, bytes, uint64, RewardToken[])
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
 
                     // flat fee == reward - route on intent1 (Eco-protocol margin / solver profit)
                     assertEq(
-                        rewardTokens[0].amount - route.tokens[0].amount,
+                        rewardTokens[0].flat - route.minTokens[0].amount,
                         FLAT_FEE,
                         "intent1.reward - intent1.route should equal FLAT_FEE"
                     );
-                    assertEq(rewardTokens[0].amount, amount, "intent1.reward should equal full deposit");
-                    assertEq(route.tokens[0].amount, amount - FLAT_FEE, "intent1.route should equal amount - FLAT_FEE");
+                    assertEq(rewardTokens[0].flat, amount, "intent1.reward should equal full deposit");
+                    assertEq(route.minTokens[0].amount, amount - FLAT_FEE, "intent1.route should equal amount - FLAT_FEE");
 
                     break;
                 }
@@ -682,7 +671,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         // Intent 1 is the second IntentPublished event
@@ -694,10 +683,9 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                         ,
                         bytes memory routeBytes,
                         ,
-                        ,
                     ) = abi.decode(
                         logs[i].data,
-                        (uint64, bytes, uint64, uint256, TokenAmount[])
+                        (uint64, bytes, uint64, RewardToken[])
                     );
 
                     Route memory route = abi.decode(routeBytes, (Route));
@@ -786,7 +774,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint256 expectedMaxFee = (amount * MAX_FEE_BPS + FEE_DENOMINATOR - 1) / FEE_DENOMINATOR;
@@ -799,23 +787,22 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
                     ,
                     bytes memory routeBytes,
                     ,
-                    ,
-                    TokenAmount[] memory rewardTokens
+                    RewardToken[] memory rewardTokens
                 ) = abi.decode(
                     logs[i].data,
-                    (uint64, bytes, uint64, uint256, TokenAmount[])
+                    (uint64, bytes, uint64, RewardToken[])
                 );
                 Route memory route = abi.decode(routeBytes, (Route));
 
                 if (eventIdx == 0) {
                     // Intent 2 — reward == route == netAmount (intent2 is always symmetric)
-                    assertEq(rewardTokens[0].amount, expectedNetAmount, "Intent2 reward (zeroFlat) should equal pre-feature netAmount");
-                    assertEq(route.tokens[0].amount, expectedNetAmount, "Intent2 route (zeroFlat) should equal pre-feature netAmount");
-                    assertEq(rewardTokens[0].amount, route.tokens[0].amount, "Intent2 should always be symmetric");
+                    assertEq(rewardTokens[0].flat, expectedNetAmount, "Intent2 reward (zeroFlat) should equal pre-feature netAmount");
+                    assertEq(route.minTokens[0].amount, expectedNetAmount, "Intent2 route (zeroFlat) should equal pre-feature netAmount");
+                    assertEq(rewardTokens[0].flat, route.minTokens[0].amount, "Intent2 should always be symmetric");
                 } else {
                     // Intent 1 — reward == route == amount when flat fee = 0
-                    assertEq(rewardTokens[0].amount, amount, "Intent1 reward (zeroFlat) should equal full amount");
-                    assertEq(route.tokens[0].amount, amount, "Intent1 route (zeroFlat) should equal full amount (no flat fee)");
+                    assertEq(rewardTokens[0].flat, amount, "Intent1 reward (zeroFlat) should equal full amount");
+                    assertEq(route.minTokens[0].amount, amount, "Intent1 route (zeroFlat) should equal full amount (no flat fee)");
                 }
                 eventIdx++;
             }
@@ -869,7 +856,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
         // 7. Verify two IntentPublished events were emitted
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint256 intentPublishedCount = 0;
@@ -1061,7 +1048,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
         depositAddress.createIntentWithApproval(DEPOSITOR);
 
-        // Funder drained, deposit address also drained (tokens forwarded to portal vault)
+        // Funder drained, deposit address also drained (tokens forwarded to portal account)
         assertEq(token.balanceOf(DEPOSITOR), 0);
         assertEq(token.balanceOf(address(depositAddress)), 0);
     }
@@ -1078,7 +1065,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint256 intentPublishedCount = 0;
@@ -1158,7 +1145,7 @@ contract DepositAddress_CCTPMint_GatewayERC20Test is Test {
 
         // 6. Verify two IntentPublished events
         bytes32 intentPublishedSig = keccak256(
-            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,uint256,(address,uint256)[])"
+            "IntentPublished(bytes32,uint64,bytes,address,address,uint64,(address,uint256,uint256)[])"
         );
 
         uint256 intentPublishedCount = 0;

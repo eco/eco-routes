@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseDepositAddress} from "./BaseDepositAddress.sol";
 import {Portal} from "../Portal.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../types/Intent.sol";
+import {Intent, Route, Reward, RewardToken, TokenAmount, Call} from "../types/Intent.sol";
 import {DepositFactory_CCTPMint_GatewayERC20 as DepositFactory} from "./DepositFactory_CCTPMint_GatewayERC20.sol";
 
 /**
@@ -12,14 +12,14 @@ import {DepositFactory_CCTPMint_GatewayERC20 as DepositFactory} from "./DepositF
  * @notice Minimal proxy contract that constructs two Intent structs for CCTP+Gateway transfers to ERC20 destinations
  * @dev Creates TWO intents to bridge USDC from source chain to a destination via CCTP, then deposit into Gateway:
  *      Intent 2 (published first): Gateway deposit on destination — receives CCTP-bridged USDC and deposits into Gateway
- *      Intent 1 (published and funded second): CCTP burn on source chain — burns USDC and mints to Intent 2's vault
+ *      Intent 1 (published and funded second): CCTP burn on source chain — burns USDC and mints to Intent 2's account
  *      Each DepositAddress is specific to one user's destination address.
  *      Deployed via CREATE2 by DepositFactory_CCTPMint_GatewayERC20 for deterministic addressing.
  *      Unlike the Arc variant, USDC is a standard ERC20 on the destination (no decimal scaling needed).
  *
  * @dev Intent Call Flow:
  *      Intent 1: Solver calls TokenMessengerV2.depositForBurn to burn USDC on source chain via CCTP,
- *                minting to Intent 2's vault on the destination.
+ *                minting to Intent 2's account on the destination.
  *      Intent 2: Solver approves Gateway for USDC and calls Gateway.depositFor to credit the user.
  */
 contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
@@ -72,8 +72,8 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
     /**
      * @notice Execute variant-specific intent creation logic
      * @dev Creates TWO intents:
-     *      1. Gateway deposit intent on destination (published first to obtain vault address)
-     *      2. CCTP burn intent on source chain (funded with deposited USDC, mints to Intent 2's vault)
+     *      1. Gateway deposit intent on destination (published first to obtain account address)
+     *      2. CCTP burn intent on source chain (funded with deposited USDC, mints to Intent 2's account)
      * @param amount Amount of tokens to bridge
      * @return intentHash Hash of the CCTP burn intent (Intent 1)
      */
@@ -112,7 +112,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         // Hoisted into a helper so `_executeIntent` keeps its local-variable count below the
         // 16-stack-slot Yul limit imposed by the 12-field config + fee locals.
         Portal portalContract = Portal(portalAddress);
-        address vault2 = _publishGatewayIntent(
+        address account2 = _publishGatewayIntent(
             portalContract,
             destinationChainId,
             portalAddress,
@@ -133,7 +133,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             proverAddress,
             cctpTokenMessenger,
             destinationDomain,
-            vault2,
+            account2,
             amount,
             routeAmount,
             maxFee,
@@ -176,7 +176,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
 
     /**
      * @notice Construct Intent 2 (Gateway deposit on destination) and publish it via the Portal
-     * @dev Returning only the vault address keeps `_executeIntent`'s local-variable count low
+     * @dev Returning only the account address keeps `_executeIntent`'s local-variable count low
      *      (12 config fields + fee locals would otherwise tip the 16-slot Yul limit).
      * @param netAmount Intent2 reward and route amount (= routeAmount - maxFee, post-CCTP)
      */
@@ -190,7 +190,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         uint256 netAmount,
         bytes32 salt,
         uint64 deadline
-    ) private returns (address vault2) {
+    ) private returns (address account2) {
         Intent memory intent2 = _constructGatewayIntent(
             destinationChainId,
             portalAddress,
@@ -201,7 +201,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             salt,
             deadline
         );
-        (, vault2) = portalContract.publish(intent2);
+        (, account2) = portalContract.publish(intent2);
     }
 
     /**
@@ -211,7 +211,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
      *      Intent2 reward and route are symmetric (both equal `netAmount`); the flat fee is taken on intent1 only.
      * @param destinationChainId Destination chain ID
      * @param portalAddress Portal address (same on all chains)
-     * @param destinationProverAddress LocalProver address on destination chain
+     * @param destinationProverAddress LocalPolicy address on destination chain
      * @param destinationUsdc USDC ERC20 address on destination chain
      * @param gatewayAddress Gateway contract address on destination chain
      * @param netAmount Reward and route amount (= routeAmount - CCTP maxFee)
@@ -229,9 +229,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         bytes32 salt,
         uint64 deadline
     ) internal view returns (Intent memory intent) {
-        // Route tokens: ERC20 USDC on destination (no native amount needed)
-        TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
+        // Solver input floor: ERC20 USDC on destination the solver provides into execution.
+        TokenAmount[] memory minTokens = new TokenAmount[](1);
+        minTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
 
         // Route calls: approve Gateway + depositFor (both denominated in netAmount)
         Call[] memory calls = new Call[](2);
@@ -255,26 +255,29 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route
+        // Construct route (delivery is via the Gateway call; the ERC20 input funds it)
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            keeper: depositor,
+            calls: calls,
+            minTokens: minTokens
         });
 
-        // Reward tokens: ERC20 USDC on destination (full netAmount; solver collects this)
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: destinationUsdc, amount: netAmount});
+        // Reward: destination USDC as a single flat leg (rate 0; solver collects this)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
+            token: destinationUsdc,
+            rate: 0,
+            flat: netAmount
+        });
 
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
-            creator: depositor,
+            keeper: depositor,
             prover: destinationProverAddress,
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 
@@ -289,16 +292,16 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
     /**
      * @notice Construct the CCTP burn intent (Intent 1) for source chain
      * @dev This intent is fulfilled locally: solver calls TokenMessengerV2.depositForBurn
-     *      to burn USDC and mint to Intent 2's vault on the destination.
+     *      to burn USDC and mint to Intent 2's account on the destination.
      *      `rewardAmount` and `routeAmount` differ by the Eco-protocol `flatFee`:
      *      the Portal pulls `rewardAmount` from this contract during publishAndFund (solver collects it),
      *      while the solver bridges only `routeAmount` via CCTP. The delta is solver profit.
      * @param sourceToken Source USDC token address
      * @param portalAddress Portal address on source chain
-     * @param proverAddress LocalProver address on source chain
+     * @param proverAddress LocalPolicy address on source chain
      * @param cctpTokenMessenger CCTP TokenMessengerV2 address
      * @param destinationDomain CCTP destination domain ID
-     * @param vault2 Intent 2's vault address (CCTP mintRecipient)
+     * @param account2 Intent 2's account address (CCTP mintRecipient)
      * @param rewardAmount Amount the Portal pulls from this contract as the intent reward (full deposit)
      * @param routeAmount Amount the solver bridges via CCTP (rewardAmount - flatFee)
      * @param maxFee Maximum CCTP fast-deposit fee (deducted on destination, computed on routeAmount)
@@ -312,7 +315,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         address proverAddress,
         address cctpTokenMessenger,
         uint32 destinationDomain,
-        address vault2,
+        address account2,
         uint256 rewardAmount,
         uint256 routeAmount,
         uint256 maxFee,
@@ -322,9 +325,9 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
         // Use current chain ID for local intent
         uint64 destChain = uint64(block.chainid);
 
-        // Route tokens: source USDC (solver's bridging obligation, post-flatFee)
-        TokenAmount[] memory routeTokens = new TokenAmount[](1);
-        routeTokens[0] = TokenAmount({token: sourceToken, amount: routeAmount});
+        // Solver input floor: source USDC (solver's bridging obligation, post-flatFee).
+        TokenAmount[] memory minTokens = new TokenAmount[](1);
+        minTokens[0] = TokenAmount({token: sourceToken, amount: routeAmount});
 
         // Route calls: approve TokenMessenger + CCTP depositForBurn (both denominated in routeAmount)
         Call[] memory calls = new Call[](2);
@@ -343,7 +346,7 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
                 "depositForBurn(uint256,uint32,bytes32,address,bytes32,uint256,uint32)",
                 routeAmount,
                 destinationDomain,
-                bytes32(uint256(uint160(vault2))), // mintRecipient = Intent 2 vault
+                bytes32(uint256(uint160(account2))), // mintRecipient = Intent 2 account
                 sourceToken,
                 bytes32(0), // destinationCaller (anyone)
                 maxFee, // maxFee for CCTP fast-deposit (computed on routeAmount)
@@ -352,26 +355,29 @@ contract DepositAddress_CCTPMint_GatewayERC20 is BaseDepositAddress {
             value: 0
         });
 
-        // Construct route
+        // Construct route (CCTP burn on source; the calls consume the full source-USDC input)
         Route memory route = Route({
             salt: salt,
             deadline: deadline,
             portal: portalAddress,
-            nativeAmount: 0,
-            tokens: routeTokens,
-            calls: calls
+            keeper: depositor,
+            calls: calls,
+            minTokens: minTokens
         });
 
-        // Reward tokens: source USDC (full deposit; solver collects this from Portal)
-        TokenAmount[] memory rewardTokens = new TokenAmount[](1);
-        rewardTokens[0] = TokenAmount({token: sourceToken, amount: rewardAmount});
+        // Reward: source USDC as a single flat leg (rate 0; full deposit, solver collects from Portal)
+        RewardToken[] memory rewardTokens = new RewardToken[](1);
+        rewardTokens[0] = RewardToken({
+            token: sourceToken,
+            rate: 0,
+            flat: rewardAmount
+        });
 
         // Construct reward
         Reward memory reward = Reward({
             deadline: deadline,
-            creator: depositor,
+            keeper: depositor,
             prover: proverAddress,
-            nativeAmount: 0,
             tokens: rewardTokens
         });
 

@@ -1,7 +1,7 @@
 import { SignerWithAddress } from '@nomicfoundation/hardhat-ethers/signers'
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
-import { TestERC20, Portal, TestProver, Inbox } from '../typechain-types'
+import { TestERC20, Portal, TestPolicy, Inbox } from '../typechain-types'
 import { time, loadFixture } from '@nomicfoundation/hardhat-network-helpers'
 import { keccak256, BytesLike, Provider, AbiCoder } from 'ethers'
 import { encodeTransfer } from '../utils/encode'
@@ -9,6 +9,7 @@ import {
   encodeRoute,
   Call,
   TokenAmount,
+  RewardToken,
   Route,
   Reward,
   Intent,
@@ -27,11 +28,11 @@ import {
 describe('Origin Settler Test', (): void => {
   let originSettler: Portal
   let portal: Portal
-  let prover: TestProver
+  let prover: TestPolicy
   let inbox: Inbox
   let tokenA: TestERC20
   let tokenB: TestERC20
-  let creator: SignerWithAddress
+  let keeper: SignerWithAddress
   let otherPerson: SignerWithAddress
   const mintAmount: bigint = 1000n
 
@@ -43,7 +44,7 @@ describe('Origin Settler Test', (): void => {
   let expiry_open: number
   let expiry_fill: number
   const rewardNativeEth: bigint = ethers.parseEther('2')
-  let rewardTokens: TokenAmount[]
+  let rewardTokens: RewardToken[]
   let route: Route
   let reward: Reward
   let intent: Intent
@@ -54,31 +55,31 @@ describe('Origin Settler Test', (): void => {
   let gaslessCrosschainOrder: GaslessCrossChainOrderStruct
   let signature: string
 
-  // Use the correct ORDER_DATA_TYPEHASH from the contract
+  // Use the correct ORDER_DATA_TYPEHASH from the contract (v3 rate+flat Reward shape)
   const ORDER_DATA_TYPEHASH = ethers.keccak256(
     ethers.toUtf8Bytes(
-      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Reward(uint64 deadline,address creator,address prover,uint256 nativeAmount,TokenAmount[] tokens)TokenAmount(address token,uint256 amount)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)',
+      'OrderData(uint64 destination,bytes route,Reward reward,bytes32 routePortal,uint64 routeDeadline,Output[] maxSpent)Output(bytes32 token,uint256 amount,bytes32 recipient,uint256 chainId)Reward(uint64 deadline,address keeper,address prover,RewardToken[] tokens)RewardToken(address token,uint256 rate,uint256 flat)',
     ),
   )
 
   async function deploySourceFixture(): Promise<{
     originSettler: Portal
     portal: Portal
-    prover: TestProver
+    prover: TestPolicy
     tokenA: TestERC20
     tokenB: TestERC20
-    creator: SignerWithAddress
+    keeper: SignerWithAddress
     otherPerson: SignerWithAddress
   }> {
-    const [creator, owner, otherPerson] = await ethers.getSigners()
+    const [keeper, owner, otherPerson] = await ethers.getSigners()
 
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     // deploy prover
     prover = await (
-      await ethers.getContractFactory('TestProver')
+      await ethers.getContractFactory('TestPolicy')
     ).deploy(await inbox.getAddress())
 
     // Use portal as the originSettler since OriginSettler is now abstract
@@ -95,24 +96,24 @@ describe('Origin Settler Test', (): void => {
       prover,
       tokenA,
       tokenB,
-      creator,
+      keeper,
       otherPerson,
     }
   }
 
   async function mintAndApprove() {
-    await tokenA.connect(creator).mint(creator.address, mintAmount)
-    await tokenB.connect(creator).mint(creator.address, mintAmount * 2n)
+    await tokenA.connect(keeper).mint(keeper.address, mintAmount)
+    await tokenB.connect(keeper).mint(keeper.address, mintAmount * 2n)
 
-    await tokenA.connect(creator).approve(originSettler, mintAmount)
-    await tokenB.connect(creator).approve(originSettler, mintAmount * 2n)
+    await tokenA.connect(keeper).approve(originSettler, mintAmount)
+    await tokenB.connect(keeper).approve(originSettler, mintAmount * 2n)
   }
 
   beforeEach(async (): Promise<void> => {
-    ;({ originSettler, portal, prover, tokenA, tokenB, creator, otherPerson } =
+    ;({ originSettler, portal, prover, tokenA, tokenB, keeper, otherPerson } =
       await loadFixture(deploySourceFixture))
 
-    // fund the creator and approve it to create an intent
+    // fund the keeper and approve it to create an intent
     await mintAndApprove()
   })
 
@@ -130,13 +131,15 @@ describe('Origin Settler Test', (): void => {
       calls = [
         {
           target: await tokenA.getAddress(),
-          data: await encodeTransfer(creator.address, mintAmount),
+          data: await encodeTransfer(keeper.address, mintAmount),
           value: 0,
         },
       ]
+      // v3 reward legs (rate+flat). Native reward folds in as the last leg (token == address(0)).
       rewardTokens = [
-        { token: await tokenA.getAddress(), amount: mintAmount },
-        { token: await tokenB.getAddress(), amount: mintAmount * 2n },
+        { token: await tokenA.getAddress(), rate: 0n, flat: mintAmount },
+        { token: await tokenB.getAddress(), rate: 0n, flat: mintAmount * 2n },
+        { token: ethers.ZeroAddress, rate: 0n, flat: rewardNativeEth },
       ]
       salt =
         '0x0000000000000000000000000000000000000000000000000000000000000001'
@@ -145,15 +148,14 @@ describe('Origin Settler Test', (): void => {
         salt,
         deadline: expiry_fill,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        keeper: keeper.address,
         calls,
+        minTokens: routeTokens,
       }
       reward = {
-        creator: creator.address,
+        keeper: keeper.address,
         prover: await prover.getAddress(),
         deadline: expiry_fill,
-        nativeAmount: rewardNativeEth,
         tokens: rewardTokens,
       }
       intent = { destination: chainId, route: route, reward: reward }
@@ -178,7 +180,7 @@ describe('Origin Settler Test', (): void => {
         orderDataType: ORDER_DATA_TYPEHASH,
         orderData: AbiCoder.defaultAbiCoder().encode(
           [
-            'tuple(uint64,bytes,tuple(uint64,address,address,uint256,tuple(address,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
           ],
           [
             [
@@ -186,10 +188,9 @@ describe('Origin Settler Test', (): void => {
               encodeRoute(route), // route bytes
               [
                 reward.deadline, // reward.deadline
-                reward.creator, // reward.creator (address, not bytes32)
+                reward.keeper, // reward.keeper (address, not bytes32)
                 reward.prover, // reward.prover (address, not bytes32)
-                reward.nativeAmount, // reward.nativeAmount
-                reward.tokens.map((token) => [token.token, token.amount]), // TokenAmount[] with proper structure
+                reward.tokens.map((token) => [token.token, token.rate, token.flat]), // TokenAmount[] with proper structure
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
               expiry_fill, // routeDeadline
@@ -218,7 +219,7 @@ describe('Origin Settler Test', (): void => {
       }
       gaslessCrosschainOrder = {
         originSettler: await originSettler.getAddress(),
-        user: creator.address,
+        user: keeper.address,
         nonce: nonce,
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
@@ -228,7 +229,7 @@ describe('Origin Settler Test', (): void => {
         orderDataType: ORDER_DATA_TYPEHASH,
         orderData: AbiCoder.defaultAbiCoder().encode(
           [
-            'tuple(uint64,bytes,tuple(uint64,address,address,uint256,tuple(address,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+            'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
           ],
           [
             [
@@ -236,10 +237,9 @@ describe('Origin Settler Test', (): void => {
               encodeRoute(route), // route bytes
               [
                 reward.deadline, // reward.deadline
-                reward.creator, // reward.creator (address, not bytes32)
+                reward.keeper, // reward.keeper (address, not bytes32)
                 reward.prover, // reward.prover (address, not bytes32)
-                reward.nativeAmount, // reward.nativeAmount
-                reward.tokens.map((token) => [token.token, token.amount]), // TokenAmount[] with proper structure
+                reward.tokens.map((token) => [token.token, token.rate, token.flat]), // TokenAmount[] with proper structure
               ],
               ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
               expiry_fill, // routeDeadline
@@ -277,7 +277,7 @@ describe('Origin Settler Test', (): void => {
 
       const values = {
         originSettler: await originSettler.getAddress(),
-        user: creator.address,
+        user: keeper.address,
         nonce,
         originChainId: Number(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
@@ -288,7 +288,7 @@ describe('Origin Settler Test', (): void => {
         orderDataHash: keccak256(
           AbiCoder.defaultAbiCoder().encode(
             [
-              'tuple(uint64,bytes,tuple(uint64,address,address,uint256,tuple(address,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
+              'tuple(uint64,bytes,tuple(uint64,address,address,tuple(address,uint256,uint256)[]),bytes32,uint64,tuple(bytes32,uint256,bytes32,uint256)[])',
             ],
             [
               [
@@ -296,10 +296,9 @@ describe('Origin Settler Test', (): void => {
                 encodeRoute(route), // route bytes
                 [
                   reward.deadline, // reward.deadline
-                  reward.creator, // reward.creator
+                  reward.keeper, // reward.keeper
                   reward.prover, // reward.prover
-                  reward.nativeAmount, // reward.nativeAmount
-                  reward.tokens.map((token) => [token.token, token.amount]), // TokenAmount[] with proper structure
+                  reward.tokens.map((token) => [token.token, token.rate, token.flat]), // TokenAmount[] with proper structure
                 ],
                 ethers.zeroPadValue(await inbox.getAddress(), 32), // routePortal
                 expiry_fill, // routeDeadline
@@ -314,7 +313,7 @@ describe('Origin Settler Test', (): void => {
           ),
         ),
       }
-      signature = await creator.signTypedData(domain, types, values)
+      signature = await keeper.signTypedData(domain, types, values)
     })
 
     describe('onchainCrosschainOrder', async () => {
@@ -324,23 +323,23 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeAmount: reward.nativeAmount },
+            reward,
           }),
         ).to.be.false
 
-        const creatorInitialNativeBalance: bigint = await provider.getBalance(
-          creator.address,
+        const keeperInitialNativeBalance: bigint = await provider.getBalance(
+          keeper.address,
         )
 
         await tokenA
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), mintAmount)
         await tokenB
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), 2n * mintAmount)
 
         await expect(
-          originSettler.connect(creator).open(onchainCrosschainOrder, {
+          originSettler.connect(keeper).open(onchainCrosschainOrder, {
             value: rewardNativeEth * BigInt(2),
           }),
         )
@@ -349,10 +348,9 @@ describe('Origin Settler Test', (): void => {
             intentHash,
             chainId,
             encodeRoute(route),
-            await creator.getAddress(),
+            await keeper.getAddress(),
             await prover.getAddress(),
             expiry_fill,
-            reward.nativeAmount,
             rewardTokens.map(Object.values),
           )
           .to.emit(originSettler, 'Open')
@@ -360,102 +358,102 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeAmount: reward.nativeAmount },
+            reward,
           }),
         ).to.be.true
         expect(
           await provider.getBalance(
-            await portal.intentVaultAddress({
+            await portal.intentAccountAddress({
               destination: chainId,
               route,
               reward,
             }),
           ),
         ).to.eq(rewardNativeEth)
-        expect(await provider.getBalance(creator.address)).to.be.gt(
-          creatorInitialNativeBalance - BigInt(2) * rewardNativeEth,
+        expect(await provider.getBalance(keeper.address)).to.be.gt(
+          keeperInitialNativeBalance - BigInt(2) * rewardNativeEth,
         )
       })
       it('publishes without transferring if intent is already funded, and refunds native', async () => {
         const provider: Provider = originSettler.runner!.provider!
 
-        const vaultAddress = await portal.intentVaultAddress({
+        const accountAddress = await portal.intentAccountAddress({
           destination: chainId,
           route,
           reward,
         })
-        await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
-        await tokenB.connect(creator).transfer(vaultAddress, 2n * mintAmount)
-        await creator.sendTransaction({
-          to: vaultAddress,
-          value: reward.nativeAmount,
+        await tokenA.connect(keeper).transfer(accountAddress, mintAmount)
+        await tokenB.connect(keeper).transfer(accountAddress, 2n * mintAmount)
+        await keeper.sendTransaction({
+          to: accountAddress,
+          value: rewardNativeEth,
         })
 
-        const creatorInitialNativeBalance: bigint = await provider.getBalance(
-          creator.address,
+        const keeperInitialNativeBalance: bigint = await provider.getBalance(
+          keeper.address,
         )
 
         expect(
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeAmount: reward.nativeAmount },
+            reward,
           }),
         ).to.be.true
 
-        expect(await tokenA.balanceOf(creator)).to.eq(0)
-        expect(await tokenB.balanceOf(creator)).to.eq(0)
+        expect(await tokenA.balanceOf(keeper)).to.eq(0)
+        expect(await tokenB.balanceOf(keeper)).to.eq(0)
 
         await tokenA
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), mintAmount)
         await tokenB
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), 2n * mintAmount)
         await expect(
           originSettler
-            .connect(creator)
+            .connect(keeper)
             .open(onchainCrosschainOrder, { value: rewardNativeEth }),
         ).to.not.be.reverted
 
-        expect(await provider.getBalance(vaultAddress)).to.eq(rewardNativeEth)
-        expect(await provider.getBalance(creator.address)).to.be.gt(
-          creatorInitialNativeBalance - rewardNativeEth,
+        expect(await provider.getBalance(accountAddress)).to.eq(rewardNativeEth)
+        expect(await provider.getBalance(keeper.address)).to.be.gt(
+          keeperInitialNativeBalance - rewardNativeEth,
         )
       })
       it('publishes without transferring if intent is already funded', async () => {
-        const vaultAddress = await portal.intentVaultAddress({
+        const accountAddress = await portal.intentAccountAddress({
           destination: chainId,
           route,
           reward,
         })
-        await tokenA.connect(creator).transfer(vaultAddress, mintAmount)
-        await tokenB.connect(creator).transfer(vaultAddress, 2n * mintAmount)
-        await creator.sendTransaction({
-          to: vaultAddress,
-          value: reward.nativeAmount,
+        await tokenA.connect(keeper).transfer(accountAddress, mintAmount)
+        await tokenB.connect(keeper).transfer(accountAddress, 2n * mintAmount)
+        await keeper.sendTransaction({
+          to: accountAddress,
+          value: rewardNativeEth,
         })
 
         expect(
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeAmount: reward.nativeAmount },
+            reward,
           }),
         ).to.be.true
 
-        expect(await tokenA.balanceOf(creator)).to.eq(0)
-        expect(await tokenB.balanceOf(creator)).to.eq(0)
+        expect(await tokenA.balanceOf(keeper)).to.eq(0)
+        expect(await tokenB.balanceOf(keeper)).to.eq(0)
 
         await tokenA
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), mintAmount)
         await tokenB
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), 2n * mintAmount)
         await expect(
           originSettler
-            .connect(creator)
+            .connect(keeper)
             .open(onchainCrosschainOrder, { value: rewardNativeEth }),
         ).to.not.be.reverted
       })
@@ -463,7 +461,7 @@ describe('Origin Settler Test', (): void => {
         const resolvedOrder: ResolvedCrossChainOrderStruct =
           await originSettler.resolve(onchainCrosschainOrder)
 
-        expect(resolvedOrder.user).to.eq(reward.creator)
+        expect(resolvedOrder.user).to.eq(reward.keeper)
         expect(resolvedOrder.originChainId).to.eq(
           (await originSettler.runner?.provider?.getNetwork())?.chainId,
         )
@@ -496,14 +494,14 @@ describe('Origin Settler Test', (): void => {
         }
 
         expect(resolvedOrder.minReceived.length).to.eq(
-          reward.tokens.length + (reward.nativeAmount > 0 ? 1 : 0),
+          reward.tokens.length,
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
             ethers.zeroPadValue(reward.tokens[i].token, 32),
           )
           expect(resolvedOrder.minReceived[i].amount).to.eq(
-            reward.tokens[i].amount,
+            reward.tokens[i].flat,
           )
           expect(resolvedOrder.minReceived[i].recipient).to.eq(
             ethers.zeroPadValue(ethers.ZeroAddress, 32),
@@ -518,7 +516,7 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].token).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
-        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeAmount)
+        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.tokens[i].flat)
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
@@ -534,10 +532,9 @@ describe('Origin Settler Test', (): void => {
         // originData should be (route, rewardHash) not the full intent
         const rewardForEncoding = [
           reward.deadline,
-          reward.creator,
+          reward.keeper,
           reward.prover,
-          reward.nativeAmount,
-          reward.tokens.map((token) => [token.token, token.amount]),
+          reward.tokens.map((token) => [token.token, token.rate, token.flat]),
         ]
         const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
           ['bytes', 'bytes32'],
@@ -546,7 +543,7 @@ describe('Origin Settler Test', (): void => {
             keccak256(
               AbiCoder.defaultAbiCoder().encode(
                 [
-                  'tuple(uint64,address,address,uint256,tuple(address,uint256)[])',
+                  'tuple(uint64,address,address,tuple(address,uint256,uint256)[])',
                 ],
                 [rewardForEncoding],
               ),
@@ -563,18 +560,18 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeAmount: reward.nativeAmount },
+            reward,
           }),
         ).to.be.false
 
-        // Ensure creator has enough tokens and approvals for gasless order
-        await tokenA.connect(creator).mint(creator.address, mintAmount)
-        await tokenB.connect(creator).mint(creator.address, mintAmount * 2n)
+        // Ensure keeper has enough tokens and approvals for gasless order
+        await tokenA.connect(keeper).mint(keeper.address, mintAmount)
+        await tokenB.connect(keeper).mint(keeper.address, mintAmount * 2n)
         await tokenA
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), mintAmount)
         await tokenB
-          .connect(creator)
+          .connect(keeper)
           .approve(await originSettler.getAddress(), mintAmount * 2n)
 
         await expect(
@@ -591,7 +588,7 @@ describe('Origin Settler Test', (): void => {
           await portal.isIntentFunded({
             destination: chainId,
             route,
-            reward: { ...reward, nativeAmount: reward.nativeAmount },
+            reward,
           }),
         ).to.be.true
       })
@@ -650,14 +647,14 @@ describe('Origin Settler Test', (): void => {
           )
         }
         expect(resolvedOrder.minReceived.length).to.eq(
-          reward.tokens.length + (reward.nativeAmount > 0 ? 1 : 0),
+          reward.tokens.length,
         )
         for (let i = 0; i < resolvedOrder.minReceived.length - 1; i++) {
           expect(resolvedOrder.minReceived[i].token).to.eq(
             ethers.zeroPadValue(reward.tokens[i].token, 32),
           )
           expect(resolvedOrder.minReceived[i].amount).to.eq(
-            reward.tokens[i].amount,
+            reward.tokens[i].flat,
           )
           expect(resolvedOrder.minReceived[i].recipient).to.eq(
             ethers.zeroPadValue(ethers.ZeroAddress, 32),
@@ -672,7 +669,7 @@ describe('Origin Settler Test', (): void => {
         expect(resolvedOrder.minReceived[i].token).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
-        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.nativeAmount)
+        expect(resolvedOrder.minReceived[i].amount).to.eq(reward.tokens[i].flat)
         expect(resolvedOrder.minReceived[i].recipient).to.eq(
           ethers.zeroPadValue(ethers.ZeroAddress, 32),
         )
@@ -688,10 +685,9 @@ describe('Origin Settler Test', (): void => {
         // originData should be (route, rewardHash) not the full intent
         const rewardForEncoding = [
           reward.deadline,
-          reward.creator,
+          reward.keeper,
           reward.prover,
-          reward.nativeAmount,
-          reward.tokens.map((token) => [token.token, token.amount]),
+          reward.tokens.map((token) => [token.token, token.rate, token.flat]),
         ]
         const expectedOriginData = AbiCoder.defaultAbiCoder().encode(
           ['bytes', 'bytes32'],
@@ -700,7 +696,7 @@ describe('Origin Settler Test', (): void => {
             keccak256(
               AbiCoder.defaultAbiCoder().encode(
                 [
-                  'tuple(uint64,address,address,uint256,tuple(address,uint256)[])',
+                  'tuple(uint64,address,address,tuple(address,uint256,uint256)[])',
                 ],
                 [rewardForEncoding],
               ),

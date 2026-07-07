@@ -6,7 +6,7 @@ import {
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
-  MetaProver,
+  MetaPolicy,
   Inbox,
   Portal,
   IIntentSource,
@@ -14,7 +14,14 @@ import {
   TestMetaRouter,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { TokenAmount, Route, Intent, hashIntent } from '../utils/intent'
+import {
+  TokenAmount,
+  RewardToken,
+  Route,
+  Intent,
+  hashIntent,
+  hashFulfillment,
+} from '../utils/intent'
 import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
 
 /**
@@ -55,10 +62,10 @@ import { addressToBytes32, TypeCasts } from '../utils/typeCasts'
  *   - Test fee collection and distribution
  */
 
-describe('MetaProver Test', (): void => {
+describe('MetaPolicy Test', (): void => {
   let inbox: Inbox
   let router: TestMetaRouter
-  let metaProver: MetaProver
+  let metaProver: MetaPolicy
   let token: TestERC20
   let owner: SignerWithAddress
   let solver: SignerWithAddress
@@ -109,7 +116,7 @@ describe('MetaProver Test', (): void => {
 
   async function deployMetaProverFixture(): Promise<{
     inbox: Inbox
-    metaProver: MetaProver
+    metaProver: MetaPolicy
     router: TestMetaRouter
     token: TestERC20
     owner: SignerWithAddress
@@ -121,7 +128,9 @@ describe('MetaProver Test', (): void => {
       await ethers.getContractFactory('TestMetaRouter')
     ).deploy(ethers.ZeroAddress)
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const portal = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
@@ -129,7 +138,7 @@ describe('MetaProver Test', (): void => {
     ).deploy('token', 'tkn')
 
     const metaProver = await (
-      await ethers.getContractFactory('MetaProver')
+      await ethers.getContractFactory('MetaPolicy')
     ).deploy(
       await router.getAddress(),
       await inbox.getAddress(),
@@ -162,7 +171,7 @@ describe('MetaProver Test', (): void => {
     it('should add constructor-provided provers to the whitelist', async () => {
       const additionalProver = await owner.getAddress()
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -187,7 +196,7 @@ describe('MetaProver Test', (): void => {
 
     it('should return the correct proof type', async () => {
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
       expect(await metaProver.getProofType()).to.equal('Meta')
     })
@@ -196,7 +205,7 @@ describe('MetaProver Test', (): void => {
   describe('2. Handle', () => {
     beforeEach(async () => {
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -238,10 +247,12 @@ describe('MetaProver Test', (): void => {
 
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
-      const msgBody = encodeMessageBody([intentHash], [claimantAddress])
+      // The wire 2nd word is now an opaque fulfillmentHash; the prover stores it as-is.
+      const fulfillmentHash = ethers.zeroPadValue(claimantAddress, 32)
+      const msgBody = encodeMessageBody([intentHash], [fulfillmentHash])
 
       const proofDataBefore = await metaProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBefore.fulfillmentHash).to.eq(ethers.ZeroHash)
 
       await expect(
         router.simulateHandleMessage(
@@ -251,10 +262,10 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress, 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(claimantAddress)
+      expect(proofDataAfter.fulfillmentHash).to.eq(fulfillmentHash)
     })
 
     it('should emit an event when intent is already proven', async () => {
@@ -290,10 +301,12 @@ describe('MetaProver Test', (): void => {
       const otherHash = ethers.sha256('0x1337')
       const claimantAddress = await claimant.getAddress()
       const otherAddress = await solver.getAddress()
+      const fulfillmentHash = ethers.zeroPadValue(claimantAddress, 32)
+      const otherFulfillmentHash = ethers.zeroPadValue(otherAddress, 32)
 
       const msgBody = encodeMessageBody(
         [intentHash, otherHash],
-        [claimantAddress, otherAddress],
+        [fulfillmentHash, otherFulfillmentHash],
       )
 
       await expect(
@@ -304,14 +317,14 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress, 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
         .to.emit(metaProver, 'IntentProven')
-        .withArgs(otherHash, otherAddress, 12345)
+        .withArgs(otherHash, 12345, otherFulfillmentHash)
 
       const proofData1 = await metaProver.provenIntents(intentHash)
-      expect(proofData1.claimant).to.eq(claimantAddress)
+      expect(proofData1.fulfillmentHash).to.eq(fulfillmentHash)
       const proofData2 = await metaProver.provenIntents(otherHash)
-      expect(proofData2.claimant).to.eq(otherAddress)
+      expect(proofData2.fulfillmentHash).to.eq(otherFulfillmentHash)
     })
   })
 
@@ -319,7 +332,7 @@ describe('MetaProver Test', (): void => {
     beforeEach(async () => {
       const chainId = 12345
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -350,8 +363,8 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          keeper: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -361,11 +374,12 @@ describe('MetaProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -391,6 +405,7 @@ describe('MetaProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await metaProver.getAddress(),
         )
 
@@ -460,8 +475,8 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          keeper: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -471,11 +486,12 @@ describe('MetaProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -501,6 +517,7 @@ describe('MetaProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await metaProver.getAddress(),
         )
 
@@ -557,8 +574,8 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          keeper: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -568,11 +585,12 @@ describe('MetaProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -598,6 +616,7 @@ describe('MetaProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await metaProver.getAddress(),
         )
 
@@ -681,7 +700,7 @@ describe('MetaProver Test', (): void => {
 
     it('should correctly call dispatch in the prove method', async () => {
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
 
       const sourceChainId = 12345
@@ -712,7 +731,7 @@ describe('MetaProver Test', (): void => {
 
     it('should gracefully return funds to sender if they overpay', async () => {
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
 
       const sourceChainId = 12345
@@ -737,9 +756,9 @@ describe('MetaProver Test', (): void => {
   })
 
   describe('4. Cross-VM Claimant Compatibility', () => {
-    it('should skip non-EVM claimants when processing handle messages', async () => {
+    it('records any 2nd-word shape as a fulfillmentHash when processing handle messages', async () => {
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -776,17 +795,18 @@ describe('MetaProver Test', (): void => {
         msgBody,
       )
 
+      // v3: both 2nd words are recorded as opaque fulfillmentHashes (no claimant-shape check).
       const proofData1 = await metaProver.provenIntents(intentHash1)
-      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1.fulfillmentHash).to.eq(validClaimant)
 
       const proofData2 = await metaProver.provenIntents(intentHash2)
-      expect(proofData2.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofData2.fulfillmentHash).to.eq(nonAddressClaimant)
     })
 
     it('should skip non-EVM claimants when processing cross-chain messages', async () => {
       const chainId = 12345
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -820,8 +840,8 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: routeTokens,
+          keeper: await owner.getAddress(),
+          minTokens: routeTokens,
           calls: [
             {
               target: await token.getAddress(),
@@ -831,11 +851,12 @@ describe('MetaProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -881,18 +902,21 @@ describe('MetaProver Test', (): void => {
           route,
           rewardHash,
           nonAddressClaimant,
+          [amount],
           await metaProver.getAddress(),
           sourceChainID,
           data,
           { value: fee },
         )
 
+      // The destination fulfillment fact is the hash-only commitment (intentHash, claimant, fulfilled[]).
       expect(await metaProver.destFulfillment(intentHash)).to.eq(
-        nonAddressClaimant,
+        hashFulfillment(intentHash, nonAddressClaimant, [amount]),
       )
 
+      // No proof recorded on the source side: the router has no processor in this test.
       const provenIntent = await metaProver.provenIntents(intentHash)
-      expect(provenIntent.claimant).to.eq(ethers.ZeroAddress)
+      expect(provenIntent.fulfillmentHash).to.eq(ethers.ZeroHash)
     })
   })
 
@@ -900,7 +924,7 @@ describe('MetaProver Test', (): void => {
     it('works end to end with message bridge', async () => {
       const chainId = 12345
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -936,8 +960,8 @@ describe('MetaProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: routeTokens,
+          keeper: await owner.getAddress(),
+          minTokens: routeTokens,
           calls: [
             {
               target: await token.getAddress(),
@@ -947,11 +971,12 @@ describe('MetaProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await metaProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -979,8 +1004,15 @@ describe('MetaProver Test', (): void => {
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
+      // Hash-only fulfillment commitment carried on the wire
+      const fulfillmentHash = hashFulfillment(
+        intentHash,
+        addressToBytes32(await claimant.getAddress()),
+        [amount],
+      )
+
       const proofDataBefore = await metaProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBefore.fulfillmentHash).to.eq(ethers.ZeroHash)
 
       // Get fee for fulfillment - Inbox will encode the proofs
       const fee = await metaProver.fetchFee(
@@ -996,6 +1028,7 @@ describe('MetaProver Test', (): void => {
           route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await metaProver.getAddress(),
           sourceChainID,
           data,
@@ -1003,10 +1036,7 @@ describe('MetaProver Test', (): void => {
         )
 
       // Simulate the cross-chain message being received back to record the proof
-      const msgBodyForReturn = encodeMessageBody(
-        [intentHash],
-        [await claimant.getAddress()],
-      )
+      const msgBodyForReturn = encodeMessageBody([intentHash], [fulfillmentHash])
 
       await router.simulateHandleMessage(
         sourceChainID,
@@ -1015,15 +1045,12 @@ describe('MetaProver Test', (): void => {
       )
 
       const proofDataAfter = await metaProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(await claimant.getAddress())
+      expect(proofDataAfter.fulfillmentHash).to.eq(fulfillmentHash)
 
-      const msgBody = encodeMessageBody(
-        [intentHash],
-        [await claimant.getAddress()],
-      )
+      const msgBody = encodeMessageBody([intentHash], [fulfillmentHash])
 
       const simulatedMetaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
@@ -1041,15 +1068,15 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(simulatedMetaProver, 'IntentProven')
-        .withArgs(intentHash, await claimant.getAddress(), 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
 
       const proofData = await simulatedMetaProver.provenIntents(intentHash)
-      expect(proofData.claimant).to.eq(await claimant.getAddress())
+      expect(proofData.fulfillmentHash).to.eq(fulfillmentHash)
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
       metaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await router.getAddress(),
         await inbox.getAddress(),
@@ -1088,8 +1115,8 @@ describe('MetaProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        keeper: await owner.getAddress(),
+        minTokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -1099,11 +1126,12 @@ describe('MetaProver Test', (): void => {
         ],
       }
       const reward = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeAmount: ethers.parseEther('0.01'),
-        tokens: [],
+        tokens: [
+          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+        ],
       }
 
       const destination = Number(
@@ -1126,9 +1154,9 @@ describe('MetaProver Test', (): void => {
       })
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      expect((await metaProver.provenIntents(intentHash0)).claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(
+        (await metaProver.provenIntents(intentHash0)).fulfillmentHash,
+      ).to.eq(ethers.ZeroHash)
 
       await inbox
         .connect(solver)
@@ -1137,6 +1165,7 @@ describe('MetaProver Test', (): void => {
           route,
           rewardHash0,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await metaProver.getAddress(),
         )
 
@@ -1145,8 +1174,8 @@ describe('MetaProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        keeper: await owner.getAddress(),
+        minTokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -1156,11 +1185,12 @@ describe('MetaProver Test', (): void => {
         ],
       }
       const reward1 = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await metaProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeAmount: ethers.parseEther('0.01'),
-        tokens: [],
+        tokens: [
+          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+        ],
       }
       const intent1: Intent = {
         destination,
@@ -1186,15 +1216,21 @@ describe('MetaProver Test', (): void => {
           route1,
           rewardHash1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await metaProver.getAddress(),
         )
 
       const proofDataBeforeBatch = await metaProver.provenIntents(intentHash1)
-      expect(proofDataBeforeBatch.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBeforeBatch.fulfillmentHash).to.eq(ethers.ZeroHash)
+
+      // Hash-only fulfillment commitments carried on the wire (per intent, same claimant)
+      const claimant32 = addressToBytes32(await claimant.getAddress())
+      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [amount])
+      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [amount])
 
       const msgbody = encodeMessageBody(
         [intentHash0, intentHash1],
-        [await claimant.getAddress(), await claimant.getAddress()],
+        [fulfillmentHash0, fulfillmentHash1],
       )
 
       // Get fee for batch - Inbox will encode the proofs
@@ -1219,7 +1255,7 @@ describe('MetaProver Test', (): void => {
       // Simulate the cross-chain message being received back to record the proofs
       const batchMsgBody = encodeMessageBody(
         [intentHash0, intentHash1],
-        [await claimant.getAddress(), await claimant.getAddress()],
+        [fulfillmentHash0, fulfillmentHash1],
       )
 
       await router.simulateHandleMessage(
@@ -1229,12 +1265,12 @@ describe('MetaProver Test', (): void => {
       )
 
       const proofData0 = await metaProver.provenIntents(intentHash0)
-      expect(proofData0.claimant).to.eq(await claimant.getAddress())
+      expect(proofData0.fulfillmentHash).to.eq(fulfillmentHash0)
       const proofData1 = await metaProver.provenIntents(intentHash1)
-      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1.fulfillmentHash).to.eq(fulfillmentHash1)
 
       const simulatedMetaProver = await (
-        await ethers.getContractFactory('MetaProver')
+        await ethers.getContractFactory('MetaPolicy')
       ).deploy(
         await owner.getAddress(),
         await inbox.getAddress(),
@@ -1252,14 +1288,14 @@ describe('MetaProver Test', (): void => {
         ),
       )
         .to.emit(simulatedMetaProver, 'IntentProven')
-        .withArgs(intentHash0, await claimant.getAddress(), 12345)
+        .withArgs(intentHash0, 12345, fulfillmentHash0)
         .to.emit(simulatedMetaProver, 'IntentProven')
-        .withArgs(intentHash1, await claimant.getAddress(), 12345)
+        .withArgs(intentHash1, 12345, fulfillmentHash1)
 
       const proofData0Sim = await simulatedMetaProver.provenIntents(intentHash0)
-      expect(proofData0Sim.claimant).to.eq(await claimant.getAddress())
+      expect(proofData0Sim.fulfillmentHash).to.eq(fulfillmentHash0)
       const proofData1Sim = await simulatedMetaProver.provenIntents(intentHash1)
-      expect(proofData1Sim.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1Sim.fulfillmentHash).to.eq(fulfillmentHash1)
     })
   })
 })

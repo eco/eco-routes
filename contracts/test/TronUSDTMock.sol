@@ -13,8 +13,8 @@ pragma solidity ^0.8.0;
  *         `transferFrom()` has an explicit `return true` and works correctly.
  *
  *         This asymmetry means:
- *           - safeTransferFrom (Vault._fundFrom / publishAndFund) succeeds ✓
- *           - safeTransfer     (Vault.withdraw)                    reverts
+ *           - safeTransferFrom (Account._fundFrom / publishAndFund) succeeds ✓
+ *           - safeTransfer     (Account.withdraw)                    reverts
  *             with SafeERC20FailedOperation(token)                 ✗
  */
 contract TronUSDTMock {

@@ -1,13 +1,15 @@
 import { AbiCoder } from 'ethers'
 
-import { Call, TokenAmount } from './intent'
+import { Call, TokenAmount, Reward } from './intent'
 
-// EcoERC7683 specific Route type
+// EcoERC7683 specific Route type (v3: minTokens solver-input legs, no nativeAmount/tokens)
 export type Route = {
   salt: string
+  deadline: number
   portal: string
-  tokens: TokenAmount[]
+  keeper: string
   calls: Call[]
+  minTokens: TokenAmount[]
 }
 
 // ERC-7683 Output type for maxSpent/minReceived
@@ -18,13 +20,11 @@ export type Output = {
   chainId: number
 }
 
+// v3 OrderData shape: route is opaque bytes, reward is the v3 rate+flat Reward.
 export type OnchainCrosschainOrderData = {
   destination: number
-  route: Route
-  creator: string
-  prover: string
-  nativeAmount: bigint
-  rewardTokens: TokenAmount[]
+  route: string // encoded route bytes
+  reward: Reward
   routePortal: string // bytes32
   routeDeadline: number
   maxSpent: Output[]
@@ -32,12 +32,8 @@ export type OnchainCrosschainOrderData = {
 
 export type GaslessCrosschainOrderData = {
   destination: number
-  portal: string
-  routeTokens: TokenAmount[]
-  calls: Call[]
-  prover: string
-  nativeAmount: bigint
-  rewardTokens: TokenAmount[]
+  route: string // encoded route bytes
+  reward: Reward
   routePortal: string // bytes32
   routeDeadline: number
   maxSpent: Output[]
@@ -49,101 +45,46 @@ export type OnchainCrosschainOrder = {
   orderData: OnchainCrosschainOrderData
 }
 
-const OnchainCrosschainOrderDataStruct = [
-  { name: 'destination', type: 'uint64' },
-  {
-    name: 'route',
-    type: 'tuple',
-    components: [
-      { name: 'salt', type: 'bytes32' },
-      { name: 'portal', type: 'bytes32' },
-      {
-        name: 'tokens',
-        type: 'tuple[]',
-        components: [
-          { name: 'token', type: 'address' },
-          { name: 'amount', type: 'uint256' },
-        ],
-      },
-      {
-        name: 'calls',
-        type: 'tuple[]',
-        components: [
-          { name: 'target', type: 'address' },
-          { name: 'data', type: 'bytes' },
-          { name: 'value', type: 'uint256' },
-        ],
-      },
-    ],
-  },
-  { name: 'creator', type: 'address' },
+// v3 Reward struct: (uint64 deadline, address keeper, address prover, RewardToken[] tokens)
+// where RewardToken is (address token, uint256 rate, uint256 flat).
+const RewardStructComponents = [
+  { name: 'deadline', type: 'uint64' },
+  { name: 'keeper', type: 'address' },
   { name: 'prover', type: 'address' },
-  { name: 'nativeAmount', type: 'uint256' },
   {
-    name: 'rewardTokens',
+    name: 'tokens',
     type: 'tuple[]',
     components: [
       { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-  },
-  { name: 'routePortal', type: 'bytes32' },
-  { name: 'routeDeadline', type: 'uint64' },
-  {
-    name: 'maxSpent',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'bytes32' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'recipient', type: 'bytes32' },
-      { name: 'chainId', type: 'uint256' },
+      { name: 'rate', type: 'uint256' },
+      { name: 'flat', type: 'uint256' },
     ],
   },
 ]
 
-const GaslessCrosschainOrderDataStruct = [
-  { name: 'destination', type: 'uint256' },
-  { name: 'portal', type: 'bytes32' },
-  {
-    name: 'routeTokens',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-  },
-  {
-    name: 'calls',
-    type: 'tuple[]',
-    components: [
-      { name: 'target', type: 'address' },
-      { name: 'data', type: 'bytes' },
-      { name: 'value', type: 'uint256' },
-    ],
-  },
-  { name: 'prover', type: 'address' },
-  { name: 'nativeAmount', type: 'uint256' },
-  {
-    name: 'rewardTokens',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'address' },
-      { name: 'amount', type: 'uint256' },
-    ],
-  },
+// ERC-7683 Output struct: (bytes32 token, uint256 amount, bytes32 recipient, uint256 chainId)
+const OutputStructComponents = [
+  { name: 'token', type: 'bytes32' },
+  { name: 'amount', type: 'uint256' },
+  { name: 'recipient', type: 'bytes32' },
+  { name: 'chainId', type: 'uint256' },
+]
+
+// v3 OrderData: route is opaque bytes, reward is the v3 rate+flat Reward.
+// struct OrderData { uint64 destination; bytes route; Reward reward; bytes32 routePortal;
+//                    uint64 routeDeadline; Output[] maxSpent; }
+const OrderDataStructComponents = [
+  { name: 'destination', type: 'uint64' },
+  { name: 'route', type: 'bytes' },
+  { name: 'reward', type: 'tuple', components: RewardStructComponents },
   { name: 'routePortal', type: 'bytes32' },
   { name: 'routeDeadline', type: 'uint64' },
-  {
-    name: 'maxSpent',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'bytes32' },
-      { name: 'amount', type: 'uint256' },
-      { name: 'recipient', type: 'bytes32' },
-      { name: 'chainId', type: 'uint256' },
-    ],
-  },
+  { name: 'maxSpent', type: 'tuple[]', components: OutputStructComponents },
 ]
+
+const OnchainCrosschainOrderDataStruct = OrderDataStructComponents
+
+const GaslessCrosschainOrderDataStruct = OrderDataStructComponents
 
 const OnchainCrosschainOrderStruct = [
   { name: 'fillDeadline', type: 'uint32' },

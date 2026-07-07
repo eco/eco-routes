@@ -6,17 +6,24 @@ import {
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import {
-  LayerZeroProver,
+  LayerZeroPolicy,
   Inbox,
   TestERC20,
   TestLayerZeroEndpoint,
 } from '../typechain-types'
 import { encodeTransfer } from '../utils/encode'
-import { hashIntent, TokenAmount, Intent } from '../utils/intent'
+import {
+  hashIntent,
+  hashFulfillment,
+  TokenAmount,
+  RewardToken,
+  Intent,
+} from '../utils/intent'
+import { addressToBytes32 } from '../utils/typeCasts'
 
-describe('LayerZeroProver Test', (): void => {
+describe('LayerZeroPolicy Test', (): void => {
   let inbox: Inbox
-  let layerZeroProver: LayerZeroProver
+  let layerZeroProver: LayerZeroPolicy
   let mockEndpoint: TestLayerZeroEndpoint
   let token: TestERC20
   let owner: SignerWithAddress
@@ -79,7 +86,9 @@ describe('LayerZeroProver Test', (): void => {
       .getContractFactory('TestLayerZeroEndpoint')
       .then((factory) => factory.deploy())
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy()
+    const portal = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
@@ -104,7 +113,7 @@ describe('LayerZeroProver Test', (): void => {
   describe('1. Constructor', () => {
     it('should initialize with the correct endpoint and inbox addresses', async () => {
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -122,7 +131,7 @@ describe('LayerZeroProver Test', (): void => {
     it('should add constructor-provided provers to the whitelist', async () => {
       const additionalProver = await owner.getAddress()
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -148,7 +157,7 @@ describe('LayerZeroProver Test', (): void => {
 
     it('should return the correct proof type', async () => {
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -161,7 +170,7 @@ describe('LayerZeroProver Test', (): void => {
 
     it('should set the delegate on the endpoint', async () => {
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -182,7 +191,7 @@ describe('LayerZeroProver Test', (): void => {
   describe('2. LayerZero Message Receiving (_lzReceive)', () => {
     beforeEach(async () => {
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -198,7 +207,9 @@ describe('LayerZeroProver Test', (): void => {
     it('should process a single intent proof correctly', async () => {
       const intentHash = ethers.sha256('0x')
       const claimantAddress = await claimant.getAddress()
-      const msgBody = encodeMessageBody([intentHash], [claimantAddress])
+      // The wire 2nd word is now an opaque fulfillmentHash; the prover stores it as-is.
+      const fulfillmentHash = ethers.zeroPadValue(claimantAddress, 32)
+      const msgBody = encodeMessageBody([intentHash], [fulfillmentHash])
 
       const origin = {
         srcEid: 12345,
@@ -207,7 +218,7 @@ describe('LayerZeroProver Test', (): void => {
       }
 
       const proofDataBefore = await layerZeroProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBefore.fulfillmentHash).to.eq(ethers.ZeroHash)
 
       // Set the LayerZero prover as the receiver and simulate message receipt
       await mockEndpoint.setReceiver(await layerZeroProver.getAddress())
@@ -216,10 +227,10 @@ describe('LayerZeroProver Test', (): void => {
         mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress, 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
 
       const proofDataAfter = await layerZeroProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(claimantAddress)
+      expect(proofDataAfter.fulfillmentHash).to.eq(fulfillmentHash)
     })
 
     it('should handle batch proving of multiple intents', async () => {
@@ -227,10 +238,12 @@ describe('LayerZeroProver Test', (): void => {
       const otherHash = ethers.sha256('0x1337')
       const claimantAddress = await claimant.getAddress()
       const otherAddress = await solver.getAddress()
+      const fulfillmentHash = ethers.zeroPadValue(claimantAddress, 32)
+      const otherFulfillmentHash = ethers.zeroPadValue(otherAddress, 32)
 
       const msgBody = encodeMessageBody(
         [intentHash, otherHash],
-        [claimantAddress, otherAddress],
+        [fulfillmentHash, otherFulfillmentHash],
       )
 
       const origin = {
@@ -246,14 +259,14 @@ describe('LayerZeroProver Test', (): void => {
         mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody),
       )
         .to.emit(layerZeroProver, 'IntentProven')
-        .withArgs(intentHash, claimantAddress, 12345)
+        .withArgs(intentHash, 12345, fulfillmentHash)
         .to.emit(layerZeroProver, 'IntentProven')
-        .withArgs(otherHash, otherAddress, 12345)
+        .withArgs(otherHash, 12345, otherFulfillmentHash)
 
       const proofData1 = await layerZeroProver.provenIntents(intentHash)
-      expect(proofData1.claimant).to.eq(claimantAddress)
+      expect(proofData1.fulfillmentHash).to.eq(fulfillmentHash)
       const proofData2 = await layerZeroProver.provenIntents(otherHash)
-      expect(proofData2.claimant).to.eq(otherAddress)
+      expect(proofData2.fulfillmentHash).to.eq(otherFulfillmentHash)
     })
 
     it('should emit event when intent is already proven', async () => {
@@ -308,7 +321,7 @@ describe('LayerZeroProver Test', (): void => {
     beforeEach(async () => {
       const chainId = 12345
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -340,8 +353,8 @@ describe('LayerZeroProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          keeper: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -351,11 +364,12 @@ describe('LayerZeroProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -381,6 +395,7 @@ describe('LayerZeroProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await layerZeroProver.getAddress(),
         )
 
@@ -452,8 +467,8 @@ describe('LayerZeroProver Test', (): void => {
           salt: salt,
           deadline: deadline,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          keeper: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -463,11 +478,12 @@ describe('LayerZeroProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: deadline,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -493,6 +509,7 @@ describe('LayerZeroProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await layerZeroProver.getAddress(),
         )
 
@@ -585,9 +602,9 @@ describe('LayerZeroProver Test', (): void => {
   })
 
   describe('4. Cross-VM Claimant Compatibility', () => {
-    it('should skip non-EVM claimants when processing messages', async () => {
+    it('records any 2nd-word shape as a fulfillmentHash when processing messages', async () => {
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -628,11 +645,12 @@ describe('LayerZeroProver Test', (): void => {
 
       await mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody)
 
+      // v3: both 2nd words are recorded as opaque fulfillmentHashes (no claimant-shape check).
       const proofData1 = await layerZeroProver.provenIntents(intentHash1)
-      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1.fulfillmentHash).to.eq(validClaimant)
 
       const proofData2 = await layerZeroProver.provenIntents(intentHash2)
-      expect(proofData2.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofData2.fulfillmentHash).to.eq(nonAddressClaimant)
     })
   })
 
@@ -640,7 +658,7 @@ describe('LayerZeroProver Test', (): void => {
     it('works end to end with LayerZero message bridge', async () => {
       const chainId = 12345
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -675,8 +693,8 @@ describe('LayerZeroProver Test', (): void => {
           salt: salt,
           deadline: timeStamp + 1000,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: routeTokens,
+          keeper: await owner.getAddress(),
+          minTokens: routeTokens,
           calls: [
             {
               target: await token.getAddress(),
@@ -686,11 +704,12 @@ describe('LayerZeroProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await layerZeroProver.getAddress(),
           deadline: timeStamp + 1000,
-          nativeAmount: ethers.parseEther('0.01'),
-          tokens: [] as TokenAmount[],
+          tokens: [
+            { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+          ],
         },
       }
 
@@ -723,8 +742,15 @@ describe('LayerZeroProver Test', (): void => {
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
 
+      // Hash-only fulfillment commitment carried on the wire
+      const fulfillmentHash = hashFulfillment(
+        intentHash,
+        addressToBytes32(await claimant.getAddress()),
+        [amount],
+      )
+
       const proofDataBefore = await layerZeroProver.provenIntents(intentHash)
-      expect(proofDataBefore.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBefore.fulfillmentHash).to.eq(ethers.ZeroHash)
 
       // Get fee for fulfillment - Inbox will encode the proofs
       const fee = await layerZeroProver.fetchFee(
@@ -740,17 +766,15 @@ describe('LayerZeroProver Test', (): void => {
           route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await layerZeroProver.getAddress(),
           sourceChainID,
           data,
           { value: fee },
         )
 
-      // Simulate the LayerZero message being received
-      const msgBody = encodeMessageBody(
-        [intentHash],
-        [await claimant.getAddress()],
-      )
+      // Simulate the LayerZero message being received (carries the fulfillmentHash)
+      const msgBody = encodeMessageBody([intentHash], [fulfillmentHash])
 
       const origin = {
         srcEid: sourceChainID,
@@ -764,12 +788,12 @@ describe('LayerZeroProver Test', (): void => {
       await mockEndpoint.simulateReceive(origin.srcEid, origin.sender, msgBody)
 
       const proofDataAfter = await layerZeroProver.provenIntents(intentHash)
-      expect(proofDataAfter.claimant).to.eq(await claimant.getAddress())
+      expect(proofDataAfter.fulfillmentHash).to.eq(fulfillmentHash)
     })
 
     it('should work with batched message bridge fulfillment end-to-end', async () => {
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
@@ -813,8 +837,8 @@ describe('LayerZeroProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        keeper: await owner.getAddress(),
+        minTokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -824,11 +848,12 @@ describe('LayerZeroProver Test', (): void => {
         ],
       }
       const reward = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await layerZeroProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeAmount: ethers.parseEther('0.01'),
-        tokens: [],
+        tokens: [
+          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+        ],
       }
 
       const destination = Number(
@@ -851,9 +876,9 @@ describe('LayerZeroProver Test', (): void => {
       })
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
-      expect((await layerZeroProver.provenIntents(intentHash0)).claimant).to.eq(
-        ethers.ZeroAddress,
-      )
+      expect(
+        (await layerZeroProver.provenIntents(intentHash0)).fulfillmentHash,
+      ).to.eq(ethers.ZeroHash)
 
       await inbox
         .connect(solver)
@@ -862,6 +887,7 @@ describe('LayerZeroProver Test', (): void => {
           route,
           rewardHash0,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await layerZeroProver.getAddress(),
         )
 
@@ -871,8 +897,8 @@ describe('LayerZeroProver Test', (): void => {
         salt: salt,
         deadline: timeStamp + 1000,
         portal: await inbox.getAddress(),
-        nativeAmount: 0,
-        tokens: routeTokens,
+        keeper: await owner.getAddress(),
+        minTokens: routeTokens,
         calls: [
           {
             target: await token.getAddress(),
@@ -882,11 +908,12 @@ describe('LayerZeroProver Test', (): void => {
         ],
       }
       const reward1 = {
-        creator: await owner.getAddress(),
+        keeper: await owner.getAddress(),
         prover: await layerZeroProver.getAddress(),
         deadline: timeStamp + 1000,
-        nativeAmount: ethers.parseEther('0.01'),
-        tokens: [],
+        tokens: [
+          { token: ethers.ZeroAddress, rate: 0n, flat: ethers.parseEther('0.01') },
+        ],
       }
       const intent1: Intent = {
         destination,
@@ -912,17 +939,23 @@ describe('LayerZeroProver Test', (): void => {
           route1,
           rewardHash1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          [amount],
           await layerZeroProver.getAddress(),
         )
 
       const proofDataBeforeBatch =
         await layerZeroProver.provenIntents(intentHash1)
-      expect(proofDataBeforeBatch.claimant).to.eq(ethers.ZeroAddress)
+      expect(proofDataBeforeBatch.fulfillmentHash).to.eq(ethers.ZeroHash)
+
+      // Hash-only fulfillment commitments carried on the wire (per intent, same claimant)
+      const claimant32 = addressToBytes32(await claimant.getAddress())
+      const fulfillmentHash0 = hashFulfillment(intentHash0, claimant32, [amount])
+      const fulfillmentHash1 = hashFulfillment(intentHash1, claimant32, [amount])
 
       // Prepare message body for batch
       const msgBody = encodeMessageBody(
         [intentHash0, intentHash1],
-        [await claimant.getAddress(), await claimant.getAddress()],
+        [fulfillmentHash0, fulfillmentHash1],
       )
 
       // Get fee for batch - Inbox will encode the proofs
@@ -959,9 +992,9 @@ describe('LayerZeroProver Test', (): void => {
 
       // Verify both intents were proven
       const proofData0 = await layerZeroProver.provenIntents(intentHash0)
-      expect(proofData0.claimant).to.eq(await claimant.getAddress())
+      expect(proofData0.fulfillmentHash).to.eq(fulfillmentHash0)
       const proofData1 = await layerZeroProver.provenIntents(intentHash1)
-      expect(proofData1.claimant).to.eq(await claimant.getAddress())
+      expect(proofData1.fulfillmentHash).to.eq(fulfillmentHash1)
     })
   })
 
@@ -982,8 +1015,8 @@ describe('LayerZeroProver Test', (): void => {
           salt: ethers.randomBytes(32),
           deadline: (await time.latest()) + 3600,
           portal: await inbox.getAddress(),
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          keeper: await owner.getAddress(),
+          minTokens: [{ token: await token.getAddress(), amount: amount }],
           calls: [
             {
               target: await token.getAddress(),
@@ -993,17 +1026,16 @@ describe('LayerZeroProver Test', (): void => {
           ],
         },
         reward: {
-          creator: await owner.getAddress(),
+          keeper: await owner.getAddress(),
           prover: await solver.getAddress(),
           deadline: (await time.latest()) + 3600,
-          nativeAmount: 0,
-          tokens: [{ token: await token.getAddress(), amount: amount }],
+          tokens: [{ token: await token.getAddress(), rate: 0n, flat: amount }],
         },
       }
 
-      // Use TestProver for challenge tests since we need addProvenIntent method
+      // Use TestPolicy for challenge tests since we need addProvenIntent method
       prover = await (
-        await ethers.getContractFactory('TestProver')
+        await ethers.getContractFactory('TestPolicy')
       ).deploy(await inbox.getAddress())
     })
 
@@ -1014,13 +1046,13 @@ describe('LayerZeroProver Test', (): void => {
       const wrongChainId = 999
       await prover.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         wrongChainId,
       )
 
       // Verify proof exists with wrong chain ID
       const proofBefore = await prover.provenIntents(intentHash)
-      expect(proofBefore.claimant).to.equal(await claimant.getAddress())
+      expect(proofBefore.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
       expect(proofBefore.destination).to.equal(wrongChainId)
 
       // Challenge the proof with correct destination chain ID
@@ -1035,7 +1067,7 @@ describe('LayerZeroProver Test', (): void => {
 
       // Verify proof was cleared
       const proofAfter = await prover.provenIntents(intentHash)
-      expect(proofAfter.claimant).to.equal(ethers.ZeroAddress)
+      expect(proofAfter.fulfillmentHash).to.equal(ethers.ZeroHash)
       expect(proofAfter.destination).to.equal(0)
     })
 
@@ -1045,13 +1077,13 @@ describe('LayerZeroProver Test', (): void => {
       // Create proof with correct chain ID
       await prover.addProvenIntent(
         intentHash,
-        await claimant.getAddress(),
+        addressToBytes32(await claimant.getAddress()),
         intent.destination,
       )
 
       // Verify proof exists
       const proofBefore = await prover.provenIntents(intentHash)
-      expect(proofBefore.claimant).to.equal(await claimant.getAddress())
+      expect(proofBefore.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
       expect(proofBefore.destination).to.equal(intent.destination)
 
       // Challenge the proof with same destination chain ID
@@ -1066,7 +1098,7 @@ describe('LayerZeroProver Test', (): void => {
 
       // Verify proof remains unchanged
       const proofAfter = await prover.provenIntents(intentHash)
-      expect(proofAfter.claimant).to.equal(await claimant.getAddress())
+      expect(proofAfter.fulfillmentHash).to.equal(addressToBytes32(await claimant.getAddress()))
       expect(proofAfter.destination).to.equal(intent.destination)
     })
 
@@ -1082,14 +1114,14 @@ describe('LayerZeroProver Test', (): void => {
       // Verify no proof exists
       const intentHash = hashIntent(intent).intentHash
       const proof = await prover.provenIntents(intentHash)
-      expect(proof.claimant).to.equal(ethers.ZeroAddress)
+      expect(proof.fulfillmentHash).to.equal(ethers.ZeroHash)
       expect(proof.destination).to.equal(0)
     })
 
     it('should handle LayerZero-specific challenge scenarios', async () => {
       // Deploy LayerZero prover for this test
       layerZeroProver = await (
-        await ethers.getContractFactory('LayerZeroProver')
+        await ethers.getContractFactory('LayerZeroPolicy')
       ).deploy(
         await mockEndpoint.getAddress(),
         await owner.getAddress(), // delegate
