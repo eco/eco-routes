@@ -33,6 +33,7 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
     error OnlyFactory();
     error InvalidDestinationAddress();
     error InvalidDepositor();
+    error InvalidFunder();
     error ZeroAmount();
 
     // ============ External Functions ============
@@ -71,6 +72,33 @@ abstract contract BaseDepositAddress is ReentrancyGuard {
         // Get balance of source token held by this contract
         uint256 amount = IERC20(sourceToken).balanceOf(address(this));
         if (amount == 0) revert ZeroAmount();
+
+        // Execute variant-specific intent creation
+        intentHash = _executeIntent(amount);
+
+        return intentHash;
+    }
+
+    /**
+     * @notice Create a cross-chain intent funded via ERC-20 approval
+     * @dev Pulls tokens from funder using transferFrom (requires prior approval to this contract),
+     *      then delegates to variant-specific intent execution. Uses min(allowance, balance) as amount.
+     * @param funder Address that approved this contract to spend their tokens
+     * @return intentHash Hash of the created intent
+     */
+    function createIntentWithApproval(address funder) external nonReentrant returns (bytes32 intentHash) {
+        if (!initialized) revert NotInitialized();
+        if (funder == address(0)) revert InvalidFunder();
+
+        address sourceToken = _getSourceToken();
+
+        // Use the lesser of allowance and funder's actual balance
+        uint256 allowance = IERC20(sourceToken).allowance(funder, address(this));
+        uint256 balance = IERC20(sourceToken).balanceOf(funder);
+        uint256 amount = allowance < balance ? allowance : balance;
+        if (amount == 0) revert ZeroAmount();
+
+        IERC20(sourceToken).safeTransferFrom(funder, address(this), amount);
 
         // Execute variant-specific intent creation
         intentHash = _executeIntent(amount);

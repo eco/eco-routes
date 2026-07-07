@@ -836,6 +836,62 @@ contract VaultTest is Test {
         vault.recover(creator, address(recoverToken));
     }
 
+    function test_withdraw_reverts_withRevertingClaimant() public {
+        RevertingClaimant revertingClaimant = new RevertingClaimant();
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 1 ether,
+            tokens: tokens
+        });
+
+        token.mint(address(vault), 1000);
+        vm.deal(address(vault), 1 ether);
+
+        vm.prank(portal);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IVault.NativeTransferFailed.selector,
+                address(revertingClaimant),
+                1 ether
+            )
+        );
+        vault.withdraw(reward, address(revertingClaimant));
+    }
+
+    function test_refund_success_withRevertingRefundee() public {
+        RevertingClaimant revertingRefundee = new RevertingClaimant();
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 1 ether,
+            tokens: tokens
+        });
+
+        token.mint(address(vault), 1000);
+        vm.deal(address(vault), 1 ether);
+
+        vm.warp(block.timestamp + 2000);
+
+        vm.prank(portal);
+        vault.refund(reward, address(revertingRefundee));
+
+        assertEq(address(vault).balance, 1 ether);
+        assertEq(token.balanceOf(address(vault)), 0);
+        assertEq(address(revertingRefundee).balance, 0);
+        assertEq(token.balanceOf(address(revertingRefundee)), 1000);
+    }
+
     // ── TetherToken (Tron USDT) compatibility ─────────────────────────────────
 
     /**
@@ -926,5 +982,16 @@ contract VaultTest is Test {
         // Tokens left the vault and arrived at the claimant.
         assertEq(tether.balanceOf(address(vaultTron)), 0);
         assertEq(tether.balanceOf(claimant), 100_000);
+    }
+}
+
+/// @notice Contract that reverts on receive to simulate griefing attack
+contract RevertingClaimant {
+    receive() external payable {
+        revert("RevertingClaimant: I reject your ETH");
+    }
+
+    fallback() external payable {
+        revert("RevertingClaimant: I reject your ETH");
     }
 }
