@@ -12,9 +12,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*.ts", "scripts/**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "**/*.test.ts",
-    "scripts/semantic-release/assets/**"
-  ]
+  "exclude": ["node_modules", "**/*.test.ts"]
 }

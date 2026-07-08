@@ -51,20 +51,6 @@ module.exports = {
     ],
     camelcase: 0,
   },
-  overrides: [
-    {
-      files: ['scripts/semantic-release/assets/**/*.ts'],
-      rules: {
-        'node/no-missing-import': ['off'],
-      },
-    },
-    {
-      files: ['scripts/semantic-release/sr-build-package.ts'],
-      rules: {
-        'no-template-curly-in-string': ['off'],
-      },
-    },
-  ],
   globals: {
     ethers: 'readonly',
   },
