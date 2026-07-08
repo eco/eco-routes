@@ -39,18 +39,20 @@ Note: local `main` is left pointing at the spec commit; after the branch is push
 - [ ] **Step 2: Verify clean state**
 
 Run: `git status --short`
-Expected: only the pre-existing untracked `scripts/tron/*` files (TRON-POLYMER-E2E.md, deploy-evm-tron-polymer.ts, publish-*.ts, relay-*.ts). Leave them alone throughout this plan.
+Expected: only the pre-existing untracked `scripts/tron/*` files (TRON-POLYMER-E2E.md, deploy-evm-tron-polymer.ts, publish-_.ts, relay-_.ts). Leave them alone throughout this plan.
 
 ---
 
 ### Task 1: Version-update script (TDD)
 
 **Files:**
+
 - Create: `scripts/release/update-versions.ts`
 - Create: `scripts/release/tests/update-versions.spec.ts`
 - Modify: `jest.config.js` (testMatch currently points ONLY at `scripts/semantic-release/tests/**`, which Task 3 deletes)
 
 **Interfaces:**
+
 - Produces: `updateSolidityVersions(rootDir: string, version: string): string[]` (returns updated file paths), `updatePackageJsonVersion(rootDir: string, version: string): void`, and a CLI entry: `npx tsx scripts/release/update-versions.ts <x.y.z>` run from repo root. Task 2's `.releaserc.json` prepareCmd calls this CLI.
 
 - [ ] **Step 1: Update jest.config.js so the new test location is discovered**
@@ -60,11 +62,11 @@ Replace the `testMatch` line in `jest.config.js`:
 ```js
 /** @type {import('ts-jest').JestConfigWithTsJest} **/
 module.exports = {
-  testEnvironment: 'node',
-  testPathIgnorePatterns: ['/node_modules/'],
-  testMatch: ['**/scripts/release/tests/**/*.spec.ts'],
+  testEnvironment: "node",
+  testPathIgnorePatterns: ["/node_modules/"],
+  testMatch: ["**/scripts/release/tests/**/*.spec.ts"],
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', {}],
+    "^.+\\.tsx?$": ["ts-jest", {}],
   },
   passWithNoTests: true,
 }
@@ -77,13 +79,13 @@ module.exports = {
 Create `scripts/release/tests/update-versions.spec.ts`:
 
 ```ts
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
+import * as fs from "fs"
+import * as os from "os"
+import * as path from "path"
 import {
   updateSolidityVersions,
   updatePackageJsonVersion,
-} from '../update-versions'
+} from "../update-versions"
 
 const VERSIONED_CONTRACT = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
@@ -108,23 +110,23 @@ contract Plain {
 }
 `
 
-describe('update-versions', () => {
+describe("update-versions", () => {
   let rootDir: string
 
   beforeEach(() => {
-    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'update-versions-'))
-    fs.mkdirSync(path.join(rootDir, 'contracts', 'libs'), { recursive: true })
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "update-versions-"))
+    fs.mkdirSync(path.join(rootDir, "contracts", "libs"), { recursive: true })
     fs.writeFileSync(
-      path.join(rootDir, 'contracts', 'libs', 'Semver.sol'),
+      path.join(rootDir, "contracts", "libs", "Semver.sol"),
       VERSIONED_CONTRACT,
     )
     fs.writeFileSync(
-      path.join(rootDir, 'contracts', 'Plain.sol'),
+      path.join(rootDir, "contracts", "Plain.sol"),
       UNVERSIONED_CONTRACT,
     )
     fs.writeFileSync(
-      path.join(rootDir, 'package.json'),
-      JSON.stringify({ name: 'x', version: '0.0.0' }, null, 2) + '\n',
+      path.join(rootDir, "package.json"),
+      JSON.stringify({ name: "x", version: "0.0.0" }, null, 2) + "\n",
     )
   })
 
@@ -132,50 +134,50 @@ describe('update-versions', () => {
     fs.rmSync(rootDir, { recursive: true, force: true })
   })
 
-  it('rewrites version() with the full x.y.z string, recursively', () => {
-    const updated = updateSolidityVersions(rootDir, '3.2.7')
+  it("rewrites version() with the full x.y.z string, recursively", () => {
+    const updated = updateSolidityVersions(rootDir, "3.2.7")
 
     expect(updated).toHaveLength(1)
     const content = fs.readFileSync(
-      path.join(rootDir, 'contracts', 'libs', 'Semver.sol'),
-      'utf8',
+      path.join(rootDir, "contracts", "libs", "Semver.sol"),
+      "utf8",
     )
     expect(content).toContain('return "3.2.7";')
     expect(content).not.toContain('return "2.6";')
   })
 
-  it('produces compilable-shaped output (single well-formed function)', () => {
-    updateSolidityVersions(rootDir, '3.2.7')
+  it("produces compilable-shaped output (single well-formed function)", () => {
+    updateSolidityVersions(rootDir, "3.2.7")
     const content = fs.readFileSync(
-      path.join(rootDir, 'contracts', 'libs', 'Semver.sol'),
-      'utf8',
+      path.join(rootDir, "contracts", "libs", "Semver.sol"),
+      "utf8",
     )
     expect(content).toContain(
       'function version() external pure returns (string memory) { return "3.2.7"; }',
     )
   })
 
-  it('leaves files without a version() function untouched', () => {
-    updateSolidityVersions(rootDir, '3.2.7')
+  it("leaves files without a version() function untouched", () => {
+    updateSolidityVersions(rootDir, "3.2.7")
     const content = fs.readFileSync(
-      path.join(rootDir, 'contracts', 'Plain.sol'),
-      'utf8',
+      path.join(rootDir, "contracts", "Plain.sol"),
+      "utf8",
     )
     expect(content).toBe(UNVERSIONED_CONTRACT)
   })
 
-  it('is idempotent (second run reports zero updates)', () => {
-    updateSolidityVersions(rootDir, '3.2.7')
-    const second = updateSolidityVersions(rootDir, '3.2.7')
+  it("is idempotent (second run reports zero updates)", () => {
+    updateSolidityVersions(rootDir, "3.2.7")
+    const second = updateSolidityVersions(rootDir, "3.2.7")
     expect(second).toHaveLength(0)
   })
 
-  it('updates package.json version without touching other fields', () => {
-    updatePackageJsonVersion(rootDir, '3.2.7')
+  it("updates package.json version without touching other fields", () => {
+    updatePackageJsonVersion(rootDir, "3.2.7")
     const pkg = JSON.parse(
-      fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'),
+      fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
     )
-    expect(pkg).toEqual({ name: 'x', version: '3.2.7' })
+    expect(pkg).toEqual({ name: "x", version: "3.2.7" })
   })
 })
 ```
@@ -201,8 +203,8 @@ Create `scripts/release/update-versions.ts`:
  * deployment addresses. Full major.minor.patch is intentional (see
  * CLAUDE/specs/2026-07-08-semver-release-design.md).
  */
-import * as fs from 'fs'
-import * as path from 'path'
+import * as fs from "fs"
+import * as path from "path"
 
 const VERSION_FUNCTION_REGEX =
   /function version\(\) external pure returns \(string memory\) \{[^}]*\}/
@@ -220,8 +222,8 @@ export function updateSolidityVersions(
       const fullPath = path.join(dir, entry.name)
       if (entry.isDirectory()) {
         walk(fullPath)
-      } else if (entry.name.endsWith('.sol')) {
-        const content = fs.readFileSync(fullPath, 'utf8')
+      } else if (entry.name.endsWith(".sol")) {
+        const content = fs.readFileSync(fullPath, "utf8")
         if (!VERSION_FUNCTION_REGEX.test(content)) {
           continue
         }
@@ -230,14 +232,14 @@ export function updateSolidityVersions(
           `function version() external pure returns (string memory) { return "${version}"; }`,
         )
         if (next !== content) {
-          fs.writeFileSync(fullPath, next, 'utf8')
+          fs.writeFileSync(fullPath, next, "utf8")
           updated.push(fullPath)
         }
       }
     }
   }
 
-  walk(path.join(rootDir, 'contracts'))
+  walk(path.join(rootDir, "contracts"))
   return updated
 }
 
@@ -245,17 +247,17 @@ export function updatePackageJsonVersion(
   rootDir: string,
   version: string,
 ): void {
-  const pkgPath = path.join(rootDir, 'package.json')
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+  const pkgPath = path.join(rootDir, "package.json")
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"))
   const next = { ...pkg, version }
-  fs.writeFileSync(pkgPath, JSON.stringify(next, null, 2) + '\n', 'utf8')
+  fs.writeFileSync(pkgPath, JSON.stringify(next, null, 2) + "\n", "utf8")
 }
 
 export function main(argv: string[]): void {
   const version = argv[2]
   if (!version || !SEMVER_REGEX.test(version)) {
     console.error(
-      `Usage: npx tsx scripts/release/update-versions.ts <x.y.z> (got: ${version ?? 'nothing'})`,
+      `Usage: npx tsx scripts/release/update-versions.ts <x.y.z> (got: ${version ?? "nothing"})`,
     )
     process.exit(1)
   }
@@ -304,12 +306,14 @@ git commit -m "feat: add release version-update script for contracts and package
 ### Task 2: Release configuration and workflows
 
 **Files:**
+
 - Modify (full replace): `.releaserc.json`
 - Modify (full replace): `.github/workflows/release.yaml`
 - Modify (full replace): `.github/workflows/pr-title-check.yml`
 - Delete: `.github/workflows/trigger-from-chains.yaml`
 
 **Interfaces:**
+
 - Consumes: the CLI from Task 1 (`npx tsx scripts/release/update-versions.ts ${nextRelease.version}`).
 - Produces: job outputs `new_release_published`, `new_release_version`, `new_release_git_tag` on the `release` job (for future downstream jobs).
 
@@ -449,6 +453,7 @@ GITHUB_TOKEN=$(gh auth token) npx semantic-release --dry-run --no-ci \
 ```
 
 Expected in output:
+
 - `Found git tag v3.2.6 associated with version 3.2.6` (or similar — the last release MUST be 3.2.x, NOT 2.1.5 and NOT 3.3.0-alpha.1; if it picks the alpha tag, stop and flag it for a human decision per the spec's edge case 2)
 - `The next release version is 3.X.Y` (patch/minor above 3.2.6, depending on commits since the tag)
 - The exec prepare step listing updated Solidity files
@@ -471,10 +476,12 @@ git commit -m "feat: adopt solver-style semantic-release on main with contract v
 ### Task 3: Delete the dead deployment pipeline and prune package.json
 
 **Files:**
+
 - Delete: `scripts/semantic-release/` (entire directory), `scripts/utils/` (entire directory), `scripts/createXOld/` (entire directory), `scripts/deployRoutes.sh`, `scripts/verifyRoutes.sh`, `scripts/deploySingletonFactory.sh`, `executeInstructions.ts`, `package_working.json`
 - Modify: `package.json` (scripts + devDependencies + version), `yarn.lock` (regenerated)
 
 **Interfaces:**
+
 - Consumes: nothing from other tasks (pure deletion). Task 1 must already be committed (the new script must not live inside a deleted directory — it lives in `scripts/release/`, which is kept).
 
 - [ ] **Step 1: Delete the dead files**
@@ -495,6 +502,7 @@ Keep: `release` (`semantic-release` — used by the workflow via npx, harmless a
 - [ ] **Step 3: Prune devDependencies and align version**
 
 In `package.json`:
+
 - Remove devDependencies: `@semantic-release/npm`, `semver`, `semver-utils`, `@types/semver-utils` (verified used only by the deleted code).
 - Set `"version": "3.2.6"` (matches the latest real tag; semantic-release derives versions from tags, this is purely to stop the 2.1.12 lie).
 
@@ -546,6 +554,7 @@ git commit -m "chore: remove dead deploy-during-release pipeline and orphaned fi
 ### Task 4: Documentation updates and doc relocations
 
 **Files:**
+
 - Move: `deposit_address_userflow.md` → `CLAUDE/specs/deposit_address_userflow.md`, `localprover_flows.md` → `CLAUDE/specs/localprover_flows.md`
 - Modify (full replace): `scripts/README.md`
 - Modify: `README.md` (deployment section, lines ~383–421, plus `script/Deploy.s.sol` path fixes at lines 237, 391, 398, 405)
@@ -562,7 +571,7 @@ git mv localprover_flows.md CLAUDE/specs/localprover_flows.md
 
 Full new content:
 
-```markdown
+````markdown
 # Eco-Routes Scripts
 
 Operational scripts for the Eco-Routes protocol.
@@ -575,12 +584,13 @@ Operational scripts for the Eco-Routes protocol.
   ```bash
   forge script scripts/Deploy.s.sol --broadcast --rpc-url $RPC_URL
   ```
+````
 
-  Configuration comes from environment variables (see the "Key Environment
-  Variables" section of the root `CLAUDE.md` / `README.md`): `SALT`,
-  `MAILBOX_CONTRACT`, `ROUTER_CONTRACT`, `LAYERZERO_ENDPOINT`,
-  `POLYMER_CROSS_L2_PROVER_V2`, `CCIP_ROUTER`, and the per-bridge
-  `*_CROSS_VM_PROVERS` lists.
+Configuration comes from environment variables (see the "Key Environment
+Variables" section of the root `CLAUDE.md` / `README.md`): `SALT`,
+`MAILBOX_CONTRACT`, `ROUTER_CONTRACT`, `LAYERZERO_ENDPOINT`,
+`POLYMER_CROSS_L2_PROVER_V2`, `CCIP_ROUTER`, and the per-bridge
+`*_CROSS_VM_PROVERS` lists.
 
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
 
@@ -624,7 +634,8 @@ Note: the version string is compiled into bytecode, so every release changes
 contract bytecode and therefore CREATE2 deterministic deployment addresses.
 Contract deployment and npm publishing are deliberately NOT part of the
 release flow.
-```
+
+`````
 
 - [ ] **Step 3: Fix `README.md`**
 
@@ -638,7 +649,7 @@ release flow.
 ```bash
 # Deploy to mainnet
 forge script scripts/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
-```
+`````
 
 ### Cross-VM Support
 
@@ -650,6 +661,7 @@ prover lists before running the deploy script:
 HYPER_CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" \
   forge script scripts/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
 ```
+
 ````
 
 - [ ] **Step 4: Fix `CLAUDE.md`**
@@ -758,3 +770,4 @@ Remind the user of the two human-action items from the spec before the first rea
 - Spec coverage: workflows (Task 2), version rewrite + granularity (Task 1), pipeline deletion + package.json prune (Task 3), orphan cleanup + doc fixes + doc moves (Tasks 3–4), dry-run + forge-build verification (Tasks 2/5). Branch-protection and prerelease-tag edge cases are surfaced as explicit check/report steps (Task 2 Step 5, Task 5 Step 5).
 - Type consistency: `updateSolidityVersions(rootDir, version): string[]` and the CLI signature are defined in Task 1 and consumed verbatim in Task 2's `.releaserc.json` and Task 5's rehearsal.
 - No placeholders: every file change includes full content or exact before/after text.
+````

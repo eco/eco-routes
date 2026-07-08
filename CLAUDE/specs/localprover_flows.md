@@ -61,6 +61,7 @@ flowchart TD
 ## Key Insights
 
 ### 1. LocalProver as Intermediary for Funds
+
 - **Problem**: Portal.withdraw requires proof before withdrawal, but flashFulfill needs to withdraw before fulfill
 - **Solution**: LocalProver uses temporary in-progress flag
   - Sets `_flashFulfillInProgress = intentHash` BEFORE withdrawal
@@ -71,6 +72,7 @@ flowchart TD
   - LocalProver acts as fund intermediary, not recorded as claimant
 
 ### 2. Solver Always Gets Paid Immediately
+
 - In both simple and secondary intent scenarios, if `flashFulfill` succeeds, the solver receives their reward right away
 - Solver receives:
   - **All ERC20 tokens** from `reward.tokens` (minus any consumed by `route.tokens` for execution)
@@ -79,11 +81,13 @@ flowchart TD
 - Payment comes from LocalProver's token and ETH balances after withdrawal and fulfill
 
 ### 3. Single Intent Flow (Simple)
+
 - Solver calls `flashFulfill` → LocalProver marks in-progress → withdraws to itself → fulfills with solver as claimant → pays solver immediately
-- If fulfill fails, transaction reverts and funds stay in vault (_flashFulfillInProgress cleared on revert)
+- If fulfill fails, transaction reverts and funds stay in vault (\_flashFulfillInProgress cleared on revert)
 - User can refund after deadline if unfulfilled
 
 ### 4. Secondary Intent Flow (Complex)
+
 - Solver pre-funds secondary intent with `originalVault` as creator
 - Solver calls `flashFulfill` → LocalProver marks in-progress → withdraws to itself → fulfills → pays solver immediately
 - Secondary intent outcome is independent:
@@ -91,6 +95,7 @@ flowchart TD
   - **Failure**: Backend calls `Portal.refund()` twice, solver keeps their fee
 
 ### 5. Refund Scenarios
+
 - Backend calls `Portal.refund()` twice (separate transactions):
   - First refunds secondary intent → originalVault
   - Then refunds original intent → user
@@ -98,6 +103,7 @@ flowchart TD
 - Each vault refunds separately (non-atomic but safe)
 
 ### 6. Critical Requirement for Secondary Intents
+
 The secondary intent **MUST** have `reward.creator = originalVault` (the vault address of the original intent) for refunds to work correctly. This ensures refunds flow: SecondaryVault → OriginalVault → User. If solver creates secondary with themselves as creator, they have to handle refunds themselves.
 
 ## Technical Implementation: provenIntents() State Machine
@@ -105,18 +111,21 @@ The secondary intent **MUST** have `reward.creator = originalVault` (the vault a
 The `provenIntents()` function handles four distinct cases to enable the LocalProver intermediary pattern, with built-in griefing attack protection:
 
 ### Case 1: Griefing protection - LocalProver set as claimant maliciously
+
 - **Trigger**: Portal.claimants[intentHash] == LocalProver address
 - **Return**: address(0) (treat as unfulfilled)
 - **Purpose**: Prevent griefing where someone calls Portal.fulfill directly with LocalProver as claimant
 - **Note**: flashFulfill explicitly rejects LocalProver as claimant (reverts with InvalidClaimant), so this case only triggers from direct Portal.fulfill calls
 
 ### Case 2: Intent fulfilled (via flashFulfill or normal Portal.fulfill)
+
 - **Trigger**: Portal.claimants[intentHash] != 0 and != LocalProver and is valid EVM address
 - **Return**: Address from Portal.claimants mapping (actual solver)
 - **Purpose**: After flashFulfill completes, Portal.claimants contains the actual solver
 - **Also handles**: Normal Portal.fulfill calls
 
 ### Case 3: flashFulfill in progress (withdrawal phase)
+
 - **Trigger**: Portal.claimants[intentHash] == 0 but `_flashFulfillInProgress == intentHash`
 - **Return**: LocalProver's address
 - **Purpose**: Enable Portal.withdraw to succeed during flashFulfill execution
@@ -124,7 +133,8 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 - **Called by**: Portal.withdraw() during flashFulfill transaction
 
 ### Case 4: Intent not fulfilled at all
-- **Trigger**: Portal.claimants empty and _flashFulfillInProgress != intentHash
+
+- **Trigger**: Portal.claimants empty and \_flashFulfillInProgress != intentHash
 - **Return**: address(0)
 - **Purpose**: Standard unfulfilled intent response
 
@@ -133,6 +143,7 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 The state machine includes built-in protection against two potential griefing attacks:
 
 **Attack Vector 1: LocalProver Sentinel Griefing**
+
 - Attacker calls `Portal.fulfill(intentHash, ..., bytes32(address(LocalProver)))` directly (bypassing LocalProver contract)
 - Portal sets claimants[intentHash] to LocalProver
 - Protection:
@@ -141,12 +152,14 @@ The state machine includes built-in protection against two potential griefing at
 - Result: Intent appears unfulfilled, allowing refund after deadline
 
 **Attack Vector 2: Non-EVM bytes32 Griefing**
+
 - Attacker calls `Portal.fulfill(intentHash, ..., nonEVMBytes32)` with invalid EVM address (top 12 bytes non-zero)
 - Portal sets claimants[intentHash] to invalid bytes32
 - Protection: Case 2 validates address before conversion, returns `address(0)` for invalid addresses
 - Result: Intent appears unfulfilled, allowing refund after deadline
 
 **Impact**: Both attack vectors result in the same safe behavior:
+
 - User's service is fulfilled (route executed by attacker)
 - Intent cannot be fulfilled again (Portal blocks duplicate fulfills)
 - Funds locked until deadline, then refundable to creator
@@ -155,28 +168,33 @@ The state machine includes built-in protection against two potential griefing at
 ## Scenarios Summary
 
 ### ✅ Success Cases
+
 1. **Simple fulfillment**: Solver gets reward (ERC20 tokens + native ETH), user gets service
 2. **Secondary success**: Solver gets reward, secondary completes, user gets full service
 3. **Two-tx refund**: Both vaults refunded separately by backend
 
 ### ⚠️ Solver Keeps Reward Cases
+
 - In all scenarios where `flashFulfill` succeeds, solver keeps their reward (tokens + native)
 - Even if secondary intent fails, solver earned the reward for fulfilling the original intent
 - This is fair: solver did work and fronted capital for secondary intent
 
 ### ❌ Revert Cases
+
 1. **flashFulfill fails**: Transaction reverts, funds stay in original vault
 2. **Portal.refund fails**: Reverts if intent not expired or already proven
 
 ## User Experience
 
 ### For Users
+
 - Create intent with LocalProver as prover
 - Wait for solver to fulfill
 - If solver uses secondary intent and it fails: backend calls `Portal.refund()` twice
 - Refunds are permissionless - anyone can trigger after deadline
 
 ### For Solvers
+
 - Call `flashFulfill` to atomically withdraw + fulfill + get paid
 - Get reward immediately (no waiting!):
   - All ERC20 tokens from reward (minus route consumption)
@@ -185,6 +203,7 @@ The state machine includes built-in protection against two potential griefing at
 - Front capital for secondary intent from the reward received
 
 ### For Users (Refund Path)
+
 - Two separate transactions to refund both vaults (handled by backend)
 - Permissionless: anyone can call Portal.refund() after deadline
 - Safe and straightforward - no complex validation logic

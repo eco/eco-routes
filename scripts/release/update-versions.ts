@@ -62,10 +62,9 @@ export function updatePackageJsonVersion(
 export function main(argv: string[]): void {
   const version = argv[2]
   if (!version || !SEMVER_REGEX.test(version)) {
-    console.error(
+    throw new Error(
       `Usage: npx tsx scripts/release/update-versions.ts <x.y.z> (got: ${version ?? 'nothing'})`,
     )
-    process.exit(1)
   }
   const rootDir = process.cwd()
   const updated = updateSolidityVersions(rootDir, version)
