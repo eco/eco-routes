@@ -31,9 +31,18 @@ Instead: stop, tell the human in plain language that this is a security fix and 
 
 ### Development
 
-- `forge script script/Deploy.s.sol --broadcast --rpc-url $RPC_URL` - Deploy contracts
-- `yarn deployCI` - CI deployment script
-- `yarn semantic:pub` - Semantic release (local testing)
+- `forge script scripts/Deploy.s.sol --broadcast --rpc-url $RPC_URL` - Deploy contracts
+
+### Releases
+
+- Releases are automated: on push to `main`, semantic-release computes the next
+  version from conventional commits, rewrites contract `version()` functions and
+  `package.json`, updates `CHANGELOG.md`, commits back as
+  `chore(release): x.y.z [skip ci]`, and tags a GitHub release. No deploys, no
+  npm publish. PR titles must be conventional commits (enforced in CI).
+- One-time go-live prerequisite: an admin must tag main's tip `v3.3.0` before
+  the first release (the v3.x tag history lives on the `alpha` branch and is not
+  reachable from `main`).
 
 ## Architecture Overview
 
