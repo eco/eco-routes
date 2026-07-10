@@ -30,6 +30,27 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      # Guard against releasing from a broken version baseline: without a
+      # stable tag >= v2.8.17 reachable from main, semantic-release would
+      # compute the next version from the legacy v1.x line and downgrade
+      # the deployed contracts' version(). See scripts/README.md (Releases).
+      - name: Verify release baseline tag
+        run: |
+          BASELINE=$(git tag --merged HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "Highest reachable stable tag: ${BASELINE:-none}"
+          if [ "$(printf '%s\n' "v2.8.17" "$BASELINE" | sort -V | tail -1)" != "$BASELINE" ] || [ -z "$BASELINE" ]; then
+            echo "::error::No stable tag >= v2.8.17 is reachable from this branch. Create the baseline tag before releasing (see scripts/README.md, Releases section)."
+            exit 1
+          fi
+
+      # Gate the release on a green build/test of the code being released;
+      # the prepare step additionally runs forge build on the rewritten source
+      - name: Run tests
+        run: forge test
+
       - name: Run semantic-release
         id: semantic
         run: npx semantic-release
