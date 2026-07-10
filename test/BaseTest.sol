@@ -212,4 +212,27 @@ contract BaseTest is Test {
     function _expectEmit() internal {
         vm.expectEmit(true, true, true, true);
     }
+
+    /**
+     * @notice Asserts a version string has a semver shape (digits and dots,
+     * e.g. "2.6" or "3.0.0") without pinning a literal value, since version()
+     * is rewritten by semantic-release on every release
+     */
+    function _assertValidSemver(string memory version) internal pure {
+        bytes memory v = bytes(version);
+        assertGt(v.length, 0, "version is empty");
+        bool hasDot = false;
+        for (uint256 i = 0; i < v.length; i++) {
+            if (v[i] == ".") {
+                hasDot = true;
+                continue;
+            }
+            assertTrue(
+                v[i] >= "0" && v[i] <= "9",
+                "version has non-numeric character"
+            );
+        }
+        assertTrue(hasDot, "version has no dot separator");
+        assertTrue(v[0] != "." && v[v.length - 1] != ".", "malformed version");
+    }
 }

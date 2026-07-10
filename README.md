@@ -234,7 +234,7 @@ yarn lint && yarn test
 # (Configure your local chain setup as needed)
 
 # Deploy contracts locally
-forge script script/Deploy.s.sol --broadcast --rpc-url localhost
+forge script scripts/Deploy.s.sol --broadcast --rpc-url localhost
 
 # Run tests against deployed contracts
 forge test --rpc-url localhost
@@ -388,36 +388,32 @@ forge test --match-test test_fulfill
 
 ```bash
 # Deploy all contracts locally
-forge script script/Deploy.s.sol --broadcast --rpc-url localhost
+forge script scripts/Deploy.s.sol --broadcast --rpc-url localhost
 ```
 
 #### Testnet Deployment:
 
 ```bash
 # Deploy to specific testnet
-forge script script/Deploy.s.sol --broadcast --rpc-url $TESTNET_RPC_URL --verify
+forge script scripts/Deploy.s.sol --broadcast --rpc-url $TESTNET_RPC_URL --verify
 ```
 
 #### Mainnet Deployment:
 
 ```bash
 # Deploy to mainnet
-forge script script/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
-
-# Or use deployment script
-./scripts/deployRoutes.sh
+forge script scripts/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
 ```
 
 ### Cross-VM Support
 
-For cross-VM deployments (e.g., integrating with Solana):
+For cross-VM deployments (e.g., integrating with Solana), set the per-bridge
+prover lists before running the deploy script:
 
 ```bash
 # Deploy with cross-VM prover support
-CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" ./scripts/deployRoutes.sh
-
-# Multiple cross-VM chains
-CROSS_VM_PROVERS="0x1234...solana,0x5678...cosmos" ./scripts/deployRoutes.sh
+HYPER_CROSS_VM_PROVERS="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" \
+  forge script scripts/Deploy.s.sol --broadcast --rpc-url $MAINNET_RPC_URL --verify
 ```
 
 ### Environment Configuration
