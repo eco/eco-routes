@@ -91,6 +91,27 @@ describe('update-versions', () => {
     expect(second).toHaveLength(0)
   })
 
+  it('bumps an already-rewritten single-line version() to a new version', () => {
+    updateSolidityVersions(rootDir, '3.2.7')
+    const bumped = updateSolidityVersions(rootDir, '3.2.8')
+
+    expect(bumped).toHaveLength(1)
+    const content = fs.readFileSync(
+      path.join(rootDir, 'contracts', 'libs', 'Semver.sol'),
+      'utf8',
+    )
+    expect(content).toContain(
+      'function version() external pure returns (string memory) { return "3.2.8"; }',
+    )
+    expect(content).not.toContain('3.2.7')
+  })
+
+  it('returns an empty list when nothing matches the rewrite pattern', () => {
+    fs.rmSync(path.join(rootDir, 'contracts', 'libs', 'Semver.sol'))
+    const updated = updateSolidityVersions(rootDir, '3.2.7')
+    expect(updated).toHaveLength(0)
+  })
+
   it('updates package.json version without touching other fields', () => {
     updatePackageJsonVersion(rootDir, '3.2.7')
     const pkg = JSON.parse(

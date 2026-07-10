@@ -9,6 +9,7 @@
  * deployment addresses. Full major.minor.patch is intentional (see
  * CLAUDE/specs/2026-07-08-semver-release-design.md).
  */
+import { execFileSync } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -68,6 +69,17 @@ export function main(argv: string[]): void {
   }
   const rootDir = process.cwd()
   const updated = updateSolidityVersions(rootDir, version)
+  if (updated.length === 0) {
+    throw new Error(
+      `No version() function was rewritten under contracts/ — the source no longer matches the rewrite pattern. Aborting so the release fails loudly instead of tagging an unchanged version.`,
+    )
+  }
+  // Format only the rewritten files so release commits stay version-only and
+  // never sweep unrelated format drift into deployed-source history
+  execFileSync('npx', ['prettier', '--write', ...updated], {
+    cwd: rootDir,
+    stdio: 'inherit',
+  })
   updatePackageJsonVersion(rootDir, version)
   console.log(
     `Updated ${updated.length} Solidity file(s) and package.json to ${version}`,
