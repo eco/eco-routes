@@ -30,7 +30,7 @@ describe('Token Security Tests', () => {
 
     // Deploy Portal (which includes IntentSource and Inbox)
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     // Use the IIntentSource interface with the Portal implementation
     const intentSource = await ethers.getContractAt(
       'IIntentSource',

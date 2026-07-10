@@ -29,7 +29,7 @@ contract DepositFactoryTest is Test {
 
     function setUp() public {
         // Deploy Portal
-        portal = new Portal();
+        portal = new Portal(address(0));
 
         // Deploy factory
         factory = new DepositFactory_USDCTransfer_Solana(

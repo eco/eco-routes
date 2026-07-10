@@ -50,7 +50,7 @@ describe('Destination Settler Test', (): void => {
     ).deploy(ethers.ZeroAddress)
     const [owner, creator, solver, dstAddr] = await ethers.getSigners()
     const portalFactory = await ethers.getContractFactory('Portal')
-    const portal = await portalFactory.deploy()
+    const portal = await portalFactory.deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
     const prover = await (
       await ethers.getContractFactory('TestProver')
