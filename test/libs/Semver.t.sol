@@ -5,7 +5,7 @@ import {BaseTest} from "../BaseTest.sol";
 import {Semver} from "../../contracts/libs/Semver.sol";
 
 contract TestSemver is Semver {
-    // Inherits the default version "2.6"
+    // Inherits the version string, which semantic-release rewrites on release
 }
 
 contract SemverTest is BaseTest {
@@ -20,7 +20,7 @@ contract SemverTest is BaseTest {
 
     function testSemverVersion() public view {
         string memory version = testSemver.version();
-        assertEq(version, "2.6");
+        _assertValidSemver(version);
     }
 
     function testSemverVersionConsistency() public view {

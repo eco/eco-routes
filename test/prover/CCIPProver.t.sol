@@ -127,7 +127,7 @@ contract CCIPProverTest is BaseTest {
     }
 
     function testVersioning() public view {
-        assertEq(ccipProver.version(), "2.6");
+        _assertValidSemver(ccipProver.version());
     }
 
     // ============ Prove Function Tests ============
