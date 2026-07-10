@@ -171,3 +171,25 @@ a release loop.
   must be rebuilt deliberately).
 - TRON deployment scripts (`scripts/tron/`, in-flight work).
 - Helm publishing (solver-specific; no equivalent here).
+
+## Amendments (2026-07-10, post-review — PR #410)
+
+Findings from MSevey's review changed the following:
+
+1. **Version baseline strategy** (supersedes edge case 2 and the earlier
+   v3.3.0-baseline decision): the latest actually-released version is
+   `v2.8.17`; the `v3.x` and `v9.x` tags were never released. Go-live is now:
+   prune tags newer than `v2.8.17`, tag main's tip `v2.8.18` as baseline, and
+   cut `v3.0.0` later via a `BREAKING CHANGE` commit. A guard step in
+   `release.yaml` aborts any release without a reachable stable tag
+   `>= v2.8.17` (CI-enforced, not docs-only).
+2. **Test assertions**: three Foundry tests asserted the literal `"2.6"` and
+   would have turned `main` red on the first post-release push; they now
+   assert semver shape via `BaseTest._assertValidSemver`.
+3. **Release gates**: `forge test` runs before semantic-release, and prepare
+   runs `forge build` on the rewritten source before it is committed/tagged.
+   The prepare script fails loudly if it rewrites zero files.
+4. **Prettier scope**: prepare formats only the rewritten files (was
+   `contracts/**/*.sol`), keeping release commits version-only.
+5. **Major-version patching**: on a major bump, cut a `release-vN.x` branch
+   from the previous major's last tag for production hotfixes.
