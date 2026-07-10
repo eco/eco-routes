@@ -18,6 +18,9 @@ const VERSION_FUNCTION_REGEX =
 
 const SEMVER_REGEX = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
 
+/** The deployed contract whose version() must always be rewritten */
+const CANONICAL_VERSION_FILE = path.join('contracts', 'libs', 'Semver.sol')
+
 export function updateSolidityVersions(
   rootDir: string,
   version: string,
@@ -50,6 +53,20 @@ export function updateSolidityVersions(
   return updated
 }
 
+/**
+ * Throws unless the canonical deployed contract (contracts/libs/Semver.sol)
+ * is among the rewritten files. The test provers also match the rewrite
+ * pattern, so a bare zero-check would pass while the deployed version
+ * silently went stale.
+ */
+export function assertCanonicalFileUpdated(updated: string[]): void {
+  if (!updated.some((f) => f.endsWith(CANONICAL_VERSION_FILE))) {
+    throw new Error(
+      `${CANONICAL_VERSION_FILE} was not rewritten — the deployed contract's version() would be stale. Aborting the release.`,
+    )
+  }
+}
+
 export function updatePackageJsonVersion(
   rootDir: string,
   version: string,
@@ -74,6 +91,7 @@ export function main(argv: string[]): void {
       `No version() function was rewritten under contracts/ — the source no longer matches the rewrite pattern. Aborting so the release fails loudly instead of tagging an unchanged version.`,
     )
   }
+  assertCanonicalFileUpdated(updated)
   // Format only the rewritten files so release commits stay version-only and
   // never sweep unrelated format drift into deployed-source history
   execFileSync('npx', ['prettier', '--write', ...updated], {

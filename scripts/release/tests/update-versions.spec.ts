@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import {
+  assertCanonicalFileUpdated,
   updateSolidityVersions,
   updatePackageJsonVersion,
 } from '../update-versions'
@@ -110,6 +111,20 @@ describe('update-versions', () => {
     fs.rmSync(path.join(rootDir, 'contracts', 'libs', 'Semver.sol'))
     const updated = updateSolidityVersions(rootDir, '3.2.7')
     expect(updated).toHaveLength(0)
+  })
+
+  it('accepts an update list containing the canonical Semver.sol', () => {
+    const updated = updateSolidityVersions(rootDir, '3.2.7')
+    expect(() => assertCanonicalFileUpdated(updated)).not.toThrow()
+  })
+
+  it('rejects an update list missing the canonical Semver.sol', () => {
+    // Only a test helper matched the rewrite pattern; the deployed
+    // contract's version() drifted out of shape and would go stale
+    const updated = [path.join(rootDir, 'contracts', 'test', 'TestProver.sol')]
+    expect(() => assertCanonicalFileUpdated(updated)).toThrow(
+      /Semver\.sol was not rewritten/,
+    )
   })
 
   it('updates package.json version without touching other fields', () => {
