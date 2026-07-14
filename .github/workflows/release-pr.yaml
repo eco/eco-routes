@@ -1,0 +1,136 @@
+name: Release PR
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Compute and print without pushing or opening a PR"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-pr:
+    name: Build or refresh the release PR
+    runs-on: ubuntu-latest
+    env:
+      HEAD_MSG: ${{ github.event.head_commit.message || '' }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+    steps:
+      # The push that lands a merged release PR is handled by release-tag.yaml
+      - name: Skip release commits
+        id: skip
+        run: |
+          FIRST_LINE=$(printf '%s' "$HEAD_MSG" | head -1)
+          if printf '%s' "$FIRST_LINE" | grep -qE '^chore\(release\): [0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Head commit is a release commit; nothing to do."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4.2.2
+        if: steps.skip.outputs.skip == 'false'
+        with:
+          fetch-depth: 0 # semantic-release needs full history + tags
+
+      # Guard against computing from a broken version baseline: without a
+      # stable tag >= v2.8.17 reachable from main, semantic-release would
+      # compute the next version from the legacy v1.x line.
+      - name: Verify release baseline tag
+        if: steps.skip.outputs.skip == 'false'
+        run: |
+          BASELINE=$(git tag --merged HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "Highest reachable stable tag: ${BASELINE:-none}"
+          if [ "$(printf '%s\n' "v2.8.17" "$BASELINE" | sort -V | tail -1)" != "$BASELINE" ] || [ -z "$BASELINE" ]; then
+            echo "::error::No stable tag >= v2.8.17 is reachable from this branch. Create the baseline tag before releasing (see scripts/README.md, Releases section)."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4.1.0
+        if: steps.skip.outputs.skip == 'false'
+        with:
+          node-version-file: ".nvmrc"
+          cache: "yarn"
+
+      - name: Install dependencies
+        if: steps.skip.outputs.skip == 'false'
+        run: yarn install --frozen-lockfile
+
+      - name: Compute next version
+        if: steps.skip.outputs.skip == 'false'
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -f .release-next-version
+          npx semantic-release --dry-run
+          if [ ! -s .release-next-version ]; then
+            echo "No releasable commits since the last release; leaving any open release PR as-is."
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            VERSION=$(cat .release-next-version)
+            echo "Next version: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rewrite versions and changelog
+        if: steps.skip.outputs.skip == 'false' && steps.version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npx tsx scripts/release/update-versions.ts "$VERSION"
+          # package.json now carries the next version, which conventional-changelog
+          # uses for the new section header it prepends to CHANGELOG.md
+          npx conventional-changelog -p angular -i CHANGELOG.md -s
+          npx conventional-changelog -p angular > .release-notes.md
+          echo "--- release notes ---"
+          cat .release-notes.md
+
+      - name: Mint App token
+        if: steps.skip.outputs.skip == 'false' && steps.version.outputs.version != '' && env.DRY_RUN != 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Push release branch and open/refresh PR
+        if: steps.skip.outputs.skip == 'false' && steps.version.outputs.version != '' && env.DRY_RUN != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git config user.name "eco-release-bot[bot]"
+          git config user.email "eco-release-bot[bot]@users.noreply.github.com"
+          git checkout -B autorelease/next
+          git add package.json CHANGELOG.md 'contracts/*.sol' 'contracts/**/*.sol'
+          git commit -m "chore(release): $VERSION"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin autorelease/next
+
+          EXISTING=$(gh pr list --head autorelease/next --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --title "chore(release): $VERSION" --body-file .release-notes.md
+            echo "Refreshed release PR #$EXISTING to $VERSION"
+          else
+            gh pr create --base main --head autorelease/next \
+              --title "chore(release): $VERSION" --body-file .release-notes.md
+            echo "Opened release PR for $VERSION"
+          fi
+
+      - name: Dry-run summary
+        if: steps.skip.outputs.skip == 'false' && steps.version.outputs.version != '' && env.DRY_RUN == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "DRY RUN: would open/refresh release PR 'chore(release): $VERSION' from autorelease/next"
+          git status --short
