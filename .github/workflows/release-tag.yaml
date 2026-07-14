@@ -32,7 +32,7 @@ jobs:
             fi
           else
             FIRST_LINE=$(printf '%s' "$HEAD_MSG" | head -1)
-            VERSION=$(printf '%s' "$FIRST_LINE" | sed -nE 's/^chore\(release\): ([0-9]+\.[0-9]+\.[0-9]+)$/\1/p')
+            VERSION=$(printf '%s' "$FIRST_LINE" | sed -nE 's/^chore\(release\): ([0-9]+\.[0-9]+\.[0-9]+)( \(#[0-9]+\))?$/\1/p')
           fi
           if [ -z "$VERSION" ]; then
             echo "Not a release commit; nothing to do."
@@ -58,7 +58,7 @@ jobs:
             exit 1
           fi
           FIRST_LINE=$(git log -1 --format=%s "$SHA")
-          if [ "$FIRST_LINE" != "chore(release): $VERSION" ]; then
+          if ! printf '%s' "$FIRST_LINE" | grep -qE "^chore\(release\): ${VERSION//./\\.}( \(#[0-9]+\))?$"; then
             echo "::error::Matched commit $SHA has unexpected subject '$FIRST_LINE'."
             exit 1
           fi
