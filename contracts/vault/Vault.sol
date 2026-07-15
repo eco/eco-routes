@@ -55,7 +55,7 @@ contract Vault is IVault {
         address funder,
         IPermit permit
     ) external payable onlyPortal returns (bool fullyFunded) {
-        fullyFunded = address(this).balance >= reward.nativeAmount;
+        fullyFunded = true;
 
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
@@ -71,6 +71,11 @@ contract Vault is IVault {
 
             fullyFunded = fullyFunded && remaining == 0;
         }
+
+        // Evaluate native completeness AFTER the token loop so that a reentrant
+        // withdraw/refund draining the vault's native balance during an untrusted
+        // permit.transferFrom is reflected in the returned result.
+        fullyFunded = fullyFunded && address(this).balance >= reward.nativeAmount;
     }
 
     /**

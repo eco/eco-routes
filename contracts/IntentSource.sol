@@ -649,7 +649,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             revert InsufficientFunds(intentHash);
         }
 
-        if (fullyFunded) {
+        // Status-monotonic: only promote to Funded from Initial so a reentrant
+        // withdraw/refund cannot be overwritten back to Funded.
+        if (fullyFunded && rewardStatuses[intentHash] == Status.Initial) {
             rewardStatuses[intentHash] = Status.Funded;
         }
 
@@ -734,17 +736,25 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         _requireNoNativeAliasConflict(reward);
 
         vault = _getOrDeployVault(intentHash);
-        bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
+        IVault(vault).fundFor{value: msg.value}(
             reward,
             funder,
             IPermit(permitContract)
         );
 
+        // Recompute funding from actual on-chain balances rather than trusting the
+        // value returned by {fundFor}: an untrusted permit contract can reenter and
+        // drain the vault during the token transfers.
+        bool fullyFunded = _isRewardFunded(reward, vault);
+
         if (!allowPartial && !fullyFunded) {
             revert InsufficientFunds(intentHash);
         }
 
-        if (fullyFunded) {
+        // Status-monotonic: only promote to Funded from Initial. A reentrant
+        // withdraw/refund may have already moved the intent to a terminal status,
+        // which must never be overwritten.
+        if (fullyFunded && rewardStatuses[intentHash] == Status.Initial) {
             rewardStatuses[intentHash] = Status.Funded;
         }
 
