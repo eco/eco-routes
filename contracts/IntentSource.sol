@@ -365,6 +365,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             funder,
             permitContract
         );
+        Refund.excessNative();
     }
 
     /**
@@ -420,6 +421,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             funder,
             permitContract
         );
+        Refund.excessNative();
     }
 
     /**
@@ -734,7 +736,13 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         _requireNoNativeAliasConflict(reward);
 
         vault = _getOrDeployVault(intentHash);
-        bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
+
+        // Cap the native contribution to the amount still missing from the vault (mirrors the
+        // funded path in {_fundIntent}); the vault balance is what {fundFor} checks against
+        // `reward.nativeAmount`, so no native is forwarded into the vault call itself.
+        _fundNative(vault, reward.nativeAmount);
+
+        bool fullyFunded = IVault(vault).fundFor{value: 0}(
             reward,
             funder,
             IPermit(permitContract)

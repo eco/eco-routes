@@ -501,6 +501,94 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
     }
 
+    function testFundForRefundsExcessNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        // fundFor pulls reward tokens straight into the vault
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+
+        vm.prank(creator);
+        intentSource.fundFor{value: REWARD_NATIVE_ETH * 2}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // Vault escrows exactly the required native, no more
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        // Only the needed native left the caller; the excess was refunded
+        assertEq(creator.balance, initialBalance - REWARD_NATIVE_ETH);
+        // No native stranded on the Portal
+        assertEq(address(intentSource).balance, 0);
+    }
+
+    function testPublishAndFundForRefundsExcessNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH * 2}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        assertEq(creator.balance, initialBalance - REWARD_NATIVE_ETH);
+        assertEq(address(intentSource).balance, 0);
+    }
+
+    function testFundForAlreadyFundedDoesNotStrandNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        // Fully fund the intent first
+        _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
+        assertTrue(intentSource.isIntentFunded(intent));
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        uint256 initialBalance = creator.balance;
+
+        // Funding an already-Funded intent (onlyFundable early-returns) must not
+        // leave native on the Portal; the entire msg.value is refunded to the caller.
+        vm.prank(creator);
+        intentSource.fundFor{value: REWARD_NATIVE_ETH}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertEq(address(intentSource).balance, 0);
+        assertEq(creator.balance, initialBalance);
+    }
+
     function testInsufficientNativeReward() public {
         reward.nativeAmount = 1 ether;
         intent.reward = reward;
