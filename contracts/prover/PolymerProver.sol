@@ -188,11 +188,13 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /**
      * @notice Emits IntentFulfilledFromSource events that can be proven by Polymer
      * @dev Only callable by the Portal contract
+     * @param sender Address that initiated the proving request and should receive
+     *        any forwarded ETH refund (Polymer proving requires no fee)
      * @param sourceChainDomainID Domain ID of the source chain (treated as chain ID for Polymer)
      * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
      */
     function prove(
-        address /* unused */,
+        address sender,
         uint64 sourceChainDomainID,
         bytes calldata encodedProofs,
         bytes calldata /* unused */
@@ -203,5 +205,15 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         }
 
         emit IntentFulfilledFromSource(sourceChainDomainID, encodedProofs);
+
+        // Polymer proving requires no bridge fee, so any forwarded ETH (forced
+        // dust or overpayment from Inbox.prove routing the Portal balance here)
+        // is refunded to the caller. A low-level call is used so a recipient
+        // that reverts or exceeds the 2300-gas stipend cannot trap the funds or
+        // DoS prove(). The boolean is intentionally ignored to prevent griefing.
+        if (msg.value > 0 && sender != address(0)) {
+            (bool _ok, ) = payable(sender).call{value: msg.value}("");
+            _ok;
+        }
     }
 }

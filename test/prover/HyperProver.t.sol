@@ -523,6 +523,50 @@ contract HyperProverTest is BaseTest {
         assertTrue(creator.balance >= initialBalance - overpayment);
     }
 
+    /**
+     * @notice prove() must not revert when the refund recipient rejects ETH
+     * @dev Regression test for V9: _sendRefund previously used transfer() with a
+     *      2300-gas stipend, so an overpayment refund to a smart-account /
+     *      EIP-7702 wallet whose receive() reverts (or consumes >2300 gas) would
+     *      DoS prove()/fulfillAndProve(). The failure-tolerant low-level call
+     *      makes the refund non-reverting; the excess simply stays in the prover.
+     */
+    function testProveRefundDoesNotRevertOnRejectingRecipient() public {
+        RejectingRefundRecipient recipient = new RejectingRefundRecipient();
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        uint256 overpayment = 2 ether;
+        uint256 proverBalanceBefore = address(hyperProver).balance;
+
+        bytes memory proverData = _encodeProverData(
+            bytes32(uint256(uint160(whitelistedProver))),
+            "",
+            address(0)
+        );
+
+        // Refund recipient is a contract that reverts on receive; with the old
+        // transfer()-based refund this call would revert. It must now succeed.
+        vm.prank(address(portal));
+        hyperProver.prove{value: overpayment}(
+            address(recipient),
+            uint64(block.chainid),
+            encodeProofs(intentHashes, claimants),
+            proverData
+        );
+
+        // Refund could not be delivered, so it is retained by the prover
+        // (fee = 100000 wei was consumed by the mock mailbox dispatch).
+        assertEq(address(recipient).balance, 0);
+        assertEq(
+            address(hyperProver).balance,
+            proverBalanceBefore + overpayment - 100000
+        );
+    }
+
     function testProveWithLargeArrays() public {
         uint256 arraySize = 50; // Test with larger array
         bytes32[] memory intentHashes = new bytes32[](arraySize);
@@ -630,5 +674,18 @@ contract HyperProverTest is BaseTest {
             }
         }
         return abi.encodePacked(uint64(chainId), packed);
+    }
+}
+
+/// @notice Refund recipient that rejects ETH, simulating a smart-account /
+/// EIP-7702 wallet whose receive() reverts or exceeds the 2300-gas stipend.
+/// Used to prove that _sendRefund tolerates refund failure instead of DoSing prove().
+contract RejectingRefundRecipient {
+    receive() external payable {
+        revert("RejectingRefundRecipient: I reject your ETH");
+    }
+
+    fallback() external payable {
+        revert("RejectingRefundRecipient: I reject your ETH");
     }
 }

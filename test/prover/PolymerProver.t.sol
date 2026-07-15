@@ -212,6 +212,39 @@ contract PolymerProverTest is BaseTest {
         );
     }
 
+    /**
+     * @notice prove() must refund forwarded ETH to the caller rather than trap it
+     * @dev Regression test for V9: Polymer proving requires no bridge fee, but
+     *      Inbox.prove forwards the Portal's entire balance (forced dust or
+     *      overpayment). Previously prove() was payable and only emitted an event,
+     *      permanently trapping any msg.value in the prover. It must now refund
+     *      the forwarded value to the sender.
+     */
+    function testProveRefundsForwardedValueToSender() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        uint256 forwarded = 1 ether;
+        vm.deal(address(portal), forwarded);
+        uint256 creatorBalanceBefore = creator.balance;
+
+        vm.prank(address(portal));
+        polymerProver.prove{value: forwarded}(
+            creator,
+            uint64(block.chainid),
+            encodedProofs,
+            hex""
+        );
+
+        // Forwarded ETH is refunded to the sender, nothing trapped in the prover
+        assertEq(creator.balance, creatorBalanceBefore + forwarded);
+        assertEq(address(polymerProver).balance, 0);
+    }
+
     function testValidateSingleProof() public {
         bytes32 intentHash = _hashIntent(intent);
         bytes32[] memory intentHashes = new bytes32[](1);

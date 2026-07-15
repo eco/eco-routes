@@ -64,7 +64,12 @@ abstract contract MessageBridgeProver is
             return;
         }
 
-        payable(recipient).transfer(amount);
+        // Use a low-level call rather than transfer() so a recipient that
+        // reverts or consumes more than the 2300-gas stipend (e.g. a smart
+        // account or EIP-7702 wallet) cannot DoS prove()/fulfillAndProve().
+        // The boolean is intentionally ignored to prevent griefing attacks.
+        (bool _ok, ) = payable(recipient).call{value: amount}("");
+        _ok;
     }
 
     /**
