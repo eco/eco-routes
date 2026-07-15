@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -21,7 +21,6 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  * @dev Includes protection against replay attacks through vault state checking
  */
 abstract contract OriginSettler is IOriginSettler, EIP712 {
-    using ECDSA for bytes32;
     using SafeERC20 for IERC20;
     using AddressConverter for bytes32;
 
@@ -168,10 +167,18 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
                 keccak256(order.orderData)
             )
         );
-        bytes32 hash = _hashTypedDataV4(structHash);
-        address signer = hash.recover(signature);
+        bytes32 digest = _hashTypedDataV4(structHash);
 
-        return signer == order.user;
+        // Use SignatureChecker so both EOA (ECDSA) signatures and ERC-1271
+        // contract-wallet signatures (e.g. Safe) are accepted on the gasless
+        // openFor path. For EOAs this is equivalent to the previous
+        // ECDSA.recover + equality check.
+        return
+            SignatureChecker.isValidSignatureNow(
+                order.user,
+                digest,
+                signature
+            );
     }
 
     /**
