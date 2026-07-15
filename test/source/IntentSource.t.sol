@@ -445,6 +445,24 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenB.balanceOf(intentVault), MINT_AMOUNT * 2);
     }
 
+    function testFundsLaterTokenLegWhenEarlierLegPartial() public {
+        // Reward leg 0 (tokenA) is under-approved while leg 1 (tokenB) is fully
+        // approved. With allowPartial=true via the publishAndFund (_fundIntent) path,
+        // the later leg must still be fully escrowed. Regression: the fullyFunded
+        // short-circuit previously skipped _fundToken for later legs once an earlier
+        // leg fell short, silently leaving fundable legs unfunded.
+        vm.prank(creator);
+        tokenA.approve(address(intentSource), MINT_AMOUNT / 2);
+
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        _publishAndFund(intent, true);
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(intentVault), MINT_AMOUNT / 2);
+        assertEq(tokenB.balanceOf(intentVault), MINT_AMOUNT * 2);
+    }
+
     // Edge Cases
     function testHandlesZeroTokenAmounts() public {
         // Create intent with zero amounts

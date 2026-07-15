@@ -17,6 +17,8 @@ import {Clones} from "../../contracts/vault/Clones.sol";
 contract MockPermit is IPermit {
     mapping(address => mapping(address => mapping(address => uint160)))
         public allowances;
+    mapping(address => mapping(address => mapping(address => uint48)))
+        public expirations;
 
     function setAllowance(
         address owner,
@@ -25,6 +27,19 @@ contract MockPermit is IPermit {
         uint160 amount
     ) external {
         allowances[owner][token][spender] = amount;
+        // Default to a non-expiring allowance so existing tests are unaffected.
+        expirations[owner][token][spender] = type(uint48).max;
+    }
+
+    function setAllowanceWithExpiration(
+        address owner,
+        address token,
+        address spender,
+        uint160 amount,
+        uint48 expiration
+    ) external {
+        allowances[owner][token][spender] = amount;
+        expirations[owner][token][spender] = expiration;
     }
 
     function allowance(
@@ -32,7 +47,11 @@ contract MockPermit is IPermit {
         address token,
         address spender
     ) external view override returns (uint160, uint48, uint48) {
-        return (allowances[owner][token][spender], 0, 0);
+        return (
+            allowances[owner][token][spender],
+            expirations[owner][token][spender],
+            0
+        );
     }
 
     function transferFrom(
@@ -41,6 +60,10 @@ contract MockPermit is IPermit {
         uint160 amount,
         address token
     ) external override {
+        // Model Permit2: an expired allowance reverts before the transfer.
+        if (block.timestamp > expirations[from][token][to]) {
+            revert AllowanceExpired(expirations[from][token][to]);
+        }
         require(
             allowances[from][token][to] >= amount,
             "Insufficient permit allowance"
@@ -392,6 +415,51 @@ contract VaultTest is Test {
         token.mint(creator, 1000);
         vm.prank(creator);
         token.approve(address(vault), 1000);
+
+        vm.prank(portal);
+        bool result = vault.fundFor(
+            reward,
+            creator,
+            IPermit(address(mockPermit))
+        );
+
+        assertTrue(result);
+        assertEq(token.balanceOf(address(vault)), 1000);
+        assertEq(token.balanceOf(creator), 0);
+    }
+
+    function test_fundFor_success_expiredPermitFallsBackToRegularApproval()
+        public
+    {
+        // A nonzero-but-expired Permit2 allowance must not revert AllowanceExpired;
+        // funding should fall through to the standard ERC20 approval instead.
+        vm.warp(1000);
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0,
+            tokens: tokens
+        });
+
+        token.mint(creator, 1000);
+        // Standard ERC20 approval to the vault (the fallback path).
+        vm.prank(creator);
+        token.approve(address(vault), 1000);
+        // Nonzero Permit2 allowance that has already expired.
+        vm.prank(creator);
+        token.approve(address(mockPermit), 1000);
+        mockPermit.setAllowanceWithExpiration(
+            creator,
+            address(token),
+            address(vault),
+            1000,
+            uint48(block.timestamp - 1)
+        );
 
         vm.prank(portal);
         bool result = vault.fundFor(
