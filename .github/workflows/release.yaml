@@ -18,11 +18,11 @@ jobs:
       new_release_version: ${{ steps.semantic.outputs.new_release_version }}
       new_release_git_tag: ${{ steps.semantic.outputs.new_release_git_tag }}
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0 # semantic-release needs full history + tags
 
-      - uses: actions/setup-node@v4.1.0
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version-file: ".nvmrc"
           cache: "yarn"
