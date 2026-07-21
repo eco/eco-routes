@@ -51,8 +51,16 @@ jobs:
         id: resolve
         env:
           VERSION: ${{ steps.detect.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_SHA: ${{ github.sha }}
         run: |
-          SHA=$(git log --fixed-strings --grep="chore(release): $VERSION" --format=%H -n 1)
+          if [ "$EVENT_NAME" = "push" ]; then
+            # On push, the release commit is exactly the pushed tip — no search.
+            SHA="$PUSH_SHA"
+          else
+            # Recovery dispatch: no known SHA, locate the release commit by subject.
+            SHA=$(git log --fixed-strings --grep="chore(release): $VERSION" --format=%H -n 1)
+          fi
           if [ -z "$SHA" ]; then
             echo "::error::No commit with message 'chore(release): $VERSION' found on this branch."
             exit 1

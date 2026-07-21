@@ -98,7 +98,7 @@ jobs:
       - name: Mint App token
         if: steps.skip.outputs.skip == 'false' && steps.version.outputs.version != '' && env.DRY_RUN != 'true'
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         with:
           app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
