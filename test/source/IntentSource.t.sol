@@ -535,6 +535,47 @@ contract IntentSourceTest is BaseTest {
         assertEq(address(intentSource).balance, 0);
     }
 
+    function testFundForPartialFunding() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+        
+        uint256 partialAmount = REWARD_NATIVE_ETH / 2;
+        
+        // fundFor reverts with InsufficientFunds if the intent isn't fully funded by the 
+        // end of the call. To test the _fundNative delta math, we simulate the vault 
+        // already holding partial native ETH (e.g., from a prior direct transfer).
+        vm.deal(intentVault, partialAmount);
+        
+        // Approve enough tokens for the full funding
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+        
+        uint256 initialBalance = creator.balance;
+
+        // Call fundFor with exactly the remaining amount
+        vm.prank(creator);
+        intentSource.fundFor{value: partialAmount}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // Vault escrows exactly the required native, no duplication
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        // The total deducted from the creator in this transaction is exactly the remaining delta
+        assertEq(creator.balance, initialBalance - partialAmount);
+        // No excess native is stranded on the Portal
+        assertEq(address(intentSource).balance, 0);
+    }
+
     function testPublishAndFundForRefundsExcessNative() public {
         reward.nativeAmount = REWARD_NATIVE_ETH;
         intent.reward = reward;
@@ -587,6 +628,62 @@ contract IntentSourceTest is BaseTest {
 
         assertEq(address(intentSource).balance, 0);
         assertEq(creator.balance, initialBalance);
+    }
+
+    function testPublishAndFundForAlreadyFundedDoesNotStrandNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+        
+        // Fully fund the intent first
+        _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
+        assertTrue(intentSource.isIntentFunded(intent));
+        
+        uint256 initialBalance = creator.balance;
+
+        // Funding an already-Funded intent (onlyFundable early-returns) must not
+        // leave native on the Portal; the entire msg.value is refunded to the caller.
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+        
+        assertEq(address(intentSource).balance, 0);
+        assertEq(creator.balance, initialBalance);
+    }
+
+    function testFundForZeroNativeRewardRefundsMsgValue() public {
+        reward.nativeAmount = 0;
+        intent.reward = reward;
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+        uint256 excessMsgValue = 1 ether;
+
+        // Call fundFor with non-zero msg.value even though 0 ETH is required
+        vm.prank(creator);
+        intentSource.fundFor{value: excessMsgValue}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, 0);
+        assertEq(creator.balance, initialBalance);
+        assertEq(address(intentSource).balance, 0);
     }
 
     function testInsufficientNativeReward() public {
