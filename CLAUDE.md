@@ -41,9 +41,7 @@ Instead: stop, tell the human in plain language that this is a security fix and 
   approves and squash-merges it; `.github/workflows/release-tag.yaml` then
   tags `vx.y.z` and publishes the GitHub release. No direct pushes to
   `main`; no deploys; no npm publish. PR titles must be conventional
-  commits (enforced in CI). Details:
-  `CLAUDE/specs/2026-07-14-release-pr-bridge-design.md` and
-  `scripts/README.md`.
+  commits (enforced in CI). Details: [`RELEASE.md`](./RELEASE.md).
 
 ## Architecture Overview
 
