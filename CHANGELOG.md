@@ -1,3 +1,10 @@
+# [2.10.0](https://github.com/eco/eco-routes/compare/v2.9.0...v2.10.0) (2026-07-14)
+
+
+### Features
+
+* per-deployment native/ERC20 alias support in recovery + reward validation ([#409](https://github.com/eco/eco-routes/issues/409)) ([b3eb0b3](https://github.com/eco/eco-routes/commit/b3eb0b355502d363398e69389994076a81886d81))
+
 ## [2.1.11](https://github.com/eco/eco-routes/compare/v2.1.10...v2.1.11) (2025-05-20)
 
 

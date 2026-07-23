@@ -30,7 +30,7 @@ contract TestProver is BaseProver {
     constructor(address _portal) BaseProver(_portal) {}
 
     function version() external pure returns (string memory) {
-        return "1.8.14-e2c12e7";
+        return "2.10.0";
     }
 
     /**
