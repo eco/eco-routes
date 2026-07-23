@@ -37,6 +37,26 @@ interface IProver is ISemver {
     error ChainIdTooLarge(uint256 chainId);
 
     /**
+     * @notice Only the local Portal may record a destination fulfillment
+     * @param caller Address that attempted to call {recordFulfillment}
+     */
+    error NotPortal(address caller);
+
+    /**
+     * @notice The intent has already been fulfilled on this chain under this prover
+     * @dev Enforces the one-shot destination fulfillment gate in {recordFulfillment}
+     * @param intentHash Hash of the already-fulfilled intent
+     */
+    error IntentAlreadyFulfilled(bytes32 intentHash);
+
+    /**
+     * @notice The intent has no recorded destination fulfillment under this prover
+     * @dev Raised by the proof-message builder when asked to prove an unfulfilled intent
+     * @param intentHash Hash of the unfulfilled intent
+     */
+    error IntentNotFulfilled(bytes32 intentHash);
+
+    /**
      * @notice Emitted when an intent is successfully proven
      * @dev Emitted by the Prover on the source chain.
      * @param intentHash Hash of the proven intent
@@ -69,11 +89,32 @@ interface IProver is ISemver {
     function getProofType() external pure returns (string memory);
 
     /**
+     * @notice Records a destination-chain fulfillment for an intent
+     * @dev Called by the local Portal/Inbox after a successful {IInbox-fulfill}. The prover
+     *      is the owner of destination fulfillment storage: it records the claimant here and
+     *      later builds the cross-chain proof message from its own store. Enforces a one-shot
+     *      gate (a second fulfillment of the same intent reverts {IntentAlreadyFulfilled}).
+     *      Only the Portal may call this ({NotPortal} otherwise).
+     * @param intentHash Hash of the fulfilled intent
+     * @param destination Chain ID on which the fulfillment occurred (the local chain)
+     * @param claimant Cross-VM compatible claimant identifier eligible for the reward
+     */
+    function recordFulfillment(
+        bytes32 intentHash,
+        uint64 destination,
+        bytes32 claimant
+    ) external;
+
+    /**
      * @notice Initiates the proving process for intents from the destination chain
-     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer)
+     * @dev Implemented by specific prover mechanisms (storage, Hyperlane, Metalayer). The prover
+     *      builds the cross-chain proof message from its own destination fulfillment store, so the
+     *      caller supplies only the intent hashes to prove (each must have been recorded via
+     *      {recordFulfillment}).
      * @param sender Address of the original transaction sender
      * @param sourceChainDomainID Domain ID of the source chain
-     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param intentHashes Intent hashes to prove; the (intentHash, claimant) wire pairs are read
+     *        from this prover's destination fulfillment store
      * @param data Additional data specific to the proving implementation
      *
      * @dev WARNING: sourceChainDomainID is NOT necessarily the same as chain ID.
@@ -89,7 +130,7 @@ interface IProver is ISemver {
     function prove(
         address sender,
         uint64 sourceChainDomainID,
-        bytes calldata encodedProofs,
+        bytes32[] calldata intentHashes,
         bytes calldata data
     ) external payable;
 

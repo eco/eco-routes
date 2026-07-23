@@ -35,19 +35,19 @@ describe('Edge Cases and Integration Tests', function () {
       const invalidProofs = '0x' + chainIdHex + '00'.repeat(65)
 
       await expect(
-        testProver.prove(owner.address, sourceChain, invalidProofs, '0x'),
+        testProver.receiveProofs(owner.address, sourceChain, invalidProofs, '0x'),
       ).to.be.revertedWithCustomError(testProver, 'ArrayLengthMismatch')
 
       // Just 7 bytes (less than chain ID)
       const singleByte = '0x' + '00'.repeat(7)
       await expect(
-        testProver.prove(owner.address, sourceChain, singleByte, '0x'),
+        testProver.receiveProofs(owner.address, sourceChain, singleByte, '0x'),
       ).to.be.revertedWithCustomError(testProver, 'InvalidProofMessage')
 
       // 8 bytes chain ID + 127 bytes
       const oddLength = '0x' + chainIdHex + '00'.repeat(127)
       await expect(
-        testProver.prove(owner.address, sourceChain, oddLength, '0x'),
+        testProver.receiveProofs(owner.address, sourceChain, oddLength, '0x'),
       ).to.be.revertedWithCustomError(testProver, 'ArrayLengthMismatch')
     })
 
@@ -61,7 +61,7 @@ describe('Edge Cases and Integration Tests', function () {
 
       // Should not revert with empty proofs
       await expect(
-        testProver.prove(owner.address, sourceChain, emptyProofs, '0x'),
+        testProver.receiveProofs(owner.address, sourceChain, emptyProofs, '0x'),
       ).to.not.be.reverted
     })
   })
@@ -84,7 +84,7 @@ describe('Edge Cases and Integration Tests', function () {
       ])
 
       // Should succeed but skip the invalid claimant
-      await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
+      await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
       // Verify intent was not proven
       const proof = await testProver.provenIntents(intentHash)
@@ -107,7 +107,7 @@ describe('Edge Cases and Integration Tests', function () {
       ])
 
       // Should succeed but skip the zero claimant
-      await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
+      await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
       // Verify intent was not proven
       const proof = await testProver.provenIntents(intentHash)
@@ -131,7 +131,7 @@ describe('Edge Cases and Integration Tests', function () {
       ])
 
       // Should not revert
-      await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
+      await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
       // Verify intent was not proven (skipped)
       const proof = await testProver.provenIntents(intentHash)
@@ -165,7 +165,7 @@ describe('Edge Cases and Integration Tests', function () {
       }
 
       // Should succeed but skip the invalid claimant
-      await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
+      await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
       // Verify results - first and third should be proven, second skipped
       for (let i = 0; i < hashes.length; i++) {
@@ -199,7 +199,7 @@ describe('Edge Cases and Integration Tests', function () {
       }
 
       // Should process successfully
-      await testProver.prove(owner.address, sourceChain, encodedProofs, '0x')
+      await testProver.receiveProofs(owner.address, sourceChain, encodedProofs, '0x')
 
       // Verify a sample proof
       const checkHash = ethers.id('intent-25')

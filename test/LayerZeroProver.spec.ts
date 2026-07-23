@@ -381,6 +381,7 @@ describe('LayerZeroProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await layerZeroProver.getAddress(),
         )
 
       const sourceChainId = 12345
@@ -425,7 +426,7 @@ describe('LayerZeroProver Test', (): void => {
       await expect(
         layerZeroProver
           .connect(solver)
-          .prove(owner.address, 123, encodedProofs, data),
+          .prove(owner.address, 123, intentHashes, data),
       ).to.be.revertedWithCustomError(layerZeroProver, 'UnauthorizedSender')
     })
 
@@ -492,6 +493,7 @@ describe('LayerZeroProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await layerZeroProver.getAddress(),
         )
 
       const sourceChainId = 12345
@@ -860,6 +862,7 @@ describe('LayerZeroProver Test', (): void => {
           route,
           rewardHash0,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await layerZeroProver.getAddress(),
         )
 
       // Create second intent
@@ -909,6 +912,7 @@ describe('LayerZeroProver Test', (): void => {
           route1,
           rewardHash1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await layerZeroProver.getAddress(),
         )
 
       const proofDataBeforeBatch =

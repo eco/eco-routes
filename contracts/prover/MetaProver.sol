@@ -117,7 +117,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     function _dispatchMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
@@ -157,7 +157,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     function fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
         // Delegate to internal function with pre-decoded value
@@ -174,7 +174,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     function _fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         (
@@ -223,7 +223,7 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      */
     function _formatMetalayerMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes32 sourceChainProver
     )
         internal

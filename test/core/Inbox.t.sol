@@ -61,7 +61,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -78,7 +79,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify tokens were transferred
@@ -100,7 +102,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -117,7 +120,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify all tokens were transferred
@@ -138,7 +142,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify calls were executed
@@ -190,7 +195,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify ETH was transferred to EOA
@@ -244,7 +250,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Try to fulfill with zero native amount
@@ -260,7 +267,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -309,7 +317,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify only the route's nativeAmount was used for the call
@@ -337,7 +346,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            nonAddressClaimant
+            nonAddressClaimant,
+            address(prover)
         );
 
         // Verify tokens were transferred (should handle bytes32 claimant)
@@ -368,7 +378,7 @@ contract InboxTest is BaseTest {
         assertEq(tokenA.balanceOf(recipient), MINT_AMOUNT);
 
         // Verify intent was marked as fulfilled
-        assertEq(portal.claimants(intentHash), claimantBytes);
+        assertEq(prover.destFulfillment(intentHash), claimantBytes);
     }
 
     function testInitiateProvingWithMultipleIntents() public {
@@ -400,7 +410,8 @@ contract InboxTest is BaseTest {
                 intentHash,
                 intent.route,
                 rewardHash,
-                bytes32(uint256(uint160(recipient)))
+                bytes32(uint256(uint160(recipient))),
+                address(prover)
             );
         }
 
@@ -425,12 +436,24 @@ contract InboxTest is BaseTest {
 
         // First fulfillment should succeed
         vm.prank(solver);
-        portal.fulfill(intentHash, intent.route, rewardHash, claimantBytes);
+        portal.fulfill(
+            intentHash,
+            intent.route,
+            rewardHash,
+            claimantBytes,
+            address(prover)
+        );
 
         // Second fulfillment should revert
         vm.expectRevert();
         vm.prank(solver);
-        portal.fulfill(intentHash, intent.route, rewardHash, claimantBytes);
+        portal.fulfill(
+            intentHash,
+            intent.route,
+            rewardHash,
+            claimantBytes,
+            address(prover)
+        );
     }
 
     function testFulfillWithInvalidPortalAddress() public {
@@ -449,7 +472,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -466,7 +490,13 @@ contract InboxTest is BaseTest {
         emit IInbox.IntentFulfilled(intentHash, claimantBytes);
 
         vm.prank(solver);
-        portal.fulfill(intentHash, intent.route, rewardHash, claimantBytes);
+        portal.fulfill(
+            intentHash,
+            intent.route,
+            rewardHash,
+            claimantBytes,
+            address(prover)
+        );
     }
 
     function testFulfillWithZeroClaimant() public {
@@ -479,7 +509,13 @@ contract InboxTest is BaseTest {
 
         vm.expectRevert();
         vm.prank(solver);
-        portal.fulfill(intentHash, intent.route, rewardHash, bytes32(0));
+        portal.fulfill(
+            intentHash,
+            intent.route,
+            rewardHash,
+            bytes32(0),
+            address(prover)
+        );
     }
 
     function _createIntent() internal view returns (Intent memory) {
@@ -584,7 +620,8 @@ contract InboxTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Create array with the fulfilled intent

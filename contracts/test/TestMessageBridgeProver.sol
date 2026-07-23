@@ -64,15 +64,15 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     // No custom events needed for testing
 
     /**
-     * @notice Mock implementation of prove
-     * @dev Simply processes the proofs without actual dispatch
+     * @notice Test entrypoint that processes a raw cross-chain message
+     * @dev The prove signature is now the dispatch direction (it builds the wire message from the
+     *      prover's own store). Reception processing is unchanged; this shim lets tests feed a raw
+     *      chain-id-prefixed message straight into {_handleCrossChainMessage}.
      */
-    function prove(
+    function receiveProofs(
         address _sender,
-        uint64,
-        bytes calldata _encodedProofs,
-        bytes calldata /* _data */
-    ) external payable override {
+        bytes calldata _encodedProofs
+    ) external {
         // Basic validation - the message includes 8 bytes chain ID + proof pairs
         if (_encodedProofs.length < 8) {
             revert IMessageBridgeProver.InvalidProofMessage();
@@ -98,7 +98,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function fetchFee(
         uint64 /* domainID */,
-        bytes calldata /* _encodedProofs */,
+        bytes memory /* _encodedProofs */,
         bytes calldata /* _data */
     ) public view override returns (uint256) {
         return feeAmount;
@@ -110,7 +110,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function _dispatchMessage(
         uint64 /* domainID */,
-        bytes calldata /* encodedProofs */,
+        bytes memory /* encodedProofs */,
         bytes calldata /* data */,
         uint256 /* fee */
     ) internal override {

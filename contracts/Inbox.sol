@@ -18,17 +18,14 @@ import {Executor} from "./Executor.sol";
 /**
  * @title Inbox
  * @notice Main entry point for fulfilling intents on the destination chain
- * @dev Validates intent hash authenticity, executes calldata, and enables provers
- * to claim rewards on the source chain by checking the claimants mapping
+ * @dev Validates intent hash authenticity and executes calldata. Destination fulfillment storage
+ *      lives in the prover, not here: {fulfill} names the prover (policy) to record into, and the
+ *      prover both stores the claimant and builds/dispatches the cross-chain proof from its own
+ *      store. The Inbox is transport- and policy-agnostic — it only re-derives the intent hash,
+ *      executes the route, and hands the fulfillment fact to the named prover.
  */
 abstract contract Inbox is DestinationSettler, IInbox {
     using SafeERC20 for IERC20;
-
-    /**
-     * @notice Mapping of intent hashes to their claimant identifiers
-     * @dev Stores the cross-VM compatible claimant identifier for each fulfilled intent
-     */
-    mapping(bytes32 => bytes32) public claimants;
 
     IExecutor public immutable executor;
 
@@ -53,25 +50,31 @@ abstract contract Inbox is DestinationSettler, IInbox {
     }
 
     /**
-     * @notice Fulfills an intent to be proven via storage proofs
-     * @dev Validates intent hash, executes calls, and marks as fulfilled
+     * @notice Fulfills an intent, recording the fulfillment into the named prover
+     * @dev Validates intent hash, executes calls, and records the fulfillment into `prover`. The
+     *      solver names the prover (policy) that will settle the reward. Naming a prover other than
+     *      the reward's committed `reward.prover` is solver self-harm only — settlement reads
+     *      `reward.prover`, so a mismatched fulfillment records against a prover that never settles.
      * @param intentHash The hash of the intent to fulfill
      * @param route The route of the intent
      * @param rewardHash The hash of the reward details
      * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Prover (policy) to record the fulfillment into
      * @return Array of execution results from each call
      */
     function fulfill(
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
-        bytes32 claimant
+        bytes32 claimant,
+        address prover
     ) external payable returns (bytes[] memory) {
         bytes[] memory result = _fulfill(
             intentHash,
             route,
             rewardHash,
-            claimant
+            claimant,
+            prover
         );
 
         // Refund any remaining balance (excess ETH)
@@ -119,7 +122,8 @@ abstract contract Inbox is DestinationSettler, IInbox {
             intentHash,
             route,
             rewardHash,
-            claimant
+            claimant,
+            prover
         );
 
         // Create array with single intent hash
@@ -156,65 +160,35 @@ abstract contract Inbox is DestinationSettler, IInbox {
         bytes32[] memory intentHashes,
         bytes memory data
     ) public payable {
-        uint256 size = intentHashes.length;
-
-        // Encode chain ID followed by intent hash/claimant pairs as bytes
-        // 8 bytes for chain ID + (32 bytes for intent hash + 32 bytes for claimant) * size
-        bytes memory encodedClaimants = new bytes(8 + size * 64);
-
-        // Prepend chain ID to the encoded data
-        uint64 chainId = CHAIN_ID;
-        assembly {
-            mstore(add(encodedClaimants, 0x20), shl(192, chainId))
-        }
-
-        for (uint256 i = 0; i < size; ++i) {
-            bytes32 claimantBytes = claimants[intentHashes[i]];
-
-            if (claimantBytes == bytes32(0)) {
-                revert IntentNotFulfilled(intentHashes[i]);
-            }
-
-            // Pack intent hash and claimant into encodedData (after 8-byte chain ID)
-            assembly {
-                let offset := add(8, mul(i, 64))
-                mstore(
-                    add(add(encodedClaimants, 0x20), offset),
-                    mload(add(intentHashes, add(0x20, mul(i, 32))))
-                )
-                mstore(
-                    add(add(encodedClaimants, 0x20), add(offset, 32)),
-                    claimantBytes
-                )
-            }
-
-            // Emit IntentProven event
-            emit IntentProven(intentHashes[i], claimantBytes);
-        }
-
-        // Provide left over balance to the prover
+        // The prover owns the destination fulfillment store and builds its own proof message from
+        // it, so the Inbox only forwards the intent hashes to prove. Any remaining balance (the
+        // cross-chain message fee) is forwarded to the prover, which refunds the sender if overpaid.
         IProver(prover).prove{value: address(this).balance}(
             msg.sender,
             sourceChainDomainID,
-            encodedClaimants,
+            intentHashes,
             data
         );
     }
 
     /**
      * @notice Internal function to fulfill intents
-     * @dev Validates intent and executes calls
+     * @dev Validates intent, records the fulfillment into the named prover, and executes calls.
+     *      The prover's {IProver-recordFulfillment} enforces the one-shot gate (a second fulfillment
+     *      of the same intent under the same prover reverts {IProver-IntentAlreadyFulfilled}).
      * @param intentHash The hash of the intent to fulfill
      * @param route The route of the intent
      * @param rewardHash The hash of the reward
      * @param claimant Cross-VM compatible claimant identifier
+     * @param prover Prover (policy) to record the fulfillment into
      * @return Array of execution results
      */
     function _fulfill(
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash,
-        bytes32 claimant
+        bytes32 claimant,
+        address prover
     ) internal returns (bytes[] memory) {
         // Check if the route has expired
         if (block.timestamp > route.deadline) {
@@ -232,14 +206,13 @@ abstract contract Inbox is DestinationSettler, IInbox {
         if (computedIntentHash != intentHash) {
             revert InvalidHash(intentHash);
         }
-        if (claimants[intentHash] != bytes32(0)) {
-            revert IntentAlreadyFulfilled(intentHash);
-        }
         if (claimant == bytes32(0)) {
             revert ZeroClaimant();
         }
 
-        claimants[intentHash] = claimant;
+        // Record the fulfillment into the named prover (policy). The prover is the owner of
+        // destination fulfillment storage and enforces the one-shot gate.
+        IProver(prover).recordFulfillment(intentHash, CHAIN_ID, claimant);
 
         emit IntentFulfilled(intentHash, claimant);
 
