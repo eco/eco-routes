@@ -35,17 +35,13 @@ Instead: stop, tell the human in plain language that this is a security fix and 
 
 ### Releases
 
-- Releases are automated: on push to `main`, semantic-release computes the next
-  version from conventional commits, rewrites contract `version()` functions and
-  `package.json`, updates `CHANGELOG.md`, commits back as
-  `chore(release): x.y.z [skip ci]`, and tags a GitHub release. No deploys, no
-  npm publish. PR titles must be conventional commits (enforced in CI).
-- One-time go-live prerequisite: an admin must prune the never-released tags
-  above `v2.8.17` and tag main's tip `v2.8.18` as the version baseline; the
-  release workflow's guard step refuses to release without a reachable stable
-  tag `>= v2.8.17`. `v3.0.0` is cut later via a `BREAKING CHANGE` commit. On a
-  major bump, cut a `release-vN.x` branch from the previous major's last tag
-  for production patches. Details: `scripts/README.md` (Releases).
+- Releases flow through an auto-refreshing release PR (`autorelease/next`
+  branch, title `chore(release): x.y.z`) created by
+  `.github/workflows/release-pr.yaml` on each push to `main`. A human
+  approves and squash-merges it; `.github/workflows/release-tag.yaml` then
+  tags `vx.y.z` and publishes the GitHub release. No direct pushes to
+  `main`; no deploys; no npm publish. PR titles must be conventional
+  commits (enforced in CI). Details: [`RELEASE.md`](./RELEASE.md).
 
 ## Architecture Overview
 
