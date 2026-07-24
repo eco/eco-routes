@@ -22,16 +22,18 @@ interface IVault {
 
     /**
      * @notice Funds the vault with reward tokens and native currency
+     * @dev Returns nothing: the caller must read the vault's balances after this
+     *      call to decide funded/partial, since a reentrant permit could drain the
+     *      vault mid-call and make any in-call completeness flag untrustworthy.
      * @param reward The reward structure containing tokens and amounts
      * @param funder Address providing the funding
      * @param permit Optional permit contract for token transfers
-     * @return fullyFunded True if vault was successfully fully funded
      */
     function fundFor(
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable returns (bool fullyFunded);
+    ) external payable;
 
     /**
      * @notice Withdraws rewards from the vault to the claimant

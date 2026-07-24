@@ -44,19 +44,20 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Funds the vault with tokens and native currency from the reward
+     * @notice Funds the vault with tokens from the reward
+     * @dev Returns nothing on purpose: an untrusted permit contract can reenter
+     *      and drain the vault mid-loop, so any completeness flag computed here
+     *      would be unreliable. The Portal decides funded/partial by reading the
+     *      vault's actual balances after this call (see IntentSource._isRewardFunded).
      * @param reward The reward structure containing token addresses, amounts, and native value
      * @param funder Address that will provide the funding
      * @param permit Optional permit contract for gasless token approvals
-     * @return fullyFunded True if the vault was fully funded, false otherwise
      */
     function fundFor(
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable onlyPortal returns (bool fullyFunded) {
-        fullyFunded = true;
-
+    ) external payable onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
@@ -67,15 +68,8 @@ contract Vault is IVault {
                 reward.tokens[i].amount,
                 permit
             );
-            remaining = _fundFrom(funder, token, remaining);
-
-            fullyFunded = fullyFunded && remaining == 0;
+            _fundFrom(funder, token, remaining);
         }
-
-        // Evaluate native completeness AFTER the token loop so that a reentrant
-        // withdraw/refund draining the vault's native balance during an untrusted
-        // permit.transferFrom is reflected in the returned result.
-        fullyFunded = fullyFunded && address(this).balance >= reward.nativeAmount;
     }
 
     /**
