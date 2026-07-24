@@ -40,47 +40,7 @@ Operational scripts for the Eco-Routes protocol.
 
 ## Releases
 
-Releases are fully automated. On every push to `main`, the
-`.github/workflows/release.yaml` workflow runs semantic-release, which:
-
-1. Determines the next version from conventional commits (`fix:` → patch,
-   `feat:` → minor, `BREAKING CHANGE` → major).
-2. Rewrites `version()` in all contracts and bumps `package.json`
-   (`scripts/release/update-versions.ts`).
-3. Updates `CHANGELOG.md`.
-4. Commits those changes back to `main` as `chore(release): x.y.z [skip ci]`.
-5. Tags `vx.y.z` and publishes a GitHub release.
-
-PR titles must follow conventional-commit format (enforced by
-`.github/workflows/pr-title-check.yml`), because squash-merge commits are what
-semantic-release analyzes.
-
-Note: the version string is compiled into bytecode, so every release changes
-contract bytecode and therefore CREATE2 deterministic deployment addresses.
-Contract deployment and npm publishing are deliberately NOT part of the
-release flow.
-
-### One-time go-live prerequisites (admin)
-
-The latest released version is `v2.8.17`; tags above it (`v3.x`, `v9.x`,
-prerelease tags) were never released and add noise. No stable tag newer than
-`v1.6.1` is reachable from `main` (the v2.x line lives on `beta`), so without
-a baseline semantic-release would compute the next version from the legacy
-v1.x tags. The release workflow refuses to run until this is fixed (the
-"Verify release baseline tag" guard requires a reachable stable tag
-`>= v2.8.17`). Before the first release from `main`:
-
-1. Prune the never-released tags newer than `v2.8.17` (all `v3.x`, `v9.x`,
-   and `-alpha`/`-beta` tags above it), locally and on origin.
-2. Create the version baseline on `main`:
-   `git tag v2.8.18 <main tip> && git push origin v2.8.18`.
-3. When v3 is ready, land a commit with a `BREAKING CHANGE` footer (or
-   `feat!:`) — semantic-release cuts `v3.0.0` from it.
-
-### Patching a previous major
-
-Releases bump off `main`, so when a major lands there is no branch to patch
-the previous major in production. When `main` bumps to a new major (e.g.
-`v2.x → v3.x`), cut a `release-v2.x` branch from the last `v2.x` tag so
-production fixes can be cherry-picked and released there while `main` carries
-the new line.
+The release process (auto-refreshing release PR → approve → squash-merge →
+tag + GitHub release) is documented in [`RELEASE.md`](../RELEASE.md) at the
+repo root. The `scripts/release/update-versions.ts` step above is the piece
+that lives here.
