@@ -211,6 +211,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         // is refunded to the caller. A low-level call is used so a recipient
         // that reverts or exceeds the 2300-gas stipend cannot trap the funds or
         // DoS prove(). The boolean is intentionally ignored to prevent griefing.
+        // This is the terminal statement (no post-refund state) and Inbox.prove
+        // has already drained the Portal balance, so the all-gas call cannot be
+        // exploited via reentrancy. A recipient that rejects the transfer leaves
+        // the ETH stuck as dust by design — there is no sweep path, and the loss
+        // is self-inflicted since the recipient is the caller.
         if (msg.value > 0 && sender != address(0)) {
             (bool _ok, ) = payable(sender).call{value: msg.value}("");
             _ok;
