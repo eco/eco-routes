@@ -7,6 +7,8 @@ import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {Intent as EVMIntent, Route as EVMRoute, Reward as EVMReward, TokenAmount as EVMTokenAmount, Call as EVMCall} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
+import {Vault} from "../../contracts/vault/Vault.sol";
+import {IPermit} from "../../contracts/interfaces/IPermit.sol";
 
 contract IntentSourceTest is BaseTest {
     using AddressConverter for bytes32;
@@ -1573,6 +1575,311 @@ contract IntentSourceTest is BaseTest {
             intent.reward
         );
     }
+
+    // Reentrancy: an untrusted permit contract reenters `refund` during `fundFor`,
+    // driving the intent to a terminal `Refunded` status mid-fund. The funding path
+    // must never overwrite that terminal status back to `Funded` (finding V8).
+    function testReentrantRefundDuringFundForKeepsTerminalStatus() public {
+        // Advance time so the reward deadline can sit in the past (refundable).
+        vm.warp(1000);
+
+        // Reward: single token leg (tokenA) + native leg, deadline already passed.
+        TokenAmount[] memory reentrantTokens = new TokenAmount[](1);
+        reentrantTokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+
+        Reward memory newReward = reward;
+        newReward.deadline = uint64(block.timestamp - 1);
+        newReward.nativeAmount = 1 ether;
+        newReward.tokens = reentrantTokens;
+        intent.reward = newReward;
+
+        bytes memory encodedRoute = abi.encode(intent.route);
+        bytes32 routeHash = keccak256(encodedRoute);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // Arm the malicious permit to reenter `refund` during the token transfer.
+        ReentrantRefundPermit malicious = new ReentrantRefundPermit();
+        malicious.arm(
+            address(intentSource),
+            CHAIN_ID,
+            routeHash,
+            newReward,
+            address(tokenA)
+        );
+
+        // The permit funds the token leg from its own balance after draining the
+        // vault, so the token loop still reports the leg complete. The funder
+        // (creator) already holds MINT_AMOUNT from setUp, so the permit path
+        // computes a non-zero transfer amount.
+        tokenA.mint(address(malicious), MINT_AMOUNT);
+
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: 1 ether}(
+            CHAIN_ID,
+            encodedRoute,
+            newReward,
+            true, // allowPartial: reentrant refund drains native, leg ends short
+            creator,
+            address(malicious)
+        );
+
+        // The reentrant refund reached terminal `Refunded`; funding must not
+        // overwrite it back to `Funded`.
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    // Vault-level: `fundFor` returns nothing, so funded/partial is judged from the
+    // vault's balances after the call. With every token leg satisfied but no native
+    // sent, the vault must end token-funded yet native-short (the Portal reads this
+    // via _isRewardFunded rather than trusting an in-call flag).
+    function testVaultFundForLeavesNativeShortWhenNoNativeSent() public {
+        // Deploy a vault whose portal is this test contract.
+        Vault vault = new Vault();
+
+        // Satisfy the token leg directly (balance >= amount).
+        tokenA.mint(address(vault), MINT_AMOUNT);
+
+        TokenAmount[] memory vaultTokens = new TokenAmount[](1);
+        vaultTokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+
+        Reward memory vaultReward = Reward({
+            deadline: uint64(block.timestamp + 1000),
+            creator: creator,
+            prover: address(prover),
+            nativeAmount: 1 ether, // vault holds 0 native -> short
+            tokens: vaultTokens
+        });
+
+        // No native sent: token leg is satisfied but the native leg is short.
+        vault.fundFor(vaultReward, creator, IPermit(address(0)));
+
+        assertEq(tokenA.balanceOf(address(vault)), MINT_AMOUNT);
+        assertLt(address(vault).balance, vaultReward.nativeAmount);
+    }
+
+    // Reentrancy (withdraw variant): an untrusted permit reenters `withdraw`
+    // during `fundFor`, driving the intent to terminal `Withdrawn` mid-fund. The
+    // funding path must never overwrite that terminal status back to `Funded`.
+    // withdraw is reachable here because a proof is pre-recorded and
+    // _validateWithdraw permits withdrawal from Initial or Funded status.
+    function testReentrantWithdrawDuringFundForKeepsTerminalStatus() public {
+        // Reward: single token leg (tokenA) + native leg.
+        TokenAmount[] memory reentrantTokens = new TokenAmount[](1);
+        reentrantTokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+
+        Reward memory newReward = reward;
+        newReward.nativeAmount = 1 ether;
+        newReward.tokens = reentrantTokens;
+        intent.reward = newReward;
+
+        bytes memory encodedRoute = abi.encode(intent.route);
+        bytes32 routeHash = keccak256(encodedRoute);
+        bytes32 intentHash = _hashIntent(intent);
+
+        // Pre-record a proof so the reentrant withdraw finds a claimant while the
+        // intent is still Initial (withdraw allows Initial or Funded status).
+        _addProof(intentHash, CHAIN_ID, claimant);
+
+        // Arm the malicious permit to reenter `withdraw` during the token transfer.
+        ReentrantWithdrawPermit malicious = new ReentrantWithdrawPermit();
+        malicious.arm(
+            address(intentSource),
+            CHAIN_ID,
+            routeHash,
+            newReward,
+            address(tokenA)
+        );
+
+        tokenA.mint(address(malicious), MINT_AMOUNT);
+
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: 1 ether}(
+            CHAIN_ID,
+            encodedRoute,
+            newReward,
+            true, // allowPartial: reentrant withdraw drains native, leg ends short
+            creator,
+            address(malicious)
+        );
+
+        // The reentrant withdraw reached terminal `Withdrawn`; funding must not
+        // overwrite it back to `Funded`.
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Withdrawn)
+        );
+    }
+
+    // Reentrancy with allowPartial = false: the reentrant refund leaves the native
+    // leg short, so `_fundIntentFor` reverts InsufficientFunds and the entire tx
+    // unwinds — including the reentrant refund — leaving status untouched (Initial).
+    function testReentrantRefundDuringFundForRevertsWhenPartialDisallowed()
+        public
+    {
+        vm.warp(1000);
+
+        TokenAmount[] memory reentrantTokens = new TokenAmount[](1);
+        reentrantTokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+
+        Reward memory newReward = reward;
+        newReward.deadline = uint64(block.timestamp - 1);
+        newReward.nativeAmount = 1 ether;
+        newReward.tokens = reentrantTokens;
+        intent.reward = newReward;
+
+        bytes memory encodedRoute = abi.encode(intent.route);
+        bytes32 routeHash = keccak256(encodedRoute);
+        bytes32 intentHash = _hashIntent(intent);
+
+        ReentrantRefundPermit malicious = new ReentrantRefundPermit();
+        malicious.arm(
+            address(intentSource),
+            CHAIN_ID,
+            routeHash,
+            newReward,
+            address(tokenA)
+        );
+        tokenA.mint(address(malicious), MINT_AMOUNT);
+
+        vm.prank(creator);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InsufficientFunds.selector,
+                intentHash
+            )
+        );
+        intentSource.publishAndFundFor{value: 1 ether}(
+            CHAIN_ID,
+            encodedRoute,
+            newReward,
+            false, // allowPartial: false -> short funding reverts, everything unwinds
+            creator,
+            address(malicious)
+        );
+
+        // The revert rolled back the reentrant refund too: status stays Initial.
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Initial)
+        );
+    }
+
+    // Token-only guard isolation: with nativeAmount == 0 the reentrant withdraw
+    // drains nothing, the permit then funds the full token leg, so `_isRewardFunded`
+    // returns TRUE and the outer fund reaches the `Status.Funded` assignment. Only
+    // the `== Status.Initial` monotonic guard stops the terminal `Withdrawn` from
+    // being overwritten. Unlike the native-bearing tests, this one FAILS if the
+    // guard is removed (there fullyFunded is false, so the assignment never fires).
+    function testReentrantWithdrawTokenOnlyKeepsTerminalStatus() public {
+        TokenAmount[] memory reentrantTokens = new TokenAmount[](1);
+        reentrantTokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+
+        Reward memory newReward = reward;
+        newReward.nativeAmount = 0; // token-only: reentry drains nothing
+        newReward.tokens = reentrantTokens;
+        intent.reward = newReward;
+
+        bytes memory encodedRoute = abi.encode(intent.route);
+        bytes32 routeHash = keccak256(encodedRoute);
+        bytes32 intentHash = _hashIntent(intent);
+
+        _addProof(intentHash, CHAIN_ID, claimant);
+
+        ReentrantWithdrawPermit malicious = new ReentrantWithdrawPermit();
+        malicious.arm(
+            address(intentSource),
+            CHAIN_ID,
+            routeHash,
+            newReward,
+            address(tokenA)
+        );
+        tokenA.mint(address(malicious), MINT_AMOUNT);
+
+        vm.prank(creator);
+        intentSource.publishAndFundFor(
+            CHAIN_ID,
+            encodedRoute,
+            newReward,
+            true,
+            creator,
+            address(malicious)
+        );
+
+        // Token leg is fully funded (fullyFunded == true), yet the terminal
+        // Withdrawn status set during reentry must NOT be overwritten to Funded.
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Withdrawn)
+        );
+    }
+
+    // Refund counterpart of the token-only guard test: reentrant refund drives the
+    // intent to terminal Refunded, the permit funds the full token leg so
+    // fullyFunded is TRUE, and the monotonic guard must keep it Refunded.
+    function testReentrantRefundTokenOnlyKeepsTerminalStatus() public {
+        vm.warp(1000);
+
+        TokenAmount[] memory reentrantTokens = new TokenAmount[](1);
+        reentrantTokens[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+
+        Reward memory newReward = reward;
+        newReward.deadline = uint64(block.timestamp - 1);
+        newReward.nativeAmount = 0; // token-only: reentry drains nothing
+        newReward.tokens = reentrantTokens;
+        intent.reward = newReward;
+
+        bytes memory encodedRoute = abi.encode(intent.route);
+        bytes32 routeHash = keccak256(encodedRoute);
+        bytes32 intentHash = _hashIntent(intent);
+
+        ReentrantRefundPermit malicious = new ReentrantRefundPermit();
+        malicious.arm(
+            address(intentSource),
+            CHAIN_ID,
+            routeHash,
+            newReward,
+            address(tokenA)
+        );
+        tokenA.mint(address(malicious), MINT_AMOUNT);
+
+        vm.prank(creator);
+        intentSource.publishAndFundFor(
+            CHAIN_ID,
+            encodedRoute,
+            newReward,
+            true,
+            creator,
+            address(malicious)
+        );
+
+        // Token leg fully funded (fullyFunded == true); terminal Refunded status
+        // must not be overwritten to Funded.
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
 }
 
 // Mock contract for testing fake permit behavior
@@ -1612,5 +1919,130 @@ contract FakePermitContract {
     ) external {
         // Fake transferFrom that doesn't actually transfer tokens
         // This simulates a malicious permit contract that lies about transfers
+    }
+}
+
+// Malicious permit that reenters IntentSource.refund during fundFor's token
+// transfer, then funds the token leg from its own balance so the token loop
+// still reports the leg complete (finding V8 reentrancy harness).
+contract ReentrantRefundPermit {
+    address private source;
+    uint64 private destination;
+    bytes32 private routeHash;
+    address private token;
+    Reward private reward;
+    bool private reentered;
+
+    function arm(
+        address _source,
+        uint64 _destination,
+        bytes32 _routeHash,
+        Reward calldata _reward,
+        address _token
+    ) external {
+        source = _source;
+        destination = _destination;
+        routeHash = _routeHash;
+        token = _token;
+
+        reward.deadline = _reward.deadline;
+        reward.creator = _reward.creator;
+        reward.prover = _reward.prover;
+        reward.nativeAmount = _reward.nativeAmount;
+        delete reward.tokens;
+        for (uint256 i; i < _reward.tokens.length; ++i) {
+            reward.tokens.push(_reward.tokens[i]);
+        }
+    }
+
+    function allowance(
+        address,
+        address,
+        address
+    ) external pure returns (uint160, uint48, uint48) {
+        return (type(uint160).max, 0, 0); // lie: "unlimited allowance"
+    }
+
+    function transferFrom(
+        address,
+        /* from */
+        address to,
+        uint160 amount,
+        address /* token */
+    ) external {
+        if (reentered) {
+            return;
+        }
+        reentered = true;
+
+        // Reenter refund: drives the intent to a terminal Refunded status and
+        // drains the vault's native balance mid-fund.
+        IIntentSource(source).refund(destination, routeHash, reward);
+
+        // Fund the token leg AFTER the drain so the token loop still completes,
+        // reproducing the stale native snapshot that returned fullyFunded = true.
+        TestERC20(token).transfer(to, uint256(amount));
+    }
+}
+
+// Malicious permit that reenters IntentSource.withdraw during fundFor's token
+// transfer, driving the intent to a terminal Withdrawn status, then funds the
+// token leg from its own balance so the token loop still reports it complete.
+contract ReentrantWithdrawPermit {
+    address private source;
+    uint64 private destination;
+    bytes32 private routeHash;
+    address private token;
+    Reward private reward;
+    bool private reentered;
+
+    function arm(
+        address _source,
+        uint64 _destination,
+        bytes32 _routeHash,
+        Reward calldata _reward,
+        address _token
+    ) external {
+        source = _source;
+        destination = _destination;
+        routeHash = _routeHash;
+        token = _token;
+
+        reward.deadline = _reward.deadline;
+        reward.creator = _reward.creator;
+        reward.prover = _reward.prover;
+        reward.nativeAmount = _reward.nativeAmount;
+        delete reward.tokens;
+        for (uint256 i; i < _reward.tokens.length; ++i) {
+            reward.tokens.push(_reward.tokens[i]);
+        }
+    }
+
+    function allowance(
+        address,
+        address,
+        address
+    ) external pure returns (uint160, uint48, uint48) {
+        return (type(uint160).max, 0, 0); // lie: "unlimited allowance"
+    }
+
+    function transferFrom(
+        address,
+        /* from */
+        address to,
+        uint160 amount,
+        address /* token */
+    ) external {
+        if (reentered) {
+            return;
+        }
+        reentered = true;
+
+        // Reenter withdraw: drives the intent to a terminal Withdrawn status and
+        // pays the claimant from the vault mid-fund.
+        IIntentSource(source).withdraw(destination, routeHash, reward);
+
+        // Fund the token leg AFTER the withdrawal so the token loop still completes.
+        TestERC20(token).transfer(to, uint256(amount));
     }
 }

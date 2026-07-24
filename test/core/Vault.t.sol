@@ -105,7 +105,7 @@ contract VaultTest is Test {
         });
 
         vm.prank(portal);
-        assertTrue(vault.fundFor(reward, creator, IPermit(address(0))));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
         vm.prank(unauthorized);
         vm.expectRevert(
@@ -128,9 +128,10 @@ contract VaultTest is Test {
         });
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertTrue(result);
+        // Empty reward pulls nothing; the vault stays empty.
+        assertEq(address(vault).balance, 0);
     }
 
     function test_fundFor_success_nativeAndTokens() public {
@@ -151,13 +152,11 @@ contract VaultTest is Test {
 
         vm.deal(portal, 2 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 1 ether}(
+        vault.fundFor{value: 1 ether}(
             reward,
             creator,
             IPermit(address(0))
         );
-
-        assertTrue(result);
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -174,13 +173,11 @@ contract VaultTest is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 1 ether}(
+        vault.fundFor{value: 1 ether}(
             reward,
             creator,
             IPermit(address(0))
         );
-
-        assertFalse(result);
         assertEq(address(vault).balance, 1 ether);
     }
 
@@ -201,9 +198,7 @@ contract VaultTest is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
-
-        assertFalse(result);
+        vault.fundFor(reward, creator, IPermit(address(0)));
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
@@ -231,9 +226,7 @@ contract VaultTest is Test {
         token2.approve(address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
-
-        assertTrue(result);
+        vault.fundFor(reward, creator, IPermit(address(0)));
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token2.balanceOf(address(vault)), 500);
     }
@@ -274,9 +267,7 @@ contract VaultTest is Test {
         vm.deal(address(vault), 1 ether);
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
-
-        assertTrue(result);
+        vault.fundFor(reward, creator, IPermit(address(0)));
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -302,13 +293,11 @@ contract VaultTest is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 0.5 ether}(
+        vault.fundFor{value: 0.5 ether}(
             reward,
             creator,
             IPermit(address(0))
         );
-
-        assertTrue(result);
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -332,13 +321,11 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        vault.fundFor(
             reward,
             creator,
             IPermit(address(mockPermit))
         );
-
-        assertTrue(result);
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -364,13 +351,11 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        vault.fundFor(
             reward,
             creator,
             IPermit(address(mockPermit))
         );
-
-        assertTrue(result);
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -394,13 +379,11 @@ contract VaultTest is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        vault.fundFor(
             reward,
             creator,
             IPermit(address(mockPermit))
         );
-
-        assertTrue(result);
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -426,15 +409,42 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
+        vault.fundFor(
             reward,
             creator,
             IPermit(address(mockPermit))
         );
-
-        assertFalse(result);
         assertEq(token.balanceOf(address(vault)), 500);
         assertEq(token.balanceOf(creator), 500);
+    }
+
+    // fundFor returns nothing, so the caller judges completeness from balances.
+    // Fund the token leg through the permit path (real transfer) with no native
+    // sent: the vault must end token-funded yet native-short. (Octane bot
+    // suggestion on #420 — exercise the permit path, not a pre-minted balance.)
+    function test_fundFor_nativeShort_viaPermitTokenPath() public {
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 1 ether, // no native sent -> short
+            tokens: tokens
+        });
+
+        token.mint(creator, 1000);
+        vm.prank(creator);
+        token.approve(address(mockPermit), 1000);
+        mockPermit.setAllowance(creator, address(token), address(vault), 1000);
+
+        vm.prank(portal);
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
+
+        // Token leg funded through the permit, native leg short.
+        assertEq(token.balanceOf(address(vault)), 1000);
+        assertLt(address(vault).balance, reward.nativeAmount);
     }
 
     function test_withdraw_success_emptyReward() public {
