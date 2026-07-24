@@ -3,7 +3,7 @@ pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
 import {IOriginSettler} from "../../contracts/interfaces/ERC7683/IOriginSettler.sol";
-import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction} from "../../contracts/types/ERC7683.sol";
+import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction, OrderData, ORDER_DATA_TYPEHASH} from "../../contracts/types/ERC7683.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {OriginSettler} from "../../contracts/ERC7683/OriginSettler.sol";
 
@@ -155,6 +155,71 @@ contract OriginSettlerTest is BaseTest {
 
         bytes32 orderId = keccak256(abi.encode(order));
         assertTrue(originSettler.opened(orderId));
+    }
+
+    /// @notice The gasless `openFor` must reject an order whose signer (order.user)
+    ///         is not the reward creator, since refunds/recovery always pay
+    ///         reward.creator. Exercises the real OriginSettler logic via Portal.
+    function testOpenForRevertsWhenUserNotCreator() public {
+        (address gaslessUser, uint256 gaslessUserPk) = makeAddrAndKey(
+            "gaslessUser"
+        );
+
+        // reward.creator is `creator` (from BaseTest), deliberately != order.user
+        OrderData memory orderData = OrderData({
+            destination: CHAIN_ID,
+            route: abi.encode(route),
+            reward: reward,
+            routePortal: bytes32(uint256(uint160(address(portal)))),
+            routeDeadline: uint64(expiry),
+            maxSpent: new Output[](0)
+        });
+
+        GaslessCrossChainOrder memory order = GaslessCrossChainOrder({
+            originSettler: address(portal),
+            user: gaslessUser,
+            nonce: 1,
+            originChainId: block.chainid,
+            openDeadline: uint32(block.timestamp + 3600),
+            fillDeadline: uint32(block.timestamp + 7200),
+            orderDataType: ORDER_DATA_TYPEHASH,
+            orderData: abi.encode(orderData)
+        });
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                portal.GASLESS_CROSSCHAIN_ORDER_TYPEHASH(),
+                order.originSettler,
+                order.user,
+                order.nonce,
+                order.originChainId,
+                order.openDeadline,
+                order.fillDeadline,
+                order.orderDataType,
+                keccak256(order.orderData)
+            )
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                hex"1901",
+                portal.domainSeparatorV4(),
+                structHash
+            )
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(gaslessUserPk, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // Signature is valid (signed by order.user) so it passes _validateOrderSig;
+        // the binding check then fires because order.user != reward.creator.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IOriginSettler.InvalidCreatorBinding.selector,
+                gaslessUser,
+                creator
+            )
+        );
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
     }
 
     function testResolveOrder() public view {

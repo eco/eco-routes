@@ -28,6 +28,9 @@ interface IOriginSettler {
     /// @notice Thrown when the origin settler address in the order does not match this contract
     error InvalidOriginSettler(address expected, address actual);
 
+    /// @notice Thrown when the gasless signer (order.user) is not the reward creator
+    error InvalidCreatorBinding(address user, address creator);
+
     /**
      * @notice Signals that an order has been opened
      * @param orderId a unique order identifier within this settlement system
