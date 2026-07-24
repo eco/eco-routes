@@ -198,7 +198,7 @@ contract Vault is IVault {
             return rewardAmount - balance;
         }
 
-        (uint160 allowance, , ) = permit.allowance(
+        (uint160 allowance, uint48 expiration, ) = permit.allowance(
             funder,
             address(token),
             address(this)
@@ -209,7 +209,9 @@ contract Vault is IVault {
             .min(funderBalance)
             .min(uint256(allowance));
 
-        if (transferAmount > 0) {
+        // Skip the Permit2 transfer on an expired allowance so control falls through
+        // to the standard-ERC20 fallback instead of reverting AllowanceExpired.
+        if (transferAmount > 0 && block.timestamp <= expiration) {
             permit.transferFrom(
                 funder,
                 address(this),

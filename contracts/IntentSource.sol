@@ -640,9 +640,15 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
 
-            fullyFunded =
-                fullyFunded &&
-                _fundToken(vault, funder, token, reward.tokens[i].amount);
+            // Evaluate every leg before aggregating so a prior shortfall (native or
+            // an earlier token) does not short-circuit funding of later legs.
+            bool legFunded = _fundToken(
+                vault,
+                funder,
+                token,
+                reward.tokens[i].amount
+            );
+            fullyFunded = fullyFunded && legFunded;
         }
 
         if (!allowPartial && !fullyFunded) {
