@@ -832,9 +832,17 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward calldata reward
     ) internal view {
         Status status = rewardStatuses[intentHash];
-        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
-            intentHash
-        );
+
+        // A codeless prover (typo, address(0), or a prover deployed only on
+        // another chain) can never hold a proof, and calling into it would
+        // revert — permanently bricking refunds and locking the escrow. Treat
+        // it deterministically as "no proof" (a zero-claimant ProofData) so the
+        // deadline/status branches below behave as they would for any
+        // unproven intent, without dispatching an external call.
+        IProver.ProofData memory proof;
+        if (reward.prover.code.length > 0) {
+            proof = IProver(reward.prover).provenIntents(intentHash);
+        }
 
         // If proof is incorrect or no proof
         if (proof.destination != destination || proof.claimant == address(0)) {

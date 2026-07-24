@@ -1214,6 +1214,87 @@ contract IntentSourceTest is BaseTest {
         );
     }
 
+    // Refund must remain possible even when reward.prover is codeless
+    // (typo, address(0), or a prover deployed only on another chain). Calling
+    // provenIntents on a codeless address would revert and permanently brick
+    // the refund path, locking the escrow forever. After the deadline the
+    // refund must instead succeed and return funds to the creator.
+    function testRefundSucceedsWithCodelessProverAfterDeadline() public {
+        // Point the reward at a plain address with no deployed code.
+        address codelessProver = makeAddr("codelessProver");
+        assertEq(codelessProver.code.length, 0);
+        intent.reward.prover = codelessProver;
+
+        _publishAndFund(intent, false);
+
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        assertTrue(intentSource.isIntentFunded(intent));
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
+    // address(0) is also a codeless prover and must not brick the refund.
+    function testRefundSucceedsWithZeroAddressProverAfterDeadline() public {
+        intent.reward.prover = address(0);
+        assertEq(intent.reward.prover.code.length, 0);
+
+        _publishAndFund(intent, false);
+
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
+    // No-regression: a normal prover with no recorded proof still refunds
+    // after the deadline (the codeless-prover fix must not alter this path).
+    function testRefundSucceedsWithNormalProverNoProofAfterDeadline() public {
+        // intent.reward.prover defaults to the real TestProver (has code).
+        assertGt(intent.reward.prover.code.length, 0);
+
+        _publishAndFund(intent, false);
+
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
     // RefundTo Tests
     function testRefundToSuccessAfterDeadline() public {
         _publishAndFund(intent, false);

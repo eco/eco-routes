@@ -113,3 +113,6 @@ broadcast/
 
 # Local configs
 .claude
+
+# release-pr workflow scratch file
+.release-next-version

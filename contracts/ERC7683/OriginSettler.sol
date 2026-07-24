@@ -102,6 +102,13 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
 
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
+        if (order.user != orderData.reward.creator) {
+            revert InvalidCreatorBinding(
+                order.user,
+                orderData.reward.creator
+            );
+        }
+
         // No need for replay protection here
         // 1) If intent is Withdrawn or Refunded, it fails
         // 2) If intent is Initial, it publishes and funds
