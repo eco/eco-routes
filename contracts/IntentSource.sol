@@ -742,11 +742,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         // `reward.nativeAmount`, so no native is forwarded into the vault call itself.
         _fundNative(vault, reward.nativeAmount);
 
-        bool fullyFunded = IVault(vault).fundFor{value: 0}(
-            reward,
-            funder,
-            IPermit(permitContract)
-        );
+        IVault(vault).fundFor(reward, funder, IPermit(permitContract));
+
+        // Recompute funding from actual on-chain balances rather than trusting any
+        // in-call flag: an untrusted permit contract can reenter and drain the vault
+        // during the token transfers.
+        bool fullyFunded = _isRewardFunded(reward, vault);
 
         if (!allowPartial && !fullyFunded) {
             revert InsufficientFunds(intentHash);

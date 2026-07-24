@@ -589,6 +589,137 @@ contract IntentSourceTest is BaseTest {
         assertEq(creator.balance, initialBalance);
     }
 
+    function testFundForPartialNativeTopUpEscrowsExactTotal() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        // fundFor pulls reward tokens straight into the vault
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+        uint256 half = REWARD_NATIVE_ETH / 2;
+
+        // First top-up: only half of the required native (allowPartial), so the
+        // intent stays partially funded.
+        vm.prank(creator);
+        intentSource.fundFor{value: half}(
+            intent.destination,
+            routeHash,
+            reward,
+            true,
+            creator,
+            address(0)
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, half);
+        assertEq(address(intentSource).balance, 0);
+
+        // Second top-up: deliberately OVERPAY (send the full amount when only the
+        // remaining half is missing). _fundNative caps the vault contribution at the
+        // missing delta, and Refund.excessNative() returns the surplus — so pre-fix
+        // (which forwarded the whole msg.value into the vault) this would over-fund
+        // the vault or strand native on the Portal.
+        vm.prank(creator);
+        intentSource.fundFor{value: REWARD_NATIVE_ETH}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // Vault escrows exactly the total required native, with no duplication or loss
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        // No native stranded on the Portal across either call
+        assertEq(address(intentSource).balance, 0);
+        // Caller spent exactly the required native in total (surplus refunded)
+        assertEq(creator.balance, initialBalance - REWARD_NATIVE_ETH);
+    }
+
+    function testPublishAndFundForOnFundedIntentRefundsExtraValue() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        // Fully fund the intent via publishAndFundFor with the exact native amount.
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+
+        uint256 balanceBeforeSecond = creator.balance;
+
+        // Calling publishAndFundFor again on the now-Funded intent with extra
+        // msg.value: onlyFundable early-returns, so the excess must be fully
+        // refunded and nothing stranded on the Portal.
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+
+        // Vault balance is unchanged; the full second msg.value came back.
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        assertEq(address(intentSource).balance, 0);
+        assertEq(creator.balance, balanceBeforeSecond);
+    }
+
+    function testFundForZeroNativeRewardRefundsAllValue() public {
+        // reward.nativeAmount defaults to 0; the reward carries only token legs.
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+
+        // Caller sends native even though the reward requires none: the entire
+        // msg.value must be refunded and nothing stranded on the Portal.
+        vm.prank(creator);
+        intentSource.fundFor{value: 1 ether}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // No native was escrowed since the reward's nativeAmount is zero
+        assertEq(intentVault.balance, 0);
+        // The full msg.value was refunded to the caller
+        assertEq(creator.balance, initialBalance);
+        // Nothing stranded on the Portal
+        assertEq(address(intentSource).balance, 0);
+    }
+
     function testInsufficientNativeReward() public {
         reward.nativeAmount = 1 ether;
         intent.reward = reward;
