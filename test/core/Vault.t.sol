@@ -926,7 +926,9 @@ contract VaultTest is Test {
         // Deploy a VaultTron clone (Tron-aware vault) for this test.
         // vm.prank sets msg.sender for the constructor so portal is set correctly.
         vm.prank(portal);
-        IVault vaultTron = IVault(address(new VaultTron()).clone(bytes32(uint256(1))));
+        IVault vaultTron = IVault(
+            address(new VaultTron()).clone(bytes32(uint256(1)))
+        );
 
         // Fund via transferFrom (returns true) — mirrors publishAndFund on-chain.
         tether.approve(address(this), 100_000);
