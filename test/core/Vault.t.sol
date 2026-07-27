@@ -152,11 +152,7 @@ contract VaultTest is Test {
 
         vm.deal(portal, 2 ether);
         vm.prank(portal);
-        vault.fundFor{value: 1 ether}(
-            reward,
-            creator,
-            IPermit(address(0))
-        );
+        vault.fundFor{value: 1 ether}(reward, creator, IPermit(address(0)));
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -173,11 +169,7 @@ contract VaultTest is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        vault.fundFor{value: 1 ether}(
-            reward,
-            creator,
-            IPermit(address(0))
-        );
+        vault.fundFor{value: 1 ether}(reward, creator, IPermit(address(0)));
         assertEq(address(vault).balance, 1 ether);
     }
 
@@ -293,11 +285,7 @@ contract VaultTest is Test {
 
         vm.deal(portal, 1 ether);
         vm.prank(portal);
-        vault.fundFor{value: 0.5 ether}(
-            reward,
-            creator,
-            IPermit(address(0))
-        );
+        vault.fundFor{value: 0.5 ether}(reward, creator, IPermit(address(0)));
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -321,11 +309,7 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 1000);
 
         vm.prank(portal);
-        vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -351,11 +335,7 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -379,11 +359,7 @@ contract VaultTest is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -409,11 +385,7 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
         assertEq(token.balanceOf(address(vault)), 500);
         assertEq(token.balanceOf(creator), 500);
     }
@@ -965,7 +937,9 @@ contract VaultTest is Test {
         // Deploy a VaultTron clone (Tron-aware vault) for this test.
         // vm.prank sets msg.sender for the constructor so portal is set correctly.
         vm.prank(portal);
-        IVault vaultTron = IVault(address(new VaultTron()).clone(bytes32(uint256(1))));
+        IVault vaultTron = IVault(
+            address(new VaultTron()).clone(bytes32(uint256(1)))
+        );
 
         // Fund via transferFrom (returns true) — mirrors publishAndFund on-chain.
         tether.approve(address(this), 100_000);

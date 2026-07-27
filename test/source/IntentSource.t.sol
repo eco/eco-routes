@@ -1367,7 +1367,9 @@ contract IntentSourceTest is BaseTest {
         );
     }
 
-    function testRefundCanBeCalledMultipleTimesToRecoverAdditionalFunds() public {
+    function testRefundCanBeCalledMultipleTimesToRecoverAdditionalFunds()
+        public
+    {
         _publishAndFund(intent, false);
         _timeTravel(expiry + 1);
 
@@ -1416,7 +1418,9 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenB.balanceOf(vaultAddress), 0);
     }
 
-    function testRefundToCanBeCalledMultipleTimesToRecoverAdditionalFunds() public {
+    function testRefundToCanBeCalledMultipleTimesToRecoverAdditionalFunds()
+        public
+    {
         _publishAndFund(intent, false);
         _timeTravel(expiry + 1);
 
