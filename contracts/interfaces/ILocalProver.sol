@@ -34,6 +34,15 @@ interface ILocalProver is IProver {
         uint256 nativeFee
     );
 
+    /**
+     * @notice Emitted when prove() could not return forwarded native value to the sender
+     * @dev prove() must never revert, so a failed refund is reported rather than thrown.
+     *      The value stays in the contract and is paid out by the next flashFulfill.
+     * @param recipient Address the refund was attempted to
+     * @param amount Amount of native tokens that could not be refunded
+     */
+    event ProveRefundFailed(address indexed recipient, uint256 amount);
+
     /*//////////////////////////////////////////////////////////////
                             EXTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/

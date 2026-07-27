@@ -112,21 +112,38 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
     /**
      * @notice Initiates proving of intents on the same chain
-     * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment.
-     *      WARNING: This function is payable for compatibility but does not use ETH. Any ETH sent to this
-     *      function will remain in the contract and be distributed to the next flashFulfill caller as part
-     *      of their reward. Do not send ETH to this function.
+     * @dev No proof is required for same-chain intents; they are proven on fulfillment.
+     *
+     *      Native value handling: Inbox.prove forwards the Portal's entire balance to the
+     *      prover, so this function receives whatever the caller overpaid (overpaying is the
+     *      normal pattern for fulfillAndProve, which allows extra value for bridge fees).
+     *      Same-chain proving has no fee, so the whole amount is returned to `sender`.
+     *      Without this refund the value would sit here and be paid out to the next
+     *      flashFulfill caller's claimant -- an unrelated third party.
+     *
+     *      Only `msg.value` is refunded, never `address(this).balance`. LocalProver can
+     *      legitimately hold ETH from a flashFulfill payout that its claimant rejected;
+     *      refunding the full balance would let anyone drain it with a dust-valued call.
+     *
+     *      The refund is deliberately failure-tolerant. This function must not revert, or a
+     *      `sender` that cannot receive ETH would be unable to use fulfillAndProve at all.
+     *      A failed refund emits ProveRefundFailed and leaves the value here, which is the
+     *      pre-existing behaviour for that case.
+     * @param sender Address that initiated the proving request; receives the refund
      */
     function prove(
-        address /* sender */,
+        address sender,
         uint64 /* sourceChainId */,
         bytes calldata /* encodedProofs */,
         bytes calldata /* data */
     ) external payable {
-        // solhint-disable-line no-empty-blocks
-        // this function is intentionally left empty as no proof is required
-        // for same-chain proving
-        // should not revert lest it be called with fulfillandprove
+        if (msg.value == 0 || sender == address(0)) return;
+
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool refunded, ) = payable(sender).call{value: msg.value}("");
+        if (!refunded) {
+            emit ProveRefundFailed(sender, msg.value);
+        }
     }
 
     /**
