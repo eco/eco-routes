@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
@@ -21,7 +22,7 @@ import {Executor} from "./Executor.sol";
  * @dev Validates intent hash authenticity, executes calldata, and enables provers
  * to claim rewards on the source chain by checking the claimants mapping
  */
-abstract contract Inbox is DestinationSettler, IInbox {
+abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     /**
@@ -150,12 +151,17 @@ abstract contract Inbox is DestinationSettler, IInbox {
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */
+    // nonReentrant: prove forwards this contract's full balance into the prover,
+    // whose failure-tolerant refund makes an all-gas call back to msg.sender. The
+    // guard keeps that structural (not just documented in the prover) so a refund
+    // recipient cannot reenter prove. fulfillAndProve calls prove without holding
+    // the guard, so the internal call is the first (non-reentrant) entry.
     function prove(
         address prover,
         uint64 sourceChainDomainID,
         bytes32[] memory intentHashes,
         bytes memory data
-    ) public payable {
+    ) public payable nonReentrant {
         uint256 size = intentHashes.length;
 
         // Encode chain ID followed by intent hash/claimant pairs as bytes

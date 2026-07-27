@@ -6,6 +6,7 @@ import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract PolymerProverTest is BaseTest {
     PolymerProver internal polymerProver;
@@ -243,6 +244,109 @@ contract PolymerProverTest is BaseTest {
         // Forwarded ETH is refunded to the sender, nothing trapped in the prover
         assertEq(creator.balance, creatorBalanceBefore + forwarded);
         assertEq(address(polymerProver).balance, 0);
+    }
+
+    /**
+     * @notice prove() must not revert when the refund recipient rejects ETH
+     * @dev Regression test for V9: the refund uses a failure-tolerant all-gas call
+     *      so a recipient whose receive()/fallback() reverts cannot DoS
+     *      prove()/fulfillAndProve(). Polymer charges no bridge fee, so when the
+     *      refund cannot be delivered the entire forwarded amount is retained as
+     *      dust in the prover (there is no sweep path; the loss is self-inflicted
+     *      since the recipient is the caller). Exercises the dust-retention branch.
+     */
+    function testProveRefundRetainedWhenRecipientRejects() public {
+        RejectingRefundRecipient rejecting = new RejectingRefundRecipient();
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+
+        uint256 forwarded = 1 ether;
+        vm.deal(address(portal), forwarded);
+
+        // Refund recipient reverts on receive; with the old transfer()-based refund
+        // this would revert. It must now succeed, retaining the value as dust.
+        vm.prank(address(portal));
+        polymerProver.prove{value: forwarded}(
+            address(rejecting),
+            uint64(block.chainid),
+            encodedProofs,
+            hex""
+        );
+
+        // Refund could not be delivered, so the full forwarded amount (no fee on
+        // Polymer) is retained by the prover; nothing reaches the recipient.
+        assertEq(address(rejecting).balance, 0);
+        assertEq(address(polymerProver).balance, forwarded);
+    }
+
+    /**
+     * @notice The nonReentrant guard on Inbox.prove blocks a refund recipient
+     *         from reentering prove().
+     * @dev Regression test for V9: Inbox.prove forwards the Portal's full balance
+     *      into the prover, whose failure-tolerant refund makes an all-gas call
+     *      back to msg.sender. Polymer has no fee, so the whole forwarded amount is
+     *      refunded to the caller. A malicious caller reenters Inbox.prove from its
+     *      receive(); the guard must revert that reentrant call
+     *      (ReentrancyGuardReentrantCall). Because the refund is failure-tolerant,
+     *      the reentrant revert is swallowed and the OUTER prove() still succeeds.
+     */
+    function testInboxProveReentrancyIsBlocked() public {
+        // Build a fulfillable intent on this chain with no route tokens/calls so
+        // fulfillment needs no token setup. Inbox computes the hash with its own
+        // CHAIN_ID (== block.chainid), so destination must match.
+        Intent memory localIntent = intent;
+        localIntent.destination = uint64(block.chainid);
+        localIntent.route.tokens = new TokenAmount[](0);
+        localIntent.route.calls = new Call[](0);
+
+        bytes32 intentHash = _hashIntent(localIntent);
+        bytes32 rewardHash = keccak256(abi.encode(localIntent.reward));
+
+        // A solver fulfills the intent so claimants[intentHash] is set.
+        address solver = makeAddr("polySolver");
+        vm.prank(solver);
+        portal.fulfill(
+            intentHash,
+            localIntent.route,
+            rewardHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        // The malicious caller reenters Inbox.prove from its receive().
+        ReentrantProveCaller attacker = new ReentrantProveCaller(
+            address(portal),
+            address(polymerProver),
+            uint64(block.chainid),
+            intentHashes
+        );
+
+        uint256 amount = 1 ether;
+        vm.deal(address(attacker), amount);
+
+        // Outer prove() must succeed despite the blocked reentrant attempt.
+        attacker.attack();
+
+        // The reentrant call was attempted and reverted with the guard error.
+        assertTrue(attacker.reentrancyAttempted(), "reentry not attempted");
+        assertTrue(attacker.reentrantReverted(), "guard did not block reentry");
+        assertEq(
+            bytes4(attacker.reentrantRevertData()),
+            ReentrancyGuard.ReentrancyGuardReentrantCall.selector
+        );
+
+        // Portal drained its balance before the callback; the refund was
+        // delivered out to the caller, leaving nothing trapped in prover/portal.
+        assertEq(address(portal).balance, 0);
+        assertEq(address(polymerProver).balance, 0);
+        assertEq(address(attacker).balance, amount);
     }
 
     function testValidateSingleProof() public {
@@ -721,5 +825,85 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint160(destinationProver)))
             )
         );
+    }
+}
+
+/// @notice Minimal view of Inbox.prove used by the reentrancy attacker.
+interface IInboxProve {
+    function prove(
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes,
+        bytes memory data
+    ) external payable;
+}
+
+/// @notice Refund recipient that rejects ETH, forcing the dust-retention branch.
+contract RejectingRefundRecipient {
+    receive() external payable {
+        revert("RejectingRefundRecipient: I reject your ETH");
+    }
+
+    fallback() external payable {
+        revert("RejectingRefundRecipient: I reject your ETH");
+    }
+}
+
+/// @notice Malicious refund recipient that attempts to reenter Inbox.prove from
+/// its receive() when it is paid the forwarded refund. Records whether the
+/// reentrant call reverted so the guard can be asserted from the test.
+contract ReentrantProveCaller {
+    IInboxProve public immutable portal;
+    address public immutable prover;
+    uint64 public immutable domain;
+    bytes32[] public intentHashes;
+
+    bool public reentrancyAttempted;
+    bool public reentrantReverted;
+    bytes public reentrantRevertData;
+
+    constructor(
+        address _portal,
+        address _prover,
+        uint64 _domain,
+        bytes32[] memory _intentHashes
+    ) {
+        portal = IInboxProve(_portal);
+        prover = _prover;
+        domain = _domain;
+        intentHashes = _intentHashes;
+    }
+
+    /// @notice Kick off the outer Inbox.prove call, forwarding our full balance.
+    function attack() external {
+        portal.prove{value: address(this).balance}(
+            prover,
+            domain,
+            intentHashes,
+            ""
+        );
+    }
+
+    /// @notice Invoked when the prover refunds the forwarded value. Attempts to
+    /// reenter Inbox.prove; the nonReentrant guard must revert this. We swallow
+    /// the revert (low-level call) so the outer refund call still succeeds.
+    receive() external payable {
+        if (reentrancyAttempted) {
+            return;
+        }
+        reentrancyAttempted = true;
+
+        (bool ok, bytes memory ret) = address(portal).call(
+            abi.encodeWithSelector(
+                IInboxProve.prove.selector,
+                prover,
+                domain,
+                intentHashes,
+                bytes("")
+            )
+        );
+
+        reentrantReverted = !ok;
+        reentrantRevertData = ret;
     }
 }

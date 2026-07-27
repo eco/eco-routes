@@ -559,11 +559,56 @@ contract HyperProverTest is BaseTest {
         );
 
         // Refund could not be delivered, so it is retained by the prover
-        // (fee = 100000 wei was consumed by the mock mailbox dispatch).
+        // (the mock mailbox consumed mailbox.FEE() during dispatch).
         assertEq(address(recipient).balance, 0);
         assertEq(
             address(hyperProver).balance,
-            proverBalanceBefore + overpayment - 100000
+            proverBalanceBefore + overpayment - mailbox.FEE()
+        );
+    }
+
+    /**
+     * @notice prove() must actually DELIVER the refund to a legitimate
+     *         smart-account solver whose receive() accepts but spends more than
+     *         the 2300-gas transfer() stipend.
+     * @dev Regression test for V9: the old transfer()-based refund would OOG-revert
+     *      for any recipient whose receive() writes storage (a common smart-account /
+     *      EIP-7702 pattern). The failure-tolerant all-gas call both avoids the DoS
+     *      AND forwards enough gas for the refund to succeed, so the excess is
+     *      returned to the solver rather than stranded in the prover.
+     */
+    function testProveRefundDeliveredToGasHungryRecipient() public {
+        GasHungryRefundRecipient recipient = new GasHungryRefundRecipient();
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        uint256 overpayment = 2 ether;
+        uint256 recipientBalanceBefore = address(recipient).balance;
+
+        bytes memory proverData = _encodeProverData(
+            bytes32(uint256(uint160(whitelistedProver))),
+            "",
+            address(0)
+        );
+
+        // Refund recipient is a contract that accepts ETH but burns >2300 gas
+        // (two cold SSTOREs) in receive(). The refund must still be delivered.
+        vm.prank(address(portal));
+        hyperProver.prove{value: overpayment}(
+            address(recipient),
+            uint64(block.chainid),
+            encodeProofs(intentHashes, claimants),
+            proverData
+        );
+
+        // Refund (overpayment minus the mailbox dispatch fee) was delivered to
+        // the gas-hungry smart-account recipient.
+        assertEq(
+            address(recipient).balance,
+            recipientBalanceBefore + overpayment - mailbox.FEE()
         );
     }
 
@@ -687,5 +732,20 @@ contract RejectingRefundRecipient {
 
     fallback() external payable {
         revert("RejectingRefundRecipient: I reject your ETH");
+    }
+}
+
+/// @notice Refund recipient that ACCEPTS ETH but consumes far more than the
+/// 2300-gas transfer() stipend (two cold SSTOREs) in receive(), simulating a
+/// legitimate smart-account / EIP-7702 solver wallet. Used to prove that the
+/// all-gas refund call actually delivers the refund instead of OOG-reverting.
+contract GasHungryRefundRecipient {
+    uint256 private slot0;
+    uint256 private slot1;
+
+    receive() external payable {
+        // Two cold SSTOREs cost well over the 2300-gas transfer() stipend.
+        slot0 = block.number;
+        slot1 = block.timestamp;
     }
 }
