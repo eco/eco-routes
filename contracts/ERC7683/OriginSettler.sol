@@ -104,10 +104,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
         if (order.user != orderData.reward.creator) {
-            revert InvalidCreatorBinding(
-                order.user,
-                orderData.reward.creator
-            );
+            revert InvalidCreatorBinding(order.user, orderData.reward.creator);
         }
 
         // No need for replay protection here
@@ -160,12 +157,27 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      *      to gate its own signatures correctly and strictly. A permissive or
      *      buggy ERC-1271 wallet — one that returns the `0x1626ba7e` magic value
      *      for a signature its owner did not authorize — that has also approved
-     *      the Portal could be escrowed-from by a third party, with the refund
-     *      routed to an attacker-chosen `reward.creator` (creator need not equal
-     *      `order.user`, and is itself covered by the signed `orderData`). This
-     *      is the accepted trade-off of supporting Safe/ERC-4337 wallets, not a
-     *      flaw in this contract: for EOAs the check is still equivalent to the
-     *      previous ECDSA.recover + equality (malleable high-s sigs stay rejected).
+     *      the Portal could be escrowed-from by a third party. The failure mode is
+     *      bounded to griefing, not theft: `openFor` binds `reward.creator ==
+     *      order.user`, so the funder and the refund/recovery recipient are the same
+     *      wallet — an attacker cannot redirect funds to themselves, only force the
+     *      wallet to escrow (and, after `reward.deadline`, be refunded to itself).
+     *      Note `reward.deadline` is attacker-chosen and may be set in the past, so
+     *      an unauthorized escrow can be refunded in the same transaction — still
+     *      back to the wallet. For EOAs the check is equivalent to the previous
+     *      ECDSA.recover + equality (malleable high-s sigs stay rejected).
+     * @dev DoS (relayer): `order.user` is unvalidated calldata and
+     *      {SignatureChecker} staticcalls it with no gas cap, materializing the full
+     *      returndata. A hostile contract at `order.user` can return megabytes and
+     *      make `openFor` consume the whole gas limit, OOG-reverting the relayer that
+     *      pays for the gasless call. There is no fund loss; simulating the call
+     *      before submission is load-bearing for relayer operators. We deliberately
+     *      do not hand-roll a bounded staticcall here (the mitigation is riskier than
+     *      the issue).
+     * @dev Liveness: ERC-1271 signatures are revocable (unlike an EOA's). A wallet
+     *      that rotates owners or changes policy can flip a previously-valid order to
+     *      invalid between simulation and inclusion, so solvers should expect gasless
+     *      orders from contract wallets to fail at inclusion more often than EOA ones.
      * @param order The gasless cross-chain order to verify
      * @param signature The user's signature
      * @return True if the signature is valid, false otherwise
@@ -194,11 +206,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         // openFor path. For EOAs this is equivalent to the previous
         // ECDSA.recover + equality check.
         return
-            SignatureChecker.isValidSignatureNow(
-                order.user,
-                digest,
-                signature
-            );
+            SignatureChecker.isValidSignatureNow(order.user, digest, signature);
     }
 
     /**
