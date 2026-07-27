@@ -391,6 +391,7 @@ describe('MetaProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await metaProver.getAddress(),
         )
 
       const sourceChainId = 12345
@@ -433,7 +434,7 @@ describe('MetaProver Test', (): void => {
       await expect(
         metaProver
           .connect(solver)
-          .prove(owner.address, 123, encodedProofs, data),
+          .prove(owner.address, 123, intentHashes, data),
       ).to.be.revertedWithCustomError(metaProver, 'UnauthorizedSender')
     })
 
@@ -500,6 +501,7 @@ describe('MetaProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await metaProver.getAddress(),
         )
 
       const sourceChainId = 12345
@@ -596,6 +598,7 @@ describe('MetaProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await metaProver.getAddress(),
         )
 
       const sourceChainId = 123
@@ -884,7 +887,9 @@ describe('MetaProver Test', (): void => {
           { value: fee },
         )
 
-      expect(await inbox.claimants(intentHash)).to.eq(nonAddressClaimant)
+      expect(await metaProver.destFulfillment(intentHash)).to.eq(
+        nonAddressClaimant,
+      )
 
       const provenIntent = await metaProver.provenIntents(intentHash)
       expect(provenIntent.claimant).to.eq(ethers.ZeroAddress)
@@ -1132,6 +1137,7 @@ describe('MetaProver Test', (): void => {
           route,
           rewardHash0,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await metaProver.getAddress(),
         )
 
       salt = ethers.encodeBytes32String('0x1234')
@@ -1180,6 +1186,7 @@ describe('MetaProver Test', (): void => {
           route1,
           rewardHash1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await metaProver.getAddress(),
         )
 
       const proofDataBeforeBatch = await metaProver.provenIntents(intentHash1)

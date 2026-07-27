@@ -511,14 +511,8 @@ contract DepositIntegration_CCTPMintTest is Test {
         assertTrue(foundDepositFor, "Gateway.depositFor should have been called");
 
         // --- Verify Intent 2 is fulfilled and solver is the claimant ---
-        bytes32 claimant = portal.claimants(intent2Hash);
-        assertEq(
-            claimant,
-            bytes32(uint256(uint160(solver))),
-            "Solver should be recorded as claimant for Intent 2"
-        );
-
-        // Verify via Arc LocalProver's provenIntents
+        // Fulfillment storage lives in the prover now (arcProver, the Arc LocalProver named by
+        // flashFulfill), not the Portal — read it via provenIntents.
         assertEq(
             arcProver.provenIntents(intent2Hash).claimant,
             solver,

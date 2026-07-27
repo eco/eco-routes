@@ -164,7 +164,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     function _dispatchMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
@@ -197,7 +197,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     function fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
         // Decode structured data from the raw input
@@ -232,7 +232,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     function _fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Create messaging parameters for LayerZero
@@ -273,7 +273,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      */
     function _formatLayerZeroMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         UnpackedData memory unpacked
     )
         internal

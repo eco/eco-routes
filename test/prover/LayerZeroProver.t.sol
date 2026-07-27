@@ -218,6 +218,22 @@ contract LayerZeroProverTest is BaseTest {
         return abi.encode(unpacked);
     }
 
+    /**
+     * @notice Records destination fulfillments (as the Portal) on the given prover
+     *         so it can build its own wire message during prove(). Mirrors the
+     *         claimants the test already constructed for each intent hash.
+     */
+    function _record(
+        LayerZeroProver p,
+        bytes32[] memory h,
+        bytes32[] memory c
+    ) internal {
+        for (uint256 i; i < h.length; ++i) {
+            vm.prank(address(portal));
+            p.recordFulfillment(h[i], uint64(block.chainid), c[i]);
+        }
+    }
+
     function test_constructor() public view {
         assertEq(lzProver.ENDPOINT(), address(endpoint));
         assertEq(lzProver.PORTAL(), address(portal));
@@ -264,11 +280,12 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         vm.deal(address(portal), fee);
+        _record(lzProver, intentHashes, claimants);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
             uint64(SOURCE_CHAIN_ID),
-            encodedProofs,
+            intentHashes,
             data
         );
     }
@@ -359,11 +376,12 @@ contract LayerZeroProverTest is BaseTest {
         );
 
         vm.deal(address(portal), fee);
+        _record(lzProver, intentHashes, claimants);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
             uint64(SOURCE_CHAIN_ID),
-            encodedProofs,
+            intentHashes,
             data
         );
     }
@@ -386,12 +404,16 @@ contract LayerZeroProverTest is BaseTest {
             data
         );
 
+        // Record once — the same intent hash is proved twice below, and
+        // recordFulfillment is one-shot per hash.
+        _record(lzProver, intentHashes, claimants);
+
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         lzProver.prove{value: fee}(
             address(portal),
             uint64(SOURCE_CHAIN_ID),
-            encodedProofs,
+            intentHashes,
             data
         );
 
@@ -404,12 +426,13 @@ contract LayerZeroProverTest is BaseTest {
             zeroGasData
         );
 
+        // No second _record — the hash is already recorded above (one-shot).
         vm.deal(address(portal), zeroGasFee);
         vm.prank(address(portal));
         lzProver.prove{value: zeroGasFee}(
             address(portal),
             uint64(SOURCE_CHAIN_ID),
-            encodedProofs,
+            intentHashes,
             zeroGasData
         );
     }
@@ -687,6 +710,7 @@ contract LayerZeroProverTest is BaseTest {
     function test_dos_emptyBatch_dispatchesMessage() public {
         // 8-byte header only — zero intent/claimant pairs
         bytes memory emptyProofs = abi.encodePacked(uint64(block.chainid));
+        bytes32[] memory emptyHashes = new bytes32[](0);
         bytes memory data = _encodeProverData(SOURCE_PROVER, 200_000);
 
         uint256 fee = lzProver.fetchFee(
@@ -700,7 +724,7 @@ contract LayerZeroProverTest is BaseTest {
         lzProver.prove{value: fee}(
             address(portal),
             uint64(SOURCE_CHAIN_ID),
-            emptyProofs,
+            emptyHashes,
             data
         );
     }
@@ -827,11 +851,12 @@ contract LayerZeroProverTest is BaseTest {
 
         uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
         vm.deal(address(portal), fee);
+        _record(recProver, intentHashes, claimants);
         vm.prank(address(portal));
         recProver.prove{value: fee}(
             address(portal),
             uint64(SOURCE_CHAIN_ID),
-            encodedProofs,
+            intentHashes,
             data
         );
 
@@ -932,8 +957,9 @@ contract LayerZeroProverTest is BaseTest {
 
         uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
         vm.deal(address(portal), fee);
+        _record(recProver, intentHashes, claimants);
         vm.prank(address(portal));
-        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), intentHashes, data);
 
         bytes memory opts = recEndpoint.lastOptions();
 
@@ -989,8 +1015,9 @@ contract LayerZeroProverTest is BaseTest {
         // fetchFee must succeed — floor is applied, no revert.
         uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
         vm.deal(address(portal), fee);
+        _record(recProver, intentHashes, claimants);
         vm.prank(address(portal));
-        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), intentHashes, data);
 
         // Gas in options must equal the floor (MIN_GAS_LIMIT + 1*GAS_PER_INTENT).
         bytes memory opts = recEndpoint.lastOptions();

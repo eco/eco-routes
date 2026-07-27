@@ -110,6 +110,22 @@ contract PolymerProverTest is BaseTest {
         _fundUserNative(creator, 10 ether);
     }
 
+    /// @dev Records each fulfillment into the prover (as the Portal) so `prove` can build its
+    ///      message from the prover's own store — mirrors the destination fulfill happening first.
+    function _record(
+        bytes32[] memory intentHashes,
+        bytes32[] memory claimants
+    ) internal {
+        for (uint256 i; i < intentHashes.length; ++i) {
+            vm.prank(address(portal));
+            polymerProver.recordFulfillment(
+                intentHashes[i],
+                uint64(block.chainid),
+                claimants[i]
+            );
+        }
+    }
+
     function testInitializesCorrectly() public view {
         assertTrue(address(polymerProver) != address(0));
         assertEq(polymerProver.getProofType(), "Polymer");
@@ -143,14 +159,12 @@ contract PolymerProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-
-        // Should revert when called by non-portal
+        // Should revert when called by non-portal (before the message is built)
         vm.expectRevert(PolymerProver.OnlyPortal.selector);
         polymerProver.prove(
             creator,
             uint64(block.chainid),
-            encodedProofs,
+            intentHashes,
             hex""
         );
     }
@@ -164,6 +178,9 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
 
+        // Record the fulfillment so the prover can rebuild the identical wire message from its store
+        _record(intentHashes, claimants);
+
         _expectEmit();
         emit PolymerProver.IntentFulfilledFromSource(
             uint64(block.chainid),
@@ -174,14 +191,19 @@ contract PolymerProverTest is BaseTest {
         polymerProver.prove(
             creator,
             uint64(block.chainid),
-            encodedProofs,
+            intentHashes,
             hex""
         );
     }
 
     function testProveHandlesEmptyProofs() public {
         vm.prank(address(portal));
-        polymerProver.prove(creator, uint64(block.chainid), hex"", hex"");
+        polymerProver.prove(
+            creator,
+            uint64(block.chainid),
+            new bytes32[](0),
+            hex""
+        );
     }
 
     function testProveEmitsMultipleIntents() public {
@@ -197,6 +219,9 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
 
+        // Record each fulfillment so the prover rebuilds the identical wire message from its store
+        _record(intentHashes, claimants);
+
         _expectEmit();
         emit PolymerProver.IntentFulfilledFromSource(
             uint64(block.chainid),
@@ -207,7 +232,7 @@ contract PolymerProverTest is BaseTest {
         polymerProver.prove(
             creator,
             uint64(block.chainid),
-            encodedProofs,
+            intentHashes,
             hex""
         );
     }

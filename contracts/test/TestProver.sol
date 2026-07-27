@@ -63,15 +63,54 @@ contract TestProver is BaseProver {
     }
 
     /**
-     * @notice Implementation of prove that tracks calls and processes proofs
-     * @dev Simply records the call parameters and processes the encoded proofs
+     * @notice Implementation of the dispatch-direction prove that tracks calls
+     * @dev The prover now builds the wire message from its own destination fulfillment store, so it
+     *      receives only the intent hashes. Records the call parameters and captures the
+     *      (intentHash, claimant) pairs read from {_destFulfillment} for test verification.
      */
     function prove(
         address _sender,
         uint64 _sourceChainId,
-        bytes calldata _encodedProofs,
+        bytes32[] calldata _intentHashes,
         bytes calldata _data
     ) external payable override {
+        // Track the call for testing
+        args = ArgsCheck({
+            sender: _sender,
+            sourceChainId: _sourceChainId,
+            data: _data,
+            value: msg.value
+        });
+        proveCallCount++;
+
+        delete argIntentHashes;
+        delete argClaimants;
+
+        uint256 len = _intentHashes.length;
+        for (uint256 i = 0; i < len; i++) {
+            bytes32 intentHash = _intentHashes[i];
+            bytes32 claimantBytes = _destFulfillment[intentHash];
+            if (claimantBytes == bytes32(0)) {
+                revert IntentNotFulfilled(intentHash);
+            }
+            argIntentHashes.push(intentHash);
+            argClaimants.push(claimantBytes);
+        }
+    }
+
+    /**
+     * @notice Test-only reception entrypoint mirroring the old prove-side processing
+     * @dev The source-side reception logic ({_processIntentProofs}) is unchanged by the storage
+     *      move — only its entrypoint did (production reception is `handle`/`_handleCrossChainMessage`).
+     *      This shim lets the interface tests keep exercising that reception logic with a raw
+     *      chain-id-prefixed message. Tracks the call parameters the same way the old prove did.
+     */
+    function receiveProofs(
+        address _sender,
+        uint64 _sourceChainId,
+        bytes calldata _encodedProofs,
+        bytes calldata _data
+    ) external payable {
         // Track the call for testing
         args = ArgsCheck({
             sender: _sender,

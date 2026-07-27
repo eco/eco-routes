@@ -113,7 +113,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify tokens were transferred to correct recipients
@@ -165,7 +166,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify complex call was executed
@@ -226,7 +228,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify both token and ETH transfers
@@ -250,7 +253,8 @@ contract InboxAdvancedTest is BaseTest {
             malformedHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -275,7 +279,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             mismatchedRoute,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -295,7 +300,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -313,7 +319,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(0) // Zero claimant
+            bytes32(0), // Zero claimant
+            address(prover)
         );
     }
 
@@ -333,7 +340,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
     }
 
@@ -414,7 +422,8 @@ contract InboxAdvancedTest is BaseTest {
             intentHash,
             intent.route,
             rewardHash,
-            bytes32(uint256(uint160(recipient)))
+            bytes32(uint256(uint160(recipient))),
+            address(prover)
         );
 
         // Verify all tokens were transferred
@@ -450,14 +459,15 @@ contract InboxAdvancedTest is BaseTest {
                 intentHash,
                 intent.route,
                 rewardHash,
-                bytes32(uint256(uint160(recipient)))
+                bytes32(uint256(uint160(recipient))),
+                address(prover)
             );
         }
 
         // Verify all intents were fulfilled
         for (uint256 i = 0; i < 3; i++) {
             assertEq(
-                portal.claimants(intentHashes[i]),
+                prover.destFulfillment(intentHashes[i]),
                 bytes32(uint256(uint160(recipient)))
             );
         }

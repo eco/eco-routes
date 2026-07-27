@@ -339,6 +339,7 @@ describe('HyperProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await hyperProver.getAddress(),
         )
 
       // Set up test data for proving
@@ -396,7 +397,7 @@ describe('HyperProver Test', (): void => {
       await expect(
         hyperProver
           .connect(solver)
-          .prove(owner.address, 123, encodedProofs, data),
+          .prove(owner.address, 123, intentHashes, data),
       ).to.be.revertedWithCustomError(hyperProver, 'UnauthorizedSender')
     })
 
@@ -470,6 +471,7 @@ describe('HyperProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await hyperProver.getAddress(),
         )
 
       // Set up test data for proving
@@ -584,6 +586,7 @@ describe('HyperProver Test', (): void => {
           intent.route,
           rewardHash,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await hyperProver.getAddress(),
         )
 
       // Set up test data
@@ -931,7 +934,9 @@ describe('HyperProver Test', (): void => {
         )
 
       // Verify the intent was fulfilled with the non-address claimant
-      expect(await inbox.claimants(intentHash)).to.eq(nonAddressClaimant)
+      expect(await hyperProver.destFulfillment(intentHash)).to.eq(
+        nonAddressClaimant,
+      )
 
       // The prover should not have processed this intent due to invalid address format
       // The AddressConverter will revert when trying to convert the non-EVM address
@@ -1199,6 +1204,7 @@ describe('HyperProver Test', (): void => {
           route,
           rewardHash0,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await hyperProver.getAddress(),
         )
 
       // Create second intent
@@ -1250,6 +1256,7 @@ describe('HyperProver Test', (): void => {
           route1,
           rewardHash1,
           ethers.zeroPadValue(await claimant.getAddress(), 32),
+          await hyperProver.getAddress(),
         )
 
       // Check intent hasn't been proven yet

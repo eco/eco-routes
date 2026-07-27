@@ -135,7 +135,8 @@ contract LocalProverTest is Test {
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
-            bytes32(uint256(uint160(solver)))
+            bytes32(uint256(uint160(solver))),
+            address(localProver)
         );
         vm.stopPrank();
 
@@ -163,7 +164,7 @@ contract LocalProverTest is Test {
     // A2. prove()
     function test_prove_IsNoOp() public {
         // Test: prove() is a no-op (doesn't revert)
-        localProver.prove{value: 0}(address(0), 0, "", "");
+        localProver.prove{value: 0}(address(0), 0, new bytes32[](0), "");
         // Should not revert
     }
 
@@ -213,7 +214,8 @@ contract LocalProverTest is Test {
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
-            bytes32(uint256(uint160(solver)))
+            bytes32(uint256(uint160(solver))),
+            address(localProver)
         );
 
         // Try flashFulfill
@@ -476,7 +478,8 @@ contract LocalProverTest is Test {
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
-            localProverAsBytes32
+            localProverAsBytes32,
+            address(localProver)
         );
         vm.stopPrank();
 
@@ -533,7 +536,8 @@ contract LocalProverTest is Test {
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
-            nonEVMBytes32
+            nonEVMBytes32,
+            address(localProver)
         );
         vm.stopPrank();
 
@@ -591,7 +595,8 @@ contract LocalProverTest is Test {
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
-            localProverAsBytes32
+            localProverAsBytes32,
+            address(localProver)
         );
         vm.stopPrank();
 
@@ -626,7 +631,8 @@ contract LocalProverTest is Test {
             intentHash,
             _intent.route,
             keccak256(abi.encode(_intent.reward)),
-            localProverAsBytes32
+            localProverAsBytes32,
+            address(localProver)
         );
         vm.stopPrank();
 

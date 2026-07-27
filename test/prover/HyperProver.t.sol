@@ -110,6 +110,21 @@ contract HyperProverTest is BaseTest {
         return abi.encode(unpacked);
     }
 
+    /**
+     * @notice Records destination fulfillments (as the Portal) so the prover can
+     *         build its own wire message during prove(). Mirrors the claimants the
+     *         test already constructed for each intent hash.
+     */
+    function _record(
+        bytes32[] memory h,
+        bytes32[] memory c
+    ) internal {
+        for (uint256 i; i < h.length; ++i) {
+            vm.prank(address(portal));
+            hyperProver.recordFulfillment(h[i], uint64(block.chainid), c[i]);
+        }
+    }
+
     function testInitializesCorrectly() public view {
         assertTrue(address(hyperProver) != address(0));
         assertEq(hyperProver.getProofType(), "Hyperlane");
@@ -125,11 +140,9 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
-        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
-
         vm.expectRevert();
         vm.prank(creator);
-        hyperProver.prove(creator, uint64(block.chainid), encodedProofs, "");
+        hyperProver.prove(creator, uint64(block.chainid), intentHashes, "");
     }
 
     function testProveWithValidInput() public {
@@ -153,11 +166,12 @@ contract HyperProverTest is BaseTest {
             proverData
         );
 
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         hyperProver.prove{value: expectedFee}(
             creator,
             uint64(block.chainid),
-            encodedProofs,
+            intentHashes,
             proverData
         );
     }
@@ -168,6 +182,8 @@ contract HyperProverTest is BaseTest {
         bytes32 intentHash = _hashIntent(intent);
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        _record(intentHashes, claimants);
 
         _expectEmit();
         emit IProver.IntentProven(intentHash, claimant, uint64(block.chainid));
@@ -181,7 +197,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
     }
@@ -197,6 +213,7 @@ contract HyperProverTest is BaseTest {
             claimants[i] = bytes32(uint256(uint160(claimant)));
         }
 
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -206,7 +223,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
 
@@ -247,7 +264,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
     }
@@ -375,6 +392,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -384,7 +402,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
 
@@ -420,6 +438,7 @@ contract HyperProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -429,7 +448,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
 
@@ -459,6 +478,7 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // First, send the prove message
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -468,7 +488,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
 
@@ -505,6 +525,7 @@ contract HyperProverTest is BaseTest {
         uint256 overpayment = 2 ether;
         uint256 initialBalance = creator.balance;
 
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -514,7 +535,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: overpayment}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
 
@@ -534,6 +555,7 @@ contract HyperProverTest is BaseTest {
         }
 
         // Should handle large arrays without running out of gas
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -543,7 +565,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
     }
@@ -587,6 +609,7 @@ contract HyperProverTest is BaseTest {
         address nonEvmClaimant = makeAddr("non-evm-claimant"); // Use a valid address
         claimants[0] = bytes32(uint256(uint160(nonEvmClaimant)));
 
+        _record(intentHashes, claimants);
         vm.prank(address(portal));
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -596,7 +619,7 @@ contract HyperProverTest is BaseTest {
         hyperProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            encodeProofs(intentHashes, claimants),
+            intentHashes,
             proverData
         );
 

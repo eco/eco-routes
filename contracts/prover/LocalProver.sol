@@ -4,7 +4,6 @@ pragma solidity ^0.8.13;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Inbox} from "../Inbox.sol";
 import {Semver} from "../libs/Semver.sol";
 import {ILocalProver} from "../interfaces/ILocalProver.sol";
 import {IPortal} from "../interfaces/IPortal.sol";
@@ -32,11 +31,19 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
     /**
      * @notice Tracks which intent is currently being flash-fulfilled
-     * @dev Used to enable withdrawal during flashFulfill execution (before Portal.claimants is set)
+     * @dev Used to enable withdrawal during flashFulfill execution (before the fulfillment is recorded)
      *      Only one flashFulfill can execute at a time due to nonReentrant modifier.
      *      Set to bytes32(uint256(1)) when not in use for gas savings (non-zero to non-zero is cheaper than zero to non-zero)
      */
     bytes32 private _flashFulfillInProgress;
+
+    /**
+     * @notice DESTINATION fulfillment store: intent hash to the recorded claimant
+     * @dev Written by {recordFulfillment} (only the Portal). For same-chain intents this IS the proof:
+     *      {provenIntents} synthesizes the fact from this store. Replaces the old read of the Inbox's
+     *      `claimants` mapping (the fulfillment storage moved out of the Inbox into the prover).
+     */
+    mapping(bytes32 => bytes32) private _destFulfillment;
 
     constructor(address portal) {
         _PORTAL = IPortal(portal);
@@ -52,17 +59,42 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     }
 
     /**
-     * @notice Fetches a ProofData from the Portal's claimants mapping
-     * @dev For same-chain intents, proofs are created immediately upon fulfillment.
-     *      After fulfill, returns the actual solver read from Inbox(address(_PORTAL)).claimants(intentHash).
-     *      During an active flashFulfill call, returns LocalProver as claimant for the duration of
-     *      that call only (gated by _flashFulfillInProgress == intentHash) to allow vault withdrawal.
+     * @notice Records a same-chain fulfillment for an intent
+     * @dev Only the Portal may call this — it is the trusted fulfillment source. Enforces a one-shot
+     *      gate (a second fulfillment of the same intent reverts {IntentAlreadyFulfilled}). Written by
+     *      {Inbox-_fulfill} both for a direct same-chain fulfill (naming this prover) and for the
+     *      inner fulfill of {flashFulfill} (which names this prover as itself). The `destination`
+     *      argument is the local chain id; it is implied by {_CHAIN_ID}, so it is not stored.
+     * @param intentHash Hash of the fulfilled intent
+     * @param claimant Cross-VM compatible claimant identifier eligible for the reward
+     */
+    function recordFulfillment(
+        bytes32 intentHash,
+        uint64 /* destination */,
+        bytes32 claimant
+    ) external {
+        if (msg.sender != address(_PORTAL)) {
+            revert NotPortal(msg.sender);
+        }
+        if (_destFulfillment[intentHash] != bytes32(0)) {
+            revert IntentAlreadyFulfilled(intentHash);
+        }
+        _destFulfillment[intentHash] = claimant;
+    }
+
+    /**
+     * @notice Fetches a ProofData from this prover's own destination fulfillment store
+     * @dev For same-chain intents, proofs are created immediately upon fulfillment — the fulfillment
+     *      recorded via {recordFulfillment} IS the proof. During an active flashFulfill call, returns
+     *      LocalProver as claimant for the duration of that call only (gated by
+     *      _flashFulfillInProgress == intentHash) to allow vault withdrawal before the fulfillment is
+     *      recorded.
      *
      *      Griefing protection: two cases cause provenIntents to return ProofData(address(0), 0)
      *      so the intent is treated as unfulfilled and refunds remain reachable after the deadline.
-     *      The first is when Portal.claimants is set to LocalProver itself, which happens if someone
+     *      The first is when the recorded claimant is LocalProver itself, which happens if someone
      *      calls Portal.fulfill with LocalProver as the claimant outside of flashFulfill.
-     *      The second is when Portal.claimants contains a non-EVM bytes32 value that fails
+     *      The second is when the recorded claimant is a non-EVM bytes32 value that fails
      *      AddressConverter.isValidAddress.
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
@@ -70,29 +102,29 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     function provenIntents(
         bytes32 intentHash
     ) public view returns (ProofData memory) {
-        // Check Portal's claimants mapping first
-        // Note: Must cast to Inbox to access public claimants mapping
-        bytes32 portalClaimant = Inbox(address(_PORTAL)).claimants(intentHash);
+        // Read this prover's own destination fulfillment store (the fulfillment storage that moved
+        // out of the Inbox into the prover).
+        bytes32 recordedClaimant = _destFulfillment[intentHash];
 
-        // Case 1: Griefing protection - LocalProver set as claimant without using flashFulfill
-        // In normal flashFulfill flow, actual solver is set as Portal claimant (not LocalProver)
+        // Case 1: Griefing protection - LocalProver recorded as claimant without using flashFulfill
+        // In normal flashFulfill flow, actual solver is recorded (not LocalProver)
         // This case only triggers if someone maliciously calls Portal.fulfill with LocalProver as claimant
         bytes32 localProverAsBytes32 = bytes32(uint256(uint160(address(this))));
-        if (portalClaimant == localProverAsBytes32) {
+        if (recordedClaimant == localProverAsBytes32) {
             // Someone called Portal.fulfill with LocalProver as claimant without going through flashFulfill
             // This is griefing - treat intent as unfulfilled to allow refunds
             return ProofData(address(0), 0);
         }
 
         // Case 2: Intent fulfilled (via flashFulfill or normal Portal.fulfill)
-        // Portal.claimants contains actual solver address
-        if (portalClaimant != bytes32(0)) {
+        // Store contains actual solver address
+        if (recordedClaimant != bytes32(0)) {
             // Validate before converting - protects against non-EVM bytes32 griefing
-            if (!AddressConverter.isValidAddress(portalClaimant)) {
+            if (!AddressConverter.isValidAddress(recordedClaimant)) {
                 // Invalid EVM address - treat as unfulfilled to allow refunds
                 return ProofData(address(0), 0);
             }
-            return ProofData(portalClaimant.toAddress(), _CHAIN_ID);
+            return ProofData(recordedClaimant.toAddress(), _CHAIN_ID);
         }
 
         // Case 3: flashFulfill currently executing for this intent
@@ -120,7 +152,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
     function prove(
         address /* sender */,
         uint64 /* sourceChainId */,
-        bytes calldata /* encodedProofs */,
+        bytes32[] calldata /* intentHashes */,
         bytes calldata /* data */
     ) external payable {
         // solhint-disable-line no-empty-blocks
@@ -207,14 +239,15 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             );
         }
 
-        // Call fulfill with actual claimant
+        // Call fulfill with actual claimant, naming this prover as the policy to record into
         // Use entire contract balance for fulfill (includes msg.value + any existing balance)
-        // LocalProver acts as intermediary for funds but Portal records actual solver as claimant
+        // LocalProver acts as intermediary for funds but records the actual solver as claimant
         results = _PORTAL.fulfill{value: address(this).balance}(
             intentHash,
             route,
             rewardHash,
-            claimant
+            claimant,
+            address(this)
         );
 
         // INTERACTIONS - Transfer remaining funds to claimant

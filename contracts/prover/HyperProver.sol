@@ -92,7 +92,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function _dispatchMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data,
         uint256 fee
     ) internal override {
@@ -129,7 +129,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         bytes calldata data
     ) public view override returns (uint256) {
         // Decode structured data from the raw input
@@ -161,7 +161,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function _fetchFee(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (uint256) {
         // Format and prepare message parameters for dispatch
@@ -200,7 +200,7 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      */
     function _formatHyperlaneMessage(
         uint64 domainID,
-        bytes calldata encodedProofs,
+        bytes memory encodedProofs,
         UnpackedData memory unpacked
     ) internal view returns (DispatchParams memory params) {
         // Convert domain ID to Hyperlane domain ID format with overflow check

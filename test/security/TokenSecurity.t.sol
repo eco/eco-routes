@@ -135,7 +135,8 @@ contract TokenSecurityTest is BaseTest {
             intentHash,
             destIntent.route,
             rewardHash,
-            bytes32(uint256(uint160(attacker)))
+            bytes32(uint256(uint160(attacker))),
+            address(prover)
         );
     }
 

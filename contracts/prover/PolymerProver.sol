@@ -187,17 +187,23 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
     /**
      * @notice Emits IntentFulfilledFromSource events that can be proven by Polymer
-     * @dev Only callable by the Portal contract
+     * @dev Only callable by the Portal contract. Polymer dispatches by emitting an event on the
+     *      destination that its relayer proves on the source — the emitted event IS the proof. The
+     *      (intentHash, claimant) wire pairs are read from this prover's own destination fulfillment
+     *      store (populated by {recordFulfillment}); the caller supplies only the intent hashes.
      * @param sourceChainDomainID Domain ID of the source chain (treated as chain ID for Polymer)
-     * @param encodedProofs Encoded (intentHash, claimant) pairs as bytes
+     * @param intentHashes Intent hashes to prove; each must have been recorded via {recordFulfillment}
      */
     function prove(
         address /* unused */,
         uint64 sourceChainDomainID,
-        bytes calldata encodedProofs,
+        bytes32[] calldata intentHashes,
         bytes calldata /* unused */
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
+
+        // Build the wire message from this prover's own destination fulfillment store
+        bytes memory encodedProofs = _buildProofMessage(intentHashes);
         if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
             revert MaxDataSizeExceeded();
         }

@@ -157,6 +157,7 @@ describe('Destination Settler Test', (): void => {
           intent.route,
           hashIntent(intent).rewardHash,
           ethers.zeroPadValue(solver.address, 32),
+          await prover.getAddress(),
           {
             value: nativeAmount,
           },
@@ -164,7 +165,7 @@ describe('Destination Settler Test', (): void => {
     ).to.be.revertedWithCustomError(inbox, 'IntentExpired')
   })
   it('successfully calls fulfill with testprover', async (): Promise<void> => {
-    expect(await inbox.claimants(intentHash)).to.equal(ethers.ZeroHash)
+    expect(await prover.destFulfillment(intentHash)).to.equal(ethers.ZeroHash)
     expect(await erc20.balanceOf(solver.address)).to.equal(mintAmount)
 
     // approves the tokens to the settler so it can process the transaction
@@ -185,6 +186,7 @@ describe('Destination Settler Test', (): void => {
           intent.route,
           hashIntent(intent).rewardHash,
           ethers.zeroPadValue(solver.address, 32),
+          await prover.getAddress(),
           {
             value: nativeAmount,
           },

@@ -53,28 +53,41 @@ contract MetaProverTest is BaseTest {
         return abi.encode(unpacked);
     }
 
-    // Helper function to fund inbox and call prove
+    // Helper function to fund inbox and call prove.
+    // The prover now builds the wire message from its own destination fulfillment
+    // store; callers must _record(intentHashes, claimants) first (except the
+    // only-portal auth and empty-array cases).
     function _proveWithFunding(
         address sender,
         uint64 sourceChainId,
         bytes32[] memory intentHashes,
-        bytes32[] memory claimants,
+        bytes32[] memory /* claimants */,
         bytes memory data,
         uint256 value
     ) internal {
         vm.deal(address(portal), value);
         vm.prank(address(portal));
-        // Simulate what Inbox does - prepend chain ID to the packed pairs
-        bytes memory messageWithChainId = abi.encodePacked(
-            uint64(block.chainid),
-            _packClaimantHashPairs(intentHashes, claimants)
-        );
         metaProver.prove{value: value}(
             sender,
             sourceChainId,
-            messageWithChainId,
+            intentHashes,
             data
         );
+    }
+
+    /**
+     * @notice Records destination fulfillments (as the Portal) so the prover can
+     *         build its own wire message during prove(). Mirrors the claimants the
+     *         test already constructed for each intent hash.
+     */
+    function _record(
+        bytes32[] memory h,
+        bytes32[] memory c
+    ) internal {
+        for (uint256 i; i < h.length; ++i) {
+            vm.prank(address(portal));
+            metaProver.recordFulfillment(h[i], uint64(block.chainid), c[i]);
+        }
     }
 
     function testInitializesCorrectly() public view {
@@ -92,6 +105,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -121,6 +135,7 @@ contract MetaProverTest is BaseTest {
             claimants
         );
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -143,6 +158,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = _hashIntent(intent);
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -171,7 +187,7 @@ contract MetaProverTest is BaseTest {
         metaProver.prove{value: 1 ether}(
             creator,
             uint64(block.chainid),
-            _packClaimantHashPairs(intentHashes, claimants),
+            intentHashes,
             _encodeProverData(
                 bytes32(uint256(uint160(address(prover)))),
                 200000
@@ -187,6 +203,7 @@ contract MetaProverTest is BaseTest {
 
         // BatchSent event was removed
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -217,6 +234,11 @@ contract MetaProverTest is BaseTest {
             intentHashes[0] = intentHash;
             claimants[0] = bytes32(uint256(uint160(claimant)));
 
+            // Same intent hash across iterations; the destination store is
+            // one-shot per hash, so record only once.
+            if (i == 0) {
+                _record(intentHashes, claimants);
+            }
             _proveWithFunding(
                 creator,
                 uint64(destinations[i]),
@@ -249,6 +271,7 @@ contract MetaProverTest is BaseTest {
             intentHashes[0] = intentHash;
             claimants[0] = bytes32(uint256(uint160(claimant)));
 
+            _record(intentHashes, claimants);
             _proveWithFunding(
                 creator,
                 uint64(block.chainid),
@@ -290,6 +313,7 @@ contract MetaProverTest is BaseTest {
         intentHashes2[0] = intentHash2;
         claimants2[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes1, claimants1);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -301,6 +325,7 @@ contract MetaProverTest is BaseTest {
             ),
             1 ether
         );
+        _record(intentHashes2, claimants2);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -327,6 +352,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             0,
@@ -352,6 +378,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             type(uint32).max,
@@ -377,6 +404,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -441,6 +469,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -465,6 +494,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         uint256 gasStart = gasleft();
 
         _proveWithFunding(
@@ -494,6 +524,7 @@ contract MetaProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // Test with insufficient fee to trigger revert
+        _record(intentHashes, claimants);
         vm.expectRevert();
         _proveWithFunding(
             creator,
@@ -557,6 +588,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -582,6 +614,7 @@ contract MetaProverTest is BaseTest {
         vm.deal(creator, 10 ether);
         uint256 initialBalance = creator.balance;
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -606,6 +639,9 @@ contract MetaProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // Test with gas limit below minimum (should be automatically increased to MIN_GAS_LIMIT)
+        // Record once; the second prove below reuses the same intent hash (the
+        // destination store is one-shot per hash).
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -694,6 +730,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(nonEVMClaimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
@@ -733,6 +770,7 @@ contract MetaProverTest is BaseTest {
         intentHashes[0] = intentHash;
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
+        _record(intentHashes, claimants);
         _proveWithFunding(
             creator,
             uint64(block.chainid),
