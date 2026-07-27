@@ -122,6 +122,19 @@ Eco Routes implements [ERC-7683](https://eips.ethereum.org/EIPS/eip-7683), the s
 
 Users can create and fulfill intents through both our native interface and the standardized ERC-7683 interface, providing maximum flexibility and compatibility.
 
+#### Event Semantics for Integrators
+
+`Open` and `IntentPublished` are **at-least-once, not exactly-once**. Indexers, solvers, and quoting services **must dedupe on `orderId` / `intentHash`** and must not treat each event as a distinct order.
+
+Publishing is intentionally idempotent. `orderId` equals the intent hash — a pure function of `(destination, routeHash, rewardHash)` — and once an intent's rewards are escrowed, any further `open`, `openFor`, `publish`, or `publishAndFund` for that same intent re-emits the announcement and leaves the escrow untouched. `open` and `publish` require no signature and impose no deadline, so anyone can trigger a re-announcement at any time for the cost of gas. This is a deliberate property: it lets an intent escrowed via `fund`/`fundFor` be announced afterwards, and lets an announcement missed during an outage or reorg be replayed for indexers.
+
+Two consequences worth calling out:
+
+- **A gasless signature is replayable until `openDeadline`.** `GaslessCrossChainOrder.nonce` is covered by the EIP-712 digest but is not consumed on-chain, so resubmitting the same `openFor` payload succeeds and emits `Open` again.
+- **`nonce` does not distinguish orders.** Two signed gasless orders differing only by `nonce` resolve to the same `orderId` and the same single escrow. To create genuinely distinct intents, vary a field that feeds the hash — normally `route.salt`.
+
+Duplicate announcements never move funds twice (escrow is single-shot) and duplicate fills are rejected on the destination chain, so the risk is confined to off-chain consumers that count events rather than deduping them. A consumer that double-counts can double-quote or attempt a fill it cannot win.
+
 ## Setup & Installation
 
 ### Prerequisites
