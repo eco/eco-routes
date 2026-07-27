@@ -419,9 +419,9 @@ contract VaultTest is Test {
     }
 
     // fundFor returns nothing, so the caller judges completeness from balances.
-    // Fund the token leg through the permit path (real transfer) with no native
-    // sent: the vault must end token-funded yet native-short. (Octane bot
-    // suggestion on #420 — exercise the permit path, not a pre-minted balance.)
+    // Fund the token leg through the permit path (a real transfer, not a
+    // pre-minted vault balance) with no native sent: the vault must end
+    // token-funded yet native-short.
     function test_fundFor_nativeShort_viaPermitTokenPath() public {
         TokenAmount[] memory tokens = new TokenAmount[](1);
         tokens[0] = TokenAmount({token: address(token), amount: 1000});
