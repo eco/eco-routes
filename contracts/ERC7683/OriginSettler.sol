@@ -164,8 +164,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      *      wallet to escrow (and, after `reward.deadline`, be refunded to itself).
      *      Note `reward.deadline` is attacker-chosen and may be set in the past, so
      *      an unauthorized escrow can be refunded in the same transaction — still
-     *      back to the wallet. For EOAs the check is equivalent to the previous
-     *      ECDSA.recover + equality (malleable high-s sigs stay rejected).
+     *      back to the wallet. For an EOA `order.user` this reduces to a plain
+     *      ECDSA.recover-and-compare (malleable high-s signatures are rejected).
      * @dev DoS (relayer): `order.user` is unvalidated calldata and
      *      {SignatureChecker} staticcalls it with no gas cap, materializing the full
      *      returndata. A hostile contract at `order.user` can return megabytes and
@@ -203,8 +203,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
 
         // Use SignatureChecker so both EOA (ECDSA) signatures and ERC-1271
         // contract-wallet signatures (e.g. Safe) are accepted on the gasless
-        // openFor path. For EOAs this is equivalent to the previous
-        // ECDSA.recover + equality check.
+        // openFor path. For an EOA signer this reduces to a plain
+        // ECDSA.recover-and-compare against order.user.
         return
             SignatureChecker.isValidSignatureNow(order.user, digest, signature);
     }
