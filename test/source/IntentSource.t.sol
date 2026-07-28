@@ -2063,7 +2063,7 @@ contract ReentrantRefundPermit {
         address,
         address
     ) external pure returns (uint160, uint48, uint48) {
-        return (type(uint160).max, 0, 0); // lie: "unlimited allowance"
+        return (type(uint160).max, type(uint48).max, 0); // lie: "unlimited allowance"
     }
 
     function transferFrom(
@@ -2126,7 +2126,7 @@ contract ReentrantWithdrawPermit {
         address,
         address
     ) external pure returns (uint160, uint48, uint48) {
-        return (type(uint160).max, 0, 0); // lie: "unlimited allowance"
+        return (type(uint160).max, type(uint48).max, 0); // lie: "unlimited allowance"
     }
 
     function transferFrom(
