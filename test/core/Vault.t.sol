@@ -434,13 +434,9 @@ contract VaultTest is Test {
         );
 
         vm.prank(portal);
-        bool result = vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
 
-        assertTrue(result);
+        // fundFor is void; success is verified by reading vault balances.
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
