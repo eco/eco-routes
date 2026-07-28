@@ -1,0 +1,122 @@
+name: Release Tag
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to tag/release (x.y.z) if the automatic detection missed it"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-tag:
+    name: Tag and publish release
+    runs-on: ubuntu-latest
+    env:
+      HEAD_MSG: ${{ github.event.head_commit.message || '' }}
+      DISPATCH_VERSION: ${{ inputs.version || '' }}
+    steps:
+      - name: Detect release commit
+        id: detect
+        run: |
+          if [ -n "$DISPATCH_VERSION" ]; then
+            VERSION="$DISPATCH_VERSION"
+            if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::version input '$VERSION' is not a valid x.y.z semver."
+              exit 1
+            fi
+          else
+            FIRST_LINE=$(printf '%s' "$HEAD_MSG" | head -1)
+            VERSION=$(printf '%s' "$FIRST_LINE" | sed -nE 's/^chore\(release\): ([0-9]+\.[0-9]+\.[0-9]+)( \(#[0-9]+\))?$/\1/p')
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "Not a release commit; nothing to do."
+          else
+            echo "Release version: $VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4.2.2
+        if: steps.detect.outputs.version != ''
+        with:
+          fetch-depth: 0 # needed to locate the release commit by message
+
+      - name: Resolve release commit
+        if: steps.detect.outputs.version != ''
+        id: resolve
+        env:
+          VERSION: ${{ steps.detect.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            # On push, the release commit is exactly the pushed tip — no search.
+            SHA="$PUSH_SHA"
+          else
+            # Recovery dispatch: no known SHA, locate the release commit by subject.
+            SHA=$(git log --fixed-strings --grep="chore(release): $VERSION" --format=%H -n 1)
+          fi
+          if [ -z "$SHA" ]; then
+            echo "::error::No commit with message 'chore(release): $VERSION' found on this branch."
+            exit 1
+          fi
+          FIRST_LINE=$(git log -1 --format=%s "$SHA")
+          if ! printf '%s' "$FIRST_LINE" | grep -qE "^chore\(release\): ${VERSION//./\\.}( \(#[0-9]+\))?$"; then
+            echo "::error::Matched commit $SHA has unexpected subject '$FIRST_LINE'."
+            exit 1
+          fi
+          echo "Release commit: $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package.json matches
+        if: steps.detect.outputs.version != ''
+        env:
+          VERSION: ${{ steps.detect.outputs.version }}
+          RELEASE_SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          PKG_VERSION=$(git show "$RELEASE_SHA:package.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match release version ($VERSION). Refusing to tag."
+            exit 1
+          fi
+
+      - name: Create and push tag
+        if: steps.detect.outputs.version != ''
+        env:
+          VERSION: ${{ steps.detect.outputs.version }}
+          RELEASE_SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "Tag v$VERSION already exists on origin; skipping tag creation."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "v$VERSION" "$RELEASE_SHA"
+            git push origin "v$VERSION"
+          fi
+
+      - name: Publish GitHub release
+        if: steps.detect.outputs.version != ''
+        env:
+          VERSION: ${{ steps.detect.outputs.version }}
+          RELEASE_SHA: ${{ steps.resolve.outputs.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "Release v$VERSION already exists; skipping."
+            exit 0
+          fi
+          # Prefer the merged release PR's body as the notes
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_SHA}/pulls" \
+            --jq '.[0].body // empty' > .release-notes.md || true
+          if [ ! -s .release-notes.md ]; then
+            # Fallback: extract the top section of CHANGELOG.md
+            git show "$RELEASE_SHA:CHANGELOG.md" | awk '/^##? /{ n++ } n==1' > .release-notes.md
+          fi
+          gh release create "v$VERSION" --title "v$VERSION" \
+            --target "$RELEASE_SHA" --notes-file .release-notes.md
