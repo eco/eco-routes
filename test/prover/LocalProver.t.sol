@@ -161,10 +161,31 @@ contract LocalProverTest is Test {
     }
 
     // A2. prove()
-    function test_prove_IsNoOp() public {
-        // Test: prove() is a no-op (doesn't revert)
+    function test_prove_ZeroValueZeroSenderDoesNotRevert() public {
+        // Zero value and zero sender both hit the early returns; prove() must
+        // not revert. (The name was previously "IsNoOp", but prove() is no
+        // longer a pure no-op -- it refunds forwarded value; see the tests below.)
         localProver.prove{value: 0}(address(0), 0, "", "");
-        // Should not revert
+    }
+
+    /// @notice A direct prove() carrying value but a zero `sender` cannot refund,
+    ///         so it emits ProveRefundFailed rather than silently swallowing the
+    ///         ETH. Unreachable via Inbox.prove (sender is msg.sender there), but
+    ///         reachable by a direct caller.
+    function test_prove_ZeroSenderWithValueEmitsRefundFailed() public {
+        uint256 sent = 1 ether;
+        vm.deal(address(this), sent);
+
+        vm.expectEmit(true, false, false, true, address(localProver));
+        emit ILocalProver.ProveRefundFailed(address(0), sent);
+
+        localProver.prove{value: sent}(address(0), CHAIN_ID, "", "");
+
+        assertEq(
+            address(localProver).balance,
+            sent,
+            "zero-sender value should be retained and signalled, not burned"
+        );
     }
 
     // A3. challengeIntentProof()
@@ -855,6 +876,18 @@ contract LocalProverTest is Test {
         address attacker = makeAddr("attacker");
         uint256 attackerBalanceBefore = attacker.balance;
 
+        // Linchpin of the repro: flashFulfill forwards `address(this).balance`
+        // into fulfill and pays the remainder to the claimant, so it inherits
+        // anything stranded here. The fix refunded intent A's overpayment during
+        // its prove(), leaving nothing to sweep. On unfixed code this is the
+        // 3-ether overpay, and the delta assertion below would catch the attacker
+        // inheriting it -- so the leak is pinned from both ends.
+        assertEq(
+            address(localProver).balance,
+            0,
+            "intent A's overpayment remained stranded in LocalProver"
+        );
+
         vm.prank(attacker);
         localProver.flashFulfill(
             intentB.route,
@@ -905,6 +938,11 @@ contract LocalProverTest is Test {
         uint256 sent = 1 ether;
         vm.deal(address(this), sent);
 
+        // The swallowed failure is only observable via the event, so assert it
+        // fires with the rejecting recipient and the retained amount.
+        vm.expectEmit(true, false, false, true, address(localProver));
+        emit ILocalProver.ProveRefundFailed(address(caller), sent);
+
         // Must not revert even though the caller cannot receive the refund
         caller.callProve{value: sent}(
             portal,
@@ -927,10 +965,51 @@ contract LocalProverTest is Test {
     }
 
     /**
+     * @notice A griefing recipient must not be able to revert prove() by burning gas.
+     * @dev The blocking invariant: an unbounded refund call lets the recipient consume
+     *      ~63/64 of the gas, leaving too little for the ProveRefundFailed emit, which
+     *      then OOGs and reverts. The bounded stipend caps the recipient so the emit
+     *      always fits. Calling prove() with a constrained gas budget makes this
+     *      concrete: it succeeds here, and fails if the `gas:` cap is removed.
+     */
+    function test_prove_GasBurningRecipientDoesNotRevertProve() public {
+        GasBurningRefundRecipient burner = new GasBurningRefundRecipient();
+
+        uint256 sent = 1 ether;
+        vm.deal(address(this), sent);
+
+        vm.expectEmit(true, false, false, true, address(localProver));
+        emit ILocalProver.ProveRefundFailed(address(burner), sent);
+
+        // Constrained budget. Empirically prove() needs ~35k with the stipend
+        // in place, but an unbounded call reverts at any budget below ~110k
+        // (the 63/64 drain starves the emit). 80k sits between: it passes with
+        // the cap and fails without it.
+        (bool ok, ) = address(localProver).call{value: sent, gas: 80000}(
+            abi.encodeCall(
+                LocalProver.prove,
+                (address(burner), CHAIN_ID, "", "")
+            )
+        );
+
+        assertTrue(ok, "prove() reverted: gas cap did not protect the emit");
+        assertEq(
+            address(localProver).balance,
+            sent,
+            "value should be retained when the refund cannot be delivered"
+        );
+    }
+
+    /**
      * @notice prove() must only ever return the value it was sent, never pre-existing balance.
      * @dev LocalProver can legitimately hold ETH (e.g. a claimant that rejected a
      *      flashFulfill payout). A refund keyed off `address(this).balance` instead of
      *      `msg.value` would let anyone drain it with a dust-valued prove() call.
+     *
+     *      This is a design guard, not a bug reproduction: on unfixed main it fails as
+     *      `999999999999999999 != 1000000000000000000` -- the dust caller is down the
+     *      1 wei it sent, never up a drained balance -- so the bug it guards against was
+     *      never actually present, unlike the two overpayment-leak repros above.
      */
     function test_prove_DoesNotDrainPreExistingBalance() public {
         // Strand ETH in LocalProver via a claimant that rejects the payout
@@ -1012,6 +1091,25 @@ contract LocalProverTest is Test {
  */
 contract RejectEth {
     // No receive() or fallback() - will reject all ETH transfers
+}
+
+/**
+ * @notice Helper whose receive() burns far more gas than the refund stipend.
+ * @dev Under an unbounded refund call this recipient would consume ~63/64 of
+ *      prove()'s gas (EIP-150), starving the trailing ProveRefundFailed emit and
+ *      reverting the whole call. The bounded stipend must keep the emit
+ *      affordable, so it is the regression guard for that invariant.
+ */
+contract GasBurningRefundRecipient {
+    receive() external payable {
+        // Burn well past any plausible forwarded gas so the refund call always
+        // fails on out-of-gas rather than succeeding.
+        for (uint256 i = 0; i < 200000; ++i) {
+            assembly {
+                mstore(0x0, i)
+            }
+        }
+    }
 }
 
 /**
