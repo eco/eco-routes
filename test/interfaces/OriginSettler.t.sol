@@ -200,11 +200,7 @@ contract OriginSettlerTest is BaseTest {
             )
         );
         bytes32 digest = keccak256(
-            abi.encodePacked(
-                hex"1901",
-                portal.domainSeparatorV4(),
-                structHash
-            )
+            abi.encodePacked(hex"1901", portal.domainSeparatorV4(), structHash)
         );
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(gaslessUserPk, digest);
         bytes memory signature = abi.encodePacked(r, s, v);
@@ -528,6 +524,127 @@ contract OriginSettlerTest is BaseTest {
             tokenA.balanceOf(vault),
             vaultABefore,
             "re-open must not touch the escrow"
+        );
+    }
+
+    /// @notice The permissionless re-announcement pinned above is bounded: once
+    ///         an intent reaches a terminal state (`Withdrawn`/`Refunded`),
+    ///         `_validatePublish` rejects any further publish with
+    ///         `IntentAlreadyExists`. This is the upper bound on the
+    ///         "permissionless forever" claim -- if a future change made a
+    ///         terminal intent re-publishable, the at-least-once docs would go
+    ///         silently wrong.
+    function testTerminalStateStopsReannouncement() public {
+        _publishAndFund(intent, false);
+
+        (bytes32 intentHash, , ) = intentSource.getIntentHash(
+            CHAIN_ID,
+            abi.encode(route),
+            reward
+        );
+
+        // Drive the intent to a terminal state via refund after expiry.
+        _timeTravel(expiry + 1);
+        vm.prank(otherPerson);
+        intentSource.refund(CHAIN_ID, keccak256(abi.encode(route)), reward);
+        assertEq(
+            uint8(intentSource.getRewardStatus(intentHash)),
+            uint8(IIntentSource.Status.Refunded),
+            "intent should be Refunded"
+        );
+
+        // Re-publish must now revert rather than re-emit.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentAlreadyExists.selector,
+                intentHash
+            )
+        );
+        vm.prank(otherPerson);
+        intentSource.publish(intent);
+    }
+
+    /// @notice `_countOpenLogs` only observes `Open`, so the mirror claim -- a
+    ///         replay re-emits `IntentPublished` too, via the `publish` call
+    ///         inside `_publishAndFund` -- is pinned here directly on the
+    ///         `openFor` path.
+    function testOpenForReplayReemitsIntentPublished() public {
+        (, uint256 creatorPk) = makeAddrAndKey("creator");
+        _overfundCreator();
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(1);
+        bytes memory signature = _signGaslessOrder(order, creatorPk);
+
+        (bytes32 intentHash, , ) = intentSource.getIntentHash(
+            CHAIN_ID,
+            abi.encode(route),
+            reward
+        );
+
+        // First openFor drives the intent to Funded.
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+        assertEq(
+            uint8(intentSource.getRewardStatus(intentHash)),
+            uint8(IIntentSource.Status.Funded)
+        );
+
+        // Replay: the identical signature re-emits IntentPublished for the
+        // already-Funded intent.
+        _expectEmit();
+        emit IIntentSource.IntentPublished(
+            intentHash,
+            intent.destination,
+            abi.encode(intent.route),
+            reward.creator,
+            reward.prover,
+            reward.deadline,
+            reward.nativeAmount,
+            reward.tokens
+        );
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    /// @notice A replayed `openFor{value: X}` on an already-`Funded` intent
+    ///         takes the `onlyFundable` early return, escrows nothing further,
+    ///         and refunds the forwarded native to the caller via
+    ///         `Refund.excessNative()`. BaseTest uses `nativeAmount == 0`, so
+    ///         this native path is otherwise never exercised.
+    function testOpenForReplayWithNativeRefundsCallerAndLeavesVaultUntouched()
+        public
+    {
+        (, uint256 creatorPk) = makeAddrAndKey("creator");
+        _overfundCreator();
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(1);
+        bytes memory signature = _signGaslessOrder(order, creatorPk);
+
+        address vault = intentSource.intentVaultAddress(intent);
+
+        // First openFor drives the intent to Funded.
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+
+        uint256 refundValue = 1 ether;
+        vm.deal(otherPerson, refundValue);
+        uint256 callerBefore = otherPerson.balance;
+        uint256 vaultNativeBefore = vault.balance;
+
+        // Replay with native value attached: escrow short-circuits, value is
+        // refunded to the caller within the same transaction.
+        vm.prank(otherPerson);
+        portal.openFor{value: refundValue}(order, signature, "");
+
+        assertEq(
+            otherPerson.balance,
+            callerBefore,
+            "replayer's forwarded native must be refunded in full"
+        );
+        assertEq(
+            vault.balance,
+            vaultNativeBefore,
+            "vault native balance untouched by the replay"
         );
     }
 

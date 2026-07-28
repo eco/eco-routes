@@ -40,13 +40,16 @@ interface IOriginSettler {
      *      Two independent reasons:
      *
      *      1. Publishing is intentionally idempotent. `orderId` is the intent
-     *         hash, and once its rewards are escrowed (`Status.Funded`) any
-     *         further `open`/`openFor`/`publish`/`publishAndFund` for the same
-     *         intent re-emits the announcement and leaves the escrow untouched.
-     *         `open` and `publish` take no signature and no deadline, so this
-     *         is permissionless and unbounded in time. This is deliberate: it
-     *         lets an intent funded via `fund`/`fundFor` be announced, and lets
-     *         a missed announcement be replayed for indexers.
+     *         hash, and once its rewards are escrowed (`Status.Funded`) a
+     *         further `open` or `openFor` for the same intent re-emits `Open`
+     *         and leaves the escrow untouched. `open` takes no signature and no
+     *         deadline, so this is permissionless until the intent reaches a
+     *         terminal state (`Withdrawn`/`Refunded`), after which publishing
+     *         reverts. This is deliberate: it lets an intent funded via
+     *         `fund`/`fundFor` be announced, and lets a missed announcement be
+     *         replayed for indexers. Note that `publish`/`publishAndFund` do
+     *         NOT emit `Open`; they re-emit `IntentPublished` -- see
+     *         {IIntentSource}.
      *      2. `GaslessCrossChainOrder.nonce` is covered by the EIP-712 digest
      *         but is not consumed on-chain, so a gasless signature stays
      *         replayable until `openDeadline` passes.

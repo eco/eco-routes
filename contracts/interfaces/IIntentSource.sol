@@ -84,6 +84,11 @@ interface IIntentSource {
      *      is deliberate -- it lets an intent escrowed via `fund`/`fundFor` be
      *      announced after the fact, and lets a missed announcement be replayed
      *      for indexers.
+     *
+     *      `publishAndFund`, `open`, and `openFor` each call `publish`
+     *      internally, so all four entry points re-emit this event -- not just
+     *      `publish`. (`Open` is separate and is emitted only by `open` and
+     *      `openFor`; see {IOriginSettler}.)
      * @param intentHash Unique identifier of the intent
      * @param destination Destination chain ID
      * @param route Encoded route data for the destination chain
