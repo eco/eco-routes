@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {LocalProver} from "../../contracts/prover/LocalProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
@@ -168,23 +169,28 @@ contract LocalProverTest is Test {
         localProver.prove{value: 0}(address(0), 0, "", "");
     }
 
-    /// @notice A direct prove() carrying value but a zero `sender` cannot refund,
-    ///         so it emits ProveRefundFailed rather than silently swallowing the
-    ///         ETH. Unreachable via Inbox.prove (sender is msg.sender there), but
-    ///         reachable by a direct caller.
-    function test_prove_ZeroSenderWithValueEmitsRefundFailed() public {
+    /// @notice A direct prove() carrying value but a zero `sender` hits the early
+    ///         return: the value is retained, prove() does not revert, and no event
+    ///         is emitted. Unreachable via Inbox.prove (sender is msg.sender there),
+    ///         but reachable by a direct caller.
+    function test_prove_ZeroSenderWithValueIsRetainedNoRevert() public {
         uint256 sent = 1 ether;
         vm.deal(address(this), sent);
 
-        vm.expectEmit(true, false, false, true, address(localProver));
-        emit ILocalProver.ProveRefundFailed(address(0), sent);
-
+        vm.recordLogs();
+        // Must not revert even though there is no address to refund to
         localProver.prove{value: sent}(address(0), CHAIN_ID, "", "");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
 
+        assertEq(
+            logs.length,
+            0,
+            "no event should be emitted for a zero sender"
+        );
         assertEq(
             address(localProver).balance,
             sent,
-            "zero-sender value should be retained and signalled, not burned"
+            "zero-sender value should be retained, not burned or reverted"
         );
     }
 
@@ -904,16 +910,14 @@ contract LocalProverTest is Test {
     }
 
     /**
-     * @notice A refund recipient that rejects ETH must not be able to brick proving.
-     * @dev Guards the choice of refund primitive: a reverting send (e.g. `.transfer`)
-     *      would make fulfillAndProve unusable for contract solvers without a payable
-     *      receive. The ETH stays in LocalProver in that case, which is no worse than
-     *      the pre-fix behaviour, but the transaction must still succeed.
-     *
-     *      This is a regression guard rather than a bug reproduction: it also passes
-     *      against unfixed main, where the empty prove() body silently retains the ETH.
+     * @notice A refund recipient that rejects ETH makes prove() REVERT.
+     * @dev The refund uses an uncapped all-gas call and reverts with RefundFailed
+     *      on failure rather than swallowing it. The refund recipient is always the
+     *      tx caller (Inbox.prove passes msg.sender), so the revert only self-DoSes
+     *      that caller -- there is no third-party griefing vector -- and it surfaces
+     *      a genuinely-unpayable caller loudly instead of stranding their ETH as dust.
      */
-    function test_prove_DoesNotRevertWhenRefundRecipientRejectsETH() public {
+    function test_prove_RevertsWhenRefundRecipientRejects() public {
         RejectingProveCaller caller = new RejectingProveCaller();
 
         Intent memory _intent = _createIntent(
@@ -938,65 +942,51 @@ contract LocalProverTest is Test {
         uint256 sent = 1 ether;
         vm.deal(address(this), sent);
 
-        // The swallowed failure is only observable via the event, so assert it
-        // fires with the rejecting recipient and the retained amount.
-        vm.expectEmit(true, false, false, true, address(localProver));
-        emit ILocalProver.ProveRefundFailed(address(caller), sent);
-
-        // Must not revert even though the caller cannot receive the refund
+        // The rejecting caller cannot receive the refund, so prove() reverts with
+        // RefundFailed(recipient, amount) and the whole proving tx unwinds.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILocalProver.RefundFailed.selector,
+                address(caller),
+                sent
+            )
+        );
         caller.callProve{value: sent}(
             portal,
             address(localProver),
             CHAIN_ID,
             intentHashes
         );
-
-        // Refund failed silently; the ETH is retained rather than burned or reverted
-        assertEq(
-            address(caller).balance,
-            0,
-            "refund unexpectedly landed on the rejecting caller"
-        );
-        assertEq(
-            address(localProver).balance,
-            sent,
-            "ETH was burned instead of retained"
-        );
     }
 
     /**
-     * @notice A griefing recipient must not be able to revert prove() by burning gas.
-     * @dev The blocking invariant: an unbounded refund call lets the recipient consume
-     *      ~63/64 of the gas, leaving too little for the ProveRefundFailed emit, which
-     *      then OOGs and reverts. The bounded stipend caps the recipient so the emit
-     *      always fits. Calling prove() with a constrained gas budget makes this
-     *      concrete: it succeeds here, and fails if the `gas:` cap is removed.
+     * @notice prove() must actually DELIVER the refund to a legitimate smart-account
+     *         recipient whose receive() spends more than transfer()'s 2300-gas stipend.
+     * @dev The uncapped all-gas call forwards enough gas for a receive() that writes
+     *      storage (a common smart-account / EIP-7702 pattern) to succeed, so the
+     *      forwarded value is returned rather than stranded or reverted. This proves
+     *      the swallow->revert change did not sacrifice smart-account deliverability.
      */
-    function test_prove_GasBurningRecipientDoesNotRevertProve() public {
-        GasBurningRefundRecipient burner = new GasBurningRefundRecipient();
+    function test_prove_RefundDeliveredToGasHungryRecipient() public {
+        GasHungryRefundRecipient recipient = new GasHungryRefundRecipient();
 
         uint256 sent = 1 ether;
         vm.deal(address(this), sent);
+        uint256 recipientBalanceBefore = address(recipient).balance;
 
-        vm.expectEmit(true, false, false, true, address(localProver));
-        emit ILocalProver.ProveRefundFailed(address(burner), sent);
+        // Uncapped call forwards all gas, so the storage-writing receive() succeeds
+        // and prove() does not revert.
+        localProver.prove{value: sent}(address(recipient), CHAIN_ID, "", "");
 
-        // Constrained budget. Empirically prove() needs ~35k with the stipend
-        // in place, but an unbounded call reverts at any budget below ~110k
-        // (the 63/64 drain starves the emit). 80k sits between: it passes with
-        // the cap and fails without it.
-        (bool ok, ) = address(localProver).call{value: sent, gas: 80000}(
-            abi.encodeCall(
-                LocalProver.prove,
-                (address(burner), CHAIN_ID, "", "")
-            )
+        assertEq(
+            address(recipient).balance,
+            recipientBalanceBefore + sent,
+            "refund was not delivered to the gas-hungry recipient"
         );
-
-        assertTrue(ok, "prove() reverted: gas cap did not protect the emit");
         assertEq(
             address(localProver).balance,
-            sent,
-            "value should be retained when the refund cannot be delivered"
+            0,
+            "refund should not be retained when delivery succeeds"
         );
     }
 
@@ -1094,27 +1084,26 @@ contract RejectEth {
 }
 
 /**
- * @notice Helper whose receive() burns far more gas than the refund stipend.
- * @dev Under an unbounded refund call this recipient would consume ~63/64 of
- *      prove()'s gas (EIP-150), starving the trailing ProveRefundFailed emit and
- *      reverting the whole call. The bounded stipend must keep the emit
- *      affordable, so it is the regression guard for that invariant.
+ * @notice Refund recipient that ACCEPTS ETH but consumes far more than the
+ *         2300-gas transfer() stipend (two cold SSTOREs) in receive(), simulating a
+ *         legitimate smart-account / EIP-7702 solver wallet.
+ * @dev Used to prove the uncapped all-gas refund call actually delivers the refund
+ *      instead of OOG-reverting under a stingy gas stipend.
  */
-contract GasBurningRefundRecipient {
+contract GasHungryRefundRecipient {
+    uint256 private slot0;
+    uint256 private slot1;
+
     receive() external payable {
-        // Burn well past any plausible forwarded gas so the refund call always
-        // fails on out-of-gas rather than succeeding.
-        for (uint256 i = 0; i < 200000; ++i) {
-            assembly {
-                mstore(0x0, i)
-            }
-        }
+        // Two cold SSTOREs cost well over the 2300-gas transfer() stipend.
+        slot0 = block.number;
+        slot1 = block.timestamp;
     }
 }
 
 /**
  * @notice Helper contract that calls Portal.prove but cannot receive ETH
- * @dev Used to verify a failed refund does not revert the proving transaction
+ * @dev Used to verify a failed refund reverts the proving transaction (RefundFailed)
  */
 contract RejectingProveCaller {
     function callProve(

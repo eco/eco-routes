@@ -125,25 +125,25 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      *      legitimately hold ETH from a flashFulfill payout that its claimant rejected;
      *      refunding the full balance would let anyone drain it with a dust-valued call.
      *
-     *      The refund is deliberately failure-tolerant and MUST NOT revert, or a `sender`
-     *      that cannot receive ETH would be unable to use fulfillAndProve at all. The
-     *      refund call is given a bounded gas stipend precisely so this holds: an
-     *      unbounded call lets a griefing recipient consume ~63/64 of the gas (EIP-150),
-     *      leaving too little for the trailing ProveRefundFailed emit and reverting the
-     *      whole call. A failed or too-expensive refund emits ProveRefundFailed and leaves
-     *      the value here (the pre-existing behaviour); the same applies to a zero
-     *      `sender`, which Inbox.prove never produces but a direct caller can.
+     *      The refund uses an uncapped, all-gas low-level call (not transfer()'s 2300-gas
+     *      cap) so any smart-contract recipient -- a smart account or EIP-7702 wallet whose
+     *      receive() needs more than the stipend -- can still receive it. On failure it
+     *      reverts with RefundFailed rather than swallowing the boolean: reverting surfaces
+     *      a genuinely-unpayable recipient loudly instead of silently stranding the caller's
+     *      ETH here as dust with no sweep path. The refund recipient is always the tx caller
+     *      (Inbox.prove passes msg.sender), so a revert only self-DoSes that caller -- there
+     *      is no third-party griefing vector.
      *
-     *      The stipend is far below flashFulfill's cost, so it also restores the
-     *      reentrancy barrier that `.transfer`'s 2300-gas limit used to provide -- the
-     *      unbounded call it replaces did allow a reentrant flashFulfill, though only to
-     *      collect rewards the caller was already entitled to (flashFulfill is
+     *      Reentrancy remains contained: the refund is the terminal statement of prove()
+     *      (no post-refund state) and Inbox.prove has already drained the Portal's balance
+     *      before this call, so a reentrant flashFulfill would carry no extra value and could
+     *      at most collect rewards the caller was already entitled to (flashFulfill is
      *      permissionless regardless).
      *
-     *      ProveRefundFailed doubles as an MEV signal: it advertises unclaimed ETH sitting
-     *      in a contract whose flashFulfill pays `address(this).balance` to any caller's
-     *      chosen claimant. That leak is an accepted tradeoff for the observability of an
-     *      otherwise-silent swallowed refund.
+     *      A zero `sender` (or zero value) hits the early return: no refund, no revert, value
+     *      retained. A zero `sender` is unreachable via Inbox.prove (sender is msg.sender
+     *      there) but a direct caller can produce it; mirrors the sender guard used by the
+     *      message-bridge provers.
      * @param sender Address that initiated the proving request; receives the refund
      */
     function prove(
@@ -152,27 +152,14 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         bytes calldata /* encodedProofs */,
         bytes calldata /* data */
     ) external payable {
-        // Nothing forwarded: nothing to refund.
-        if (msg.value == 0) return;
+        // Nothing forwarded, or no address to refund to: nothing to do.
+        if (msg.value == 0 || sender == address(0)) return;
 
-        // A zero `sender` cannot receive the refund. Unreachable via Inbox.prove
-        // (sender is msg.sender there) but reachable by a direct call; emit so the
-        // swallowed value is observable rather than silently trapped.
-        if (sender == address(0)) {
-            emit ProveRefundFailed(sender, msg.value);
-            return;
-        }
-
-        // Bounded stipend so the ProveRefundFailed emit below is always affordable
-        // even against a griefing recipient (see the failure-tolerance note above);
-        // it also caps any reentrancy back into this contract.
+        // Uncapped all-gas call so smart-account / EIP-7702 recipients receive;
+        // revert on failure rather than stranding the caller's ETH here as dust.
         // solhint-disable-next-line avoid-low-level-calls
-        (bool refunded, ) = payable(sender).call{value: msg.value, gas: 30_000}(
-            ""
-        );
-        if (!refunded) {
-            emit ProveRefundFailed(sender, msg.value);
-        }
+        (bool ok, ) = payable(sender).call{value: msg.value}("");
+        if (!ok) revert RefundFailed(sender, msg.value);
     }
 
     /**
