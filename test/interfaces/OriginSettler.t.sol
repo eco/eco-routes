@@ -3,9 +3,11 @@ pragma solidity ^0.8.27;
 
 import "../BaseTest.sol";
 import {IOriginSettler} from "../../contracts/interfaces/ERC7683/IOriginSettler.sol";
-import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction} from "../../contracts/types/ERC7683.sol";
+import {OnchainCrossChainOrder, GaslessCrossChainOrder, ResolvedCrossChainOrder, Output, FillInstruction, OrderData, ORDER_DATA_TYPEHASH} from "../../contracts/types/ERC7683.sol";
+import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {OriginSettler} from "../../contracts/ERC7683/OriginSettler.sol";
+import {MockERC1271Wallet} from "../../contracts/test/MockERC1271Wallet.sol";
 
 // Simple concrete implementation for testing
 contract TestOriginSettler is IOriginSettler {
@@ -157,6 +159,67 @@ contract OriginSettlerTest is BaseTest {
         assertTrue(originSettler.opened(orderId));
     }
 
+    /// @notice The gasless `openFor` must reject an order whose signer (order.user)
+    ///         is not the reward creator, since refunds/recovery always pay
+    ///         reward.creator. Exercises the real OriginSettler logic via Portal.
+    function testOpenForRevertsWhenUserNotCreator() public {
+        (address gaslessUser, uint256 gaslessUserPk) = makeAddrAndKey(
+            "gaslessUser"
+        );
+
+        // reward.creator is `creator` (from BaseTest), deliberately != order.user
+        OrderData memory orderData = OrderData({
+            destination: CHAIN_ID,
+            route: abi.encode(route),
+            reward: reward,
+            routePortal: bytes32(uint256(uint160(address(portal)))),
+            routeDeadline: uint64(expiry),
+            maxSpent: new Output[](0)
+        });
+
+        GaslessCrossChainOrder memory order = GaslessCrossChainOrder({
+            originSettler: address(portal),
+            user: gaslessUser,
+            nonce: 1,
+            originChainId: block.chainid,
+            openDeadline: uint32(block.timestamp + 3600),
+            fillDeadline: uint32(block.timestamp + 7200),
+            orderDataType: ORDER_DATA_TYPEHASH,
+            orderData: abi.encode(orderData)
+        });
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                portal.GASLESS_CROSSCHAIN_ORDER_TYPEHASH(),
+                order.originSettler,
+                order.user,
+                order.nonce,
+                order.originChainId,
+                order.openDeadline,
+                order.fillDeadline,
+                order.orderDataType,
+                keccak256(order.orderData)
+            )
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked(hex"1901", portal.domainSeparatorV4(), structHash)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(gaslessUserPk, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        // Signature is valid (signed by order.user) so it passes _validateOrderSig;
+        // the binding check then fires because order.user != reward.creator.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IOriginSettler.InvalidCreatorBinding.selector,
+                gaslessUser,
+                creator
+            )
+        );
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
     function testResolveOrder() public view {
         OnchainCrossChainOrder memory order = OnchainCrossChainOrder({
             fillDeadline: uint32(block.timestamp + 3600),
@@ -262,5 +325,314 @@ contract OriginSettlerTest is BaseTest {
         // but should follow the same calculation pattern for the same chain
         assertNotEq(domainSeparator1, domainSeparator3);
         assertNotEq(domainSeparator2, domainSeparator3);
+    }
+
+    // ---------------------------------------------------------------------
+    // openFor signature validation (real Portal path)
+    //
+    // These exercise OriginSettler._validateOrderSig via the real Portal,
+    // which uses OpenZeppelin's SignatureChecker so both EOA (ECDSA) and
+    // ERC-1271 contract-wallet signatures are accepted.
+    // ---------------------------------------------------------------------
+
+    /// @notice A single-owner ERC-1271 contract wallet (e.g. Safe) can use the
+    ///         gasless openFor path when it returns the ERC-1271 magic value.
+    function testOpenForErc1271WalletSignatureSucceeds() public {
+        (address walletOwner, uint256 walletOwnerPk) = makeAddrAndKey(
+            "erc1271Owner"
+        );
+        MockERC1271Wallet wallet = new MockERC1271Wallet(walletOwner);
+
+        _fundAndApprovePortal(address(wallet));
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(
+            address(wallet)
+        );
+        bytes memory signature = _signOrder(order, walletOwnerPk);
+
+        vm.prank(otherPerson); // solver submits the user's signed order
+        portal.openFor(order, signature, "");
+
+        // Rewards were escrowed out of the wallet -> openFor succeeded.
+        assertEq(tokenA.balanceOf(address(wallet)), 0);
+        assertEq(tokenB.balanceOf(address(wallet)), 0);
+    }
+
+    /// @notice When the ERC-1271 wallet returns a non-magic value (signature
+    ///         not produced by its owner), openFor reverts InvalidSignature.
+    function testOpenForErc1271WalletInvalidSignatureReverts() public {
+        (address walletOwner, ) = makeAddrAndKey("erc1271Owner2");
+        (, uint256 wrongPk) = makeAddrAndKey("wrongSigner");
+        MockERC1271Wallet wallet = new MockERC1271Wallet(walletOwner);
+
+        _fundAndApprovePortal(address(wallet));
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(
+            address(wallet)
+        );
+        // Signed by a key that is NOT the wallet owner.
+        bytes memory signature = _signOrder(order, wrongPk);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    /// @notice EOA signatures continue to work unchanged on the openFor path.
+    function testOpenForEoaSignatureStillSucceeds() public {
+        (address eoaUser, uint256 eoaPk) = makeAddrAndKey("eoaUser");
+
+        _fundAndApprovePortal(eoaUser);
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(eoaUser);
+        bytes memory signature = _signOrder(order, eoaPk);
+
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+
+        assertEq(tokenA.balanceOf(eoaUser), 0);
+        assertEq(tokenB.balanceOf(eoaUser), 0);
+    }
+
+    /// @notice An EOA signature from the wrong key still reverts (no behavior
+    ///         change for EOAs relative to the previous ECDSA equality check).
+    function testOpenForEoaInvalidSignatureReverts() public {
+        (address eoaUser, ) = makeAddrAndKey("eoaUser2");
+        (, uint256 wrongPk) = makeAddrAndKey("wrongSigner2");
+
+        _fundAndApprovePortal(eoaUser);
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(eoaUser);
+        bytes memory signature = _signOrder(order, wrongPk);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    // ---------------------------------------------------------------------
+    // Negative signature cases (SignatureChecker rejection paths)
+    //
+    // Each of these must reject via _validateOrderSig -> InvalidSignature,
+    // before any funding happens, so no approval/mint is needed.
+    // ---------------------------------------------------------------------
+
+    /// @notice order.user == address(0): ECDSA recovers a non-zero address
+    ///         (mismatch) and the ERC-1271 staticcall hits no code, so both
+    ///         SignatureChecker branches return false.
+    function testOpenForZeroAddressUserReverts() public {
+        (, uint256 anyPk) = makeAddrAndKey("zeroUserSigner");
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(address(0));
+        bytes memory signature = _signOrder(order, anyPk);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    /// @notice order.user is a contract with code but no isValidSignature:
+    ///         the ERC-1271 staticcall reverts, SignatureChecker returns false.
+    function testOpenForNonWalletContractUserReverts() public {
+        NotAWallet notAWallet = new NotAWallet();
+        (, uint256 anyPk) = makeAddrAndKey("notAWalletSigner");
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(
+            address(notAWallet)
+        );
+        bytes memory signature = _signOrder(order, anyPk);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    /// @notice An ERC-1271 wallet whose isValidSignature reverts must be
+    ///         tolerated as "invalid" (SignatureChecker swallows the revert),
+    ///         not propagate the revert.
+    function testOpenForRevertingErc1271WalletReverts() public {
+        RevertingERC1271Wallet wallet = new RevertingERC1271Wallet();
+        (, uint256 anyPk) = makeAddrAndKey("revertingWalletSigner");
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(
+            address(wallet)
+        );
+        bytes memory signature = _signOrder(order, anyPk);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    /// @notice An ERC-1271 wallet returning a non-magic bytes4 (here always
+    ///         0xdeadbeef) is rejected — only 0x1626ba7e counts as valid.
+    function testOpenForWrongMagicErc1271WalletReverts() public {
+        WrongMagicERC1271Wallet wallet = new WrongMagicERC1271Wallet();
+        (, uint256 anyPk) = makeAddrAndKey("wrongMagicWalletSigner");
+
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(
+            address(wallet)
+        );
+        bytes memory signature = _signOrder(order, anyPk);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, signature, "");
+    }
+
+    /// @notice An empty signature is rejected for an EOA user (ECDSA length
+    ///         check fails, ERC-1271 staticcall hits no code).
+    function testOpenForEmptySignatureReverts() public {
+        (address eoaUser, ) = makeAddrAndKey("emptySigUser");
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(eoaUser);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, new bytes(0), "");
+    }
+
+    /// @notice A high-s (malleable) variant of an otherwise-valid EOA signature
+    ///         is rejected: ECDSA.tryRecover returns InvalidS, and the ERC-1271
+    ///         fallback hits no code for an EOA. Guards against signature
+    ///         malleability being accepted on the gasless path.
+    function testOpenForHighSMalleableSignatureReverts() public {
+        (address eoaUser, uint256 eoaPk) = makeAddrAndKey("highSUser");
+        GaslessCrossChainOrder memory order = _buildGaslessOrder(eoaUser);
+
+        bytes32 digest = _gaslessDigest(order);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(eoaPk, digest);
+
+        // Flip s to its high-half complement and flip v; a valid low-s signature
+        // has a malleable high-s counterpart that must be rejected.
+        uint256 n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
+        bytes32 highS = bytes32(n - uint256(s));
+        uint8 flippedV = v == 27 ? 28 : 27;
+        bytes memory malleable = abi.encodePacked(r, highS, flippedV);
+
+        vm.expectRevert(IOriginSettler.InvalidSignature.selector);
+        vm.prank(otherPerson);
+        portal.openFor(order, malleable, "");
+    }
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+
+    /// @notice Mints the reward tokens to `funder` and approves the Portal to
+    ///         pull them during openFor's funding step.
+    function _fundAndApprovePortal(address funder) internal {
+        tokenA.mint(funder, MINT_AMOUNT);
+        tokenB.mint(funder, MINT_AMOUNT * 2);
+        vm.startPrank(funder);
+        tokenA.approve(address(portal), MINT_AMOUNT);
+        tokenB.approve(address(portal), MINT_AMOUNT * 2);
+        vm.stopPrank();
+    }
+
+    /// @notice Builds a GaslessCrossChainOrder whose user is both the order
+    ///         signer and the reward creator (funder), with a two-token
+    ///         reward (tokenA, tokenB) and no native leg.
+    function _buildGaslessOrder(
+        address orderUser
+    ) internal view returns (GaslessCrossChainOrder memory order) {
+        TokenAmount[] memory rewardTokensMemory = new TokenAmount[](2);
+        rewardTokensMemory[0] = TokenAmount({
+            token: address(tokenA),
+            amount: MINT_AMOUNT
+        });
+        rewardTokensMemory[1] = TokenAmount({
+            token: address(tokenB),
+            amount: MINT_AMOUNT * 2
+        });
+
+        Reward memory orderReward = Reward({
+            deadline: uint64(expiry),
+            creator: orderUser,
+            prover: address(prover),
+            nativeAmount: 0,
+            tokens: rewardTokensMemory
+        });
+
+        OrderData memory od = OrderData({
+            destination: CHAIN_ID,
+            route: abi.encode(route),
+            reward: orderReward,
+            routePortal: bytes32(uint256(uint160(address(portal)))),
+            routeDeadline: uint64(expiry),
+            maxSpent: new Output[](0)
+        });
+
+        order = GaslessCrossChainOrder({
+            originSettler: address(portal),
+            user: orderUser,
+            nonce: 1,
+            originChainId: block.chainid,
+            openDeadline: uint32(block.timestamp + 3600),
+            fillDeadline: uint32(block.timestamp + 7200),
+            orderDataType: ORDER_DATA_TYPEHASH,
+            orderData: abi.encode(od)
+        });
+    }
+
+    /// @notice Produces an EIP-712 signature over the gasless order digest.
+    function _signOrder(
+        GaslessCrossChainOrder memory order,
+        uint256 pk
+    ) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, _gaslessDigest(order));
+        return abi.encodePacked(r, s, v);
+    }
+
+    /// @notice Computes the EIP-712 digest for a gasless order (matches
+    ///         OriginSettler._validateOrderSig).
+    function _gaslessDigest(
+        GaslessCrossChainOrder memory order
+    ) internal view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                portal.GASLESS_CROSSCHAIN_ORDER_TYPEHASH(),
+                order.originSettler,
+                order.user,
+                order.nonce,
+                order.originChainId,
+                order.openDeadline,
+                order.fillDeadline,
+                order.orderDataType,
+                keccak256(order.orderData)
+            )
+        );
+        return
+            keccak256(
+                abi.encodePacked(
+                    hex"1901",
+                    portal.domainSeparatorV4(),
+                    structHash
+                )
+            );
+    }
+}
+
+/// @notice A contract with code but no `isValidSignature` — the ERC-1271
+///         staticcall reverts, which SignatureChecker treats as invalid.
+contract NotAWallet {
+    uint256 public x;
+}
+
+/// @notice An ERC-1271 wallet whose validation always reverts.
+contract RevertingERC1271Wallet {
+    function isValidSignature(
+        bytes32,
+        bytes calldata
+    ) external pure returns (bytes4) {
+        revert("no");
+    }
+}
+
+/// @notice An ERC-1271 wallet that always returns a non-magic selector.
+contract WrongMagicERC1271Wallet {
+    function isValidSignature(
+        bytes32,
+        bytes calldata
+    ) external pure returns (bytes4) {
+        return 0xdeadbeef;
     }
 }

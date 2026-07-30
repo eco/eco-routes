@@ -365,6 +365,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             funder,
             permitContract
         );
+        Refund.excessNative();
     }
 
     /**
@@ -420,6 +421,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             funder,
             permitContract
         );
+        Refund.excessNative();
     }
 
     /**
@@ -640,9 +642,15 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
 
-            fullyFunded =
-                fullyFunded &&
-                _fundToken(vault, funder, token, reward.tokens[i].amount);
+            // Evaluate every leg before aggregating so a prior shortfall (native or
+            // an earlier token) does not short-circuit funding of later legs.
+            bool legFunded = _fundToken(
+                vault,
+                funder,
+                token,
+                reward.tokens[i].amount
+            );
+            fullyFunded = fullyFunded && legFunded;
         }
 
         if (!allowPartial && !fullyFunded) {
@@ -734,11 +742,18 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         _requireNoNativeAliasConflict(reward);
 
         vault = _getOrDeployVault(intentHash);
-        bool fullyFunded = IVault(vault).fundFor{value: msg.value}(
-            reward,
-            funder,
-            IPermit(permitContract)
-        );
+
+        // Cap the native contribution to the amount still missing from the vault (mirrors the
+        // funded path in {_fundIntent}); the vault balance is what {fundFor} checks against
+        // `reward.nativeAmount`, so no native is forwarded into the vault call itself.
+        _fundNative(vault, reward.nativeAmount);
+
+        IVault(vault).fundFor(reward, funder, IPermit(permitContract));
+
+        // Recompute funding from actual on-chain balances rather than trusting any
+        // in-call flag: an untrusted permit contract can reenter and drain the vault
+        // during the token transfers.
+        bool fullyFunded = _isRewardFunded(reward, vault);
 
         if (!allowPartial && !fullyFunded) {
             revert InsufficientFunds(intentHash);
@@ -826,9 +841,17 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         Reward calldata reward
     ) internal view {
         Status status = rewardStatuses[intentHash];
-        IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
-            intentHash
-        );
+
+        // A codeless prover (typo, address(0), or a prover deployed only on
+        // another chain) can never hold a proof, and calling into it would
+        // revert — permanently bricking refunds and locking the escrow. Treat
+        // it deterministically as "no proof" (a zero-claimant ProofData) so the
+        // deadline/status branches below behave as they would for any
+        // unproven intent, without dispatching an external call.
+        IProver.ProofData memory proof;
+        if (reward.prover.code.length > 0) {
+            proof = IProver(reward.prover).provenIntents(intentHash);
+        }
 
         // If proof is incorrect or no proof
         if (proof.destination != destination || proof.claimant == address(0)) {

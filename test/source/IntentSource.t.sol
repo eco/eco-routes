@@ -445,6 +445,24 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenB.balanceOf(intentVault), MINT_AMOUNT * 2);
     }
 
+    function testFundsLaterTokenLegWhenEarlierLegPartial() public {
+        // Reward leg 0 (tokenA) is under-approved while leg 1 (tokenB) is fully
+        // approved. With allowPartial=true via the publishAndFund (_fundIntent) path,
+        // the later leg must still be fully escrowed. Regression: the fullyFunded
+        // short-circuit previously skipped _fundToken for later legs once an earlier
+        // leg fell short, silently leaving fundable legs unfunded.
+        vm.prank(creator);
+        tokenA.approve(address(intentSource), MINT_AMOUNT / 2);
+
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        _publishAndFund(intent, true);
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(intentVault), MINT_AMOUNT / 2);
+        assertEq(tokenB.balanceOf(intentVault), MINT_AMOUNT * 2);
+    }
+
     // Edge Cases
     function testHandlesZeroTokenAmounts() public {
         // Create intent with zero amounts
@@ -499,6 +517,225 @@ contract IntentSourceTest is BaseTest {
 
         address vaultAddress = intentSource.intentVaultAddress(intent);
         assertEq(tokenA.balanceOf(vaultAddress), MINT_AMOUNT);
+    }
+
+    function testFundForRefundsExcessNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        // fundFor pulls reward tokens straight into the vault
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+
+        vm.prank(creator);
+        intentSource.fundFor{value: REWARD_NATIVE_ETH * 2}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // Vault escrows exactly the required native, no more
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        // Only the needed native left the caller; the excess was refunded
+        assertEq(creator.balance, initialBalance - REWARD_NATIVE_ETH);
+        // No native stranded on the Portal
+        assertEq(address(intentSource).balance, 0);
+    }
+
+    function testPublishAndFundForRefundsExcessNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH * 2}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        assertEq(creator.balance, initialBalance - REWARD_NATIVE_ETH);
+        assertEq(address(intentSource).balance, 0);
+    }
+
+    function testFundForAlreadyFundedDoesNotStrandNative() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        // Fully fund the intent first
+        _publishAndFundWithValue(intent, false, REWARD_NATIVE_ETH);
+        assertTrue(intentSource.isIntentFunded(intent));
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        uint256 initialBalance = creator.balance;
+
+        // Funding an already-Funded intent (onlyFundable early-returns) must not
+        // leave native on the Portal; the entire msg.value is refunded to the caller.
+        vm.prank(creator);
+        intentSource.fundFor{value: REWARD_NATIVE_ETH}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertEq(address(intentSource).balance, 0);
+        assertEq(creator.balance, initialBalance);
+    }
+
+    function testFundForPartialNativeTopUpEscrowsExactTotal() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        // fundFor pulls reward tokens straight into the vault
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+        uint256 half = REWARD_NATIVE_ETH / 2;
+
+        // First top-up: only half of the required native (allowPartial), so the
+        // intent stays partially funded.
+        vm.prank(creator);
+        intentSource.fundFor{value: half}(
+            intent.destination,
+            routeHash,
+            reward,
+            true,
+            creator,
+            address(0)
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, half);
+        assertEq(address(intentSource).balance, 0);
+
+        // Second top-up: deliberately OVERPAY (send the full amount when only the
+        // remaining half is missing). _fundNative caps the vault contribution at the
+        // missing delta, and Refund.excessNative() returns the surplus — so pre-fix
+        // (which forwarded the whole msg.value into the vault) this would over-fund
+        // the vault or strand native on the Portal.
+        vm.prank(creator);
+        intentSource.fundFor{value: REWARD_NATIVE_ETH}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // Vault escrows exactly the total required native, with no duplication or loss
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        // No native stranded on the Portal across either call
+        assertEq(address(intentSource).balance, 0);
+        // Caller spent exactly the required native in total (surplus refunded)
+        assertEq(creator.balance, initialBalance - REWARD_NATIVE_ETH);
+    }
+
+    function testPublishAndFundForOnFundedIntentRefundsExtraValue() public {
+        reward.nativeAmount = REWARD_NATIVE_ETH;
+        intent.reward = reward;
+
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        // Fully fund the intent via publishAndFundFor with the exact native amount.
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+
+        uint256 balanceBeforeSecond = creator.balance;
+
+        // Calling publishAndFundFor again on the now-Funded intent with extra
+        // msg.value: onlyFundable early-returns, so the excess must be fully
+        // refunded and nothing stranded on the Portal.
+        vm.prank(creator);
+        intentSource.publishAndFundFor{value: REWARD_NATIVE_ETH}(
+            intent,
+            false,
+            creator,
+            address(0)
+        );
+
+        // Vault balance is unchanged; the full second msg.value came back.
+        assertEq(intentVault.balance, REWARD_NATIVE_ETH);
+        assertEq(address(intentSource).balance, 0);
+        assertEq(creator.balance, balanceBeforeSecond);
+    }
+
+    function testFundForZeroNativeRewardRefundsAllValue() public {
+        // reward.nativeAmount defaults to 0; the reward carries only token legs.
+        bytes32 routeHash = keccak256(abi.encode(intent.route));
+        address intentVault = intentSource.intentVaultAddress(intent);
+
+        vm.prank(creator);
+        tokenA.approve(intentVault, MINT_AMOUNT);
+        vm.prank(creator);
+        tokenB.approve(intentVault, MINT_AMOUNT * 2);
+
+        uint256 initialBalance = creator.balance;
+
+        // Caller sends native even though the reward requires none: the entire
+        // msg.value must be refunded and nothing stranded on the Portal.
+        vm.prank(creator);
+        intentSource.fundFor{value: 1 ether}(
+            intent.destination,
+            routeHash,
+            reward,
+            false,
+            creator,
+            address(0)
+        );
+
+        assertTrue(intentSource.isIntentFunded(intent));
+        // No native was escrowed since the reward's nativeAmount is zero
+        assertEq(intentVault.balance, 0);
+        // The full msg.value was refunded to the caller
+        assertEq(creator.balance, initialBalance);
+        // Nothing stranded on the Portal
+        assertEq(address(intentSource).balance, 0);
     }
 
     function testInsufficientNativeReward() public {
@@ -1196,6 +1433,87 @@ contract IntentSourceTest is BaseTest {
         );
     }
 
+    // Refund must remain possible even when reward.prover is codeless
+    // (typo, address(0), or a prover deployed only on another chain). Calling
+    // provenIntents on a codeless address would revert and permanently brick
+    // the refund path, locking the escrow forever. After the deadline the
+    // refund must instead succeed and return funds to the creator.
+    function testRefundSucceedsWithCodelessProverAfterDeadline() public {
+        // Point the reward at a plain address with no deployed code.
+        address codelessProver = makeAddr("codelessProver");
+        assertEq(codelessProver.code.length, 0);
+        intent.reward.prover = codelessProver;
+
+        _publishAndFund(intent, false);
+
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        assertTrue(intentSource.isIntentFunded(intent));
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
+    // address(0) is also a codeless prover and must not brick the refund.
+    function testRefundSucceedsWithZeroAddressProverAfterDeadline() public {
+        intent.reward.prover = address(0);
+        assertEq(intent.reward.prover.code.length, 0);
+
+        _publishAndFund(intent, false);
+
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
+    // No-regression: a normal prover with no recorded proof still refunds
+    // after the deadline (the codeless-prover fix must not alter this path).
+    function testRefundSucceedsWithNormalProverNoProofAfterDeadline() public {
+        // intent.reward.prover defaults to the real TestProver (has code).
+        assertGt(intent.reward.prover.code.length, 0);
+
+        _publishAndFund(intent, false);
+
+        _timeTravel(expiry + 1);
+
+        uint256 initialBalanceA = tokenA.balanceOf(creator);
+        uint256 initialBalanceB = tokenB.balanceOf(creator);
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            intent.destination,
+            keccak256(abi.encode(intent.route)),
+            intent.reward
+        );
+
+        assertFalse(intentSource.isIntentFunded(intent));
+        assertEq(tokenA.balanceOf(creator), initialBalanceA + MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), initialBalanceB + MINT_AMOUNT * 2);
+    }
+
     // RefundTo Tests
     function testRefundToSuccessAfterDeadline() public {
         _publishAndFund(intent, false);
@@ -1365,7 +1683,9 @@ contract IntentSourceTest is BaseTest {
         );
     }
 
-    function testRefundCanBeCalledMultipleTimesToRecoverAdditionalFunds() public {
+    function testRefundCanBeCalledMultipleTimesToRecoverAdditionalFunds()
+        public
+    {
         _publishAndFund(intent, false);
         _timeTravel(expiry + 1);
 
@@ -1414,7 +1734,9 @@ contract IntentSourceTest is BaseTest {
         assertEq(tokenB.balanceOf(vaultAddress), 0);
     }
 
-    function testRefundToCanBeCalledMultipleTimesToRecoverAdditionalFunds() public {
+    function testRefundToCanBeCalledMultipleTimesToRecoverAdditionalFunds()
+        public
+    {
         _publishAndFund(intent, false);
         _timeTravel(expiry + 1);
 

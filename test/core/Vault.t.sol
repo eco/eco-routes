@@ -17,6 +17,8 @@ import {Clones} from "../../contracts/vault/Clones.sol";
 contract MockPermit is IPermit {
     mapping(address => mapping(address => mapping(address => uint160)))
         public allowances;
+    mapping(address => mapping(address => mapping(address => uint48)))
+        public expirations;
 
     function setAllowance(
         address owner,
@@ -25,6 +27,19 @@ contract MockPermit is IPermit {
         uint160 amount
     ) external {
         allowances[owner][token][spender] = amount;
+        // Default to a non-expiring allowance so existing tests are unaffected.
+        expirations[owner][token][spender] = type(uint48).max;
+    }
+
+    function setAllowanceWithExpiration(
+        address owner,
+        address token,
+        address spender,
+        uint160 amount,
+        uint48 expiration
+    ) external {
+        allowances[owner][token][spender] = amount;
+        expirations[owner][token][spender] = expiration;
     }
 
     function allowance(
@@ -32,7 +47,11 @@ contract MockPermit is IPermit {
         address token,
         address spender
     ) external view override returns (uint160, uint48, uint48) {
-        return (allowances[owner][token][spender], 0, 0);
+        return (
+            allowances[owner][token][spender],
+            expirations[owner][token][spender],
+            0
+        );
     }
 
     function transferFrom(
@@ -41,6 +60,10 @@ contract MockPermit is IPermit {
         uint160 amount,
         address token
     ) external override {
+        // Model Permit2: an expired allowance reverts before the transfer.
+        if (block.timestamp > expirations[from][token][to]) {
+            revert AllowanceExpired(expirations[from][token][to]);
+        }
         require(
             allowances[from][token][to] >= amount,
             "Insufficient permit allowance"
@@ -105,7 +128,7 @@ contract VaultTest is Test {
         });
 
         vm.prank(portal);
-        assertTrue(vault.fundFor(reward, creator, IPermit(address(0))));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
         vm.prank(unauthorized);
         vm.expectRevert(
@@ -128,9 +151,9 @@ contract VaultTest is Test {
         });
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertTrue(result);
+        assertEq(address(vault).balance, 0);
     }
 
     function test_fundFor_success_nativeAndTokens() public {
@@ -149,20 +172,17 @@ contract VaultTest is Test {
         vm.prank(creator);
         token.approve(address(vault), 1000);
 
-        vm.deal(portal, 2 ether);
+        // Native is pre-funded to the vault by the Portal before fundFor is
+        // called; fundFor itself is non-payable and only pulls the token legs.
+        vm.deal(address(vault), 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 1 ether}(
-            reward,
-            creator,
-            IPermit(address(0))
-        );
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertTrue(result);
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
-    function test_fundFor_partialFunding_insufficientNative() public {
+    function test_fundFor_leavesPrefundedNativeUntouched() public {
         TokenAmount[] memory tokens = new TokenAmount[](0);
         Reward memory reward = Reward({
             creator: creator,
@@ -172,15 +192,12 @@ contract VaultTest is Test {
             tokens: tokens
         });
 
-        vm.deal(portal, 1 ether);
+        // fundFor no longer handles native at all — whatever native the vault
+        // already holds must be left exactly as-is (partial or full).
+        vm.deal(address(vault), 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 1 ether}(
-            reward,
-            creator,
-            IPermit(address(0))
-        );
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertFalse(result);
         assertEq(address(vault).balance, 1 ether);
     }
 
@@ -201,9 +218,8 @@ contract VaultTest is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertFalse(result);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
 
@@ -231,9 +247,8 @@ contract VaultTest is Test {
         token2.approve(address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertTrue(result);
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token2.balanceOf(address(vault)), 500);
     }
@@ -274,9 +289,8 @@ contract VaultTest is Test {
         vm.deal(address(vault), 1 ether);
 
         vm.prank(portal);
-        bool result = vault.fundFor(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertTrue(result);
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -294,21 +308,17 @@ contract VaultTest is Test {
         });
 
         token.mint(address(vault), 500);
-        vm.deal(address(vault), 0.5 ether);
+        // Native is fully pre-funded to the vault by the Portal; fundFor only
+        // tops up the remaining token leg.
+        vm.deal(address(vault), 1 ether);
 
         token.mint(creator, 500);
         vm.prank(creator);
         token.approve(address(vault), 500);
 
-        vm.deal(portal, 1 ether);
         vm.prank(portal);
-        bool result = vault.fundFor{value: 0.5 ether}(
-            reward,
-            creator,
-            IPermit(address(0))
-        );
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
-        assertTrue(result);
         assertEq(address(vault).balance, 1 ether);
         assertEq(token.balanceOf(address(vault)), 1000);
     }
@@ -332,13 +342,8 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
 
-        assertTrue(result);
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -364,13 +369,8 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
 
-        assertTrue(result);
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -394,13 +394,49 @@ contract VaultTest is Test {
         token.approve(address(vault), 1000);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
-            reward,
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
+
+        assertEq(token.balanceOf(address(vault)), 1000);
+        assertEq(token.balanceOf(creator), 0);
+    }
+
+    function test_fundFor_success_expiredPermitFallsBackToRegularApproval()
+        public
+    {
+        // A nonzero-but-expired Permit2 allowance must not revert AllowanceExpired;
+        // funding should fall through to the standard ERC20 approval instead.
+        vm.warp(1000);
+
+        TokenAmount[] memory tokens = new TokenAmount[](1);
+        tokens[0] = TokenAmount({token: address(token), amount: 1000});
+
+        Reward memory reward = Reward({
+            creator: creator,
+            prover: address(0),
+            deadline: uint64(block.timestamp + 1000),
+            nativeAmount: 0,
+            tokens: tokens
+        });
+
+        token.mint(creator, 1000);
+        // Standard ERC20 approval to the vault (the fallback path).
+        vm.prank(creator);
+        token.approve(address(vault), 1000);
+        // Nonzero Permit2 allowance that has already expired.
+        vm.prank(creator);
+        token.approve(address(mockPermit), 1000);
+        mockPermit.setAllowanceWithExpiration(
             creator,
-            IPermit(address(mockPermit))
+            address(token),
+            address(vault),
+            1000,
+            uint48(block.timestamp - 1)
         );
 
-        assertTrue(result);
+        vm.prank(portal);
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
+
+        // fundFor is void; success is verified by reading vault balances.
         assertEq(token.balanceOf(address(vault)), 1000);
         assertEq(token.balanceOf(creator), 0);
     }
@@ -426,13 +462,8 @@ contract VaultTest is Test {
         mockPermit.setAllowance(creator, address(token), address(vault), 500);
 
         vm.prank(portal);
-        bool result = vault.fundFor(
-            reward,
-            creator,
-            IPermit(address(mockPermit))
-        );
+        vault.fundFor(reward, creator, IPermit(address(mockPermit)));
 
-        assertFalse(result);
         assertEq(token.balanceOf(address(vault)), 500);
         assertEq(token.balanceOf(creator), 500);
     }
@@ -562,9 +593,11 @@ contract VaultTest is Test {
         vm.prank(creator);
         token.approve(address(vault), 1000);
 
-        vm.deal(portal, 1 ether);
+        // Native is pre-funded to the vault by the Portal; fundFor is non-payable
+        // and only pulls the token leg.
+        vm.deal(address(vault), 1 ether);
         vm.prank(portal);
-        vault.fundFor{value: 1 ether}(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
         uint256 claimantInitialBalance = claimant.balance;
 
@@ -707,9 +740,11 @@ contract VaultTest is Test {
         vm.prank(creator);
         token.approve(address(vault), 1000);
 
-        vm.deal(portal, 1 ether);
+        // Native is pre-funded to the vault by the Portal; fundFor is non-payable
+        // and only pulls the token leg.
+        vm.deal(address(vault), 1 ether);
         vm.prank(portal);
-        vault.fundFor{value: 1 ether}(reward, creator, IPermit(address(0)));
+        vault.fundFor(reward, creator, IPermit(address(0)));
 
         uint256 creatorInitialBalance = creator.balance;
 
@@ -955,7 +990,9 @@ contract VaultTest is Test {
         // Deploy a VaultTron clone (Tron-aware vault) for this test.
         // vm.prank sets msg.sender for the constructor so portal is set correctly.
         vm.prank(portal);
-        IVault vaultTron = IVault(address(new VaultTron()).clone(bytes32(uint256(1))));
+        IVault vaultTron = IVault(
+            address(new VaultTron()).clone(bytes32(uint256(1)))
+        );
 
         // Fund via transferFrom (returns true) — mirrors publishAndFund on-chain.
         tether.approve(address(this), 100_000);

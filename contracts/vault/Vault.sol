@@ -44,19 +44,20 @@ contract Vault is IVault {
     }
 
     /**
-     * @notice Funds the vault with tokens and native currency from the reward
+     * @notice Funds the vault with tokens from the reward
+     * @dev Returns nothing on purpose: an untrusted permit contract can reenter
+     *      and drain the vault mid-loop, so any completeness flag computed here
+     *      would be unreliable. The Portal decides funded/partial by reading the
+     *      vault's actual balances after this call (see IntentSource._isRewardFunded).
      * @param reward The reward structure containing token addresses, amounts, and native value
      * @param funder Address that will provide the funding
      * @param permit Optional permit contract for gasless token approvals
-     * @return fullyFunded True if the vault was fully funded, false otherwise
      */
     function fundFor(
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable onlyPortal returns (bool fullyFunded) {
-        fullyFunded = address(this).balance >= reward.nativeAmount;
-
+    ) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
@@ -67,9 +68,7 @@ contract Vault is IVault {
                 reward.tokens[i].amount,
                 permit
             );
-            remaining = _fundFrom(funder, token, remaining);
-
-            fullyFunded = fullyFunded && remaining == 0;
+            _fundFrom(funder, token, remaining);
         }
     }
 
@@ -110,7 +109,10 @@ contract Vault is IVault {
      * @param reward The reward structure containing token information
      * @param refundee Address to receive the refunded rewards
      */
-    function refund(Reward calldata reward, address refundee) external onlyPortal {
+    function refund(
+        Reward calldata reward,
+        address refundee
+    ) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);
@@ -198,7 +200,7 @@ contract Vault is IVault {
             return rewardAmount - balance;
         }
 
-        (uint160 allowance, , ) = permit.allowance(
+        (uint160 allowance, uint48 expiration, ) = permit.allowance(
             funder,
             address(token),
             address(this)
@@ -209,7 +211,9 @@ contract Vault is IVault {
             .min(funderBalance)
             .min(uint256(allowance));
 
-        if (transferAmount > 0) {
+        // Skip the Permit2 transfer on an expired allowance so control falls through
+        // to the standard-ERC20 fallback instead of reverting AllowanceExpired.
+        if (transferAmount > 0 && block.timestamp <= expiration) {
             permit.transferFrom(
                 funder,
                 address(this),
