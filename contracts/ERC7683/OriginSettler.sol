@@ -77,11 +77,13 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @dev Uses unified _publishAndFund method for consistent behavior and security
      * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
      * @dev `order.nonce` is covered by the EIP-712 digest but is NOT consumed
-     *      on-chain, so a signature remains usable until `openDeadline` passes.
-     *      Escrow is still single-shot (see the vault state check in
-     *      `_publishAndFund`), but a replay does re-emit `Open`. `order.nonce`
-     *      also does not feed `orderId`, so two orders differing only by nonce
-     *      denote the same intent. See the `Open` NatSpec in {IOriginSettler}.
+     *      on-chain, so a signature remains usable until `openDeadline` passes
+     *      or the intent reaches a terminal state (`Withdrawn`/`Refunded`),
+     *      whichever comes first, after which a replay reverts. Escrow is still
+     *      single-shot (see the vault state check in `_publishAndFund`), but a
+     *      replay does re-emit `Open`. `order.nonce` also does not feed
+     *      `orderId`, so two orders differing only by nonce denote the same
+     *      intent. See the `Open` NatSpec in {IOriginSettler}.
      * @param order the GaslessCrossChainOrder containing user signature and OrderData
      * @param signature the user's EIP-712 signature authorizing the intent creation
      */
@@ -113,10 +115,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
         if (order.user != orderData.reward.creator) {
-            revert InvalidCreatorBinding(
-                order.user,
-                orderData.reward.creator
-            );
+            revert InvalidCreatorBinding(order.user, orderData.reward.creator);
         }
 
         // No nonce is consumed here, and none is needed to keep the escrow safe:

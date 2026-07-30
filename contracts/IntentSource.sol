@@ -66,12 +66,15 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
      *      partial funding, which leaves the status Initial)
      * @dev On `Status.Funded` this RETURNS rather than reverting, skipping the
      *      decorated body entirely. That makes escrow single-shot: a repeated
-     *      fund/publishAndFund/open/openFor for an already-escrowed intent is a
-     *      successful no-op instead of a second charge, and the caller needs no
-     *      balance or allowance to make that call. Callers that need to know
-     *      whether they were the one to escrow the intent must compare
-     *      {getRewardStatus} before and after; a successful call alone does not
-     *      imply funds moved.
+     *      fund/fundFor/publishAndFund/publishAndFundFor/open/openFor for an
+     *      already-escrowed intent is a successful no-op instead of a second
+     *      charge, and the caller needs no balance or allowance to make that
+     *      call. For the `*For` variants (`fundFor`, `publishAndFundFor`) the
+     *      surprising consequence is that the named `funder` is silently NOT
+     *      charged on this early return -- the call succeeds having moved none
+     *      of their funds. Callers that need to know whether they were the one
+     *      to escrow the intent must compare {getRewardStatus} before and after;
+     *      a successful call alone does not imply funds moved.
      * @param intentHash Hash of the intent to validate for funding eligibility
      */
     modifier onlyFundable(bytes32 intentHash) {

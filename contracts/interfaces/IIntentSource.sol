@@ -85,10 +85,18 @@ interface IIntentSource {
      *      announced after the fact, and lets a missed announcement be replayed
      *      for indexers.
      *
-     *      `publishAndFund`, `open`, and `openFor` each call `publish`
-     *      internally, so all four entry points re-emit this event -- not just
-     *      `publish`. (`Open` is separate and is emitted only by `open` and
-     *      `openFor`; see {IOriginSettler}.)
+     *      `publishAndFund`, `publishAndFundFor`, `open`, and `openFor` each
+     *      call `publish` internally, so all five entry points re-emit this
+     *      event -- not just `publish`. By contrast `fund`/`fundFor` escrow an
+     *      existing intent WITHOUT publishing, so they never emit
+     *      `IntentPublished`. (`Open` is separate and is emitted only by `open`
+     *      and `openFor`; see {IOriginSettler}.)
+     *
+     *      A re-emission on an already-`Funded` intent is NOT accompanied by a
+     *      matching {IntentFunded}: `_fundIntent`/`_fundIntentFor` short-circuit
+     *      via {onlyFundable} before their `IntentFunded` emit. An indexer that
+     *      correlates the `IntentPublished`/`IntentFunded` pair therefore sees an
+     *      orphan `IntentPublished` on every replay and must tolerate it.
      * @param intentHash Unique identifier of the intent
      * @param destination Destination chain ID
      * @param route Encoded route data for the destination chain

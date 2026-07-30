@@ -410,12 +410,26 @@ contract OriginSettlerTest is BaseTest {
             "differing nonces must produce differing signatures"
         );
 
+        // Anchor both orderIds against the independently derived intentHash so a
+        // path that emits zero `Open` events cannot pass on bytes32(0) equality.
+        (bytes32 intentHash, , ) = intentSource.getIntentHash(
+            CHAIN_ID,
+            abi.encode(route),
+            reward
+        );
         address vault = intentSource.intentVaultAddress(intent);
 
         vm.recordLogs();
         vm.prank(otherPerson);
         portal.openFor(orderOne, sigOne, "");
-        (, bytes32 orderIdOne) = _countOpenLogs();
+        (uint256 countOne, bytes32 orderIdOne) = _countOpenLogs();
+
+        assertEq(countOne, 1, "first openFor should emit exactly one Open");
+        assertEq(
+            orderIdOne,
+            intentHash,
+            "first orderId must equal the derived intentHash"
+        );
 
         uint256 vaultAAfterFirst = tokenA.balanceOf(vault);
         uint256 vaultBAfterFirst = tokenB.balanceOf(vault);
@@ -423,8 +437,14 @@ contract OriginSettlerTest is BaseTest {
         vm.recordLogs();
         vm.prank(otherPerson);
         portal.openFor(orderTwo, sigTwo, "");
-        (, bytes32 orderIdTwo) = _countOpenLogs();
+        (uint256 countTwo, bytes32 orderIdTwo) = _countOpenLogs();
 
+        assertEq(countTwo, 1, "second openFor should emit exactly one Open");
+        assertEq(
+            orderIdTwo,
+            intentHash,
+            "second orderId must equal the derived intentHash"
+        );
         assertEq(
             orderIdTwo,
             orderIdOne,
