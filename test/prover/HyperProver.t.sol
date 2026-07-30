@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import "../BaseTest.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
@@ -524,14 +525,15 @@ contract HyperProverTest is BaseTest {
     }
 
     /**
-     * @notice prove() must not revert when the refund recipient rejects ETH
-     * @dev Regression test for V9: _sendRefund previously used transfer() with a
-     *      2300-gas stipend, so an overpayment refund to a smart-account /
-     *      EIP-7702 wallet whose receive() reverts (or consumes >2300 gas) would
-     *      DoS prove()/fulfillAndProve(). The failure-tolerant low-level call
-     *      makes the refund non-reverting; the excess simply stays in the prover.
+     * @notice prove() must REVERT when the refund recipient cannot receive ETH
+     * @dev V9 behavior change: _sendRefund now reverts with RefundFailed instead
+     *      of swallowing the failed low-level call. The refund recipient is always
+     *      the tx caller, so reverting surfaces a genuinely-unpayable caller loudly
+     *      rather than silently stranding their ETH as dust in the prover. (The
+     *      uncapped all-gas call still lets legitimate smart-account recipients
+     *      receive — see testProveRefundDeliveredToGasHungryRecipient.)
      */
-    function testProveRefundDoesNotRevertOnRejectingRecipient() public {
+    function testProveRevertsWhenRefundRecipientRejects() public {
         RejectingRefundRecipient recipient = new RejectingRefundRecipient();
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -540,7 +542,6 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         uint256 overpayment = 2 ether;
-        uint256 proverBalanceBefore = address(hyperProver).balance;
 
         bytes memory proverData = _encodeProverData(
             bytes32(uint256(uint160(whitelistedProver))),
@@ -548,22 +549,23 @@ contract HyperProverTest is BaseTest {
             address(0)
         );
 
-        // Refund recipient is a contract that reverts on receive; with the old
-        // transfer()-based refund this call would revert. It must now succeed.
+        // Refund recipient is a contract that reverts on receive. The refund of
+        // (overpayment - mailbox fee) cannot be delivered, so prove() must revert
+        // with RefundFailed(recipient, refundAmount).
+        uint256 refundAmount = overpayment - mailbox.FEE();
         vm.prank(address(portal));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.RefundFailed.selector,
+                address(recipient),
+                refundAmount
+            )
+        );
         hyperProver.prove{value: overpayment}(
             address(recipient),
             uint64(block.chainid),
             encodeProofs(intentHashes, claimants),
             proverData
-        );
-
-        // Refund could not be delivered, so it is retained by the prover
-        // (the mock mailbox consumed mailbox.FEE() during dispatch).
-        assertEq(address(recipient).balance, 0);
-        assertEq(
-            address(hyperProver).balance,
-            proverBalanceBefore + overpayment - mailbox.FEE()
         );
     }
 
@@ -722,9 +724,10 @@ contract HyperProverTest is BaseTest {
     }
 }
 
-/// @notice Refund recipient that rejects ETH, simulating a smart-account /
-/// EIP-7702 wallet whose receive() reverts or exceeds the 2300-gas stipend.
-/// Used to prove that _sendRefund tolerates refund failure instead of DoSing prove().
+/// @notice Refund recipient that rejects ETH, simulating a wallet whose
+/// receive() reverts. Used to prove that _sendRefund reverts with RefundFailed
+/// when the (caller) recipient cannot be paid, instead of silently stranding
+/// the ETH as dust.
 contract RejectingRefundRecipient {
     receive() external payable {
         revert("RejectingRefundRecipient: I reject your ETH");

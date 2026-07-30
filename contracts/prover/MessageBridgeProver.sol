@@ -64,20 +64,25 @@ abstract contract MessageBridgeProver is
             return;
         }
 
-        // Use a low-level call rather than transfer() so a recipient that
-        // reverts or consumes more than the 2300-gas stipend (e.g. a smart
-        // account or EIP-7702 wallet) cannot DoS prove()/fulfillAndProve().
-        // The boolean is intentionally ignored to prevent griefing attacks.
-        // The low-level call forwards all gas (transfer()'s 2300-gas cap is
-        // intentionally not used), so the recipient can reenter — but this call is
-        // the terminal statement of prove() (no post-refund state) and Inbox.prove
-        // has already drained the Portal's balance before the callback, so a
-        // reentrant prove() carries 0 value. Nothing is left to exploit. If the
-        // recipient rejects the transfer the ETH is intentionally retained as dust
-        // (there is no rescue/sweep path): DoS avoidance is worth more than dust
-        // recovery, and the recipient is the caller, so the loss is self-inflicted.
-        (bool _ok, ) = payable(recipient).call{value: amount}("");
-        _ok;
+        // Use a low-level call rather than transfer() and forward all gas
+        // (transfer()'s 2300-gas cap is intentionally not used) so that any
+        // smart-contract recipient — a smart account, an EIP-7702 wallet, or a
+        // contract whose receive() needs more than the 2300-gas stipend — can
+        // still receive the refund. The "gas > 2400" concern is satisfied by
+        // this uncapped forwarding.
+        //
+        // On failure we revert (RefundFailed) rather than swallow the boolean.
+        // Reverting surfaces a genuinely-unpayable recipient loudly instead of
+        // silently stranding the caller's ETH as dust with no sweep/rescue path.
+        // The refund recipient is always the tx caller (Inbox.prove passes
+        // msg.sender), so a revert only self-DoSes that caller — there is no
+        // third-party griefing vector. Reentrancy remains contained: this is the
+        // terminal statement of prove() (no post-refund state), the nonReentrant
+        // guard is held for the whole prove, and Inbox.prove has already drained
+        // the Portal's balance before this callback, so a reentrant prove()
+        // carries 0 value.
+        (bool ok, ) = payable(recipient).call{value: amount}("");
+        if (!ok) revert RefundFailed(recipient, amount);
     }
 
     /**

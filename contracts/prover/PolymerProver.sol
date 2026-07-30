@@ -38,6 +38,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     error InvalidMaxLogDataSize();
     error EmptyProofData();
     error OnlyPortal();
+    // Refund of forwarded ETH to the caller failed. PolymerProver does not
+    // extend MessageBridgeProver, so this error is declared locally to mirror
+    // IMessageBridgeProver.RefundFailed. recipient is always the tx caller.
+    error RefundFailed(address recipient, uint256 amount);
 
     // State variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
@@ -208,17 +212,21 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
         // Polymer proving requires no bridge fee, so any forwarded ETH (forced
         // dust or overpayment from Inbox.prove routing the Portal balance here)
-        // is refunded to the caller. A low-level call is used so a recipient
-        // that reverts or exceeds the 2300-gas stipend cannot trap the funds or
-        // DoS prove(). The boolean is intentionally ignored to prevent griefing.
-        // This is the terminal statement (no post-refund state) and Inbox.prove
-        // has already drained the Portal balance, so the all-gas call cannot be
-        // exploited via reentrancy. A recipient that rejects the transfer leaves
-        // the ETH stuck as dust by design — there is no sweep path, and the loss
-        // is self-inflicted since the recipient is the caller.
+        // is refunded to the caller. A low-level call forwarding all gas is used
+        // (not transfer()'s 2300-gas cap) so any smart-contract recipient — a
+        // smart account or EIP-7702 wallet whose receive() needs more than the
+        // stipend — can still receive the refund.
+        //
+        // On failure we revert (RefundFailed) rather than swallow the boolean,
+        // surfacing a genuinely-unpayable recipient loudly instead of silently
+        // stranding the ETH as dust (there is no sweep path). The recipient is
+        // always the tx caller, so a revert only self-DoSes that caller — no
+        // third-party griefing. This is the terminal statement (no post-refund
+        // state) and Inbox.prove has already drained the Portal balance, so the
+        // all-gas call cannot be exploited via reentrancy.
         if (msg.value > 0 && sender != address(0)) {
-            (bool _ok, ) = payable(sender).call{value: msg.value}("");
-            _ok;
+            (bool ok, ) = payable(sender).call{value: msg.value}("");
+            if (!ok) revert RefundFailed(sender, msg.value);
         }
     }
 }

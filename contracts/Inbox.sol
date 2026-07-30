@@ -152,7 +152,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
      *      the correct domain ID for the source chain.
      */
     // nonReentrant: prove forwards this contract's full balance into the prover,
-    // whose failure-tolerant refund makes an all-gas call back to msg.sender. The
+    // which refunds any overpayment with an all-gas call back to msg.sender. The
     // guard keeps that structural (not just documented in the prover) so a refund
     // recipient cannot reenter prove. fulfillAndProve calls prove without holding
     // the guard, so the internal call is the first (non-reentrant) entry.

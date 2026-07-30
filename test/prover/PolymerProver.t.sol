@@ -247,15 +247,17 @@ contract PolymerProverTest is BaseTest {
     }
 
     /**
-     * @notice prove() must not revert when the refund recipient rejects ETH
-     * @dev Regression test for V9: the refund uses a failure-tolerant all-gas call
-     *      so a recipient whose receive()/fallback() reverts cannot DoS
-     *      prove()/fulfillAndProve(). Polymer charges no bridge fee, so when the
-     *      refund cannot be delivered the entire forwarded amount is retained as
-     *      dust in the prover (there is no sweep path; the loss is self-inflicted
-     *      since the recipient is the caller). Exercises the dust-retention branch.
+     * @notice prove() must REVERT when the refund recipient cannot receive ETH
+     * @dev V9 behavior change: the refund now reverts with RefundFailed instead of
+     *      swallowing the failed all-gas call. Polymer charges no bridge fee, so
+     *      the entire forwarded amount is refunded to the caller; if that caller
+     *      (always msg.sender) cannot receive, reverting surfaces the unpayable
+     *      recipient loudly rather than stranding the ETH as dust in the prover.
+     *      (The uncapped all-gas call still lets legitimate smart-account
+     *      recipients receive — see testProveRefundsForwardedValueToSender and
+     *      testInboxProveReentrancyIsBlocked.)
      */
-    function testProveRefundRetainedWhenRecipientRejects() public {
+    function testProveRevertsWhenRefundRecipientRejects() public {
         RejectingRefundRecipient rejecting = new RejectingRefundRecipient();
 
         bytes32[] memory intentHashes = new bytes32[](1);
@@ -268,32 +270,38 @@ contract PolymerProverTest is BaseTest {
         uint256 forwarded = 1 ether;
         vm.deal(address(portal), forwarded);
 
-        // Refund recipient reverts on receive; with the old transfer()-based refund
-        // this would revert. It must now succeed, retaining the value as dust.
+        // Refund recipient reverts on receive. Polymer charges no fee, so the full
+        // forwarded amount is refunded; the failed refund must revert prove() with
+        // RefundFailed(recipient, forwarded).
         vm.prank(address(portal));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PolymerProver.RefundFailed.selector,
+                address(rejecting),
+                forwarded
+            )
+        );
         polymerProver.prove{value: forwarded}(
             address(rejecting),
             uint64(block.chainid),
             encodedProofs,
             hex""
         );
-
-        // Refund could not be delivered, so the full forwarded amount (no fee on
-        // Polymer) is retained by the prover; nothing reaches the recipient.
-        assertEq(address(rejecting).balance, 0);
-        assertEq(address(polymerProver).balance, forwarded);
     }
 
     /**
      * @notice The nonReentrant guard on Inbox.prove blocks a refund recipient
      *         from reentering prove().
      * @dev Regression test for V9: Inbox.prove forwards the Portal's full balance
-     *      into the prover, whose failure-tolerant refund makes an all-gas call
-     *      back to msg.sender. Polymer has no fee, so the whole forwarded amount is
+     *      into the prover, which refunds it with an all-gas call back to
+     *      msg.sender. Polymer has no fee, so the whole forwarded amount is
      *      refunded to the caller. A malicious caller reenters Inbox.prove from its
      *      receive(); the guard must revert that reentrant call
-     *      (ReentrancyGuardReentrantCall). Because the refund is failure-tolerant,
-     *      the reentrant revert is swallowed and the OUTER prove() still succeeds.
+     *      (ReentrancyGuardReentrantCall). The attacker's receive() catches that
+     *      reentrant revert itself (low-level call) and returns normally, so the
+     *      legitimate outer refund still lands (returns true) and the OUTER prove()
+     *      succeeds — the refund now reverts only if the recipient itself fails to
+     *      receive, which is not the case here.
      */
     function testInboxProveReentrancyIsBlocked() public {
         // Build a fulfillable intent on this chain with no route tokens/calls so
@@ -886,7 +894,11 @@ contract ReentrantProveCaller {
 
     /// @notice Invoked when the prover refunds the forwarded value. Attempts to
     /// reenter Inbox.prove; the nonReentrant guard must revert this. We swallow
-    /// the revert (low-level call) so the outer refund call still succeeds.
+    /// the revert (low-level call, not propagated) so this receive() returns
+    /// success — the outer refund call therefore returns true and, under V9's
+    /// revert-on-failure refund, does NOT trigger RefundFailed. This keeps the
+    /// test's meaning: the reentrant prove is blocked, but the legitimate refund
+    /// to the caller still lands and the outer prove succeeds.
     receive() external payable {
         if (reentrancyAttempted) {
             return;
