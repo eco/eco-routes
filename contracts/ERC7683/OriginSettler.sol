@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -21,7 +21,6 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  * @dev Includes protection against replay attacks through vault state checking
  */
 abstract contract OriginSettler is IOriginSettler, EIP712 {
-    using ECDSA for bytes32;
     using SafeERC20 for IERC20;
     using AddressConverter for bytes32;
 
@@ -71,6 +70,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @dev Performs comprehensive validation: deadlines, signature, chain IDs, origin settler
      * @dev Includes replay protection through vault state checking in _publishAndFund
      * @dev Uses unified _publishAndFund method for consistent behavior and security
+     * @dev Accepts ERC-1271 contract-wallet signatures; see the trust assumption
+     *      documented on {_validateOrderSig}
      * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
      * @param order the GaslessCrossChainOrder containing user signature and OrderData
      * @param signature the user's EIP-712 signature authorizing the intent creation
@@ -103,10 +104,7 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
         OrderData memory orderData = abi.decode(order.orderData, (OrderData));
 
         if (order.user != orderData.reward.creator) {
-            revert InvalidCreatorBinding(
-                order.user,
-                orderData.reward.creator
-            );
+            revert InvalidCreatorBinding(order.user, orderData.reward.creator);
         }
 
         // No need for replay protection here
@@ -154,6 +152,32 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
     /**
      * @notice Helper method for signature verification
      * @dev Verifies that the gasless order was properly signed by the user
+     * @dev Trust assumption (ERC-1271): by using {SignatureChecker} we accept
+     *      contract-wallet signatures, which trusts the contract at `order.user`
+     *      to gate its own signatures correctly and strictly. A permissive or
+     *      buggy ERC-1271 wallet — one that returns the `0x1626ba7e` magic value
+     *      for a signature its owner did not authorize — that has also approved
+     *      the Portal could be escrowed-from by a third party. The failure mode is
+     *      bounded to griefing, not theft: `openFor` binds `reward.creator ==
+     *      order.user`, so the funder and the refund/recovery recipient are the same
+     *      wallet — an attacker cannot redirect funds to themselves, only force the
+     *      wallet to escrow (and, after `reward.deadline`, be refunded to itself).
+     *      Note `reward.deadline` is attacker-chosen and may be set in the past, so
+     *      an unauthorized escrow can be refunded in the same transaction — still
+     *      back to the wallet. For an EOA `order.user` this reduces to a plain
+     *      ECDSA.recover-and-compare (malleable high-s signatures are rejected).
+     * @dev DoS (relayer): `order.user` is unvalidated calldata and
+     *      {SignatureChecker} staticcalls it with no gas cap, materializing the full
+     *      returndata. A hostile contract at `order.user` can return megabytes and
+     *      make `openFor` consume the whole gas limit, OOG-reverting the relayer that
+     *      pays for the gasless call. There is no fund loss; simulating the call
+     *      before submission is load-bearing for relayer operators. We deliberately
+     *      do not hand-roll a bounded staticcall here (the mitigation is riskier than
+     *      the issue).
+     * @dev Liveness: ERC-1271 signatures are revocable (unlike an EOA's). A wallet
+     *      that rotates owners or changes policy can flip a previously-valid order to
+     *      invalid between simulation and inclusion, so solvers should expect gasless
+     *      orders from contract wallets to fail at inclusion more often than EOA ones.
      * @param order The gasless cross-chain order to verify
      * @param signature The user's signature
      * @return True if the signature is valid, false otherwise
@@ -175,10 +199,14 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
                 keccak256(order.orderData)
             )
         );
-        bytes32 hash = _hashTypedDataV4(structHash);
-        address signer = hash.recover(signature);
+        bytes32 digest = _hashTypedDataV4(structHash);
 
-        return signer == order.user;
+        // Use SignatureChecker so both EOA (ECDSA) signatures and ERC-1271
+        // contract-wallet signatures (e.g. Safe) are accepted on the gasless
+        // openFor path. For an EOA signer this reduces to a plain
+        // ECDSA.recover-and-compare against order.user.
+        return
+            SignatureChecker.isValidSignatureNow(order.user, digest, signature);
     }
 
     /**

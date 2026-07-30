@@ -57,7 +57,7 @@ contract Vault is IVault {
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable onlyPortal {
+    ) external onlyPortal {
         uint256 rewardsLength = reward.tokens.length;
         for (uint256 i; i < rewardsLength; ++i) {
             IERC20 token = IERC20(reward.tokens[i].token);

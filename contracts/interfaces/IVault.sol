@@ -33,7 +33,7 @@ interface IVault {
         Reward calldata reward,
         address funder,
         IPermit permit
-    ) external payable;
+    ) external;
 
     /**
      * @notice Withdraws rewards from the vault to the claimant
