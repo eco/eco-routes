@@ -33,6 +33,36 @@ interface IOriginSettler {
 
     /**
      * @notice Signals that an order has been opened
+     * @dev AT-LEAST-ONCE. `orderId` identifies an order uniquely, but a single
+     *      order can emit `Open` more than once. Consumers MUST be idempotent
+     *      on `orderId` and MUST NOT treat each `Open` as a distinct order.
+     *
+     *      Two independent reasons:
+     *
+     *      1. Publishing is intentionally idempotent. `orderId` is the intent
+     *         hash, and once its rewards are escrowed (`Status.Funded`) a
+     *         further `open` or `openFor` for the same intent re-emits `Open`
+     *         and leaves the escrow untouched. `open` takes no signature and no
+     *         deadline, so this is permissionless until the intent reaches a
+     *         terminal state (`Withdrawn`/`Refunded`), after which publishing
+     *         reverts. This is deliberate: it lets an intent funded via
+     *         `fund`/`fundFor` be announced, and lets a missed announcement be
+     *         replayed for indexers. Note that `publish`/`publishAndFund` do
+     *         NOT emit `Open`; they re-emit `IntentPublished` -- see
+     *         {IIntentSource}.
+     *      2. `GaslessCrossChainOrder.nonce` is covered by the EIP-712 digest
+     *         but is not consumed on-chain, so a gasless signature stays
+     *         replayable until `openDeadline` passes.
+     *
+     *      Consequently `orderId` also does not distinguish two signed gasless
+     *      orders that differ only by `nonce`: both resolve to the same intent
+     *      and the same single escrow. To create genuinely distinct intents,
+     *      vary a field that feeds the hash (typically `route.salt`), not the
+     *      nonce.
+     *
+     *      Re-emission never moves funds twice, and duplicate fills are
+     *      rejected on the destination chain, so the exposure is limited to
+     *      off-chain consumers that count events instead of deduping them.
      * @param orderId a unique order identifier within this settlement system
      * @param resolvedOrder resolved order that would be returned by resolve if called instead of Open
      */
