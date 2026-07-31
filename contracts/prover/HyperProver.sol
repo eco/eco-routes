@@ -51,13 +51,16 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
      * @param mailbox Address of local Hyperlane mailbox
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
+     * @param domainConfig Trusted origin-domain-to-chainId mapping entries
      */
     constructor(
         address mailbox,
         address portal,
-        bytes32[] memory provers
-    ) MessageBridgeProver(portal, provers, 0) {
-        if (mailbox == address(0)) revert MessengerContractCannotBeZeroAddress();
+        bytes32[] memory provers,
+        Domain[] memory domainConfig
+    ) MessageBridgeProver(portal, provers, 0, domainConfig) {
+        if (mailbox == address(0))
+            revert MessengerContractCannotBeZeroAddress();
         MAILBOX = mailbox;
     }
 
@@ -79,7 +82,29 @@ contract HyperProver is IMessageRecipient, MessageBridgeProver, Semver {
         // Validate sender is not zero
         if (sender == bytes32(0)) revert MessageSenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(sender, messageBody);
+        _handleCrossChainMessage(uint64(origin), sender, messageBody);
+    }
+
+    /**
+     * @notice Resolves the trusted chainId for a Hyperlane origin domain.
+     * @dev Hyperlane domains equal chainId by convention on mainnet EVM, so an
+     *      unregistered domain falls back to `originDomain` itself, keeping that
+     *      common case zero-config. The fallback only fails CLOSED for honest
+     *      senders: an honest source Inbox emits header == block.chainid, which
+     *      the base cross-check rejects whenever that differs from the domain
+     *      number. A COMPROMISED whitelisted sender on a chain whose Hyperlane
+     *      domain D is left unregistered can still spoof any chain whose real
+     *      chainId equals D (a crafted header == D passes the check). Therefore
+     *      every supported chain with domain != chainId MUST be registered as an
+     *      explicit exception in the deploy domain config (see the domain-config
+     *      deploy checklist in scripts/README.md); the explicit entry then wins
+     *      over the fallback and removes the collision.
+     */
+    function _resolveChainId(
+        uint64 originDomain
+    ) internal view override returns (uint64) {
+        uint64 chainId = _chainIdByDomain[originDomain];
+        return chainId != 0 ? chainId : originDomain;
     }
 
     /**

@@ -56,6 +56,42 @@ interface IMessageBridgeProver is IProver {
     error InvalidProofMessage();
 
     /**
+     * @notice A trusted mapping entry from a bridge origin domain to its EVM chainId
+     * @param domain Bridge-specific origin domain id (Hyperlane domain / LZ eid / CCIP selector / Meta domain)
+     * @param chainId EVM chainId that `domain` corresponds to
+     */
+    struct Domain {
+        uint64 domain;
+        uint64 chainId;
+    }
+
+    /// @notice Origin domain has no registered chainId (strict-map provers)
+    error UnregisteredDomain(uint64 domain);
+
+    /// @notice Self-reported header chainId does not match the chainId resolved from the origin domain
+    error ChainIdMismatch(uint64 domain, uint64 expected, uint64 actual);
+
+    /// @notice Domain config entry is invalid (zero domain, zero chainId, a
+    ///         duplicate domain, or a duplicate chainId)
+    error InvalidDomainConfig(uint64 domain, uint64 chainId);
+
+    /// @notice Emitted once per accepted (domain -> chainId) entry at construction
+    /// @dev Lets the immutable, setter-less domain map be audited after deploy
+    /// @param domain Bridge-specific origin domain id
+    /// @param chainId EVM chainId that `domain` is trusted to represent
+    event DomainRegistered(uint64 indexed domain, uint64 indexed chainId);
+
+    /**
+     * @notice Refund of overpaid/forwarded ETH to the caller failed
+     * @dev Raised when the low-level refund call reverts. The recipient is
+     *      always the tx caller, so this surfaces a genuinely-unpayable
+     *      caller loudly instead of silently stranding their ETH as dust.
+     * @param recipient Address the refund was being sent to
+     * @param amount Amount of ETH that could not be refunded
+     */
+    error RefundFailed(address recipient, uint256 amount);
+
+    /**
      * @notice Calculates the fee required for message dispatch
      * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
      *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own

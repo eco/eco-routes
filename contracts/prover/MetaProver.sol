@@ -54,13 +54,15 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param minGasLimit Minimum gas limit for cross-chain messages (200k if zero)
+     * @param domainConfig Trusted origin-domain-to-chainId mapping entries
      */
     constructor(
         address router,
         address portal,
         bytes32[] memory provers,
-        uint256 minGasLimit
-    ) MessageBridgeProver(portal, provers, minGasLimit) {
+        uint256 minGasLimit,
+        Domain[] memory domainConfig
+    ) MessageBridgeProver(portal, provers, minGasLimit, domainConfig) {
         if (router == address(0)) revert MessengerContractCannotBeZeroAddress();
 
         ROUTER = IMetalayerRouterExt(router);
@@ -87,7 +89,29 @@ contract MetaProver is IMetalayerRecipient, MessageBridgeProver, Semver {
         // Validate sender is not zero
         if (sender == bytes32(0)) revert MessageSenderCannotBeZeroAddress();
 
-        _handleCrossChainMessage(sender, message);
+        _handleCrossChainMessage(uint64(origin), sender, message);
+    }
+
+    /**
+     * @notice Resolves the trusted chainId for a Metalayer origin domain.
+     * @dev Metalayer domains equal chainId by convention on mainnet EVM, so an
+     *      unregistered domain falls back to `originDomain` itself, keeping that
+     *      common case zero-config. The fallback only fails CLOSED for honest
+     *      senders: an honest source Inbox emits header == block.chainid, which
+     *      the base cross-check rejects whenever that differs from the domain
+     *      number. A COMPROMISED whitelisted sender on a chain whose Metalayer
+     *      domain D is left unregistered can still spoof any chain whose real
+     *      chainId equals D (a crafted header == D passes the check). Therefore
+     *      every supported chain with domain != chainId MUST be registered as an
+     *      explicit exception in the deploy domain config (see the domain-config
+     *      deploy checklist in scripts/README.md); the explicit entry then wins
+     *      over the fallback and removes the collision.
+     */
+    function _resolveChainId(
+        uint64 originDomain
+    ) internal view override returns (uint64) {
+        uint64 chainId = _chainIdByDomain[originDomain];
+        return chainId != 0 ? chainId : originDomain;
     }
 
     /**

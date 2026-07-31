@@ -122,6 +122,21 @@ Eco Routes implements [ERC-7683](https://eips.ethereum.org/EIPS/eip-7683), the s
 
 Users can create and fulfill intents through both our native interface and the standardized ERC-7683 interface, providing maximum flexibility and compatibility.
 
+#### Event Semantics for Integrators
+
+`Open` and `IntentPublished` are **at-least-once, not exactly-once**. Indexers, solvers, and quoting services **must dedupe on `orderId` / `intentHash`** and must not treat each event as a distinct order.
+
+Publishing is intentionally idempotent. `orderId` equals the intent hash — a pure function of `(destination, routeHash, rewardHash)` — and once an intent's rewards are escrowed, re-publishing that same intent re-emits its announcement and leaves the escrow untouched. The two events come from different entry points: `Open` is emitted only by `open` and `openFor`, while `IntentPublished` is emitted by `publish`, `publishAndFund`, `publishAndFundFor`, `open`, and `openFor` (the last four call `publish` internally). `fund` and `fundFor` are the exception — they escrow an existing intent _without_ publishing, so they never emit `IntentPublished`. `open` and `publish` require no signature and impose no deadline, so anyone can re-announce a funded intent for the cost of gas — until it reaches a terminal state (`Withdrawn` or `Refunded`), after which publishing reverts. This is a deliberate property: it lets an intent escrowed via `fund`/`fundFor` be announced afterwards, and lets an announcement missed during an outage or reorg be replayed for indexers.
+
+Two consequences worth calling out:
+
+- **A gasless signature is replayable until `openDeadline` — or until the intent reaches a terminal state.** `GaslessCrossChainOrder.nonce` is covered by the EIP-712 digest but is not consumed on-chain, so resubmitting the same `openFor` payload succeeds and emits `Open` again. Replay stops once `openDeadline` passes _or_ the intent becomes `Withdrawn`/`Refunded`, whichever comes first, after which it reverts.
+- **`nonce` does not distinguish orders.** Two signed gasless orders differing only by `nonce` resolve to the same `orderId` and the same single escrow. To create genuinely distinct intents, vary a field that feeds the hash — normally `route.salt`.
+
+A re-announcement of an already-funded intent emits `IntentPublished` with **no matching `IntentFunded`** — funding short-circuits on the `Funded` status before its emit. An indexer that correlates the `IntentPublished`/`IntentFunded` pair therefore sees an orphaned `IntentPublished` on every replay and must tolerate it rather than block waiting for the funding half.
+
+Duplicate announcements never move funds twice (escrow is single-shot) and duplicate fills are rejected on the destination chain, so the risk is confined to off-chain consumers that count events rather than deduping them. A consumer that double-counts can double-quote or attempt a fill it cannot win.
+
 ## Setup & Installation
 
 ### Prerequisites

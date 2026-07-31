@@ -7,6 +7,7 @@ import {ILayerZeroEndpointV2} from "../../contracts/interfaces/layerzero/ILayerZ
 import {ILayerZeroReceiver} from "../../contracts/interfaces/layerzero/ILayerZeroReceiver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(address => address) public delegates;
@@ -196,12 +197,26 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory trustedProvers = new bytes32[](1);
         trustedProvers[0] = SOURCE_PROVER;
 
+        // LayerZero uses the strict base resolver (no domain==chainId fallback),
+        // so every srcEid exercised anywhere in this suite against `lzProver`
+        // must be registered explicitly: SOURCE_CHAIN_ID (10) for most tests,
+        // plus 1 and 2 for the wrong/correct-chain challenge tests below.
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](3);
+        domains[0] = IMessageBridgeProver.Domain({
+            domain: uint64(SOURCE_CHAIN_ID),
+            chainId: uint64(SOURCE_CHAIN_ID)
+        });
+        domains[1] = IMessageBridgeProver.Domain({domain: 1, chainId: 1});
+        domains[2] = IMessageBridgeProver.Domain({domain: 2, chainId: 2});
+
         lzProver = new LayerZeroProver(
             address(endpoint),
             address(this), // delegate
             address(portal),
             trustedProvers,
-            200000
+            200000,
+            domains
         );
     }
 
@@ -316,6 +331,52 @@ contract LayerZeroProverTest is BaseTest {
         assertFalse(lzProver.allowInitializePath(origin));
     }
 
+    function testLzReceive_revertsOnUnregisteredEid() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = keccak256("intent");
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        // srcEid = 11 is not registered in setUp (only 10, 1, 2 are).
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(11),
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+        bytes memory message = _formatMessageWithChainId(
+            11,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(endpoint));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.UnregisteredDomain.selector,
+                uint64(11)
+            )
+        );
+        lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
+    }
+
+    function testAllowInitializePath_requiresRegisteredEid() public view {
+        // Whitelisted sender + registered eid (10) -> true.
+        ILayerZeroReceiver.Origin memory ok = ILayerZeroReceiver.Origin({
+            srcEid: uint32(10),
+            sender: SOURCE_PROVER,
+            nonce: 0
+        });
+        assertTrue(lzProver.allowInitializePath(ok));
+
+        // Whitelisted sender but unregistered eid (11) -> false.
+        ILayerZeroReceiver.Origin memory badEid = ILayerZeroReceiver.Origin({
+            srcEid: uint32(11),
+            sender: SOURCE_PROVER,
+            nonce: 0
+        });
+        assertFalse(lzProver.allowInitializePath(badEid));
+    }
+
     function test_constructor_revertEndpointZero() public {
         bytes32[] memory trustedProvers = new bytes32[](1);
         trustedProvers[0] = SOURCE_PROVER;
@@ -326,7 +387,8 @@ contract LayerZeroProverTest is BaseTest {
             address(this), // delegate
             address(portal),
             trustedProvers,
-            200000
+            200000,
+            new IMessageBridgeProver.Domain[](0)
         );
     }
 
@@ -663,17 +725,27 @@ contract LayerZeroProverTest is BaseTest {
     /// @dev Deploy a prover wired to a RecordingMockLayerZeroEndpoint.
     function _deployWithRecordingEndpoint()
         internal
-        returns (RecordingMockLayerZeroEndpoint recEndpoint, LayerZeroProver recProver)
+        returns (
+            RecordingMockLayerZeroEndpoint recEndpoint,
+            LayerZeroProver recProver
+        )
     {
         recEndpoint = new RecordingMockLayerZeroEndpoint();
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = SOURCE_PROVER;
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](1);
+        domains[0] = IMessageBridgeProver.Domain({
+            domain: uint64(SOURCE_CHAIN_ID),
+            chainId: uint64(SOURCE_CHAIN_ID)
+        });
         recProver = new LayerZeroProver(
             address(recEndpoint),
             address(this), // delegate
             address(portal),
             provers,
-            200_000
+            200_000,
+            domains
         );
     }
 
@@ -814,18 +886,30 @@ contract LayerZeroProverTest is BaseTest {
 
         uint256 numIntents = 10;
         bytes32[] memory intentHashes = new bytes32[](numIntents);
-        bytes32[] memory claimants   = new bytes32[](numIntents);
+        bytes32[] memory claimants = new bytes32[](numIntents);
         for (uint256 i = 0; i < numIntents; i++) {
             intentHashes[i] = keccak256(abi.encodePacked("fix-intent", i));
-            claimants[i]    = bytes32(uint256(uint160(address(this))));
+            claimants[i] = bytes32(uint256(uint160(address(this))));
         }
 
-        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        // Use SOURCE_CHAIN_ID as the embedded header (not the block.chainid-hardcoded
+        // encodeProofs() helper), since this same blob is replayed below via
+        // deliverWithGas() with origin.srcEid = SOURCE_CHAIN_ID; the header must
+        // match the origin domain under the new cross-check.
+        bytes memory encodedProofs = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes,
+            claimants
+        );
         // Caller sets gasLimit to 0; old code would have clamped to MIN_GAS_LIMIT (200k)
         // and OOG'd on delivery. New code computes the floor from batch size.
         bytes memory data = _encodeProverData(SOURCE_PROVER, 0);
 
-        uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = recProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
         recProver.prove{value: fee}(
@@ -845,8 +929,13 @@ contract LayerZeroProverTest is BaseTest {
         }
 
         uint256 expectedFloor = recProver.MIN_GAS_LIMIT() +
-            numIntents * recProver.GAS_PER_INTENT();
-        assertEq(uint256(gasInOptions), expectedFloor, "options gas must equal computed floor");
+            numIntents *
+            recProver.GAS_PER_INTENT();
+        assertEq(
+            uint256(gasInOptions),
+            expectedFloor,
+            "options gas must equal computed floor"
+        );
 
         ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
             srcEid: uint32(SOURCE_CHAIN_ID),
@@ -861,7 +950,10 @@ contract LayerZeroProverTest is BaseTest {
             encodedProofs,
             recProver.MIN_GAS_LIMIT() // 200k — would have been the old floor
         );
-        assertFalse(failedWithOldGas, "old MIN_GAS_LIMIT must be insufficient for 10 intents");
+        assertFalse(
+            failedWithOldGas,
+            "old MIN_GAS_LIMIT must be insufficient for 10 intents"
+        );
 
         // ── Deliver with the new gas floor — must succeed ────────────────────
         bool success = recEndpoint.deliverWithGas(
@@ -870,7 +962,10 @@ contract LayerZeroProverTest is BaseTest {
             encodedProofs,
             gasInOptions
         );
-        assertTrue(success, "delivery must succeed with the computed gas floor");
+        assertTrue(
+            success,
+            "delivery must succeed with the computed gas floor"
+        );
 
         // All 10 proofs recorded.
         for (uint256 i = 0; i < numIntents; i++) {
@@ -893,14 +988,21 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 2
         });
 
-        bytes memory encodedProofs2 = encodeProofs(intentHashes2, claimants2);
+        bytes memory encodedProofs2 = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes2,
+            claimants2
+        );
         bool success2 = recEndpoint.deliverWithGas(
             address(recProver),
             origin2,
             encodedProofs2,
             recProver.MIN_GAS_LIMIT() + recProver.GAS_PER_INTENT()
         );
-        assertTrue(success2, "follow-up message must be deliverable - path is not wedged");
+        assertTrue(
+            success2,
+            "follow-up message must be deliverable - path is not wedged"
+        );
     }
 
     /**
@@ -930,10 +1032,19 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
         bytes memory data = _encodeProverData(SOURCE_PROVER, 0); // gasLimit=0 → floor applies
 
-        uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = recProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
-        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        recProver.prove{value: fee}(
+            address(portal),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
 
         bytes memory opts = recEndpoint.lastOptions();
 
@@ -952,15 +1063,25 @@ contract LayerZeroProverTest is BaseTest {
         assertEq(optLen, 17, "option data length must be 17");
 
         // [5] executor option type = 1 (lzReceive gas)
-        assertEq(uint8(opts[5]), 1, "executor option type must be 1 (lzReceive)");
+        assertEq(
+            uint8(opts[5]),
+            1,
+            "executor option type must be 1 (lzReceive)"
+        );
 
         // [6..21] gas as uint128 — upper 16 bytes of a 32-byte mload at byte offset 6
         uint128 gasInOptions;
         assembly {
             gasInOptions := shr(128, mload(add(add(opts, 0x20), 6)))
         }
-        uint256 expectedGas = recProver.MIN_GAS_LIMIT() + numIntents * recProver.GAS_PER_INTENT();
-        assertEq(uint256(gasInOptions), expectedGas, "gas must equal MIN_GAS_LIMIT + n*GAS_PER_INTENT");
+        uint256 expectedGas = recProver.MIN_GAS_LIMIT() +
+            numIntents *
+            recProver.GAS_PER_INTENT();
+        assertEq(
+            uint256(gasInOptions),
+            expectedGas,
+            "gas must equal MIN_GAS_LIMIT + n*GAS_PER_INTENT"
+        );
     }
 
     /**
@@ -987,15 +1108,26 @@ contract LayerZeroProverTest is BaseTest {
         bytes memory data = _encodeProverData(SOURCE_PROVER, 0);
 
         // fetchFee must succeed — floor is applied, no revert.
-        uint256 fee = recProver.fetchFee(uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        uint256 fee = recProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
         vm.deal(address(portal), fee);
         vm.prank(address(portal));
-        recProver.prove{value: fee}(address(portal), uint64(SOURCE_CHAIN_ID), encodedProofs, data);
+        recProver.prove{value: fee}(
+            address(portal),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
 
         // Gas in options must equal the floor (MIN_GAS_LIMIT + 1*GAS_PER_INTENT).
         bytes memory opts = recEndpoint.lastOptions();
         uint128 gasInOptions;
-        assembly { gasInOptions := shr(128, mload(add(add(opts, 0x20), 6))) }
+        assembly {
+            gasInOptions := shr(128, mload(add(add(opts, 0x20), 6)))
+        }
         assertEq(
             uint256(gasInOptions),
             recProver.MIN_GAS_LIMIT() + recProver.GAS_PER_INTENT(),
@@ -1041,5 +1173,118 @@ contract LayerZeroProverTest is BaseTest {
             recEndpoint.delegates(address(recProver)) == address(recProver),
             "lzProver is its own delegate with no skip capability"
         );
+    }
+
+    /**
+     * @notice prove() must REVERT when the refund recipient cannot receive ETH
+     * @dev V9 parity test (mirrors HyperProver): _sendRefund reverts with
+     *      RefundFailed instead of swallowing the failed low-level call. The refund
+     *      recipient is always the tx caller, so reverting surfaces a
+     *      genuinely-unpayable caller loudly rather than stranding their ETH as
+     *      dust in the prover.
+     */
+    function testProveRevertsWhenRefundRecipientRejects() public {
+        LZRejectingRefundRecipient recipient = new LZRejectingRefundRecipient();
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = keccak256("intent");
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 200000);
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
+
+        uint256 overpayment = 1 ether;
+        vm.deal(address(portal), fee + overpayment);
+
+        // Refund of the overpayment (msg.value - fee) cannot be delivered to the
+        // rejecting recipient, so prove() must revert with RefundFailed.
+        vm.prank(address(portal));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.RefundFailed.selector,
+                address(recipient),
+                overpayment
+            )
+        );
+        lzProver.prove{value: fee + overpayment}(
+            address(recipient),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
+    }
+
+    /**
+     * @notice prove() must DELIVER the refund to a legitimate smart-account solver
+     *         whose receive() accepts but spends more than the 2300-gas stipend.
+     * @dev V9 parity test (mirrors HyperProver): the uncapped all-gas refund call
+     *      both avoids DoS and forwards enough gas for the refund to succeed, so
+     *      the overpayment is returned to the solver rather than stranded.
+     */
+    function testProveRefundDeliveredToGasHungryRecipient() public {
+        LZGasHungryRefundRecipient recipient = new LZGasHungryRefundRecipient();
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = keccak256("intent");
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        bytes memory data = _encodeProverData(SOURCE_PROVER, 200000);
+        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        uint256 fee = lzProver.fetchFee(
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
+
+        uint256 overpayment = 1 ether;
+        vm.deal(address(portal), fee + overpayment);
+        uint256 recipientBalanceBefore = address(recipient).balance;
+
+        // Recipient accepts ETH but burns >2300 gas (two cold SSTOREs). The refund
+        // of the overpayment must still be delivered.
+        vm.prank(address(portal));
+        lzProver.prove{value: fee + overpayment}(
+            address(recipient),
+            uint64(SOURCE_CHAIN_ID),
+            encodedProofs,
+            data
+        );
+
+        assertEq(
+            address(recipient).balance,
+            recipientBalanceBefore + overpayment
+        );
+    }
+}
+
+/// @notice Refund recipient that rejects ETH, forcing the RefundFailed revert.
+contract LZRejectingRefundRecipient {
+    receive() external payable {
+        revert("LZRejectingRefundRecipient: I reject your ETH");
+    }
+
+    fallback() external payable {
+        revert("LZRejectingRefundRecipient: I reject your ETH");
+    }
+}
+
+/// @notice Refund recipient that ACCEPTS ETH but consumes far more than the
+/// 2300-gas transfer() stipend (two cold SSTOREs) in receive(), simulating a
+/// legitimate smart-account / EIP-7702 solver wallet. Proves the uncapped
+/// all-gas refund call delivers the refund instead of OOG-reverting.
+contract LZGasHungryRefundRecipient {
+    uint256 private slot0;
+    uint256 private slot1;
+
+    receive() external payable {
+        slot0 = block.number;
+        slot1 = block.timestamp;
     }
 }

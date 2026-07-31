@@ -23,7 +23,8 @@ contract ProverInterfaceTest is Test {
         testMessageBridgeProver = new TestMessageBridgeProver(
             portal,
             whitelistedProvers,
-            200000
+            200000,
+            new IMessageBridgeProver.Domain[](0)
         );
     }
 
