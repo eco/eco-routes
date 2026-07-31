@@ -121,7 +121,9 @@ describe('MetaProver Test', (): void => {
       await ethers.getContractFactory('TestMetaRouter')
     ).deploy(ethers.ZeroAddress)
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy(ethers.ZeroAddress)
+    const portal = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
@@ -135,6 +137,7 @@ describe('MetaProver Test', (): void => {
       await inbox.getAddress(),
       [], // provers array
       200000, // default gas limit
+      [], // domainConfig
     )
 
     return {
@@ -171,6 +174,7 @@ describe('MetaProver Test', (): void => {
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         ],
         200000,
+        [],
       )
 
       expect(
@@ -188,7 +192,13 @@ describe('MetaProver Test', (): void => {
     it('should return the correct proof type', async () => {
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(
+        await router.getAddress(),
+        await inbox.getAddress(),
+        [],
+        200000,
+        [],
+      )
       expect(await metaProver.getProofType()).to.equal('Meta')
     })
   })
@@ -205,6 +215,7 @@ describe('MetaProver Test', (): void => {
           ethers.zeroPadValue(await router.getAddress(), 32),
         ],
         200000,
+        [],
       )
     })
 
@@ -325,6 +336,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
     })
 
@@ -679,7 +691,13 @@ describe('MetaProver Test', (): void => {
     it('should correctly call dispatch in the prove method', async () => {
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(
+        await router.getAddress(),
+        await inbox.getAddress(),
+        [],
+        200000,
+        [],
+      )
 
       const sourceChainId = 12345
       const intentHashes = [
@@ -710,7 +728,13 @@ describe('MetaProver Test', (): void => {
     it('should gracefully return funds to sender if they overpay', async () => {
       metaProver = await (
         await ethers.getContractFactory('MetaProver')
-      ).deploy(await router.getAddress(), await inbox.getAddress(), [], 200000)
+      ).deploy(
+        await router.getAddress(),
+        await inbox.getAddress(),
+        [],
+        200000,
+        [],
+      )
 
       const sourceChainId = 12345
       const intentHashes = [ethers.keccak256('0x1234')]
@@ -742,6 +766,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
 
       await router.setProcessor(await metaProver.getAddress())
@@ -789,6 +814,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
 
       const portal = await ethers.getContractAt(
@@ -901,6 +927,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
 
       await router.setProcessor(await metaProver.getAddress())
@@ -1024,6 +1051,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
 
       await expect(
@@ -1050,6 +1078,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
 
       await router.setProcessor(await metaProver.getAddress())
@@ -1233,6 +1262,7 @@ describe('MetaProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [],
       )
 
       await expect(

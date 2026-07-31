@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {LocalProver} from "../../contracts/prover/LocalProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
@@ -161,10 +162,36 @@ contract LocalProverTest is Test {
     }
 
     // A2. prove()
-    function test_prove_IsNoOp() public {
-        // Test: prove() is a no-op (doesn't revert)
+    function test_prove_ZeroValueZeroSenderDoesNotRevert() public {
+        // Zero value and zero sender both hit the early returns; prove() must
+        // not revert. (The name was previously "IsNoOp", but prove() is no
+        // longer a pure no-op -- it refunds forwarded value; see the tests below.)
         localProver.prove{value: 0}(address(0), 0, "", "");
-        // Should not revert
+    }
+
+    /// @notice A direct prove() carrying value but a zero `sender` hits the early
+    ///         return: the value is retained, prove() does not revert, and no event
+    ///         is emitted. Unreachable via Inbox.prove (sender is msg.sender there),
+    ///         but reachable by a direct caller.
+    function test_prove_ZeroSenderWithValueIsRetainedNoRevert() public {
+        uint256 sent = 1 ether;
+        vm.deal(address(this), sent);
+
+        vm.recordLogs();
+        // Must not revert even though there is no address to refund to
+        localProver.prove{value: sent}(address(0), CHAIN_ID, "", "");
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(
+            logs.length,
+            0,
+            "no event should be emitted for a zero sender"
+        );
+        assertEq(
+            address(localProver).balance,
+            sent,
+            "zero-sender value should be retained, not burned or reverted"
+        );
     }
 
     // A3. challengeIntentProof()
@@ -765,6 +792,253 @@ contract LocalProverTest is Test {
         assertEq(token.balanceOf(solver), solverBalanceBefore);
     }
 
+    // ============ PAR-403: prove() must not retain forwarded native ============
+
+    /**
+     * @notice Overpaid ETH routed through Inbox.prove must return to the payer.
+     * @dev Inbox.prove forwards `address(this).balance` to the prover. LocalProver.prove
+     *      is payable with an empty body, so before the fix the excess silently stuck in
+     *      LocalProver instead of returning to the solver who paid it.
+     */
+    function test_prove_RefundsOverpaidNativeToSender() public {
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        uint256 overpay = 1 ether;
+        uint256 solverBalanceBefore = solver.balance;
+
+        vm.prank(solver);
+        portal.fulfillAndProve{value: overpay}(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            bytes32(uint256(uint160(solver))),
+            address(localProver),
+            CHAIN_ID,
+            ""
+        );
+
+        // route.nativeAmount is 0, so the entire overpayment is excess
+        assertEq(
+            address(localProver).balance,
+            0,
+            "LocalProver retained the solver's overpayment"
+        );
+        assertEq(
+            address(portal).balance,
+            0,
+            "Portal retained the solver's overpayment"
+        );
+        assertEq(
+            solver.balance,
+            solverBalanceBefore,
+            "solver was not made whole"
+        );
+    }
+
+    /**
+     * @notice ETH forwarded to prove() must not be handed to an unrelated third party.
+     * @dev flashFulfill pays out `address(this).balance`, so any balance LocalProver
+     *      retains from a previous prove() call is paid to the *next* flashFulfill
+     *      caller's claimant -- a different intent, a different party.
+     */
+    function test_prove_OverpaidNativeIsNotPaidToNextFlashFulfillClaimant()
+        public
+    {
+        // --- Intent A: fulfilled via fulfillAndProve with an overpayment ---
+        Intent memory intentA = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
+        (bytes32 intentHashA, ) = _publishAndFundIntent(intentA);
+
+        uint256 overpay = 3 ether;
+
+        vm.prank(solver);
+        portal.fulfillAndProve{value: overpay}(
+            intentHashA,
+            intentA.route,
+            keccak256(abi.encode(intentA.reward)),
+            bytes32(uint256(uint160(solver))),
+            address(localProver),
+            CHAIN_ID,
+            ""
+        );
+
+        // --- Intent B: an unrelated intent, flash-fulfilled by an unrelated party ---
+        Intent memory intentB = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
+        intentB.route.salt = bytes32(uint256(2));
+        _publishAndFundIntent(intentB);
+
+        address attacker = makeAddr("attacker");
+        uint256 attackerBalanceBefore = attacker.balance;
+
+        // Linchpin of the repro: flashFulfill forwards `address(this).balance`
+        // into fulfill and pays the remainder to the claimant, so it inherits
+        // anything stranded here. The fix refunded intent A's overpayment during
+        // its prove(), leaving nothing to sweep. On unfixed code this is the
+        // 3-ether overpay, and the delta assertion below would catch the attacker
+        // inheriting it -- so the leak is pinned from both ends.
+        assertEq(
+            address(localProver).balance,
+            0,
+            "intent A's overpayment remained stranded in LocalProver"
+        );
+
+        vm.prank(attacker);
+        localProver.flashFulfill(
+            intentB.route,
+            intentB.reward,
+            bytes32(uint256(uint160(attacker)))
+        );
+
+        // The attacker is entitled to intent B's reward and nothing more
+        assertEq(
+            attacker.balance - attackerBalanceBefore,
+            REWARD_AMOUNT,
+            "unrelated flashFulfill caller inherited the solver's overpayment"
+        );
+    }
+
+    /**
+     * @notice A refund recipient that rejects ETH makes prove() REVERT.
+     * @dev The refund uses an uncapped all-gas call and reverts with RefundFailed
+     *      on failure rather than swallowing it. The refund recipient is always the
+     *      tx caller (Inbox.prove passes msg.sender), so the revert only self-DoSes
+     *      that caller -- there is no third-party griefing vector -- and it surfaces
+     *      a genuinely-unpayable caller loudly instead of stranding their ETH as dust.
+     */
+    function test_prove_RevertsWhenRefundRecipientRejects() public {
+        RejectingProveCaller caller = new RejectingProveCaller();
+
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        // Fulfill first so prove() passes the IntentNotFulfilled check
+        vm.prank(solver);
+        portal.fulfill(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward)),
+            bytes32(uint256(uint160(solver)))
+        );
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        uint256 sent = 1 ether;
+        vm.deal(address(this), sent);
+
+        // The rejecting caller cannot receive the refund, so prove() reverts with
+        // RefundFailed(recipient, amount) and the whole proving tx unwinds.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ILocalProver.RefundFailed.selector,
+                address(caller),
+                sent
+            )
+        );
+        caller.callProve{value: sent}(
+            portal,
+            address(localProver),
+            CHAIN_ID,
+            intentHashes
+        );
+    }
+
+    /**
+     * @notice prove() must actually DELIVER the refund to a legitimate smart-account
+     *         recipient whose receive() spends more than transfer()'s 2300-gas stipend.
+     * @dev The uncapped all-gas call forwards enough gas for a receive() that writes
+     *      storage (a common smart-account / EIP-7702 pattern) to succeed, so the
+     *      forwarded value is returned rather than stranded or reverted. This proves
+     *      the swallow->revert change did not sacrifice smart-account deliverability.
+     */
+    function test_prove_RefundDeliveredToGasHungryRecipient() public {
+        GasHungryRefundRecipient recipient = new GasHungryRefundRecipient();
+
+        uint256 sent = 1 ether;
+        vm.deal(address(this), sent);
+        uint256 recipientBalanceBefore = address(recipient).balance;
+
+        // Uncapped call forwards all gas, so the storage-writing receive() succeeds
+        // and prove() does not revert.
+        localProver.prove{value: sent}(address(recipient), CHAIN_ID, "", "");
+
+        assertEq(
+            address(recipient).balance,
+            recipientBalanceBefore + sent,
+            "refund was not delivered to the gas-hungry recipient"
+        );
+        assertEq(
+            address(localProver).balance,
+            0,
+            "refund should not be retained when delivery succeeds"
+        );
+    }
+
+    /**
+     * @notice prove() must only ever return the value it was sent, never pre-existing balance.
+     * @dev LocalProver can legitimately hold ETH (e.g. a claimant that rejected a
+     *      flashFulfill payout). A refund keyed off `address(this).balance` instead of
+     *      `msg.value` would let anyone drain it with a dust-valued prove() call.
+     *
+     *      This is a design guard, not a bug reproduction: on unfixed main it fails as
+     *      `999999999999999999 != 1000000000000000000` -- the dust caller is down the
+     *      1 wei it sent, never up a drained balance -- so the bug it guards against was
+     *      never actually present, unlike the two overpayment-leak repros above.
+     */
+    function test_prove_DoesNotDrainPreExistingBalance() public {
+        // Strand ETH in LocalProver via a claimant that rejects the payout
+        RejectEth rejecter = new RejectEth();
+        Intent memory strandedIntent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
+        _publishAndFundIntent(strandedIntent);
+
+        vm.prank(solver);
+        localProver.flashFulfill(
+            strandedIntent.route,
+            strandedIntent.reward,
+            bytes32(uint256(uint160(address(rejecter))))
+        );
+        assertEq(address(localProver).balance, REWARD_AMOUNT);
+
+        // A direct dust-valued prove() must return only the dust
+        address attacker = makeAddr("attacker2");
+        vm.deal(attacker, 1 ether);
+        uint256 attackerBalanceBefore = attacker.balance;
+
+        vm.prank(attacker);
+        localProver.prove{value: 1 wei}(attacker, CHAIN_ID, "", "");
+
+        assertEq(
+            attacker.balance,
+            attackerBalanceBefore,
+            "attacker extracted pre-existing LocalProver balance"
+        );
+        assertEq(
+            address(localProver).balance,
+            REWARD_AMOUNT,
+            "pre-existing balance was drained"
+        );
+    }
+
     // ============ Helper Functions ============
 
     function _encodeProofs(
@@ -807,4 +1081,43 @@ contract LocalProverTest is Test {
  */
 contract RejectEth {
     // No receive() or fallback() - will reject all ETH transfers
+}
+
+/**
+ * @notice Refund recipient that ACCEPTS ETH but consumes far more than the
+ *         2300-gas transfer() stipend (two cold SSTOREs) in receive(), simulating a
+ *         legitimate smart-account / EIP-7702 solver wallet.
+ * @dev Used to prove the uncapped all-gas refund call actually delivers the refund
+ *      instead of OOG-reverting under a stingy gas stipend.
+ */
+contract GasHungryRefundRecipient {
+    uint256 private slot0;
+    uint256 private slot1;
+
+    receive() external payable {
+        // Two cold SSTOREs cost well over the 2300-gas transfer() stipend.
+        slot0 = block.number;
+        slot1 = block.timestamp;
+    }
+}
+
+/**
+ * @notice Helper contract that calls Portal.prove but cannot receive ETH
+ * @dev Used to verify a failed refund reverts the proving transaction (RefundFailed)
+ */
+contract RejectingProveCaller {
+    function callProve(
+        Portal portal,
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes
+    ) external payable {
+        portal.prove{value: msg.value}(
+            prover,
+            sourceChainDomainID,
+            intentHashes,
+            ""
+        );
+    }
+    // No receive() or fallback() - will reject the refund
 }

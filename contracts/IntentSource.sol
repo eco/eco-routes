@@ -62,7 +62,19 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     /**
      * @notice Ensures intent can be funded based on its current status
      * @dev Prevents funding of intents that are already withdrawn or refunded
-     *      Allows funding of Initial or Funded status intents (for partial funding)
+     *      Allows funding of Initial status intents (including top-ups after
+     *      partial funding, which leaves the status Initial)
+     * @dev On `Status.Funded` this RETURNS rather than reverting, skipping the
+     *      decorated body entirely. That makes escrow single-shot: a repeated
+     *      fund/fundFor/publishAndFund/publishAndFundFor/open/openFor for an
+     *      already-escrowed intent is a successful no-op instead of a second
+     *      charge, and the caller needs no balance or allowance to make that
+     *      call. For the `*For` variants (`fundFor`, `publishAndFundFor`) the
+     *      surprising consequence is that the named `funder` is silently NOT
+     *      charged on this early return -- the call succeeds having moved none
+     *      of their funds. Callers that need to know whether they were the one
+     *      to escrow the intent must compare {getRewardStatus} before and after;
+     *      a successful call alone does not imply funds moved.
      * @param intentHash Hash of the intent to validate for funding eligibility
      */
     modifier onlyFundable(bytes32 intentHash) {
@@ -247,6 +259,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Creates an intent without funding
+     * @dev Permissionless and repeatable: any caller may publish, and doing so
+     *      for an intent that already exists (`Initial` or `Funded`) succeeds
+     *      and re-emits `IntentPublished`. Only `Withdrawn`/`Refunded` intents
+     *      are rejected. See the {IIntentSource-IntentPublished} NatSpec.
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
      * @param reward The reward structure containing distribution details
@@ -592,7 +608,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     /**
      * @notice Core OriginSettler implementation for atomic intent creation and funding
      * @dev Implements the unified _publishAndFund method for both open() and openFor()
-     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Escrow is single-shot via the {onlyFundable} state check in _fundIntent:
+     *      for an already-`Funded` intent this re-publishes and escrows nothing
+     *      further, rather than reverting or charging twice
      * @dev Handles excess ETH return for optimal user experience
      * @param destination Destination chain ID for the intent
      * @param route Encoded route data for the intent as bytes
@@ -822,7 +840,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Validates and publishes a new intent
+     * @notice Validates that an intent may be (re-)published
+     * @dev Only `Withdrawn` and `Refunded` are terminal. `Initial` and `Funded`
+     *      both pass, so publishing is idempotent and repeatable rather than
+     *      once-per-intent -- see the {IIntentSource-IntentPublished} NatSpec
+     *      for the at-least-once event contract this creates.
      * @param intentHash Hash of the intent
      */
     function _validatePublish(bytes32 intentHash) internal view {

@@ -16,9 +16,14 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 /**
  * @title Eco7683OriginSettler
  * @notice Entry point to Eco Protocol via EIP-7683 with enhanced security and compliance
- * @dev Provides ERC-7683 compliant interface with replay protection and proper validation
- * @dev Features comprehensive validation, unified funding logic, and ERC-7683 compliance
- * @dev Includes protection against replay attacks through vault state checking
+ * @dev Provides ERC-7683 compliant interface with comprehensive validation and
+ *      unified funding logic
+ * @dev Vault state checking makes escrow single-shot: an intent whose rewards are
+ *      already escrowed cannot be charged a second time, whichever entry point is
+ *      used. Note that this protects *funds*, not *events* -- opening an
+ *      already-funded intent again still re-emits `Open`. See the `Open` NatSpec in
+ *      {IOriginSettler} for the at-least-once event contract that consumers must
+ *      handle.
  */
 abstract contract OriginSettler is IOriginSettler, EIP712 {
     using SafeERC20 for IERC20;
@@ -68,11 +73,18 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @notice Opens an Eco intent on behalf of a user via ERC-7683 gasless interface
      * @dev Called by a solver to create an intent for a user using their signature
      * @dev Performs comprehensive validation: deadlines, signature, chain IDs, origin settler
-     * @dev Includes replay protection through vault state checking in _publishAndFund
      * @dev Uses unified _publishAndFund method for consistent behavior and security
      * @dev Accepts ERC-1271 contract-wallet signatures; see the trust assumption
      *      documented on {_validateOrderSig}
      * @dev Emits Open event with ERC-7683 compliant ResolvedCrossChainOrder
+     * @dev `order.nonce` is covered by the EIP-712 digest but is NOT consumed
+     *      on-chain, so a signature remains usable until `openDeadline` passes
+     *      or the intent reaches a terminal state (`Withdrawn`/`Refunded`),
+     *      whichever comes first, after which a replay reverts. Escrow is still
+     *      single-shot (see the vault state check in `_publishAndFund`), but a
+     *      replay does re-emit `Open`. `order.nonce` also does not feed
+     *      `orderId`, so two orders differing only by nonce denote the same
+     *      intent. See the `Open` NatSpec in {IOriginSettler}.
      * @param order the GaslessCrossChainOrder containing user signature and OrderData
      * @param signature the user's EIP-712 signature authorizing the intent creation
      */
@@ -107,10 +119,18 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
             revert InvalidCreatorBinding(order.user, orderData.reward.creator);
         }
 
-        // No need for replay protection here
-        // 1) If intent is Withdrawn or Refunded, it fails
+        // No nonce is consumed here, and none is needed to keep the escrow safe:
+        // 1) If intent is Withdrawn or Refunded, it reverts
         // 2) If intent is Initial, it publishes and funds
-        // 3) If intent is Funded, it publishes and does nothing
+        // 3) If intent is Funded, it publishes and escrows nothing further
+        //
+        // Case 3 is what makes a replayed signature harmless to funds -- but it
+        // is NOT free of side effects: the `Open` below is emitted again under
+        // the same orderId. That duplicate is not specific to this signature
+        // path (`open` and `publish` re-announce a funded intent with no
+        // signature and no deadline at all), so it is a property of idempotent
+        // publishing rather than of the gasless nonce. Consumers dedupe on
+        // orderId; see the `Open` NatSpec in {IOriginSettler}.
         (bytes32 orderId, ) = _publishAndFund(
             orderData.destination,
             orderData.route,
@@ -283,7 +303,8 @@ abstract contract OriginSettler is IOriginSettler, EIP712 {
      * @notice Core method for atomic intent creation and funding
      * @dev Abstract method to be implemented by derived contracts for unified intent handling
      * @dev Must handle both publishing new intents and funding existing ones atomically
-     * @dev Provides replay protection through vault state checking in funding logic
+     * @dev Must make escrow single-shot via vault state checking, so that calling
+     *      this for an already-funded intent succeeds without escrowing again
      * @dev Should handle excess ETH return for optimal user experience
      * @dev Called by both open() and openFor() methods to ensure consistent behavior
      * @param destination Destination chain ID where the intent should be executed

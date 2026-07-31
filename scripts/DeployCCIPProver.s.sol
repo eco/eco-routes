@@ -5,6 +5,7 @@ import "forge-std/Script.sol";
 import {CCIPProver} from "../contracts/prover/CCIPProver.sol";
 import {ICreate3Deployer} from "../contracts/tools/ICreate3Deployer.sol";
 import {AddressConverter} from "../contracts/libs/AddressConverter.sol";
+import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
 /**
  * @title DeployCCIPProver
@@ -45,6 +46,15 @@ contract DeployCCIPProver is Script {
         address create3Deployer = 0xC6BAd1EbAF366288dA6FB5689119eDd695a66814;
         uint256 minGasLimit = 200000;
 
+        // CCIP uses a strict domain->chainId map (no domain==chainId
+        // fallback), so this config must enumerate every origin the prover
+        // should accept. Optional at parse time (empty string -> empty
+        // array) so an unset var doesn't revert here, but an empty/partial
+        // map will make CCIPProver reject unlisted origins at runtime.
+        IMessageBridgeProver.Domain[] memory domainConfig = _parseDomainConfig(
+            vm.envOr("CCIP_DOMAIN_CONFIG", string(""))
+        );
+
         console.log("=== CCIPProver Deployment Configuration ===");
         console.log("Chain ID:", chainId);
         console.log("CCIP Router:", ccipRouter);
@@ -61,11 +71,8 @@ contract DeployCCIPProver is Script {
 
         // Step 1: Predict the deployed address
         bytes memory creationCode = type(CCIPProver).creationCode;
-        address predictedAddress = ICreate3Deployer(create3Deployer).deployedAddress(
-            creationCode,
-            deployer,
-            salt
-        );
+        address predictedAddress = ICreate3Deployer(create3Deployer)
+            .deployedAddress(creationCode, deployer, salt);
 
         console.log("Predicted CCIPProver address:", predictedAddress);
 
@@ -82,7 +89,8 @@ contract DeployCCIPProver is Script {
             ccipRouter,
             portal,
             provers,
-            minGasLimit
+            minGasLimit,
+            domainConfig
         );
 
         // Step 4: Combine creation code with constructor arguments
@@ -99,21 +107,66 @@ contract DeployCCIPProver is Script {
         vm.stopBroadcast();
 
         // Verify deployment
-        require(deployedAddress == predictedAddress, "Deployed address mismatch");
+        require(
+            deployedAddress == predictedAddress,
+            "Deployed address mismatch"
+        );
 
         console.log("");
         console.log("=== Deployment Successful ===");
         console.log("CCIPProver deployed at:", deployedAddress);
         console.log("Proof Type:", CCIPProver(deployedAddress).getProofType());
         console.log("Router:", CCIPProver(deployedAddress).ROUTER());
-        console.log("Min Gas Limit:", CCIPProver(deployedAddress).MIN_GAS_LIMIT());
-        console.log("Whitelist Size:", CCIPProver(deployedAddress).getWhitelistSize());
+        console.log(
+            "Min Gas Limit:",
+            CCIPProver(deployedAddress).MIN_GAS_LIMIT()
+        );
+        console.log(
+            "Whitelist Size:",
+            CCIPProver(deployedAddress).getWhitelistSize()
+        );
 
         // Verify the prover whitelisted itself
         require(
-            CCIPProver(deployedAddress).isWhitelisted(deployedAddress.toBytes32()),
+            CCIPProver(deployedAddress).isWhitelisted(
+                deployedAddress.toBytes32()
+            ),
             "Self-whitelisting verification failed"
         );
         console.log("Self-whitelisting: VERIFIED");
+    }
+
+    // Parses a comma-separated list of "domain:chainId" pairs into a
+    // Domain[] array. An empty string yields an empty array.
+    function _parseDomainConfig(
+        string memory csv
+    ) internal pure returns (IMessageBridgeProver.Domain[] memory) {
+        if (bytes(csv).length == 0) {
+            return new IMessageBridgeProver.Domain[](0);
+        }
+
+        string[] memory pairs = vm.split(csv, ",");
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](pairs.length);
+
+        for (uint256 i = 0; i < pairs.length; i++) {
+            string[] memory parts = vm.split(pairs[i], ":");
+            require(
+                parts.length == 2,
+                "Invalid domain config entry: expected domain:chainId"
+            );
+            uint256 domain = vm.parseUint(parts[0]);
+            uint256 chainId = vm.parseUint(parts[1]);
+            // Reject > uint64 max instead of silently truncating: a truncated
+            // value could register a bogus but non-zero (trusted) domain mapping.
+            require(domain <= type(uint64).max, "domain exceeds uint64");
+            require(chainId <= type(uint64).max, "chainId exceeds uint64");
+            domains[i] = IMessageBridgeProver.Domain({
+                domain: uint64(domain),
+                chainId: uint64(chainId)
+            });
+        }
+
+        return domains;
     }
 }

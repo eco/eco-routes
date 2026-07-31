@@ -43,13 +43,15 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
      * @param portal The portal contract address
      * @param provers Array of whitelisted prover addresses (as bytes32)
      * @param minGasLimit Minimum gas limit for cross-chain messages (0 for default 200k)
+     * @param domainConfig Trusted origin-domain-to-chainId mapping entries
      */
     constructor(
         address router,
         address portal,
         bytes32[] memory provers,
-        uint256 minGasLimit
-    ) MessageBridgeProver(portal, provers, minGasLimit) {
+        uint256 minGasLimit,
+        Domain[] memory domainConfig
+    ) MessageBridgeProver(portal, provers, minGasLimit, domainConfig) {
         if (router == address(0)) revert MessengerContractCannotBeZeroAddress();
         ROUTER = router;
     }
@@ -88,7 +90,11 @@ contract CCIPProver is MessageBridgeProver, IAny2EVMMessageReceiver, Semver {
         if (sender == address(0)) revert MessageSenderCannotBeZeroAddress();
 
         // Handle the cross-chain message using base contract functionality
-        _handleCrossChainMessage(sender.toBytes32(), message.data);
+        _handleCrossChainMessage(
+            message.sourceChainSelector,
+            sender.toBytes32(),
+            message.data
+        );
     }
 
     /**

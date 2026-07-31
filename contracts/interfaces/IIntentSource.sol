@@ -72,6 +72,31 @@ interface IIntentSource {
 
     /**
      * @notice Signals the creation of a new cross-chain intent
+     * @dev AT-LEAST-ONCE. `intentHash` identifies an intent uniquely, but a
+     *      single intent can emit `IntentPublished` more than once. Consumers
+     *      MUST be idempotent on `intentHash`.
+     *
+     *      `publish` is permissionless, takes no deadline, and only rejects
+     *      intents that are already `Withdrawn` or `Refunded`. Re-publishing an
+     *      `Initial` or `Funded` intent therefore succeeds and re-emits this
+     *      event; when the intent is already `Funded` the escrow is left
+     *      untouched, so the repeat is free to trigger and moves no funds. This
+     *      is deliberate -- it lets an intent escrowed via `fund`/`fundFor` be
+     *      announced after the fact, and lets a missed announcement be replayed
+     *      for indexers.
+     *
+     *      `publishAndFund`, `publishAndFundFor`, `open`, and `openFor` each
+     *      call `publish` internally, so all five entry points re-emit this
+     *      event -- not just `publish`. By contrast `fund`/`fundFor` escrow an
+     *      existing intent WITHOUT publishing, so they never emit
+     *      `IntentPublished`. (`Open` is separate and is emitted only by `open`
+     *      and `openFor`; see {IOriginSettler}.)
+     *
+     *      A re-emission on an already-`Funded` intent is NOT accompanied by a
+     *      matching {IntentFunded}: `_fundIntent`/`_fundIntentFor` short-circuit
+     *      via {onlyFundable} before their `IntentFunded` emit. An indexer that
+     *      correlates the `IntentPublished`/`IntentFunded` pair therefore sees an
+     *      orphan `IntentPublished` on every replay and must tolerate it.
      * @param intentHash Unique identifier of the intent
      * @param destination Destination chain ID
      * @param route Encoded route data for the destination chain

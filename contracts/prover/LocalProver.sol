@@ -112,21 +112,54 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
 
     /**
      * @notice Initiates proving of intents on the same chain
-     * @dev This function is a no-op for same-chain proving since proofs are created immediately upon fulfillment.
-     *      WARNING: This function is payable for compatibility but does not use ETH. Any ETH sent to this
-     *      function will remain in the contract and be distributed to the next flashFulfill caller as part
-     *      of their reward. Do not send ETH to this function.
+     * @dev No proof is required for same-chain intents; they are proven on fulfillment.
+     *
+     *      Native value handling: Inbox.prove forwards the Portal's entire balance to the
+     *      prover, so this function receives whatever the caller overpaid (overpaying is the
+     *      normal pattern for fulfillAndProve, which allows extra value for bridge fees).
+     *      Same-chain proving has no fee, so the whole amount is returned to `sender`.
+     *      Without this refund the value would sit here and be paid out to the next
+     *      flashFulfill caller's claimant -- an unrelated third party.
+     *
+     *      Only `msg.value` is refunded, never `address(this).balance`. LocalProver can
+     *      legitimately hold ETH from a flashFulfill payout that its claimant rejected;
+     *      refunding the full balance would let anyone drain it with a dust-valued call.
+     *
+     *      The refund uses an uncapped, all-gas low-level call (not transfer()'s 2300-gas
+     *      cap) so any smart-contract recipient -- a smart account or EIP-7702 wallet whose
+     *      receive() needs more than the stipend -- can still receive it. On failure it
+     *      reverts with RefundFailed rather than swallowing the boolean: reverting surfaces
+     *      a genuinely-unpayable recipient loudly instead of silently stranding the caller's
+     *      ETH here as dust with no sweep path. The refund recipient is always the tx caller
+     *      (Inbox.prove passes msg.sender), so a revert only self-DoSes that caller -- there
+     *      is no third-party griefing vector.
+     *
+     *      Reentrancy remains contained: the refund is the terminal statement of prove()
+     *      (no post-refund state) and Inbox.prove has already drained the Portal's balance
+     *      before this call, so a reentrant flashFulfill would carry no extra value and could
+     *      at most collect rewards the caller was already entitled to (flashFulfill is
+     *      permissionless regardless).
+     *
+     *      A zero `sender` (or zero value) hits the early return: no refund, no revert, value
+     *      retained. A zero `sender` is unreachable via Inbox.prove (sender is msg.sender
+     *      there) but a direct caller can produce it; mirrors the sender guard used by the
+     *      message-bridge provers.
+     * @param sender Address that initiated the proving request; receives the refund
      */
     function prove(
-        address /* sender */,
+        address sender,
         uint64 /* sourceChainId */,
         bytes calldata /* encodedProofs */,
         bytes calldata /* data */
     ) external payable {
-        // solhint-disable-line no-empty-blocks
-        // this function is intentionally left empty as no proof is required
-        // for same-chain proving
-        // should not revert lest it be called with fulfillandprove
+        // Nothing forwarded, or no address to refund to: nothing to do.
+        if (msg.value == 0 || sender == address(0)) return;
+
+        // Uncapped all-gas call so smart-account / EIP-7702 recipients receive;
+        // revert on failure rather than stranding the caller's ETH here as dust.
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool ok, ) = payable(sender).call{value: msg.value}("");
+        if (!ok) revert RefundFailed(sender, msg.value);
     }
 
     /**

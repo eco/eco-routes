@@ -18,6 +18,16 @@ interface ILocalProver is IProver {
     error InvalidProver();
     error NativeTransferFailed();
 
+    /**
+     * @notice Refund of forwarded native value to the caller failed
+     * @dev prove() reverts with this when the forwarded ETH cannot be delivered
+     *      to `sender`. The recipient is always the tx caller (Inbox.prove passes
+     *      msg.sender), so a revert only self-DoSes that caller.
+     * @param recipient Address the refund was attempted to
+     * @param amount Amount of native tokens that could not be refunded
+     */
+    error RefundFailed(address recipient, uint256 amount);
+
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/

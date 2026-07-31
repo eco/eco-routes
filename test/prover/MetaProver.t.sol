@@ -33,7 +33,8 @@ contract MetaProverTest is BaseTest {
             metaRouterAddress,
             address(portal),
             provers,
-            100000 // default gas limit
+            100000, // default gas limit
+            new IMessageBridgeProver.Domain[](0)
         );
 
         vm.stopPrank();
@@ -421,6 +422,127 @@ contract MetaProverTest is BaseTest {
         IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
         assertEq(proof.claimant, claimant);
         assertEq(proof.destination, uint32(block.chainid));
+    }
+
+    function testHandle_defaultDomainEqualsChainId() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(metaRouter));
+        metaProver.handle(
+            1,
+            bytes32(uint256(uint160(address(prover)))),
+            messageBody,
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+
+        assertEq(
+            metaProver.provenIntents(intentHashes[0]).destination,
+            uint64(1)
+        );
+    }
+
+    function testHandle_revertsWhenHeaderMismatchesOrigin() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+        // origin = 1 but header claims chain 999
+        bytes memory messageBody = _formatMessageWithChainId(
+            999,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(metaRouter));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.ChainIdMismatch.selector,
+                uint64(1),
+                uint64(1),
+                uint64(999)
+            )
+        );
+        metaProver.handle(
+            1,
+            bytes32(uint256(uint160(address(prover)))),
+            messageBody,
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+    }
+
+    function testHandle_exceptionOverridesDefault() public {
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](1);
+        domains[0] = IMessageBridgeProver.Domain({domain: 7, chainId: 1234});
+        vm.prank(deployer);
+        MetaProver p = new MetaProver(
+            metaRouterAddress,
+            address(portal),
+            _singleProver(address(prover)),
+            100000,
+            domains
+        );
+
+        assertEq(p.chainIdByDomain(7), uint64(1234));
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+        bytes memory body = _formatMessageWithChainId(
+            1234,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(metaRouter));
+        p.handle(
+            7,
+            bytes32(uint256(uint160(address(prover)))),
+            body,
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+        assertEq(p.provenIntents(intentHashes[0]).destination, uint64(1234));
+    }
+
+    function testConstructor_revertsOnInvalidDomainConfig() public {
+        IMessageBridgeProver.Domain[]
+            memory dup = new IMessageBridgeProver.Domain[](2);
+        dup[0] = IMessageBridgeProver.Domain({domain: 5, chainId: 5});
+        dup[1] = IMessageBridgeProver.Domain({domain: 5, chainId: 6}); // duplicate domain
+        vm.prank(deployer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.InvalidDomainConfig.selector,
+                uint64(5),
+                uint64(6)
+            )
+        );
+        new MetaProver(
+            metaRouterAddress,
+            address(portal),
+            _singleProver(address(prover)),
+            100000,
+            dup
+        );
+    }
+
+    function _singleProver(
+        address a
+    ) internal pure returns (bytes32[] memory arr) {
+        arr = new bytes32[](1);
+        arr[0] = bytes32(uint256(uint160(a)));
     }
 
     function testSupportsInterface() public view {
