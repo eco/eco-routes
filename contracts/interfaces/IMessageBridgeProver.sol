@@ -56,6 +56,16 @@ interface IMessageBridgeProver is IProver {
     error InvalidProofMessage();
 
     /**
+     * @notice Refund of overpaid/forwarded ETH to the caller failed
+     * @dev Raised when the low-level refund call reverts. The recipient is
+     *      always the tx caller, so this surfaces a genuinely-unpayable
+     *      caller loudly instead of silently stranding their ETH as dust.
+     * @param recipient Address the refund was being sent to
+     * @param amount Amount of ETH that could not be refunded
+     */
+    error RefundFailed(address recipient, uint256 amount);
+
+    /**
      * @notice Calculates the fee required for message dispatch
      * @param domainID Bridge-specific domain ID of the source chain (where the intent was created).
      *        IMPORTANT: This is NOT the chain ID. Each bridge provider uses their own
