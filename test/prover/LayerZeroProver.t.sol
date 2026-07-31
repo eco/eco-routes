@@ -197,12 +197,26 @@ contract LayerZeroProverTest is BaseTest {
         bytes32[] memory trustedProvers = new bytes32[](1);
         trustedProvers[0] = SOURCE_PROVER;
 
+        // LayerZero uses the strict base resolver (no domain==chainId fallback),
+        // so every srcEid exercised anywhere in this suite against `lzProver`
+        // must be registered explicitly: SOURCE_CHAIN_ID (10) for most tests,
+        // plus 1 and 2 for the wrong/correct-chain challenge tests below.
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](3);
+        domains[0] = IMessageBridgeProver.Domain({
+            domain: uint64(SOURCE_CHAIN_ID),
+            chainId: uint64(SOURCE_CHAIN_ID)
+        });
+        domains[1] = IMessageBridgeProver.Domain({domain: 1, chainId: 1});
+        domains[2] = IMessageBridgeProver.Domain({domain: 2, chainId: 2});
+
         lzProver = new LayerZeroProver(
             address(endpoint),
             address(this), // delegate
             address(portal),
             trustedProvers,
-            200000
+            200000,
+            domains
         );
     }
 
@@ -317,6 +331,52 @@ contract LayerZeroProverTest is BaseTest {
         assertFalse(lzProver.allowInitializePath(origin));
     }
 
+    function testLzReceive_revertsOnUnregisteredEid() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = keccak256("intent");
+        bytes32[] memory claimants = new bytes32[](1);
+        claimants[0] = bytes32(uint256(uint160(address(this))));
+
+        // srcEid = 11 is not registered in setUp (only 10, 1, 2 are).
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(11),
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+        bytes memory message = _formatMessageWithChainId(
+            11,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(endpoint));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.UnregisteredDomain.selector,
+                uint64(11)
+            )
+        );
+        lzProver.lzReceive(origin, bytes32(0), message, address(0), "");
+    }
+
+    function testAllowInitializePath_requiresRegisteredEid() public view {
+        // Whitelisted sender + registered eid (10) -> true.
+        ILayerZeroReceiver.Origin memory ok = ILayerZeroReceiver.Origin({
+            srcEid: uint32(10),
+            sender: SOURCE_PROVER,
+            nonce: 0
+        });
+        assertTrue(lzProver.allowInitializePath(ok));
+
+        // Whitelisted sender but unregistered eid (11) -> false.
+        ILayerZeroReceiver.Origin memory badEid = ILayerZeroReceiver.Origin({
+            srcEid: uint32(11),
+            sender: SOURCE_PROVER,
+            nonce: 0
+        });
+        assertFalse(lzProver.allowInitializePath(badEid));
+    }
+
     function test_constructor_revertEndpointZero() public {
         bytes32[] memory trustedProvers = new bytes32[](1);
         trustedProvers[0] = SOURCE_PROVER;
@@ -327,7 +387,8 @@ contract LayerZeroProverTest is BaseTest {
             address(this), // delegate
             address(portal),
             trustedProvers,
-            200000
+            200000,
+            new IMessageBridgeProver.Domain[](0)
         );
     }
 
@@ -672,12 +733,19 @@ contract LayerZeroProverTest is BaseTest {
         recEndpoint = new RecordingMockLayerZeroEndpoint();
         bytes32[] memory provers = new bytes32[](1);
         provers[0] = SOURCE_PROVER;
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](1);
+        domains[0] = IMessageBridgeProver.Domain({
+            domain: uint64(SOURCE_CHAIN_ID),
+            chainId: uint64(SOURCE_CHAIN_ID)
+        });
         recProver = new LayerZeroProver(
             address(recEndpoint),
             address(this), // delegate
             address(portal),
             provers,
-            200_000
+            200_000,
+            domains
         );
     }
 
@@ -824,7 +892,15 @@ contract LayerZeroProverTest is BaseTest {
             claimants[i] = bytes32(uint256(uint160(address(this))));
         }
 
-        bytes memory encodedProofs = encodeProofs(intentHashes, claimants);
+        // Use SOURCE_CHAIN_ID as the embedded header (not the block.chainid-hardcoded
+        // encodeProofs() helper), since this same blob is replayed below via
+        // deliverWithGas() with origin.srcEid = SOURCE_CHAIN_ID; the header must
+        // match the origin domain under the new cross-check.
+        bytes memory encodedProofs = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes,
+            claimants
+        );
         // Caller sets gasLimit to 0; old code would have clamped to MIN_GAS_LIMIT (200k)
         // and OOG'd on delivery. New code computes the floor from batch size.
         bytes memory data = _encodeProverData(SOURCE_PROVER, 0);
@@ -912,7 +988,11 @@ contract LayerZeroProverTest is BaseTest {
             nonce: 2
         });
 
-        bytes memory encodedProofs2 = encodeProofs(intentHashes2, claimants2);
+        bytes memory encodedProofs2 = _formatMessageWithChainId(
+            SOURCE_CHAIN_ID,
+            intentHashes2,
+            claimants2
+        );
         bool success2 = recEndpoint.deliverWithGas(
             address(recProver),
             origin2,

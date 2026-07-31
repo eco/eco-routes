@@ -14,6 +14,7 @@ import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
+import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract Deploy is Script {
     bytes constant CREATE3_DEPLOYER_BYTECODE =
@@ -51,6 +52,9 @@ contract Deploy is Script {
         bytes32[] metaCrossVmProvers;
         bytes32[] layerZeroCrossVmProvers;
         bytes32[] polymerCrossVmProvers;
+        IMessageBridgeProver.Domain[] hyperDomainConfig;
+        IMessageBridgeProver.Domain[] metaDomainConfig;
+        IMessageBridgeProver.Domain[] layerZeroDomainConfig;
         address deployer;
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
@@ -114,6 +118,21 @@ contract Deploy is Script {
         } catch {
             ctx.polymerCrossVmProvers = new bytes32[](0);
         }
+
+        // Per-bridge origin domain -> chainId config (optional; empty string
+        // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
+        // their config is exceptions-only and may legitimately be empty.
+        // LayerZero uses a strict map and must enumerate every accepted origin.
+        ctx.hyperDomainConfig = _parseDomainConfig(
+            vm.envOr("HYPER_DOMAIN_CONFIG", string(""))
+        );
+        ctx.metaDomainConfig = _parseDomainConfig(
+            vm.envOr("META_DOMAIN_CONFIG", string(""))
+        );
+        ctx.layerZeroDomainConfig = _parseDomainConfig(
+            vm.envOr("LAYERZERO_DOMAIN_CONFIG", string(""))
+        );
+
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         bool hasExistingPortal = ctx.existingPortal != address(0);
@@ -282,7 +301,8 @@ contract Deploy is Script {
         ctx.hyperProverConstructorArgs = abi.encode(
             ctx.mailbox,
             ctx.portal,
-            provers
+            provers,
+            ctx.hyperDomainConfig
         );
 
         bytes memory hyperProverBytecode = abi.encodePacked(
@@ -325,7 +345,8 @@ contract Deploy is Script {
             ctx.router,
             ctx.portal,
             provers,
-            minGasLimit
+            minGasLimit,
+            ctx.metaDomainConfig
         );
 
         bytes memory metaProverBytecode = abi.encodePacked(
@@ -369,7 +390,8 @@ contract Deploy is Script {
             ctx.layerZeroDelegate,
             ctx.portal,
             provers,
-            minGasLimit
+            minGasLimit,
+            ctx.layerZeroDomainConfig
         );
 
         bytes memory layerZeroProverBytecode = abi.encodePacked(
@@ -428,6 +450,40 @@ contract Deploy is Script {
             block.chainid == TRON_MAINNET_CHAIN_ID ||
             block.chainid == TRON_SHASTA_CHAIN_ID ||
             block.chainid == TRON_NILE_CHAIN_ID;
+    }
+
+    // Parses a comma-separated list of "domain:chainId" pairs into a
+    // Domain[] array. An empty string yields an empty array.
+    function _parseDomainConfig(
+        string memory csv
+    ) internal pure returns (IMessageBridgeProver.Domain[] memory) {
+        if (bytes(csv).length == 0) {
+            return new IMessageBridgeProver.Domain[](0);
+        }
+
+        string[] memory pairs = vm.split(csv, ",");
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](pairs.length);
+
+        for (uint256 i = 0; i < pairs.length; i++) {
+            string[] memory parts = vm.split(pairs[i], ":");
+            require(
+                parts.length == 2,
+                "Invalid domain config entry: expected domain:chainId"
+            );
+            uint256 domain = vm.parseUint(parts[0]);
+            uint256 chainId = vm.parseUint(parts[1]);
+            // Reject > uint64 max instead of silently truncating: a truncated
+            // value could register a bogus but non-zero (trusted) domain mapping.
+            require(domain <= type(uint64).max, "domain exceeds uint64");
+            require(chainId <= type(uint64).max, "chainId exceeds uint64");
+            domains[i] = IMessageBridgeProver.Domain({
+                domain: uint64(domain),
+                chainId: uint64(chainId)
+            });
+        }
+
+        return domains;
     }
 
     function getContractSalt(

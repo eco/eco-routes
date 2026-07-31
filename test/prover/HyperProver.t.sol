@@ -80,7 +80,8 @@ contract HyperProverTest is BaseTest {
         hyperProver = new HyperProver(
             address(mailbox),
             address(portal),
-            provers
+            provers,
+            new IMessageBridgeProver.Domain[](0)
         );
 
         // Set the hyperProver as the processor for the mailbox
@@ -295,6 +296,257 @@ contract HyperProverTest is BaseTest {
         assertEq(proof.destination, CHAIN_ID);
     }
 
+    function testHandle_defaultDomainEqualsChainId() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+        bytes memory messageBody = _formatMessageWithChainId(
+            1,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(mailbox));
+        hyperProver.handle(
+            1,
+            bytes32(uint256(uint160(whitelistedProver))),
+            messageBody
+        );
+
+        assertEq(
+            hyperProver.provenIntents(intentHashes[0]).destination,
+            uint64(1)
+        );
+    }
+
+    function testHandle_revertsWhenHeaderMismatchesOrigin() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+        // origin = 1 but header claims chain 999
+        bytes memory messageBody = _formatMessageWithChainId(
+            999,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(mailbox));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.ChainIdMismatch.selector,
+                uint64(1),
+                uint64(1),
+                uint64(999)
+            )
+        );
+        hyperProver.handle(
+            1,
+            bytes32(uint256(uint160(whitelistedProver))),
+            messageBody
+        );
+    }
+
+    function testHandle_exceptionOverridesDefault() public {
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](1);
+        domains[0] = IMessageBridgeProver.Domain({domain: 7, chainId: 1234});
+        vm.prank(deployer);
+        HyperProver p = new HyperProver(
+            address(mailbox),
+            address(portal),
+            _singleProver(whitelistedProver),
+            domains
+        );
+
+        assertEq(p.chainIdByDomain(7), uint64(1234));
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+        bytes memory body = _formatMessageWithChainId(
+            1234,
+            intentHashes,
+            claimants
+        );
+
+        vm.prank(address(mailbox));
+        p.handle(7, bytes32(uint256(uint160(whitelistedProver))), body);
+        assertEq(p.provenIntents(intentHashes[0]).destination, uint64(1234));
+    }
+
+    function testConstructor_revertsOnInvalidDomainConfig() public {
+        IMessageBridgeProver.Domain[]
+            memory dup = new IMessageBridgeProver.Domain[](2);
+        dup[0] = IMessageBridgeProver.Domain({domain: 5, chainId: 5});
+        dup[1] = IMessageBridgeProver.Domain({domain: 5, chainId: 6}); // duplicate domain
+        vm.prank(deployer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.InvalidDomainConfig.selector,
+                uint64(5),
+                uint64(6)
+            )
+        );
+        new HyperProver(
+            address(mailbox),
+            address(portal),
+            _singleProver(whitelistedProver),
+            dup
+        );
+    }
+
+    function testConstructor_revertsOnDuplicateChainId() public {
+        IMessageBridgeProver.Domain[]
+            memory dup = new IMessageBridgeProver.Domain[](2);
+        dup[0] = IMessageBridgeProver.Domain({domain: 7, chainId: 100});
+        dup[1] = IMessageBridgeProver.Domain({domain: 8, chainId: 100}); // duplicate chainId
+        vm.prank(deployer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.InvalidDomainConfig.selector,
+                uint64(8),
+                uint64(100)
+            )
+        );
+        new HyperProver(
+            address(mailbox),
+            address(portal),
+            _singleProver(whitelistedProver),
+            dup
+        );
+    }
+
+    function testConstructor_emitsDomainRegisteredPerEntry() public {
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](1);
+        domains[0] = IMessageBridgeProver.Domain({domain: 7, chainId: 1234});
+        vm.expectEmit(true, true, false, false);
+        emit IMessageBridgeProver.DomainRegistered(uint64(7), uint64(1234));
+        vm.prank(deployer);
+        new HyperProver(
+            address(mailbox),
+            address(portal),
+            _singleProver(whitelistedProver),
+            domains
+        );
+    }
+
+    // Generic domain != chainId case: a chain whose bridge domain differs from
+    // its chainId MUST be registered as an exception, because the
+    // domain == chainId fallback cannot resolve it safely. With the exception
+    // registered, an honest proof (header == the registered chainId) is
+    // accepted, and a spoof that reports the raw domain number as the chainId
+    // fails closed. The values below are arbitrary illustrative numbers chosen
+    // only so that domain != chainId; they do not correspond to any real chain.
+    function testHandle_registeredDomainExceptionResolvesAndBlocksSpoof()
+        public
+    {
+        uint64 exampleDomain = 424242; // arbitrary bridge domain (illustrative)
+        uint64 exampleChainId = 999999; // arbitrary chainId != domain (illustrative)
+
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](1);
+        domains[0] = IMessageBridgeProver.Domain({
+            domain: exampleDomain,
+            chainId: exampleChainId
+        });
+        vm.prank(deployer);
+        HyperProver p = new HyperProver(
+            address(mailbox),
+            address(portal),
+            _singleProver(whitelistedProver),
+            domains
+        );
+        assertEq(p.chainIdByDomain(exampleDomain), exampleChainId);
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Honest proof: header == the registered chainId -> accepted.
+        bytes memory body = _formatMessageWithChainId(
+            exampleChainId,
+            intentHashes,
+            claimants
+        );
+        vm.prank(address(mailbox));
+        p.handle(
+            uint32(exampleDomain),
+            bytes32(uint256(uint160(whitelistedProver))),
+            body
+        );
+        assertEq(p.provenIntents(intentHashes[0]).destination, exampleChainId);
+
+        // Spoof: a compromised sender reports the raw domain number as the
+        // chainId. The registered exception resolves to exampleChainId, so the
+        // header cross-check rejects it.
+        bytes32[] memory ih2 = new bytes32[](1);
+        ih2[0] = keccak256("other-intent");
+        bytes memory spoof = _formatMessageWithChainId(
+            exampleDomain,
+            ih2,
+            claimants
+        );
+        vm.prank(address(mailbox));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.ChainIdMismatch.selector,
+                exampleDomain,
+                exampleChainId,
+                exampleDomain
+            )
+        );
+        p.handle(
+            uint32(exampleDomain),
+            bytes32(uint256(uint160(whitelistedProver))),
+            spoof
+        );
+    }
+
+    // Characterizes the generic unregistered-domain fallback: when a domain is
+    // NOT registered as an exception, the domain==chainId fallback treats the
+    // domain number itself as the chainId, so the prover records
+    // destination == the domain number. For a chain whose domain equals its
+    // chainId this is the correct result; a chain whose domain differs from its
+    // chainId must therefore be registered (see scripts/README.md). The value
+    // below is an arbitrary illustrative domain, not tied to any real chain.
+    function testHandle_unregisteredDomainFallsBackToDomainNumber() public {
+        uint64 exampleDomain = 424242; // default hyperProver has no domain config
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory body = _formatMessageWithChainId(
+            exampleDomain,
+            intentHashes,
+            claimants
+        );
+        vm.prank(address(mailbox));
+        hyperProver.handle(
+            uint32(exampleDomain),
+            bytes32(uint256(uint160(whitelistedProver))),
+            body
+        );
+        // Fallback resolved domain -> domain, so destination is the domain number.
+        assertEq(
+            hyperProver.provenIntents(intentHashes[0]).destination,
+            exampleDomain
+        );
+    }
+
+    function _singleProver(
+        address a
+    ) internal pure returns (bytes32[] memory arr) {
+        arr = new bytes32[](1);
+        arr[0] = bytes32(uint256(uint160(a)));
+    }
+
     function testHandleRejectsNonWhitelistedSender() public {
         bytes32[] memory intentHashes = new bytes32[](1);
         bytes32[] memory claimants = new bytes32[](1);
@@ -324,7 +576,13 @@ contract HyperProverTest is BaseTest {
         claimants[0] = bytes32(uint256(uint160(claimant)));
 
         // Manually create the encoded message with abi.encode to simulate mismatched arrays
-        bytes memory messageBody = abi.encode(intentHashes, claimants);
+        // Prepend a valid 8-byte chain-ID header (matching origin=1) so the new
+        // origin/header cross-check passes and the malformed body underneath
+        // still trips ArrayLengthMismatch as originally intended.
+        bytes memory messageBody = abi.encodePacked(
+            uint64(1),
+            abi.encode(intentHashes, claimants)
+        );
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         vm.prank(address(mailbox));
@@ -473,9 +731,14 @@ contract HyperProverTest is BaseTest {
             proverData
         );
 
-        // Now simulate the message being received back by calling handle
+        // Now simulate the message being received back by calling handle.
+        // The TestMailbox already auto-delivered this exact proof once during
+        // prove() above (mailbox.setProcessor(hyperProver) loops back
+        // synchronously), so this is a duplicate delivery on the same
+        // origin/header (both block.chainid) — it must hit the
+        // already-proven skip, not a fresh chainId mismatch.
         bytes memory messageBody = _formatMessageWithChainId(
-            1,
+            block.chainid,
             intentHashes,
             claimants
         );
@@ -659,8 +922,14 @@ contract HyperProverTest is BaseTest {
     }
 
     function testHandleWithInvalidMessageFormat() public {
-        // Create invalid message with wrong length (not multiple of 64)
-        bytes memory invalidMessage = new bytes(63); // Should be multiple of 64
+        // Create invalid message with wrong length (not multiple of 64).
+        // Prepend a valid 8-byte header (matching origin=1) so the new
+        // origin/header cross-check passes and the malformed body underneath
+        // still trips ArrayLengthMismatch as originally intended.
+        bytes memory invalidMessage = abi.encodePacked(
+            uint64(1),
+            new bytes(63) // Should be multiple of 64
+        );
 
         vm.expectRevert(IProver.ArrayLengthMismatch.selector);
         vm.prank(address(mailbox));

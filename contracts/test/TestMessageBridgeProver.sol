@@ -23,8 +23,9 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     constructor(
         address _portal,
         bytes32[] memory _provers,
-        uint256 _gasLimit
-    ) MessageBridgeProver(_portal, _provers, _gasLimit) {}
+        uint256 _gasLimit,
+        IMessageBridgeProver.Domain[] memory _domainConfig
+    ) MessageBridgeProver(_portal, _provers, _gasLimit, _domainConfig) {}
 
     /**
      * @notice Legacy test method for backward compatibility
@@ -69,7 +70,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
      */
     function prove(
         address _sender,
-        uint64,
+        uint64 _domainID,
         bytes calldata _encodedProofs,
         bytes calldata /* _data */
     ) external payable override {
@@ -83,6 +84,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
 
         // Process the intent proofs using the base implementation
         _handleCrossChainMessage(
+            _domainID,
             bytes32(uint256(uint160(_sender))),
             _encodedProofs
         );

@@ -67,14 +67,16 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @param portal Address of Portal contract
      * @param provers Array of trusted prover addresses (as bytes32 for cross-VM compatibility)
      * @param minGasLimit Minimum gas limit for cross-chain messages (200k if zero)
+     * @param domainConfig Trusted origin-domain-to-chainId mapping entries
      */
     constructor(
         address endpoint,
         address delegate,
         address portal,
         bytes32[] memory provers,
-        uint256 minGasLimit
-    ) MessageBridgeProver(portal, provers, minGasLimit) {
+        uint256 minGasLimit,
+        Domain[] memory domainConfig
+    ) MessageBridgeProver(portal, provers, minGasLimit, domainConfig) {
         if (endpoint == address(0)) revert EndpointCannotBeZeroAddress();
         if (delegate == address(0)) revert DelegateCannotBeZeroAddress();
 
@@ -126,7 +128,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             revert MessageSenderCannotBeZeroAddress();
         }
 
-        _handleCrossChainMessage(origin.sender, message);
+        _handleCrossChainMessage(uint64(origin.srcEid), origin.sender, message);
     }
 
     /**
@@ -137,8 +139,9 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     function allowInitializePath(
         Origin calldata origin
     ) external view override returns (bool) {
-        // Check if sender is whitelisted
-        return isWhitelisted(origin.sender);
+        return
+            isWhitelisted(origin.sender) &&
+            _chainIdByDomain[origin.srcEid] != 0;
     }
 
     /**
@@ -146,6 +149,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @dev Always returns 0 as we don't track nonces
      * @return Always returns 0 as we don't track nonces
      */
+    // Nonce tracking intentionally disabled; replay is prevented by the already-proven skip in _processIntentProofs.
     function nextNonce(
         uint32 /* srcEid */,
         bytes32 /* sender */
