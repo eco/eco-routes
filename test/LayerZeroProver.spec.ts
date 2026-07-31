@@ -79,7 +79,9 @@ describe('LayerZeroProver Test', (): void => {
       .getContractFactory('TestLayerZeroEndpoint')
       .then((factory) => factory.deploy())
 
-    const portal = await (await ethers.getContractFactory('Portal')).deploy(ethers.ZeroAddress)
+    const portal = await (
+      await ethers.getContractFactory('Portal')
+    ).deploy(ethers.ZeroAddress)
     const inbox = await ethers.getContractAt('Inbox', await portal.getAddress())
 
     const token = await (
@@ -111,6 +113,7 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [],
         200000,
+        [],
       )
 
       expect(await layerZeroProver.ENDPOINT()).to.equal(
@@ -132,6 +135,7 @@ describe('LayerZeroProver Test', (): void => {
           ethers.zeroPadValue(await inbox.getAddress(), 32),
         ],
         200000,
+        [],
       )
 
       expect(
@@ -155,6 +159,7 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [],
         200000,
+        [],
       )
       expect(await layerZeroProver.getProofType()).to.equal('LayerZero')
     })
@@ -168,6 +173,7 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [],
         200000,
+        [],
       )
 
       // The constructor should have called setDelegate
@@ -192,6 +198,10 @@ describe('LayerZeroProver Test', (): void => {
           ethers.zeroPadValue(await mockEndpoint.getAddress(), 32),
         ],
         200000,
+        // LayerZeroProver is strict: origin 12345 must be registered since
+        // these tests' lzReceive origin (srcEid) and message header both use
+        // the default chainId of 12345.
+        [[12345, 12345]],
       )
     })
 
@@ -315,6 +325,7 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        [], // no lzReceive calls in this section, so no domain registration needed
       )
     })
 
@@ -592,6 +603,9 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        // lzReceive is called below with origin.srcEid=12345 and a message
+        // header of 12345 (default); LayerZeroProver is strict, so register it.
+        [[12345, 12345]],
       )
 
       const intentHash1 = ethers.keccak256('0x1234')
@@ -645,6 +659,10 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        // mockEndpoint.simulateReceive below uses origin.srcEid=sourceChainID
+        // (12345) with a message header of 12345 (default); LayerZeroProver
+        // is strict, so register it.
+        [[12345, 12345]],
       )
 
       const portal = await ethers.getContractAt(
@@ -711,12 +729,7 @@ describe('LayerZeroProver Test', (): void => {
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,uint128)'],
-        [
-          [
-            ethers.zeroPadValue(await inbox.getAddress(), 32),
-            gasLimit,
-          ],
-        ],
+        [[ethers.zeroPadValue(await inbox.getAddress(), 32), gasLimit]],
       )
 
       await token.connect(solver).approve(await inbox.getAddress(), amount)
@@ -774,6 +787,10 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
+        // mockEndpoint.simulateReceive below uses origin.srcEid=sourceChainID
+        // (12345) with a message header of 12345 (default); LayerZeroProver
+        // is strict, so register it.
+        [[12345, 12345]],
       )
 
       const portal = await ethers.getContractAt(
@@ -794,12 +811,7 @@ describe('LayerZeroProver Test', (): void => {
       const gasLimit = 200000
       const data = ethers.AbiCoder.defaultAbiCoder().encode(
         ['tuple(bytes32,uint128)'],
-        [
-          [
-            ethers.zeroPadValue(await inbox.getAddress(), 32),
-            gasLimit,
-          ],
-        ],
+        [[ethers.zeroPadValue(await inbox.getAddress(), 32), gasLimit]],
       )
 
       // Create first intent
@@ -1092,6 +1104,7 @@ describe('LayerZeroProver Test', (): void => {
         await inbox.getAddress(),
         [],
         200000,
+        [],
       )
 
       // Create intent with LayerZero as the prover

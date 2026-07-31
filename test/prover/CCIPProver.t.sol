@@ -72,7 +72,18 @@ contract CCIPProverTest is BaseTest {
         provers[0] = bytes32(uint256(uint160(whitelistedProver)));
 
         // Deploy CCIPProver
-        ccipProver = new CCIPProver(address(router), address(portal), provers, 0);
+        // Domain 1 is used by the explicit ccipReceive tests below (hardcoded
+        // sourceChainSelector=1). Domain block.chainid (31337 locally) is
+        // needed because TestCCIPRouter.ccipSend() auto-delivers the message
+        // back via ccipReceive using sourceChainSelector=block.chainid for
+        // every prove() call in this suite.
+        IMessageBridgeProver.Domain[] memory domains = new IMessageBridgeProver.Domain[](2);
+        domains[0] = IMessageBridgeProver.Domain({domain: 1, chainId: 1});
+        domains[1] = IMessageBridgeProver.Domain({
+            domain: uint64(block.chainid),
+            chainId: uint64(block.chainid)
+        });
+        ccipProver = new CCIPProver(address(router), address(portal), provers, 0, domains);
 
         // Set the ccipProver as the processor for the router
         router.setProcessor(address(ccipProver));
@@ -115,7 +126,13 @@ contract CCIPProverTest is BaseTest {
         provers[0] = bytes32(uint256(uint160(whitelistedProver)));
 
         vm.expectRevert();
-        new CCIPProver(address(0), address(portal), provers, 0);
+        new CCIPProver(
+            address(0),
+            address(portal),
+            provers,
+            0,
+            new IMessageBridgeProver.Domain[](0)
+        );
     }
 
     function testImplementsIProverInterface() public view {
@@ -359,8 +376,14 @@ contract CCIPProverTest is BaseTest {
     }
 
     function testCcipReceiveWithInvalidMessageFormat() public {
-        // Create invalid message with wrong length (not multiple of 64)
-        bytes memory invalidMessage = new bytes(63); // Should be multiple of 64
+        // Create invalid message with wrong length (not multiple of 64).
+        // Prepend a valid 8-byte header (matching sourceChainSelector=1) so the
+        // new origin/header cross-check passes and the malformed body underneath
+        // still trips ArrayLengthMismatch as originally intended.
+        bytes memory invalidMessage = abi.encodePacked(
+            uint64(1),
+            new bytes(63) // Should be multiple of 64
+        );
 
         Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
             messageId: bytes32(uint256(1)),
@@ -387,6 +410,52 @@ contract CCIPProverTest is BaseTest {
         vm.expectRevert(IMessageBridgeProver.MessageOriginChainDomainIDCannotBeZero.selector);
         vm.prank(address(router));
         ccipProver.ccipReceive(message);
+    }
+
+    function testCcipReceive_revertsOnUnregisteredSelector() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // Header chainId 1 (valid for domain 1), but the message arrives
+        // claiming sourceChainSelector = 2, which is not registered in setUp.
+        Client.Any2EVMMessage memory m = Client.Any2EVMMessage({
+            messageId: bytes32(0),
+            sourceChainSelector: uint64(2), // not registered
+            sender: abi.encode(whitelistedProver),
+            data: _formatMessageWithChainId(1, intentHashes, claimants),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+        vm.prank(address(router));
+        vm.expectRevert(
+            abi.encodeWithSelector(IMessageBridgeProver.UnregisteredDomain.selector, uint64(2))
+        );
+        ccipProver.ccipReceive(m);
+    }
+
+    function testCcipReceive_revertsOnHeaderMismatch() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        // sourceChainSelector = 1 is registered (domain 1 -> chainId 1), but the
+        // embedded header claims chainId 999, tripping the cross-check.
+        Client.Any2EVMMessage memory m = Client.Any2EVMMessage({
+            messageId: bytes32(0),
+            sourceChainSelector: uint64(1),
+            sender: abi.encode(whitelistedProver),
+            data: _formatMessageWithChainId(999, intentHashes, claimants),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+        vm.prank(address(router));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.ChainIdMismatch.selector, uint64(1), uint64(1), uint64(999)
+            )
+        );
+        ccipProver.ccipReceive(m);
     }
 
     function testCcipReceiveRevertsOnZeroSender() public {
@@ -523,8 +592,13 @@ contract CCIPProverTest is BaseTest {
             _encodeProverData(bytes32(uint256(uint160(whitelistedProver))), DEFAULT_GAS_LIMIT);
         ccipProver.prove{value: 1 ether}(creator, uint64(block.chainid), encodeProofs(intentHashes, claimants), proverData);
 
-        // Now simulate the message being received back by calling ccipReceive
-        bytes memory messageBody = _formatMessageWithChainId(1, intentHashes, claimants);
+        // Now simulate the message being received back by calling ccipReceive.
+        // TestCCIPRouter already auto-delivered this exact proof once during
+        // prove() above (router.setProcessor(ccipProver) loops back
+        // synchronously), so this is a duplicate delivery on the same
+        // origin/header (both block.chainid) — it must hit the
+        // already-proven skip, not a fresh chainId mismatch.
+        bytes memory messageBody = _formatMessageWithChainId(block.chainid, intentHashes, claimants);
         Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
             messageId: bytes32(uint256(1)),
             sourceChainSelector: uint64(block.chainid),
