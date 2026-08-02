@@ -675,7 +675,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             revert InsufficientFunds(intentHash);
         }
 
-        if (fullyFunded) {
+        // Status-monotonic: only promote to Funded from Initial so a reentrant
+        // withdraw/refund cannot be overwritten back to Funded.
+        if (fullyFunded && rewardStatuses[intentHash] == Status.Initial) {
             rewardStatuses[intentHash] = Status.Funded;
         }
 
@@ -777,7 +779,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             revert InsufficientFunds(intentHash);
         }
 
-        if (fullyFunded) {
+        // Status-monotonic: only promote to Funded from Initial. A reentrant
+        // withdraw/refund may have already moved the intent to a terminal status,
+        // which must never be overwritten.
+        if (fullyFunded && rewardStatuses[intentHash] == Status.Initial) {
             rewardStatuses[intentHash] = Status.Funded;
         }
 
