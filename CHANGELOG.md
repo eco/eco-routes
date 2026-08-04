@@ -1,3 +1,19 @@
+## 2.10.0 (2026-08-04)
+
+* fix(erc7683): bind gasless order.user to reward.creator in openFor (#421) ([84f9d88](https://github.com/eco/eco-routes/commit/84f9d88)), closes [#421](https://github.com/eco/eco-routes/issues/421)
+* fix(funding): attempt every reward leg and honor Permit2 expiration (#422) ([c8603d0](https://github.com/eco/eco-routes/commit/c8603d0)), closes [#422](https://github.com/eco/eco-routes/issues/422)
+* fix(intent-source): refund excess native in fundFor/publishAndFundFor (Octane V1) (#416) ([e5d4ad4](https://github.com/eco/eco-routes/commit/e5d4ad4)), closes [#416](https://github.com/eco/eco-routes/issues/416) [#416](https://github.com/eco/eco-routes/issues/416) [#416](https://github.com/eco/eco-routes/issues/416) [#420](https://github.com/eco/eco-routes/issues/420)
+* fix(intent-source): treat codeless prover as no-proof so refunds don't brick (#419) ([52b40d1](https://github.com/eco/eco-routes/commit/52b40d1)), closes [#419](https://github.com/eco/eco-routes/issues/419)
+* fix(local-prover): return forwarded native value to the prove() caller (#427) ([095650d](https://github.com/eco/eco-routes/commit/095650d)), closes [#427](https://github.com/eco/eco-routes/issues/427) [#427](https://github.com/eco/eco-routes/issues/427) [#418](https://github.com/eco/eco-routes/issues/418)
+* fix(prover): failure-tolerant native refunds; refund trapped Polymer value (Octane V9) (#418) ([539ee55](https://github.com/eco/eco-routes/commit/539ee55)), closes [#418](https://github.com/eco/eco-routes/issues/418) [#418](https://github.com/eco/eco-routes/issues/418)
+* fix(vault): keep Funded transition status-monotonic vs permit reentrancy (Octane V8) (#420) ([98451f0](https://github.com/eco/eco-routes/commit/98451f0)), closes [#420](https://github.com/eco/eco-routes/issues/420) [#420](https://github.com/eco/eco-routes/issues/420) [#420](https://github.com/eco/eco-routes/issues/420) [#422](https://github.com/eco/eco-routes/issues/422)
+* docs(erc7683): document at-least-once Open/IntentPublished semantics (#426) ([7f97c42](https://github.com/eco/eco-routes/commit/7f97c42)), closes [#426](https://github.com/eco/eco-routes/issues/426)
+* Merge commit from fork ([83afaec](https://github.com/eco/eco-routes/commit/83afaec))
+* feat: per-deployment native/ERC20 alias support in recovery + reward validation (#409) ([b3eb0b3](https://github.com/eco/eco-routes/commit/b3eb0b3)), closes [#409](https://github.com/eco/eco-routes/issues/409)
+* feat(erc7683): accept ERC-1271 signatures in gasless openFor (Octane V11) (#417) ([d6efc3a](https://github.com/eco/eco-routes/commit/d6efc3a)), closes [#417](https://github.com/eco/eco-routes/issues/417) [#417](https://github.com/eco/eco-routes/issues/417) [#417](https://github.com/eco/eco-routes/issues/417) [#421](https://github.com/eco/eco-routes/issues/421) [hi#s](https://github.com/hi/issues/s)
+* chore: add maschad to repository-owners reviewer group (#428) ([9003fe3](https://github.com/eco/eco-routes/commit/9003fe3)), closes [#428](https://github.com/eco/eco-routes/issues/428)
+* chore(release): 2.10.0 [skip ci] (#414) ([13fa2fe](https://github.com/eco/eco-routes/commit/13fa2fe)), closes [#414](https://github.com/eco/eco-routes/issues/414)
+* ci: release-PR bridge (release without pushing to main) (#415) ([c06c4ac](https://github.com/eco/eco-routes/commit/c06c4ac)), closes [#415](https://github.com/eco/eco-routes/issues/415)
 # [2.10.0](https://github.com/eco/eco-routes/compare/v2.9.0...v2.10.0) (2026-07-14)
 
 
