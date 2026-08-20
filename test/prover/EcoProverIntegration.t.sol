@@ -2,17 +2,17 @@
 pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {AggregatorProver} from "../../contracts/prover/AggregatorProver.sol";
+import {EcoProver} from "../../contracts/prover/EcoProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 
-contract AggregatorProverIntegrationTest is Test {
+contract EcoProverIntegrationTest is Test {
     Portal internal portal;
     TestProver internal proverA;
     TestProver internal proverB;
-    AggregatorProver internal aggregator;
+    EcoProver internal aggregator;
 
     address internal creator;
     address internal solver;
@@ -34,7 +34,7 @@ contract AggregatorProverIntegrationTest is Test {
         bytes32[] memory members = new bytes32[](2);
         members[0] = bytes32(uint256(uint160(address(proverA))));
         members[1] = bytes32(uint256(uint160(address(proverB))));
-        aggregator = new AggregatorProver(members);
+        aggregator = new EcoProver(members);
 
         vm.deal(creator, 100 ether);
     }
@@ -159,7 +159,7 @@ contract AggregatorProverIntegrationTest is Test {
         bytes32[] memory members = new bytes32[](2);
         members[0] = bytes32(uint256(uint160(address(0xDEAD)))); // codeless
         members[1] = bytes32(uint256(uint160(address(proverB))));
-        AggregatorProver agg = new AggregatorProver(members);
+        EcoProver agg = new EcoProver(members);
 
         Intent memory intent = _intent(address(agg), bytes32(uint256(3)));
         (, bytes32 routeHash) = _publish(intent);
@@ -198,7 +198,7 @@ contract AggregatorProverIntegrationTest is Test {
     ///      `withdraw` pays — but `_validateRefund` reads the same shadowed value, never
     ///      forwards a challenge, and past `reward.deadline` refunds the creator while the
     ///      solver who delivered goes unpaid. The mitigation is deploy-time membership
-    ///      validation (`Deploy.validateAggregatorMembers`), which restricts members to
+    ///      validation (`Deploy.validateEcoProverMembers`), which restricts members to
     ///      provers whose `destination` is bridge-attested by
     ///      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry itself remains in
     ///      `IntentSource`.

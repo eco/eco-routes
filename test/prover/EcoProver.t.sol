@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {Test} from "forge-std/Test.sol";
-import {AggregatorProver} from "../../contracts/prover/AggregatorProver.sol";
+import {EcoProver} from "../../contracts/prover/EcoProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
@@ -11,11 +11,11 @@ import {MalformedProver} from "../../contracts/test/MalformedProver.sol";
 import {DirtyBitsProver} from "../../contracts/test/DirtyBitsProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
 
-contract AggregatorProverTest is Test {
+contract EcoProverTest is Test {
     Portal internal portal;
     TestProver internal proverA;
     TestProver internal proverB;
-    AggregatorProver internal aggregator;
+    EcoProver internal aggregator;
 
     bytes32 internal constant HASH = keccak256("intent");
     uint64 internal constant DESTINATION = 8453;
@@ -27,9 +27,7 @@ contract AggregatorProverTest is Test {
         portal = new Portal(address(0));
         proverA = new TestProver(address(portal));
         proverB = new TestProver(address(portal));
-        aggregator = new AggregatorProver(
-            _pair(address(proverA), address(proverB))
-        );
+        aggregator = new EcoProver(_pair(address(proverA), address(proverB)));
 
         // test_prove_alwaysReverts sends value
         vm.deal(address(this), 1 ether);
@@ -71,19 +69,15 @@ contract AggregatorProverTest is Test {
         emit MemberRegistered(address(proverA), 0);
         vm.expectEmit(true, true, false, false);
         emit MemberRegistered(address(proverB), 1);
-        new AggregatorProver(_pair(address(proverA), address(proverB)));
+        new EcoProver(_pair(address(proverA), address(proverB)));
     }
 
     function test_constructor_revertsOnEmptySet() public {
         bytes32[] memory empty = new bytes32[](0);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AggregatorProver.InvalidMemberSet.selector,
-                0,
-                8
-            )
+            abi.encodeWithSelector(EcoProver.InvalidMemberSet.selector, 0, 8)
         );
-        new AggregatorProver(empty);
+        new EcoProver(empty);
     }
 
     function test_constructor_revertsOnOversizedSet() public {
@@ -92,13 +86,9 @@ contract AggregatorProverTest is Test {
             nine[i] = bytes32(uint256(i + 1));
         }
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AggregatorProver.InvalidMemberSet.selector,
-                9,
-                8
-            )
+            abi.encodeWithSelector(EcoProver.InvalidMemberSet.selector, 9, 8)
         );
-        new AggregatorProver(nine);
+        new EcoProver(nine);
     }
 
     function test_constructor_revertsAboveWhitelistCapWithWhitelistError()
@@ -115,18 +105,15 @@ contract AggregatorProverTest is Test {
                 20
             )
         );
-        new AggregatorProver(twentyOne);
+        new EcoProver(twentyOne);
     }
 
     function test_constructor_revertsOnZeroMember() public {
         bytes32[] memory members = _pair(address(proverA), address(0));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AggregatorProver.InvalidMember.selector,
-                bytes32(0)
-            )
+            abi.encodeWithSelector(EcoProver.InvalidMember.selector, bytes32(0))
         );
-        new AggregatorProver(members);
+        new EcoProver(members);
     }
 
     function test_constructor_revertsOnNonEvmMember() public {
@@ -135,23 +122,20 @@ contract AggregatorProverTest is Test {
         members[0] = _b32(address(proverA));
         members[1] = nonEvm;
         vm.expectRevert(
-            abi.encodeWithSelector(
-                AggregatorProver.InvalidMember.selector,
-                nonEvm
-            )
+            abi.encodeWithSelector(EcoProver.InvalidMember.selector, nonEvm)
         );
-        new AggregatorProver(members);
+        new EcoProver(members);
     }
 
     function test_constructor_revertsOnDuplicateMember() public {
         bytes32[] memory members = _pair(address(proverA), address(proverA));
         vm.expectRevert(
             abi.encodeWithSelector(
-                AggregatorProver.DuplicateMember.selector,
+                EcoProver.DuplicateMember.selector,
                 _b32(address(proverA))
             )
         );
-        new AggregatorProver(members);
+        new EcoProver(members);
     }
 
     function test_constructor_acceptsMaxMembersSet() public {
@@ -160,7 +144,7 @@ contract AggregatorProverTest is Test {
         for (uint256 i = 0; i < maxMembers; ++i) {
             eight[i] = bytes32(uint256(i + 1));
         }
-        AggregatorProver agg = new AggregatorProver(eight);
+        EcoProver agg = new EcoProver(eight);
         address[] memory members = agg.getMembers();
         assertEq(members.length, maxMembers);
         for (uint256 i = 0; i < maxMembers; ++i) {
@@ -171,14 +155,14 @@ contract AggregatorProverTest is Test {
     function test_constructor_acceptsSingleMemberSet() public {
         bytes32[] memory single = new bytes32[](1);
         single[0] = _b32(address(proverA));
-        AggregatorProver agg = new AggregatorProver(single);
+        EcoProver agg = new EcoProver(single);
         address[] memory members = agg.getMembers();
         assertEq(members.length, 1);
         assertEq(members[0], address(proverA));
     }
 
     function test_prove_alwaysReverts() public {
-        vm.expectRevert(AggregatorProver.ProvingNotSupported.selector);
+        vm.expectRevert(EcoProver.ProvingNotSupported.selector);
         aggregator.prove{value: 1 ether}(address(this), 1, "", "");
     }
 
@@ -223,9 +207,7 @@ contract AggregatorProverTest is Test {
 
     function test_provenIntents_skipsCodelessMember() public {
         address codeless = address(0xDEAD);
-        AggregatorProver agg = new AggregatorProver(
-            _pair(codeless, address(proverB))
-        );
+        EcoProver agg = new EcoProver(_pair(codeless, address(proverB)));
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
@@ -234,9 +216,7 @@ contract AggregatorProverTest is Test {
 
     function test_provenIntents_skipsRevertingMember() public {
         RevertingProver bad = new RevertingProver();
-        AggregatorProver agg = new AggregatorProver(
-            _pair(address(bad), address(proverB))
-        );
+        EcoProver agg = new EcoProver(_pair(address(bad), address(proverB)));
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
@@ -245,7 +225,7 @@ contract AggregatorProverTest is Test {
 
     function test_provenIntents_skipsCodelessAndRevertingTogether() public {
         RevertingProver bad = new RevertingProver();
-        AggregatorProver agg = new AggregatorProver(
+        EcoProver agg = new EcoProver(
             _triple(address(0xDEAD), address(bad), address(proverB))
         );
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
@@ -262,9 +242,7 @@ contract AggregatorProverTest is Test {
     ///      withdraw and refund for every intent naming this aggregator.
     function test_provenIntents_skipsWrongShapeReturndataMember() public {
         MalformedProver bad = new MalformedProver();
-        AggregatorProver agg = new AggregatorProver(
-            _pair(address(bad), address(proverB))
-        );
+        EcoProver agg = new EcoProver(_pair(address(bad), address(proverB)));
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
@@ -280,9 +258,7 @@ contract AggregatorProverTest is Test {
     ///      withdraw and refund for every intent naming this aggregator.
     function test_provenIntents_skipsDirtyBitsReturndataMember() public {
         DirtyBitsProver bad = new DirtyBitsProver();
-        AggregatorProver agg = new AggregatorProver(
-            _pair(address(bad), address(proverB))
-        );
+        EcoProver agg = new EcoProver(_pair(address(bad), address(proverB)));
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
@@ -292,9 +268,7 @@ contract AggregatorProverTest is Test {
 
     function test_provenIntents_returnsZeroWhenAllMembersMisbehave() public {
         RevertingProver bad = new RevertingProver();
-        AggregatorProver agg = new AggregatorProver(
-            _pair(address(0xDEAD), address(bad))
-        );
+        EcoProver agg = new EcoProver(_pair(address(0xDEAD), address(bad)));
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
         assertEq(proof.claimant, address(0));
@@ -366,7 +340,7 @@ contract AggregatorProverTest is Test {
 
     function test_challenge_toleratesRevertingAndCodelessMembers() public {
         RevertingProver bad = new RevertingProver();
-        AggregatorProver agg = new AggregatorProver(
+        EcoProver agg = new EcoProver(
             _triple(address(0xDEAD), address(bad), address(proverB))
         );
 

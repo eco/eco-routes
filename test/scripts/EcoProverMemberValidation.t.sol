@@ -13,7 +13,7 @@ import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 /// @dev Harness exposing Deploy's internal validator to tests
 contract DeployHarness is Deploy {
     function exposedValidate(DeploymentContext memory ctx) external view {
-        validateAggregatorMembers(ctx);
+        validateEcoProverMembers(ctx);
     }
 
     function emptyContext()
@@ -25,7 +25,7 @@ contract DeployHarness is Deploy {
     }
 }
 
-contract AggregatorMemberValidationTest is Test {
+contract EcoProverMemberValidationTest is Test {
     DeployHarness internal harness;
     MockDomainProver internal hyper;
 
@@ -42,7 +42,7 @@ contract AggregatorMemberValidationTest is Test {
         bytes32[] memory members
     ) internal view returns (Deploy.DeploymentContext memory ctx) {
         ctx = harness.emptyContext();
-        ctx.aggregatorMembers = members;
+        ctx.ecoProverMembers = members;
         ctx.hyperProver = address(hyper);
     }
 
@@ -118,7 +118,7 @@ contract AggregatorMemberValidationTest is Test {
     // hatch") raced against a sibling case that flips the same env var to
     // "true" partway through its run (case 7) is not a rare flake: it was
     // observed failing on essentially every run of
-    // `forge test --match-contract AggregatorMemberValidationTest`, and only
+    // `forge test --match-contract EcoProverMemberValidationTest`, and only
     // passed reliably under `--threads 1`. Ordering the two assertions inside
     // a single test function makes them run sequentially by construction,
     // which removes the race without weakening either assertion (the
@@ -128,7 +128,7 @@ contract AggregatorMemberValidationTest is Test {
         // Defensive: pin the ambient value before asserting the default
         // (no-escape-hatch) behavior, in case a prior run in this process
         // left it set.
-        vm.setEnv("AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS", "false");
+        vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
 
         MockDomainProver unknown = new MockDomainProver();
         Deploy.DeploymentContext memory ctx = _ctxWith(
@@ -142,10 +142,10 @@ contract AggregatorMemberValidationTest is Test {
         harness.exposedValidate(ctx);
 
         // Case 7: accepted once the escape hatch is enabled.
-        vm.setEnv("AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS", "true");
+        vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "true");
         harness.exposedValidate(ctx);
 
-        vm.setEnv("AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS", "false");
+        vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
     }
 
     function test_rejectsDomainMapMismatch() public {

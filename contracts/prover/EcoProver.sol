@@ -8,7 +8,7 @@ import {Whitelist} from "../libs/Whitelist.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
- * @title AggregatorProver
+ * @title EcoProver
  * @notice Reports an intent as proven when ANY member prover has proven it
  * @dev Stateless 1-of-N union over an immutable set of member provers. Records
  *      no proofs of its own and dispatches no messages: solvers prove through a
@@ -30,7 +30,7 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 ///      here it means a local EVM member of the 1-of-N union. Off-chain
 ///      tooling that reads isWhitelisted() uniformly across IProver
 ///      implementations will misread this contract.
-contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
+contract EcoProver is IProver, ERC165, Whitelist, Semver {
     using AddressConverter for bytes32;
 
     /// @notice Proof mechanism identifier
@@ -150,17 +150,23 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      permanent freeze of both withdraw and refund for every intent
      *      naming this aggregator, since provenIntents is read by both.
      *
-     *      An OVERSIZED returndata bomb is still possible and is ACCEPTED:
+     *      An uncatchable out-of-gas (oversized returndata, or an unbounded
+     *      gas burn by a hostile member) is still possible and is ACCEPTED:
      *      solc copies the full returndata into memory in our frame before
      *      any length check runs, so a member returning gigabytes of data
-     *      still costs us quadratic memory-expansion gas, an uncatchable OOG.
-     *      This is tolerated because deploy-time validation
-     *      (`Deploy.validateAggregatorMembers`) restricts members to
-     *      `MessageBridgeProver` descendants built from this repo — not
-     *      arbitrary bytecode. That validator also assumes NON-PROXY member
-     *      bytecode: a proxy whose fallback returned a plausible 64-byte
-     *      payload could defeat the shape checks above; it does not defend
-     *      against a malicious proxy member.
+     *      still costs us quadratic memory-expansion gas; a member that
+     *      simply burns gas without returning is the same failure mode by a
+     *      different mechanism. This is tolerated because deploy-time
+     *      validation (`Deploy.validateEcoProverMembers`) only probes that
+     *      each member exposes `chainIdByDomain(uint64)` — a duck-typed check
+     *      that any contract implementing that one function passes, not a
+     *      guarantee of `MessageBridgeProver`-descended or repo-built
+     *      bytecode. It guards against an operator's config mistake (e.g. a
+     *      non-bridge-attested or unrelated address), not against a
+     *      deliberately malicious member contract. That validator also
+     *      assumes NON-PROXY member bytecode: a proxy whose fallback returned
+     *      a plausible 64-byte payload could defeat the shape checks above;
+     *      it does not defend against a malicious proxy member.
      *
      *      No per-member gas cap by design: a cap would silently skip an honest
      *      member whose read exceeds it, leaving a delivered solver unpayable
@@ -176,7 +182,7 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      pays, but `_validateRefund` reads the same shadowed value, never
      *      forwards a challenge, and past `reward.deadline` refunds the
      *      creator while the solver who delivered goes unpaid. The mitigation
-     *      is `Deploy.validateAggregatorMembers`, which restricts members to
+     *      is `Deploy.validateEcoProverMembers`, which restricts members to
      *      provers whose `destination` is bridge-attested by
      *      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry
      *      itself remains in `IntentSource`.

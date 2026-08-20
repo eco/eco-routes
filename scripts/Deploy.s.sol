@@ -14,7 +14,7 @@ import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
-import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
+import {EcoProver} from "../contracts/prover/EcoProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract Deploy is Script {
@@ -71,10 +71,10 @@ contract Deploy is Script {
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
         bytes polymerProverConstructorArgs;
-        bytes32[] aggregatorMembers;
-        bytes32 aggregatorProverSalt;
-        address aggregatorProver;
-        bytes aggregatorProverConstructorArgs;
+        bytes32[] ecoProverMembers;
+        bytes32 ecoProverSalt;
+        address ecoProver;
+        bytes ecoProverConstructorArgs;
     }
 
     function run() external {
@@ -124,16 +124,16 @@ contract Deploy is Script {
             ctx.polymerCrossVmProvers = new bytes32[](0);
         }
 
-        // Ordered, comma-separated member provers for AggregatorProver.
+        // Ordered, comma-separated member provers for EcoProver.
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
         // Set explicitly rather than derived from what was deployed this run —
         // silently-varying membership across chains is a security risk.
-        try vm.envBytes32("AGGREGATOR_PROVER_MEMBERS", ",") returns (
+        try vm.envBytes32("ECO_PROVER_MEMBERS", ",") returns (
             bytes32[] memory members
         ) {
-            ctx.aggregatorMembers = members;
+            ctx.ecoProverMembers = members;
         } catch {
-            ctx.aggregatorMembers = new bytes32[](0);
+            ctx.ecoProverMembers = new bytes32[](0);
         }
 
         // Per-bridge origin domain -> chainId config (optional; empty string
@@ -182,12 +182,9 @@ contract Deploy is Script {
             ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
         }
 
-        bool hasAggregator = ctx.aggregatorMembers.length > 0;
-        if (hasAggregator) {
-            ctx.aggregatorProverSalt = getContractSalt(
-                ctx.salt,
-                "AGGREGATOR_PROVER"
-            );
+        bool hasEcoProver = ctx.ecoProverMembers.length > 0;
+        if (hasEcoProver) {
+            ctx.ecoProverSalt = getContractSalt(ctx.salt, "ECO_PROVER");
         }
 
         vm.startBroadcast();
@@ -223,9 +220,9 @@ contract Deploy is Script {
             deployPolymerProver(ctx);
         }
 
-        // Deploy AggregatorProver last: its members must already exist
-        if (hasAggregator) {
-            deployAggregatorProver(ctx);
+        // Deploy EcoProver last: its members must already exist
+        if (hasEcoProver) {
+            deployEcoProver(ctx);
         }
 
         vm.stopBroadcast();
@@ -243,7 +240,7 @@ contract Deploy is Script {
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
         bool needsPortal = !hasExistingPortal &&
             (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
-        bool hasAggregator = ctx.aggregatorMembers.length > 0;
+        bool hasEcoProver = ctx.ecoProverMembers.length > 0;
 
         uint num = 0;
         num = needsPortal ? num + 1 : num;
@@ -251,7 +248,7 @@ contract Deploy is Script {
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
         num = hasPolymer ? num + 1 : num;
-        num = hasAggregator ? num + 1 : num;
+        num = hasEcoProver ? num + 1 : num;
 
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
@@ -298,11 +295,11 @@ contract Deploy is Script {
             });
         }
 
-        if (hasAggregator) {
+        if (hasEcoProver) {
             contracts[count++] = VerificationData({
-                contractAddress: ctx.aggregatorProver,
-                contractPath: "contracts/prover/AggregatorProver.sol:AggregatorProver",
-                constructorArgs: ctx.aggregatorProverConstructorArgs,
+                contractAddress: ctx.ecoProver,
+                contractPath: "contracts/prover/EcoProver.sol:EcoProver",
+                constructorArgs: ctx.ecoProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -516,7 +513,7 @@ contract Deploy is Script {
      * @notice Validates every aggregator member before deploying the aggregator
      * @dev A member holding an entry whose `destination` is wrong SHADOWS a
      *      valid proof held by a lower-priority member, because
-     *      AggregatorProver.provenIntents returns the first non-zero claimant.
+     *      EcoProver.provenIntents returns the first non-zero claimant.
      *      This bug class does not exist for a single prover, which stores
      *      exactly one ProofData per intentHash. IntentSource.withdraw
      *      recovers — it forwards a challenge on its wrong-destination
@@ -531,16 +528,16 @@ contract Deploy is Script {
      *      IntentSource.
      * @param ctx Deployment context carrying the member list and domain configs
      */
-    function validateAggregatorMembers(
+    function validateEcoProverMembers(
         DeploymentContext memory ctx
     ) internal view {
         bool allowUnverified = vm.envOr(
-            "AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS",
+            "ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS",
             false
         );
 
-        for (uint256 i = 0; i < ctx.aggregatorMembers.length; i++) {
-            bytes32 raw = ctx.aggregatorMembers[i];
+        for (uint256 i = 0; i < ctx.ecoProverMembers.length; i++) {
+            bytes32 raw = ctx.ecoProverMembers[i];
             require(uint256(raw) >> 160 == 0, "member is not an EVM address");
 
             address member = address(uint160(uint256(raw)));
@@ -613,53 +610,52 @@ contract Deploy is Script {
         }
     }
 
-    function deployAggregatorProver(
+    function deployEcoProver(
         DeploymentContext memory ctx
-    ) internal returns (address aggregatorProver) {
-        validateAggregatorMembers(ctx);
+    ) internal returns (address ecoProver) {
+        validateEcoProverMembers(ctx);
 
-        ctx.aggregatorProverConstructorArgs = abi.encode(ctx.aggregatorMembers);
+        ctx.ecoProverConstructorArgs = abi.encode(ctx.ecoProverMembers);
 
-        bytes memory aggregatorProverBytecode = abi.encodePacked(
-            type(AggregatorProver).creationCode,
-            ctx.aggregatorProverConstructorArgs
+        bytes memory ecoProverBytecode = abi.encodePacked(
+            type(EcoProver).creationCode,
+            ctx.ecoProverConstructorArgs
         );
 
         bool deployed;
-        (ctx.aggregatorProver, deployed) = deployWithCreate3(
-            aggregatorProverBytecode,
+        (ctx.ecoProver, deployed) = deployWithCreate3(
+            ecoProverBytecode,
             ctx.deployer,
-            ctx.aggregatorProverSalt
+            ctx.ecoProverSalt
         );
 
         // The CREATE3 salt excludes the member list, so a changed
-        // AGGREGATOR_PROVER_MEMBERS with an unchanged SALT would otherwise
+        // ECO_PROVER_MEMBERS with an unchanged SALT would otherwise
         // silently reuse the already-deployed contract's OLD members while
         // writeDeploymentData records the NEW constructor args for
         // verification — the operator would see a "success" log and believe
         // membership changed when it did not. Member order is priority order
         // and is consensus-critical, so require the on-chain set to match.
         if (deployed) {
-            bytes32[] memory onchain = AggregatorProver(ctx.aggregatorProver)
-                .getWhitelist();
+            bytes32[] memory onchain = EcoProver(ctx.ecoProver).getWhitelist();
             require(
-                onchain.length == ctx.aggregatorMembers.length,
-                "existing AggregatorProver has a different member set; change SALT"
+                onchain.length == ctx.ecoProverMembers.length,
+                "existing EcoProver has a different member set; change SALT"
             );
             for (uint256 i = 0; i < onchain.length; i++) {
                 require(
-                    onchain[i] == ctx.aggregatorMembers[i],
-                    "existing AggregatorProver member/order mismatch; change SALT"
+                    onchain[i] == ctx.ecoProverMembers[i],
+                    "existing EcoProver member/order mismatch; change SALT"
                 );
             }
         }
 
-        console.log("AggregatorProver :", ctx.aggregatorProver);
-        for (uint256 i = 0; i < ctx.aggregatorMembers.length; i++) {
+        console.log("EcoProver :", ctx.ecoProver);
+        for (uint256 i = 0; i < ctx.ecoProverMembers.length; i++) {
             console.log(
                 "  member",
                 i,
-                address(uint160(uint256(ctx.aggregatorMembers[i])))
+                address(uint160(uint256(ctx.ecoProverMembers[i])))
             );
         }
     }
