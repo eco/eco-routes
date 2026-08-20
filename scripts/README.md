@@ -49,6 +49,25 @@ Operational scripts for the Eco-Routes protocol.
      fields, duplicate domains, and duplicate chainIds, but it cannot detect a
      chain you forgot to list.
 
+  `Deploy.s.sol` also deploys `EcoProver`, a stateless 1-of-N union over other
+  provers on the same chain, when `ECO_PROVER_MEMBERS` is set: an ordered,
+  comma-separated list of member prover addresses (max 8) — **order is
+  priority**, the first member with a non-zero claimant wins. Each element may
+  be a 20-byte address or a full 32-byte `bytes32` (left-padded
+  automatically), e.g.:
+
+  ```bash
+  ECO_PROVER_MEMBERS=0x1111111111111111111111111111111111111111,0x2222222222222222222222222222222222222222
+  ```
+
+  Unset or empty skips aggregator deployment; any other malformed value (wrong
+  element length, a trailing comma, etc.) now fails the deploy loudly rather
+  than silently skipping it. `ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS=true` is an
+  **unsafe escape hatch** that admits members not deployed in this run —
+  domain-lane verification is skipped entirely for members admitted this way,
+  so leave it unset unless you have separately, out-of-band verified the
+  member's domain table against the bridge operator's published values.
+
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated
   format). `CCIPProver` uses a strict domain->chainId map like LayerZero, so

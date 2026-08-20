@@ -9,6 +9,7 @@ import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {MalformedProver} from "../../contracts/test/MalformedProver.sol";
 import {DirtyBitsProver} from "../../contracts/test/DirtyBitsProver.sol";
+import {EmptyDynamicProver} from "../../contracts/test/EmptyDynamicProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
 
 contract EcoProverTest is Test {
@@ -258,6 +259,25 @@ contract EcoProverTest is Test {
     ///      withdraw and refund for every intent naming this aggregator.
     function test_provenIntents_skipsDirtyBitsReturndataMember() public {
         DirtyBitsProver bad = new DirtyBitsProver();
+        EcoProver agg = new EcoProver(_pair(address(bad), address(proverB)));
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
+    }
+
+    /// @dev Pins the Fix-1 hardening: a code-bearing member that returns
+    ///      SUCCESS with a single EMPTY DYNAMIC value (bytes/string/array)
+    ///      ABI-encodes to exactly 64 bytes — an offset head 0x20 followed by
+    ///      a length word 0x00 — which passes both the size check and the
+    ///      bit-range check. Without the destination-zero guard, the ABI
+    ///      OFFSET WORD itself would surface as a fabricated non-zero
+    ///      claimant (address(0x20)) with destination 0, for every
+    ///      intentHash. This member sits at priority 0 and must be skipped,
+    ///      with the honest proverB at priority 1 still winning.
+    function test_provenIntents_skipsEmptyDynamicReturndataMember() public {
+        EmptyDynamicProver bad = new EmptyDynamicProver();
         EcoProver agg = new EcoProver(_pair(address(bad), address(proverB)));
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 

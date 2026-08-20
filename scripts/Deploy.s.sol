@@ -128,13 +128,23 @@ contract Deploy is Script {
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
         // Set explicitly rather than derived from what was deployed this run —
         // silently-varying membership across chains is a security risk.
-        try vm.envBytes32("ECO_PROVER_MEMBERS", ",") returns (
-            bytes32[] memory members
-        ) {
-            ctx.ecoProverMembers = members;
-        } catch {
-            ctx.ecoProverMembers = new bytes32[](0);
-        }
+        //
+        // Read as a raw string, not vm.envBytes32: Foundry's strict
+        // FixedBytes(32) coercion rejects a plain 20-byte address (the form
+        // operators will actually write) and rejects a trailing comma, and
+        // the try/catch this replaced turned "configured wrong" into "not
+        // configured" — deployEcoProver/validateEcoProverMembers silently
+        // never ran, with no symptom beyond a missing console line. Only the
+        // empty string means "not requested"; every other value is parsed
+        // explicitly below, and a malformed element reverts loudly rather
+        // than silently falling back to an empty list.
+        string memory ecoProverMembersRaw = vm.envOr(
+            "ECO_PROVER_MEMBERS",
+            string("")
+        );
+        ctx.ecoProverMembers = bytes(ecoProverMembersRaw).length == 0
+            ? new bytes32[](0)
+            : _parseEcoProverMembers(ecoProverMembersRaw);
 
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
@@ -510,6 +520,40 @@ contract Deploy is Script {
     }
 
     /**
+     * @notice Probes whether `member.provenIntents(bytes32)` returns a
+     *         well-formed 64-byte ProofData tuple
+     * @dev Mirrors _tryChainIdByDomain's low-level-staticcall style, for the
+     *      same reason: an interface call would ABI-decode-revert in THIS
+     *      frame on a wrong-shaped payload, outside any try/catch. A member
+     *      whose read function reverts under staticcall, or returns a
+     *      wrong-shaped payload, is silently skipped forever at runtime by
+     *      EcoProver's own guards — and membership is immutable, so this is
+     *      the last point such a member can be caught.
+     *
+     *      bytes32(0) is an unproven intent hash, so an honest member returns
+     *      (0, 0) — both words in range, 64 bytes. This checks SHAPE only; it
+     *      never requires a non-zero claimant.
+     * @param member Candidate aggregator member address
+     * @return ok True if `member` returned a well-formed 64-byte tuple with
+     *         both words in range
+     */
+    function _tryProvenIntentsShape(
+        address member
+    ) internal view returns (bool ok) {
+        (bool success, bytes memory ret) = member.staticcall(
+            abi.encodeWithSignature("provenIntents(bytes32)", bytes32(0))
+        );
+        if (!success || ret.length != 64) {
+            return false;
+        }
+        (uint256 rawClaimant, uint256 rawDestination) = abi.decode(
+            ret,
+            (uint256, uint256)
+        );
+        return rawClaimant >> 160 == 0 && rawDestination >> 64 == 0;
+    }
+
+    /**
      * @notice Validates every aggregator member before deploying the aggregator
      * @dev A member holding an entry whose `destination` is wrong SHADOWS a
      *      valid proof held by a lower-priority member, because
@@ -576,6 +620,15 @@ contract Deploy is Script {
             require(
                 probed,
                 "member does not expose chainIdByDomain; destination not bridge-attested"
+            );
+
+            // A member whose provenIntents reverts under staticcall, or
+            // returns a wrong-shaped payload, is silently skipped forever at
+            // runtime by EcoProver.provenIntents' own guards — and membership
+            // is immutable, so this is the last point it can be caught.
+            require(
+                _tryProvenIntentsShape(member),
+                "member provenIntents does not return a well-formed ProofData"
             );
 
             IMessageBridgeProver.Domain[] memory domains;
@@ -669,6 +722,48 @@ contract Deploy is Script {
             block.chainid == TRON_MAINNET_CHAIN_ID ||
             block.chainid == TRON_SHASTA_CHAIN_ID ||
             block.chainid == TRON_NILE_CHAIN_ID;
+    }
+
+    // Parses a comma-separated ECO_PROVER_MEMBERS list. Accepts, per element,
+    // either a 20-byte address ("0x" + 40 hex chars, the form operators will
+    // actually write) or a full 32-byte bytes32 ("0x" + 64 hex chars),
+    // left-padding the former to bytes32. Any other shape — including an
+    // empty element from a trailing comma — reverts, naming the offending
+    // element and its index, rather than silently discarding the whole list.
+    // Not called for an empty ECO_PROVER_MEMBERS string; that case is
+    // handled by the caller as "not requested".
+    function _parseEcoProverMembers(
+        string memory csv
+    ) internal pure returns (bytes32[] memory) {
+        string[] memory parts = vm.split(csv, ",");
+        bytes32[] memory members = new bytes32[](parts.length);
+
+        for (uint256 i = 0; i < parts.length; i++) {
+            uint256 elementLength = bytes(parts[i]).length;
+            if (elementLength == 42) {
+                // "0x" + 40 hex chars
+                members[i] = bytes32(
+                    uint256(uint160(vm.parseAddress(parts[i])))
+                );
+            } else if (elementLength == 66) {
+                // "0x" + 64 hex chars
+                members[i] = vm.parseBytes32(parts[i]);
+            } else {
+                revert(
+                    string(
+                        abi.encodePacked(
+                            "ECO_PROVER_MEMBERS: malformed element at index ",
+                            vm.toString(i),
+                            ": '",
+                            parts[i],
+                            "' (expected a 20-byte address or 32-byte bytes32)"
+                        )
+                    )
+                );
+            }
+        }
+
+        return members;
     }
 
     // Parses a comma-separated list of "domain:chainId" pairs into a

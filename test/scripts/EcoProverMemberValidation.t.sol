@@ -5,12 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {Deploy} from "../../scripts/Deploy.s.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {MockDomainProver} from "../../contracts/test/MockDomainProver.sol";
+import {MockDomainProverMalformedProvenIntents} from "../../contracts/test/MockDomainProverMalformedProvenIntents.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 
-/// @dev Harness exposing Deploy's internal validator to tests
+/// @dev Harness exposing Deploy's internal validator and member-list parser
+///      to tests
 contract DeployHarness is Deploy {
     function exposedValidate(DeploymentContext memory ctx) external view {
         validateEcoProverMembers(ctx);
@@ -22,6 +24,12 @@ contract DeployHarness is Deploy {
         returns (DeploymentContext memory ctx)
     {
         return ctx;
+    }
+
+    function exposedParseEcoProverMembers(
+        string memory csv
+    ) external pure returns (bytes32[] memory) {
+        return _parseEcoProverMembers(csv);
     }
 }
 
@@ -148,6 +156,30 @@ contract EcoProverMemberValidationTest is Test {
         vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
     }
 
+    /// @dev Pins the Fix-2 hardening: a member exposing chainIdByDomain (so
+    ///      it clears the bridge-attestation probe) but whose provenIntents
+    ///      returns the wrong shape (32 bytes instead of the 64-byte
+    ///      ProofData encoding) must be rejected at DEPLOY time, since
+    ///      EcoProver.provenIntents would otherwise silently skip it forever
+    ///      at runtime — and membership is immutable, so this is the last
+    ///      point such a member can be caught.
+    function test_rejectsMalformedProvenIntentsShape() public {
+        MockDomainProverMalformedProvenIntents bad = new MockDomainProverMalformedProvenIntents();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(bad)))
+        );
+        // Matched branch, empty domain config: reaches the provenIntents
+        // shape probe without needing per-lane domain setup.
+        ctx.hyperProver = address(bad);
+
+        vm.expectRevert(
+            bytes(
+                "member provenIntents does not return a well-formed ProofData"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
     function test_rejectsDomainMapMismatch() public {
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(hyper)))
@@ -260,5 +292,87 @@ contract EcoProverMemberValidationTest is Test {
         // Must not revert: real MessageBridgeProver descendant, matched
         // branch, lane matches the deployed contract's own domain config.
         harness.exposedValidate(ctx);
+    }
+
+    /// @dev Pins the Fix-3 hardening: ECO_PROVER_MEMBERS accepts the
+    ///      20-byte address form operators will actually write (Foundry's
+    ///      strict vm.envBytes32 previously rejected this form outright,
+    ///      and the try/catch it sat behind silently discarded the whole
+    ///      list on that rejection).
+    function test_parseEcoProverMembers_acceptsAddressForm() public view {
+        string memory csv = vm.toString(address(0xBEEF));
+        bytes32[] memory members = harness.exposedParseEcoProverMembers(csv);
+        assertEq(members.length, 1);
+        assertEq(members[0], _b32(address(0xBEEF)));
+    }
+
+    /// @dev The full 32-byte bytes32 form (needed for non-EVM cross-VM
+    ///      members elsewhere in the repo) must still be accepted.
+    function test_parseEcoProverMembers_acceptsBytes32Form() public view {
+        bytes32 expected = _b32(address(0xCAFE));
+        string memory csv = vm.toString(expected);
+        bytes32[] memory members = harness.exposedParseEcoProverMembers(csv);
+        assertEq(members.length, 1);
+        assertEq(members[0], expected);
+    }
+
+    function test_parseEcoProverMembers_acceptsMixedAddressAndBytes32Forms()
+        public
+        view
+    {
+        string memory csv = string(
+            abi.encodePacked(
+                vm.toString(address(0xBEEF)),
+                ",",
+                vm.toString(_b32(address(0xCAFE)))
+            )
+        );
+        bytes32[] memory members = harness.exposedParseEcoProverMembers(csv);
+        assertEq(members.length, 2);
+        assertEq(members[0], _b32(address(0xBEEF)));
+        assertEq(members[1], _b32(address(0xCAFE)));
+    }
+
+    /// @dev A malformed element must fail the deploy LOUDLY, never fall back
+    ///      to an empty list the way the old try/catch did.
+    function test_parseEcoProverMembers_revertsOnMalformedElement() public {
+        vm.expectRevert(
+            bytes(
+                "ECO_PROVER_MEMBERS: malformed element at index 0: '0xnotvalid' (expected a 20-byte address or 32-byte bytes32)"
+            )
+        );
+        harness.exposedParseEcoProverMembers("0xnotvalid");
+    }
+
+    /// @dev Confirms the reported index tracks the ACTUAL offending element,
+    ///      not just index 0, in a multi-element list.
+    function test_parseEcoProverMembers_revertsOnMalformedElementAtNonZeroIndex()
+        public
+    {
+        string memory csv = string(
+            abi.encodePacked(vm.toString(address(0xBEEF)), ",0xnotvalid")
+        );
+        vm.expectRevert(
+            bytes(
+                "ECO_PROVER_MEMBERS: malformed element at index 1: '0xnotvalid' (expected a 20-byte address or 32-byte bytes32)"
+            )
+        );
+        harness.exposedParseEcoProverMembers(csv);
+    }
+
+    /// @dev A trailing comma splits into a final empty element. The old
+    ///      vm.envBytes32-based parser rejected a trailing comma outright,
+    ///      and its try/catch silently discarded the whole configured list
+    ///      on that rejection. This must now fail loudly instead.
+    function test_parseEcoProverMembers_revertsOnTrailingComma() public {
+        string memory csv = string(
+            abi.encodePacked(vm.toString(address(0xBEEF)), ",")
+        );
+        vm.expectRevert(
+            bytes(
+                "ECO_PROVER_MEMBERS: malformed element at index 1: '' (expected a 20-byte address or 32-byte bytes32)"
+            )
+        );
+        harness.exposedParseEcoProverMembers(csv);
     }
 }

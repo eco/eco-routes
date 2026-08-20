@@ -30,6 +30,17 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 ///      here it means a local EVM member of the 1-of-N union. Off-chain
 ///      tooling that reads isWhitelisted() uniformly across IProver
 ///      implementations will misread this contract.
+///
+/// @dev WARNING: this address must NEVER be used as a bridge message
+///      recipient. `data.sourceChainProver` in a `Portal.prove` /
+///      `fulfillAndProve` call must be one of `getMembers()` resolved on the
+///      SOURCE chain, never `reward.prover` (which may legitimately be this
+///      aggregator). `EcoProver` implements no `handle`, no `lzReceive`, and
+///      no fallback, so delivery to it reverts on an unknown selector
+///      forever — permanently stranding the message. For every other prover,
+///      CREATE3 parity makes `reward.prover` the correct recipient too, which
+///      makes this a real footgun: the pattern that works for every other
+///      prover silently does not work here.
 contract EcoProver is IProver, ERC165, Whitelist, Semver {
     using AddressConverter for bytes32;
 
@@ -174,6 +185,25 @@ contract EcoProver is IProver, ERC165, Whitelist, Semver {
      *      proof through the front door, so a returndata bomb grants it nothing
      *      new. Fan-out is bounded by MAX_MEMBERS.
      *
+     *      The size check plus the bit-range check are NOT sufficient on their
+     *      own: a member function returning a single EMPTY DYNAMIC value
+     *      (bytes, string, any array, or a struct with a dynamic field)
+     *      ABI-encodes to exactly 64 bytes too — an offset head `0x20`
+     *      followed by a length word `0x00` — which passes `ret.length == 64`
+     *      and passes both range checks (`32 >> 160 == 0`, `0 >> 64 == 0`).
+     *      Decoded naively, the ABI OFFSET WORD itself would surface as a
+     *      fabricated non-zero claimant (`address(0x20)`) with `destination`
+     *      0, for every intentHash — the only known payload class that
+     *      FABRICATES a claimant rather than being skipped. The
+     *      `rawDestination == 0` guard below closes this: no eligible member
+     *      can legitimately hold destination 0, since `MessageBridgeProver`
+     *      rejects chainId 0 at construction and `_resolveChainId` reverts
+     *      `UnregisteredDomain(0)`. A static two-word `ProofData` tuple is
+     *      what an honest member actually returns; together the size check,
+     *      the bit-range check, and this zero-destination check mean any
+     *      wrong-shaped payload is skipped (falls through to the next
+     *      member) rather than surfaced.
+     *
      *      KNOWN LIMITATION (shadowing): a member holding an entry whose
      *      `destination` is wrong shadows a valid proof held by a
      *      lower-priority member, since this function returns the first
@@ -223,6 +253,15 @@ contract EcoProver is IProver, ERC165, Whitelist, Semver {
                 continue;
             }
 
+            // A single empty dynamic return value (bytes/string/array) encodes
+            // to exactly 64 bytes — offset head 0x20, then length 0x00 — which
+            // passes the size and range checks above and would otherwise surface
+            // the ABI OFFSET WORD as a fabricated claimant with destination 0.
+            // No eligible member can legitimately hold destination 0:
+            // MessageBridgeProver rejects chainId 0 at construction and
+            // _resolveChainId reverts UnregisteredDomain(0).
+            if (rawDestination == 0) continue;
+
             address claimant = address(uint160(rawClaimant));
             uint64 destination = uint64(rawDestination);
 
@@ -262,6 +301,13 @@ contract EcoProver is IProver, ERC165, Whitelist, Semver {
         for (uint256 i = 0; i < length; ++i) {
             address member = members[i].toAddress();
 
+            // Load-bearing, not defensive filler: solc's extcodesize check
+            // inside a high-level `try` call reverts in THIS frame when the
+            // target is codeless, outside any `catch` — the `try/catch`
+            // below only guards the CALL itself, not the codeless-target
+            // case. Without this, a member deployed only on other chains
+            // would revert this whole function, and the wrong-destination
+            // branch in IntentSource.withdraw that calls it would revert too.
             if (member.code.length == 0) continue;
 
             try
