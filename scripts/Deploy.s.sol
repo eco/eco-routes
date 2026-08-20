@@ -293,7 +293,11 @@ contract Deploy is Script {
         bytes32[] memory provers = new bytes32[](
             1 + ctx.hyperCrossVmProvers.length
         );
-        provers[0] = bytes32(bytes20(hyperProverPreviewAddr)); // Self-reference for EVM
+        provers[0] = selfReference(hyperProverPreviewAddr); // Self-reference for EVM
+        require(
+            uint256(provers[0]) >> 160 == 0,
+            "self-reference must be left-padded"
+        );
         for (uint256 i = 0; i < ctx.hyperCrossVmProvers.length; i++) {
             provers[i + 1] = ctx.hyperCrossVmProvers[i]; // Cross-VM prover addresses
         }
@@ -333,7 +337,11 @@ contract Deploy is Script {
         bytes32[] memory provers = new bytes32[](
             1 + ctx.metaCrossVmProvers.length
         );
-        provers[0] = bytes32(bytes20(metaProverPreviewAddr)); // Self-reference for EVM
+        provers[0] = selfReference(metaProverPreviewAddr); // Self-reference for EVM
+        require(
+            uint256(provers[0]) >> 160 == 0,
+            "self-reference must be left-padded"
+        );
         for (uint256 i = 0; i < ctx.metaCrossVmProvers.length; i++) {
             provers[i + 1] = ctx.metaCrossVmProvers[i]; // Cross-VM prover addresses
         }
@@ -377,7 +385,11 @@ contract Deploy is Script {
         bytes32[] memory provers = new bytes32[](
             1 + ctx.layerZeroCrossVmProvers.length
         );
-        provers[0] = bytes32(bytes20(layerZeroProverPreviewAddr)); // Self-reference for EVM
+        provers[0] = selfReference(layerZeroProverPreviewAddr); // Self-reference for EVM
+        require(
+            uint256(provers[0]) >> 160 == 0,
+            "self-reference must be left-padded"
+        );
         for (uint256 i = 0; i < ctx.layerZeroCrossVmProvers.length; i++) {
             provers[i + 1] = ctx.layerZeroCrossVmProvers[i]; // Cross-VM prover addresses
         }
@@ -494,6 +506,22 @@ contract Deploy is Script {
             keccak256(
                 abi.encode(rootSalt, keccak256(abi.encodePacked(contractName)))
             );
+    }
+
+    /**
+     * @notice Encodes an EVM address as a `Whitelist` entry
+     * @dev MUST left-pad. `Whitelist.isWhitelisted` is raw equality with no
+     *      normalization, and every runtime producer of this word left-pads:
+     *      Hyperlane's `TypeCasts.addressToBytes32`, LayerZero's
+     *      `origin.sender`, and this repo's `AddressConverter.toBytes32`.
+     *      `bytes32(bytes20(addr))` pads on the RIGHT (`addr << 96`) and can
+     *      never match an incoming EVM peer, which would make every inbound
+     *      cross-chain proof revert `UnauthorizedIncomingProof`.
+     * @param addr Address to encode
+     * @return The left-padded `bytes32` form
+     */
+    function selfReference(address addr) internal pure returns (bytes32) {
+        return bytes32(uint256(uint160(addr)));
     }
 
     function getCreate3Address(
