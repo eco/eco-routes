@@ -153,14 +153,15 @@ contract AggregatorProverTest is Test {
     }
 
     function test_constructor_acceptsMaxMembersSet() public {
-        bytes32[] memory eight = new bytes32[](8);
-        for (uint256 i = 0; i < 8; ++i) {
+        uint256 maxMembers = aggregator.MAX_MEMBERS();
+        bytes32[] memory eight = new bytes32[](maxMembers);
+        for (uint256 i = 0; i < maxMembers; ++i) {
             eight[i] = bytes32(uint256(i + 1));
         }
         AggregatorProver agg = new AggregatorProver(eight);
         address[] memory members = agg.getMembers();
-        assertEq(members.length, 8);
-        for (uint256 i = 0; i < 8; ++i) {
+        assertEq(members.length, maxMembers);
+        for (uint256 i = 0; i < maxMembers; ++i) {
             assertEq(members[i], address(uint160(i + 1)));
         }
     }
@@ -267,5 +268,88 @@ contract AggregatorProverTest is Test {
 
         IProver.ProofData memory proof = aggregator.provenIntents(HASH);
         assertEq(proof.destination, WRONG_DESTINATION);
+    }
+
+    event ChallengeForwarded(bytes32 indexed intentHash);
+
+    function _challengeHash(
+        uint64 destination,
+        bytes32 routeHash,
+        bytes32 rewardHash
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(destination, routeHash, rewardHash));
+    }
+
+    function test_challenge_deletesMismatchedProofOnly() public {
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = _challengeHash(DESTINATION, routeHash, rewardHash);
+
+        // proverA lies about the destination, proverB is honest
+        proverA.addProvenIntent(
+            intentHash,
+            address(0xA11CE),
+            WRONG_DESTINATION
+        );
+        proverB.addProvenIntent(intentHash, address(0xB0B), DESTINATION);
+
+        aggregator.challengeIntentProof(DESTINATION, routeHash, rewardHash);
+
+        // The liar's entry is gone
+        assertEq(proverA.provenIntents(intentHash).claimant, address(0));
+        // The honest entry survives untouched
+        assertEq(proverB.provenIntents(intentHash).claimant, address(0xB0B));
+        assertEq(proverB.provenIntents(intentHash).destination, DESTINATION);
+    }
+
+    function test_challenge_afterForwardingAggregatorReturnsHonestProof()
+        public
+    {
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = _challengeHash(DESTINATION, routeHash, rewardHash);
+
+        proverA.addProvenIntent(
+            intentHash,
+            address(0xA11CE),
+            WRONG_DESTINATION
+        );
+        proverB.addProvenIntent(intentHash, address(0xB0B), DESTINATION);
+
+        assertEq(
+            aggregator.provenIntents(intentHash).claimant,
+            address(0xA11CE)
+        );
+
+        aggregator.challengeIntentProof(DESTINATION, routeHash, rewardHash);
+
+        assertEq(aggregator.provenIntents(intentHash).claimant, address(0xB0B));
+    }
+
+    function test_challenge_toleratesRevertingAndCodelessMembers() public {
+        RevertingProver bad = new RevertingProver();
+        AggregatorProver agg = new AggregatorProver(
+            _triple(address(0xDEAD), address(bad), address(proverB))
+        );
+
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = _challengeHash(DESTINATION, routeHash, rewardHash);
+        proverB.addProvenIntent(intentHash, address(0xB0B), WRONG_DESTINATION);
+
+        // Must not revert, and must still reach proverB
+        agg.challengeIntentProof(DESTINATION, routeHash, rewardHash);
+
+        assertEq(proverB.provenIntents(intentHash).claimant, address(0));
+    }
+
+    function test_challenge_emitsChallengeForwarded() public {
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = _challengeHash(DESTINATION, routeHash, rewardHash);
+
+        vm.expectEmit(true, false, false, false);
+        emit ChallengeForwarded(intentHash);
+        aggregator.challengeIntentProof(DESTINATION, routeHash, rewardHash);
     }
 }

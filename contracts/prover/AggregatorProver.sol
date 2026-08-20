@@ -150,13 +150,45 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     }
 
     /**
-     * @notice Forwards a challenge to every member
+     * @notice Forwards a challenge to every member prover
+     * @dev Forwarding is required, not cosmetic: IntentSource.withdraw calls
+     *      this itself on its wrong-destination branch (IntentSource.sol:468).
+     *      Reverting here would revert withdraw, and would revert an entire
+     *      batchWithdraw (IntentSource.sol:492) over one planted bad proof.
+     *
+     *      Blanket-forwarding is precise even though this contract cannot tell
+     *      which member is wrong: each member re-derives the intent hash and
+     *      deletes ONLY its own entry, and ONLY on its own destination mismatch
+     *      (BaseProver.sol:112-129). Honest proofs take the false branch and
+     *      are untouched.
+     * @param destination The intended destination chain ID
+     * @param routeHash The hash of the intent's route
+     * @param rewardHash The hash of the reward specification
      */
     function challengeIntentProof(
         uint64 destination,
         bytes32 routeHash,
         bytes32 rewardHash
     ) external {
+        bytes32[] memory members = getWhitelist();
+        uint256 length = members.length;
+
+        for (uint256 i = 0; i < length; ++i) {
+            address member = members[i].toAddress();
+
+            if (member.code.length == 0) continue;
+
+            try
+                IProver(member).challengeIntentProof(
+                    destination,
+                    routeHash,
+                    rewardHash
+                )
+            {} catch {
+                continue;
+            }
+        }
+
         emit ChallengeForwarded(
             keccak256(abi.encodePacked(destination, routeHash, rewardHash))
         );
