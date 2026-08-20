@@ -6,7 +6,9 @@ import {Deploy} from "../../scripts/Deploy.s.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {MockDomainProver} from "../../contracts/test/MockDomainProver.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
+import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
+import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 
 /// @dev Harness exposing Deploy's internal validator to tests
 contract DeployHarness is Deploy {
@@ -75,6 +77,11 @@ contract AggregatorMemberValidationTest is Test {
     }
 
     function test_rejectsPolymerProver() public {
+        // Uses MockDomainProver (which exposes chainIdByDomain), not a real
+        // PolymerProver, deliberately: a real PolymerProver has no
+        // chainIdByDomain and would already be rejected one line earlier by
+        // the unconditional probe, never reaching the Polymer-specific check
+        // this test targets.
         MockDomainProver polymer = new MockDomainProver();
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(polymer)))
@@ -174,6 +181,35 @@ contract AggregatorMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
+    /// @dev Directly pins that the chainIdByDomain probe runs UNCONDITIONALLY,
+    ///      rather than being (accidentally) folded into the per-lane
+    ///      domains-loop below it. Unlike test_rejectsMemberWithoutChainIdByDomain
+    ///      (an unmatched member, routed through the escape-hatch branch), this
+    ///      member IS ctx.hyperProver — the matched branch — with an EMPTY
+    ///      hyperDomainConfig, so the per-lane loop never executes either way.
+    ///      If the probe were wrongly folded into that loop instead of running
+    ///      unconditionally, this case would wrongly pass; pinning it here
+    ///      does not lean on the sibling test's (different) code path.
+    function test_unconditionalProbeRunsForMatchedMemberWithEmptyDomainConfig()
+        public
+    {
+        Portal portal = new Portal(address(0));
+        TestProver noDomainProver = new TestProver(address(portal));
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(noDomainProver)))
+        );
+        // Matched branch, not the escape hatch: member IS ctx.hyperProver.
+        ctx.hyperProver = address(noDomainProver);
+        // ctx.hyperDomainConfig intentionally left empty.
+
+        vm.expectRevert(
+            bytes(
+                "member does not expose chainIdByDomain; destination not bridge-attested"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
     function test_acceptsEmptyDomainConfig() public view {
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(hyper)))
@@ -184,6 +220,45 @@ contract AggregatorMemberValidationTest is Test {
         // The unconditional chainIdByDomain(0) probe above still runs and must
         // pass for `hyper` regardless.
 
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev Every other test in this file uses MockDomainProver, which
+    ///      REIMPLEMENTS chainIdByDomain(uint64) returns (uint64) rather than
+    ///      inheriting it — so none of them pin the actual signature exposed
+    ///      by real MessageBridgeProver descendants. This test uses a real
+    ///      HyperProver (built the same way test/prover/HyperProver.t.sol
+    ///      does) so validation is checked against the real function, not a
+    ///      mock's reimplementation of it.
+    function test_acceptsRealMessageBridgeProverDescendant() public {
+        Portal portal = new Portal(address(0));
+        TestMailbox mailbox = new TestMailbox(address(0));
+
+        bytes32[] memory hyperProvers = new bytes32[](1);
+        hyperProvers[0] = _b32(address(0xBEEF));
+
+        IMessageBridgeProver.Domain[]
+            memory domainConfig = new IMessageBridgeProver.Domain[](1);
+        domainConfig[0] = IMessageBridgeProver.Domain({
+            domain: 100,
+            chainId: 10
+        });
+
+        HyperProver realHyper = new HyperProver(
+            address(mailbox),
+            address(portal),
+            hyperProvers,
+            domainConfig
+        );
+
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(realHyper)))
+        );
+        ctx.hyperProver = address(realHyper);
+        ctx.hyperDomainConfig = domainConfig;
+
+        // Must not revert: real MessageBridgeProver descendant, matched
+        // branch, lane matches the deployed contract's own domain config.
         harness.exposedValidate(ctx);
     }
 }

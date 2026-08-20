@@ -190,12 +190,20 @@ contract AggregatorProverIntegrationTest is Test {
     }
 
     /// @notice CHARACTERIZATION TEST — pins a KNOWN LIMITATION, not desired behaviour.
-    /// @dev A wrong-destination proof in a higher-priority member shadows a valid proof in a
-    ///      lower-priority one. `withdraw` recovers via challenge forwarding, but the refund
-    ///      path reads the same shadowed value and never forwards a challenge, so past the
-    ///      deadline the creator is refunded while the solver — who delivered — is not paid.
-    ///      See docs/superpowers/specs/2026-08-20-aggregator-refund-shadowing-fix.md.
-    ///      When that fix lands, this test MUST be updated to assert the fixed behaviour.
+    /// @dev A member holding an entry whose `destination` is wrong shadows a valid proof
+    ///      held by a lower-priority member, because `provenIntents` returns the first
+    ///      non-zero claimant. This bug class does not exist for a single prover, which
+    ///      stores exactly one `ProofData` per `intentHash`. `IntentSource.withdraw`
+    ///      recovers — it forwards a challenge on its wrong-destination branch, so a second
+    ///      `withdraw` pays — but `_validateRefund` reads the same shadowed value, never
+    ///      forwards a challenge, and past `reward.deadline` refunds the creator while the
+    ///      solver who delivered goes unpaid. The mitigation is deploy-time membership
+    ///      validation (`Deploy.validateAggregatorMembers`), which restricts members to
+    ///      provers whose `destination` is bridge-attested by
+    ///      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry itself remains in
+    ///      `IntentSource`.
+    ///      When that asymmetry is fixed, this test MUST be updated to assert the fixed
+    ///      behaviour.
     function test_refund_shadowedProofRefundsCreator_knownLimitation() public {
         Intent memory intent = _intent(
             address(aggregator),

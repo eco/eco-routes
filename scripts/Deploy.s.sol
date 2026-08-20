@@ -514,13 +514,21 @@ contract Deploy is Script {
 
     /**
      * @notice Validates every aggregator member before deploying the aggregator
-     * @dev Implements Option 4 of
-     *      docs/superpowers/specs/2026-08-20-aggregator-refund-shadowing-fix.md.
-     *      A member whose `destination` is not bridge-attested can record a
-     *      wrong-destination proof that SHADOWS a valid proof in a lower-priority
-     *      member. `withdraw` recovers via challenge forwarding; `refund` does
-     *      not, so the creator is refunded while the solver who delivered is not
-     *      paid. These checks remove the two config-triggered causes.
+     * @dev A member holding an entry whose `destination` is wrong SHADOWS a
+     *      valid proof held by a lower-priority member, because
+     *      AggregatorProver.provenIntents returns the first non-zero claimant.
+     *      This bug class does not exist for a single prover, which stores
+     *      exactly one ProofData per intentHash. IntentSource.withdraw
+     *      recovers — it forwards a challenge on its wrong-destination
+     *      branch, so a second withdraw pays — but _validateRefund reads the
+     *      same shadowed value, never forwards a challenge, and past
+     *      reward.deadline refunds the creator while the solver who
+     *      delivered goes unpaid. This validator is the mitigation: it
+     *      restricts members to provers whose `destination` is
+     *      bridge-attested by MessageBridgeProver._handleCrossChainMessage,
+     *      removing the two config-triggered causes (codeless member,
+     *      non-bridge-attested member). The asymmetry itself remains in
+     *      IntentSource.
      * @param ctx Deployment context carrying the member list and domain configs
      */
     function validateAggregatorMembers(
@@ -543,9 +551,19 @@ contract Deploy is Script {
             // members than the operator believes they configured.
             require(member.code.length > 0, "member has no code on this chain");
 
-            // PolymerProver writes _provenIntents through its own processIntent
-            // and never routes through BaseProver._processIntentProofs, so its
-            // destination is not bridge-attested. Audit before admitting it.
+            // Defense-in-depth, not the real gate: PolymerProver writes
+            // _provenIntents through its own processIntent and never routes
+            // through BaseProver._processIntentProofs, so its destination is
+            // not bridge-attested. But PolymerProver is BaseProver+Whitelist,
+            // not a MessageBridgeProver descendant, so it has no
+            // chainIdByDomain and the unconditional probe below already
+            // rejects it one step earlier regardless of this check. This
+            // require is also a no-op exactly when it looks most needed: it
+            // is gated on ctx.polymerProver != address(0), so an operator who
+            // lists a previously-deployed PolymerProver as a member without
+            // POLYMER_CROSS_L2_PROVER_V2 set in this run never reaches it.
+            // Kept anyway because its error message is clearer than the
+            // probe's.
             require(
                 ctx.polymerProver == address(0) || member != ctx.polymerProver,
                 "PolymerProver destination is not bridge-attested"
@@ -613,6 +631,28 @@ contract Deploy is Script {
             ctx.deployer,
             ctx.aggregatorProverSalt
         );
+
+        // The CREATE3 salt excludes the member list, so a changed
+        // AGGREGATOR_PROVER_MEMBERS with an unchanged SALT would otherwise
+        // silently reuse the already-deployed contract's OLD members while
+        // writeDeploymentData records the NEW constructor args for
+        // verification — the operator would see a "success" log and believe
+        // membership changed when it did not. Member order is priority order
+        // and is consensus-critical, so require the on-chain set to match.
+        if (deployed) {
+            bytes32[] memory onchain = AggregatorProver(ctx.aggregatorProver)
+                .getWhitelist();
+            require(
+                onchain.length == ctx.aggregatorMembers.length,
+                "existing AggregatorProver has a different member set; change SALT"
+            );
+            for (uint256 i = 0; i < onchain.length; i++) {
+                require(
+                    onchain[i] == ctx.aggregatorMembers[i],
+                    "existing AggregatorProver member/order mismatch; change SALT"
+                );
+            }
+        }
 
         console.log("AggregatorProver :", ctx.aggregatorProver);
         for (uint256 i = 0; i < ctx.aggregatorMembers.length; i++) {

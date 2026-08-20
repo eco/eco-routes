@@ -24,6 +24,12 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
  *      repo Whitelist holds REMOTE cross-VM prover addresses; here it holds
  *      LOCAL EVM member contracts.
  */
+/// @dev Whitelist's getWhitelist()/getWhitelistSize()/isWhitelisted() carry a
+///      DIFFERENT meaning here than on every other IProver implementation: on
+///      those, "whitelisted" means a trusted remote cross-VM prover address;
+///      here it means a local EVM member of the 1-of-N union. Off-chain
+///      tooling that reads isWhitelisted() uniformly across IProver
+///      implementations will misread this contract.
 contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     using AddressConverter for bytes32;
 
@@ -114,20 +120,57 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     /**
      * @notice Returns the first member proof with a non-zero claimant
      * @dev Iterates members in immutable priority order. Members that are
-     *      codeless or revert are skipped, never propagated.
+     *      codeless, revert, or return a zero claimant are skipped and never
+     *      propagated: a zero-claimant success must fall through to the next
+     *      member, not terminate the search.
      *
-     *      The `code.length` guard is load-bearing: a staticcall to a codeless
-     *      address SUCCEEDS with empty returndata, and ABI-decoding empty data
-     *      reverts in THIS frame where try/catch cannot catch it. Without it, a
-     *      member deployed only on other chains would brick withdraw AND refund
-     *      for every intent naming this aggregator. Mirrors the same defense at
-     *      IntentSource.sol:872-880.
+     *      The `code.length` guard closes the CODELESS case: a staticcall to a
+     *      codeless address SUCCEEDS with empty returndata, and ABI-decoding
+     *      empty data would revert in THIS frame where try/catch cannot catch
+     *      it. Without it, a member deployed only on other chains would brick
+     *      withdraw AND refund for every intent naming this aggregator.
+     *      Mirrors the same defense at IntentSource.sol:872-880.
+     *
+     *      The call below is a low-level staticcall, not an interface call,
+     *      and checks the exact returndata size before decoding. That closes
+     *      the WRONG-SHAPE case: a code-bearing member that returns SUCCESS
+     *      with insufficient returndata would otherwise make solc's generated
+     *      decoder revert in THIS frame, outside any try/catch — not
+     *      griefing, but a permanent freeze of both withdraw and refund for
+     *      every intent naming this aggregator, since provenIntents is read by
+     *      both. A non-dynamic ProofData{address; uint64;} ABI-encodes to
+     *      exactly 64 bytes, so `ret.length == 64` is the exact-shape check.
+     *
+     *      An OVERSIZED returndata bomb is still possible and is ACCEPTED:
+     *      solc copies the full returndata into memory in our frame before
+     *      any length check runs, so a member returning gigabytes of data
+     *      still costs us quadratic memory-expansion gas, an uncatchable OOG.
+     *      This is tolerated because deploy-time validation
+     *      (`Deploy.validateAggregatorMembers`) restricts members to
+     *      `MessageBridgeProver` descendants built from this repo — not
+     *      arbitrary bytecode. That validator also assumes NON-PROXY member
+     *      bytecode: a proxy whose fallback returned a plausible 64-byte
+     *      payload could defeat the shape checks above; it does not defend
+     *      against a malicious proxy member.
      *
      *      No per-member gas cap by design: a cap would silently skip an honest
      *      member whose read exceeds it, leaving a delivered solver unpayable
      *      with no error. A compromised member can already forge a valid-looking
      *      proof through the front door, so a returndata bomb grants it nothing
      *      new. Fan-out is bounded by MAX_MEMBERS.
+     *
+     *      KNOWN LIMITATION (shadowing): a member holding an entry whose
+     *      `destination` is wrong shadows a valid proof held by a
+     *      lower-priority member, since this function returns the first
+     *      non-zero claimant. `IntentSource.withdraw` recovers by forwarding a
+     *      challenge on its wrong-destination branch, so a second `withdraw`
+     *      pays, but `_validateRefund` reads the same shadowed value, never
+     *      forwards a challenge, and past `reward.deadline` refunds the
+     *      creator while the solver who delivered goes unpaid. The mitigation
+     *      is `Deploy.validateAggregatorMembers`, which restricts members to
+     *      provers whose `destination` is bridge-attested by
+     *      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry
+     *      itself remains in `IntentSource`.
      * @param intentHash The intent hash to query
      * @return First non-zero member proof, or a zero ProofData if none
      */
@@ -142,12 +185,23 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
 
             if (member.code.length == 0) continue;
 
-            try IProver(member).provenIntents(intentHash) returns (
-                ProofData memory proof
-            ) {
-                if (proof.claimant != address(0)) return proof;
-            } catch {
-                continue;
+            (bool success, bytes memory ret) = member.staticcall(
+                abi.encodeWithSelector(
+                    IProver.provenIntents.selector,
+                    intentHash
+                )
+            );
+
+            if (!success || ret.length != 64) continue;
+
+            (address claimant, uint64 destination) = abi.decode(
+                ret,
+                (address, uint64)
+            );
+
+            if (claimant != address(0)) {
+                return
+                    ProofData({claimant: claimant, destination: destination});
             }
         }
 

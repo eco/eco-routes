@@ -92,7 +92,13 @@ The system supports multiple bridge protocols through specialized prover contrac
   cross-checked against the bridge origin domain in `_handleCrossChainMessage`.
   `PolymerProver` and `LocalProver` do not qualify and are rejected at deploy
   time — a member that can record a wrong `destination` shadows valid proofs held
-  by lower-priority members, and the refund path cannot recover from that.
+  by lower-priority members, and the refund path cannot recover from that. Even
+  with a fully validated member set, a shadowing entry (e.g. a genuinely
+  wrong-destination proof from a live bridge) makes the **first** `withdraw`
+  succeed while paying nothing: it forwards the challenge to every member and
+  returns, and only a second `withdraw` call actually pays. Do not read a
+  no-op `withdraw` as a bug by itself — check whether an earlier member's
+  proof was just challenged out.
 
 Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is the root, and the message-bridge provers extend `MessageBridgeProver` (which itself extends `BaseProver`). All follow the standardized `(intentHash, claimant)` message format, using `bytes32` addresses for cross-VM compatibility.
 
@@ -176,9 +182,19 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   for `AggregatorProver` (max 8). **Order is priority** — the first member with
   a non-zero claimant wins. Unset or empty skips aggregator deployment.
 - `AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
-  allows `AggregatorProver` members that were not deployed in the current run.
-  The code-presence and `chainIdByDomain` checks still apply. Leave unset unless
-  admitting an audited pre-existing prover on purpose.
+  allows `AggregatorProver` members that were not deployed in the current run
+  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`). The EVM-shape,
+  non-zero, has-code, and `chainIdByDomain`-presence checks still apply, but
+  **domain-lane verification is skipped entirely** for members admitted this
+  way — there is no per-lane check to skip to, because a member outside the
+  matched set never reaches the domain-config loop. `CCIPProver` can *only*
+  be admitted through this hatch: it is deployed by a separate script
+  (`scripts/DeployCCIPProver.s.sol`), so it can never equal one of `ctx`'s own
+  prover fields, and it uses a strict domain->chainId map with no fallback,
+  making it the member type most sensitive to a config error. Any member
+  admitted via this hatch requires **out-of-band** verification of its domain
+  table against the bridge operator's published values before deployment —
+  leave the hatch unset unless you have done that audit.
 
 ## Integration Notes
 

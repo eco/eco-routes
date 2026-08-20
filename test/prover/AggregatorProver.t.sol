@@ -7,6 +7,7 @@ import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
+import {MalformedProver} from "../../contracts/test/MalformedProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
 
 contract AggregatorProverTest is Test {
@@ -245,6 +246,23 @@ contract AggregatorProverTest is Test {
         RevertingProver bad = new RevertingProver();
         AggregatorProver agg = new AggregatorProver(
             _triple(address(0xDEAD), address(bad), address(proverB))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+    }
+
+    /// @dev Pins the Fix-2 hardening: a code-bearing member that returns
+    ///      SUCCESS with the wrong returndata shape (not the 64-byte ProofData
+    ///      encoding) must be treated as "no proof" and skipped, not revert
+    ///      the whole call. A plain interface call would ABI-decode-revert in
+    ///      THIS frame, outside any try/catch, permanently freezing both
+    ///      withdraw and refund for every intent naming this aggregator.
+    function test_provenIntents_skipsWrongShapeReturndataMember() public {
+        MalformedProver bad = new MalformedProver();
+        AggregatorProver agg = new AggregatorProver(
+            _pair(address(bad), address(proverB))
         );
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
