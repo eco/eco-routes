@@ -64,6 +64,11 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      Whitelist's constructor runs first, so a set larger than its own
      *      20-address cap reverts with WhitelistSizeExceeded, not
      *      InvalidMemberSet.
+     *
+     *      The `isValidAddress` check below is the ONLY reason the unguarded
+     *      `toAddress()` calls in getMembers/provenIntents/challengeIntentProof
+     *      never revert; loosening it would make all three revert-capable and
+     *      break IntentSource.batchWithdraw's per-intent isolation.
      * @param members Member prover addresses as bytes32, in priority order
      */
     constructor(bytes32[] memory members) Whitelist(members) {

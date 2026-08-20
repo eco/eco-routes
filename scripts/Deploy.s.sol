@@ -14,6 +14,7 @@ import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
+import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract Deploy is Script {
@@ -70,6 +71,10 @@ contract Deploy is Script {
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
         bytes polymerProverConstructorArgs;
+        bytes32[] aggregatorMembers;
+        bytes32 aggregatorProverSalt;
+        address aggregatorProver;
+        bytes aggregatorProverConstructorArgs;
     }
 
     function run() external {
@@ -119,6 +124,18 @@ contract Deploy is Script {
             ctx.polymerCrossVmProvers = new bytes32[](0);
         }
 
+        // Ordered, comma-separated member provers for AggregatorProver.
+        // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
+        // Set explicitly rather than derived from what was deployed this run —
+        // silently-varying membership across chains is a security risk.
+        try vm.envBytes32("AGGREGATOR_PROVER_MEMBERS", ",") returns (
+            bytes32[] memory members
+        ) {
+            ctx.aggregatorMembers = members;
+        } catch {
+            ctx.aggregatorMembers = new bytes32[](0);
+        }
+
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
         // their config is exceptions-only and may legitimately be empty.
@@ -165,6 +182,14 @@ contract Deploy is Script {
             ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
         }
 
+        bool hasAggregator = ctx.aggregatorMembers.length > 0;
+        if (hasAggregator) {
+            ctx.aggregatorProverSalt = getContractSalt(
+                ctx.salt,
+                "AGGREGATOR_PROVER"
+            );
+        }
+
         vm.startBroadcast();
 
         // Deploy deployer if it hasn't been deployed
@@ -198,6 +223,11 @@ contract Deploy is Script {
             deployPolymerProver(ctx);
         }
 
+        // Deploy AggregatorProver last: its members must already exist
+        if (hasAggregator) {
+            deployAggregatorProver(ctx);
+        }
+
         vm.stopBroadcast();
 
         // Write deployment results to file
@@ -213,6 +243,7 @@ contract Deploy is Script {
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
         bool needsPortal = !hasExistingPortal &&
             (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+        bool hasAggregator = ctx.aggregatorMembers.length > 0;
 
         uint num = 0;
         num = needsPortal ? num + 1 : num;
@@ -220,6 +251,7 @@ contract Deploy is Script {
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
         num = hasPolymer ? num + 1 : num;
+        num = hasAggregator ? num + 1 : num;
 
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
@@ -262,6 +294,15 @@ contract Deploy is Script {
                 contractAddress: ctx.polymerProver,
                 contractPath: "contracts/prover/PolymerProver.sol:PolymerProver",
                 constructorArgs: ctx.polymerProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+
+        if (hasAggregator) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.aggregatorProver,
+                contractPath: "contracts/prover/AggregatorProver.sol:AggregatorProver",
+                constructorArgs: ctx.aggregatorProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -439,6 +480,33 @@ contract Deploy is Script {
         );
 
         console.log("PolymerProver :", ctx.polymerProver);
+    }
+
+    function deployAggregatorProver(
+        DeploymentContext memory ctx
+    ) internal returns (address aggregatorProver) {
+        ctx.aggregatorProverConstructorArgs = abi.encode(ctx.aggregatorMembers);
+
+        bytes memory aggregatorProverBytecode = abi.encodePacked(
+            type(AggregatorProver).creationCode,
+            ctx.aggregatorProverConstructorArgs
+        );
+
+        bool deployed;
+        (ctx.aggregatorProver, deployed) = deployWithCreate3(
+            aggregatorProverBytecode,
+            ctx.deployer,
+            ctx.aggregatorProverSalt
+        );
+
+        console.log("AggregatorProver :", ctx.aggregatorProver);
+        for (uint256 i = 0; i < ctx.aggregatorMembers.length; i++) {
+            console.log(
+                "  member",
+                i,
+                address(uint160(uint256(ctx.aggregatorMembers[i])))
+            );
+        }
     }
 
     function isDeployed(address _addr) internal view returns (bool) {
