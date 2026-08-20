@@ -8,6 +8,7 @@ import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {MalformedProver} from "../../contracts/test/MalformedProver.sol";
+import {DirtyBitsProver} from "../../contracts/test/DirtyBitsProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
 
 contract AggregatorProverTest is Test {
@@ -268,6 +269,25 @@ contract AggregatorProverTest is Test {
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
         assertEq(proof.claimant, address(0xBEEF));
+    }
+
+    /// @dev Pins the dirty-bits hardening: a code-bearing member that returns
+    ///      exactly 64 bytes (the correct ProofData shape) but with non-zero
+    ///      padding bits in the address/uint64 words must be treated as "no
+    ///      proof" and skipped, not revert the whole call. Decoding this exact
+    ///      payload directly to (address, uint64) would ABI-decode-revert in
+    ///      THIS frame, outside any try/catch, permanently freezing both
+    ///      withdraw and refund for every intent naming this aggregator.
+    function test_provenIntents_skipsDirtyBitsReturndataMember() public {
+        DirtyBitsProver bad = new DirtyBitsProver();
+        AggregatorProver agg = new AggregatorProver(
+            _pair(address(bad), address(proverB))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
     }
 
     function test_provenIntents_returnsZeroWhenAllMembersMisbehave() public {

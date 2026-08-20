@@ -132,14 +132,23 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      Mirrors the same defense at IntentSource.sol:872-880.
      *
      *      The call below is a low-level staticcall, not an interface call,
-     *      and checks the exact returndata size before decoding. That closes
-     *      the WRONG-SHAPE case: a code-bearing member that returns SUCCESS
-     *      with insufficient returndata would otherwise make solc's generated
-     *      decoder revert in THIS frame, outside any try/catch — not
-     *      griefing, but a permanent freeze of both withdraw and refund for
-     *      every intent naming this aggregator, since provenIntents is read by
-     *      both. A non-dynamic ProofData{address; uint64;} ABI-encodes to
-     *      exactly 64 bytes, so `ret.length == 64` is the exact-shape check.
+     *      and the read path is revert-free for ANY 64-byte payload, honest or
+     *      not. A non-dynamic ProofData{address; uint64;} ABI-encodes to
+     *      exactly 64 bytes, so `ret.length == 64` closes the WRONG-SHAPE case
+     *      first: a code-bearing member returning SUCCESS with insufficient
+     *      returndata would otherwise make solc's generated decoder revert in
+     *      THIS frame, outside any try/catch. That length check alone is not
+     *      enough, though: decoding a full 64-byte payload directly to
+     *      (address, uint64) is ALSO strict — solc reverts, still in this
+     *      frame, if the upper 96 bits of the address word or the upper 192
+     *      bits of the uint64 word are non-zero. So the 64 bytes are decoded
+     *      first as (uint256, uint256), which cannot revert for any bit
+     *      pattern, and only then range-checked (`>> 160`/`>> 64` non-zero)
+     *      before narrowing; a dirty payload is treated exactly like a
+     *      wrong-length one, i.e. skipped via `continue`. Either failure
+     *      mode — wrong length or dirty high bits — would otherwise be a
+     *      permanent freeze of both withdraw and refund for every intent
+     *      naming this aggregator, since provenIntents is read by both.
      *
      *      An OVERSIZED returndata bomb is still possible and is ACCEPTED:
      *      solc copies the full returndata into memory in our frame before
@@ -194,10 +203,22 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
 
             if (!success || ret.length != 64) continue;
 
-            (address claimant, uint64 destination) = abi.decode(
+            // Decode as two uint256 words first: unlike decoding directly to
+            // (address, uint64), this cannot revert for any 64-byte payload.
+            // Dirty high-order bits are then rejected by range check, exactly
+            // like a wrong-length payload, rather than left to solc's strict
+            // (address, uint64) decoder, which WOULD revert in this frame.
+            (uint256 rawClaimant, uint256 rawDestination) = abi.decode(
                 ret,
-                (address, uint64)
+                (uint256, uint256)
             );
+
+            if (rawClaimant >> 160 != 0 || rawDestination >> 64 != 0) {
+                continue;
+            }
+
+            address claimant = address(uint160(rawClaimant));
+            uint64 destination = uint64(rawDestination);
 
             if (claimant != address(0)) {
                 return
