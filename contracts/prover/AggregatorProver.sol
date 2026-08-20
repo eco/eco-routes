@@ -108,12 +108,44 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
 
     /**
      * @notice Returns the first member proof with a non-zero claimant
+     * @dev Iterates members in immutable priority order. Members that are
+     *      codeless or revert are skipped, never propagated.
+     *
+     *      The `code.length` guard is load-bearing: a staticcall to a codeless
+     *      address SUCCEEDS with empty returndata, and ABI-decoding empty data
+     *      reverts in THIS frame where try/catch cannot catch it. Without it, a
+     *      member deployed only on other chains would brick withdraw AND refund
+     *      for every intent naming this aggregator. Mirrors the same defense at
+     *      IntentSource.sol:872-880.
+     *
+     *      No per-member gas cap by design: a cap would silently skip an honest
+     *      member whose read exceeds it, leaving a delivered solver unpayable
+     *      with no error. A compromised member can already forge a valid-looking
+     *      proof through the front door, so a returndata bomb grants it nothing
+     *      new. Fan-out is bounded by MAX_MEMBERS.
      * @param intentHash The intent hash to query
+     * @return First non-zero member proof, or a zero ProofData if none
      */
     function provenIntents(
         bytes32 intentHash
     ) external view returns (ProofData memory) {
-        intentHash; // silences unused-parameter warning until Task 2
+        bytes32[] memory members = getWhitelist();
+        uint256 length = members.length;
+
+        for (uint256 i = 0; i < length; ++i) {
+            address member = members[i].toAddress();
+
+            if (member.code.length == 0) continue;
+
+            try IProver(member).provenIntents(intentHash) returns (
+                ProofData memory proof
+            ) {
+                if (proof.claimant != address(0)) return proof;
+            } catch {
+                continue;
+            }
+        }
+
         return ProofData({claimant: address(0), destination: 0});
     }
 

@@ -6,6 +6,7 @@ import {AggregatorProver} from "../../contracts/prover/AggregatorProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
+import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
 
 contract AggregatorProverTest is Test {
@@ -13,6 +14,10 @@ contract AggregatorProverTest is Test {
     TestProver internal proverA;
     TestProver internal proverB;
     AggregatorProver internal aggregator;
+
+    bytes32 internal constant HASH = keccak256("intent");
+    uint64 internal constant DESTINATION = 8453;
+    uint64 internal constant WRONG_DESTINATION = 999;
 
     event MemberRegistered(address indexed member, uint256 indexed priority);
 
@@ -39,6 +44,17 @@ contract AggregatorProverTest is Test {
         m = new bytes32[](2);
         m[0] = _b32(a);
         m[1] = _b32(b);
+    }
+
+    function _triple(
+        address a,
+        address b,
+        address c
+    ) internal pure returns (bytes32[] memory m) {
+        m = new bytes32[](3);
+        m[0] = _b32(a);
+        m[1] = _b32(b);
+        m[2] = _b32(c);
     }
 
     function test_constructor_registersMembersInPriorityOrder() public view {
@@ -136,6 +152,28 @@ contract AggregatorProverTest is Test {
         new AggregatorProver(members);
     }
 
+    function test_constructor_acceptsMaxMembersSet() public {
+        bytes32[] memory eight = new bytes32[](8);
+        for (uint256 i = 0; i < 8; ++i) {
+            eight[i] = bytes32(uint256(i + 1));
+        }
+        AggregatorProver agg = new AggregatorProver(eight);
+        address[] memory members = agg.getMembers();
+        assertEq(members.length, 8);
+        for (uint256 i = 0; i < 8; ++i) {
+            assertEq(members[i], address(uint160(i + 1)));
+        }
+    }
+
+    function test_constructor_acceptsSingleMemberSet() public {
+        bytes32[] memory single = new bytes32[](1);
+        single[0] = _b32(address(proverA));
+        AggregatorProver agg = new AggregatorProver(single);
+        address[] memory members = agg.getMembers();
+        assertEq(members.length, 1);
+        assertEq(members[0], address(proverA));
+    }
+
     function test_prove_alwaysReverts() public {
         vm.expectRevert(AggregatorProver.ProvingNotSupported.selector);
         aggregator.prove{value: 1 ether}(address(this), 1, "", "");
@@ -162,5 +200,72 @@ contract AggregatorProverTest is Test {
         );
         assertEq(proof.claimant, address(0));
         assertEq(proof.destination, 0);
+    }
+
+    function test_provenIntents_returnsSingleMemberProof() public {
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
+    }
+
+    function test_provenIntents_firstMemberWinsOnConflict() public {
+        proverA.addProvenIntent(HASH, address(0xA11CE), DESTINATION);
+        proverB.addProvenIntent(HASH, address(0xB0B), DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xA11CE));
+    }
+
+    function test_provenIntents_skipsCodelessMember() public {
+        address codeless = address(0xDEAD);
+        AggregatorProver agg = new AggregatorProver(
+            _pair(codeless, address(proverB))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+    }
+
+    function test_provenIntents_skipsRevertingMember() public {
+        RevertingProver bad = new RevertingProver();
+        AggregatorProver agg = new AggregatorProver(
+            _pair(address(bad), address(proverB))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+    }
+
+    function test_provenIntents_skipsCodelessAndRevertingTogether() public {
+        RevertingProver bad = new RevertingProver();
+        AggregatorProver agg = new AggregatorProver(
+            _triple(address(0xDEAD), address(bad), address(proverB))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+    }
+
+    function test_provenIntents_returnsZeroWhenAllMembersMisbehave() public {
+        RevertingProver bad = new RevertingProver();
+        AggregatorProver agg = new AggregatorProver(
+            _pair(address(0xDEAD), address(bad))
+        );
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, 0);
+    }
+
+    function test_provenIntents_preservesDestinationFromMember() public {
+        proverA.addProvenIntent(HASH, address(0xA11CE), WRONG_DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.destination, WRONG_DESTINATION);
     }
 }
