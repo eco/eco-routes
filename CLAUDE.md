@@ -87,7 +87,12 @@ The system supports multiple bridge protocols through specialized prover contrac
   and the solver picks a live one at fulfillment time. Security floor is the
   weakest member, and membership is immutable. Emits no `IntentProven` /
   `IntentProofInvalidated`: **indexers must watch the member provers, not this
-  address.**
+  address.** Membership requires a **bridge-attested** `destination`: only
+  `MessageBridgeProver` descendants qualify, because their destination is
+  cross-checked against the bridge origin domain in `_handleCrossChainMessage`.
+  `PolymerProver` and `LocalProver` do not qualify and are rejected at deploy
+  time — a member that can record a wrong `destination` shadows valid proofs held
+  by lower-priority members, and the refund path cannot recover from that.
 
 Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is the root, and the message-bridge provers extend `MessageBridgeProver` (which itself extends `BaseProver`). All follow the standardized `(intentHash, claimant)` message format, using `bytes32` addresses for cross-VM compatibility.
 
@@ -170,6 +175,10 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `AGGREGATOR_PROVER_MEMBERS` - Ordered, comma-separated member prover addresses
   for `AggregatorProver` (max 8). **Order is priority** — the first member with
   a non-zero claimant wins. Unset or empty skips aggregator deployment.
+- `AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
+  allows `AggregatorProver` members that were not deployed in the current run.
+  The code-presence and `chainIdByDomain` checks still apply. Leave unset unless
+  admitting an audited pre-existing prover on purpose.
 
 ## Integration Notes
 

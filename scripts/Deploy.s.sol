@@ -482,9 +482,124 @@ contract Deploy is Script {
         console.log("PolymerProver :", ctx.polymerProver);
     }
 
+    /**
+     * @notice Probes whether `member` exposes `chainIdByDomain(uint64)` and, if so,
+     *         returns the resolved chainId
+     * @dev Uses a low-level staticcall rather than an interface call: chainIdByDomain
+     *      is defined on the concrete `MessageBridgeProver` base contract, not on the
+     *      `IMessageBridgeProver` interface, so there is no interface member to call
+     *      through. A staticcall also sidesteps a subtlety of `try`/`catch` against an
+     *      interface call: when the callee has no matching function and no fallback,
+     *      it reverts with empty returndata, which `try` catches cleanly — but if a
+     *      callee ever returned success with the wrong returndata shape, an interface
+     *      call would fail ABI decoding in the caller's frame, outside any `catch`.
+     *      Checking `success` and `ret.length == 32` here avoids that trap entirely.
+     * @param member Candidate aggregator member address
+     * @param domain Bridge origin domain to resolve
+     * @return ok True if `member` exposes `chainIdByDomain` and returned a uint64
+     * @return chainId The resolved chainId (0 / meaningless if `ok` is false)
+     */
+    function _tryChainIdByDomain(
+        address member,
+        uint64 domain
+    ) internal view returns (bool ok, uint64 chainId) {
+        (bool success, bytes memory ret) = member.staticcall(
+            abi.encodeWithSignature("chainIdByDomain(uint64)", domain)
+        );
+        if (!success || ret.length != 32) {
+            return (false, 0);
+        }
+        return (true, abi.decode(ret, (uint64)));
+    }
+
+    /**
+     * @notice Validates every aggregator member before deploying the aggregator
+     * @dev Implements Option 4 of
+     *      docs/superpowers/specs/2026-08-20-aggregator-refund-shadowing-fix.md.
+     *      A member whose `destination` is not bridge-attested can record a
+     *      wrong-destination proof that SHADOWS a valid proof in a lower-priority
+     *      member. `withdraw` recovers via challenge forwarding; `refund` does
+     *      not, so the creator is refunded while the solver who delivered is not
+     *      paid. These checks remove the two config-triggered causes.
+     * @param ctx Deployment context carrying the member list and domain configs
+     */
+    function validateAggregatorMembers(
+        DeploymentContext memory ctx
+    ) internal view {
+        bool allowUnverified = vm.envOr(
+            "AGGREGATOR_ALLOW_UNVERIFIED_MEMBERS",
+            false
+        );
+
+        for (uint256 i = 0; i < ctx.aggregatorMembers.length; i++) {
+            bytes32 raw = ctx.aggregatorMembers[i];
+            require(uint256(raw) >> 160 == 0, "member is not an EVM address");
+
+            address member = address(uint160(uint256(raw)));
+            require(member != address(0), "member is zero address");
+
+            // A codeless member is skipped forever by the aggregator's
+            // code.length guard, silently shrinking the trust set to fewer
+            // members than the operator believes they configured.
+            require(member.code.length > 0, "member has no code on this chain");
+
+            // PolymerProver writes _provenIntents through its own processIntent
+            // and never routes through BaseProver._processIntentProofs, so its
+            // destination is not bridge-attested. Audit before admitting it.
+            require(
+                ctx.polymerProver == address(0) || member != ctx.polymerProver,
+                "PolymerProver destination is not bridge-attested"
+            );
+
+            // chainIdByDomain exists only on MessageBridgeProver descendants —
+            // exactly the provers whose destination is bridge-attested via
+            // _handleCrossChainMessage. Its ABSENCE is the signal, so probe it
+            // unconditionally: the per-lane loop below cannot serve as the probe
+            // because HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are exceptions-only
+            // and are legitimately empty.
+            (bool probed, ) = _tryChainIdByDomain(member, 0);
+            require(
+                probed,
+                "member does not expose chainIdByDomain; destination not bridge-attested"
+            );
+
+            IMessageBridgeProver.Domain[] memory domains;
+            if (member == ctx.hyperProver) {
+                domains = ctx.hyperDomainConfig;
+            } else if (member == ctx.metaProver) {
+                domains = ctx.metaDomainConfig;
+            } else if (member == ctx.layerZeroProver) {
+                domains = ctx.layerZeroDomainConfig;
+            } else {
+                require(
+                    allowUnverified,
+                    "member is not a prover deployed in this run"
+                );
+                continue;
+            }
+
+            for (uint256 j = 0; j < domains.length; j++) {
+                (bool ok, uint64 resolved) = _tryChainIdByDomain(
+                    member,
+                    domains[j].domain
+                );
+                require(
+                    ok,
+                    "member does not expose chainIdByDomain; destination not bridge-attested"
+                );
+                require(
+                    resolved == domains[j].chainId,
+                    "member domain map disagrees with configured lane"
+                );
+            }
+        }
+    }
+
     function deployAggregatorProver(
         DeploymentContext memory ctx
     ) internal returns (address aggregatorProver) {
+        validateAggregatorMembers(ctx);
+
         ctx.aggregatorProverConstructorArgs = abi.encode(ctx.aggregatorMembers);
 
         bytes memory aggregatorProverBytecode = abi.encodePacked(
