@@ -6,7 +6,7 @@ import {IProver} from "../interfaces/IProver.sol";
 /**
  * @title RevertingProver
  * @notice Test prover whose every entry point reverts
- * @dev Verifies EcoProver skips misbehaving members instead of
+ * @dev Verifies AggregatorProver skips misbehaving members instead of
  *      propagating their failure
  */
 contract RevertingProver is IProver {

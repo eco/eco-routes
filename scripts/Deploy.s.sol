@@ -14,7 +14,7 @@ import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
-import {EcoProver} from "../contracts/prover/EcoProver.sol";
+import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract Deploy is Script {
@@ -71,10 +71,10 @@ contract Deploy is Script {
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
         bytes polymerProverConstructorArgs;
-        bytes32[] ecoProverMembers;
-        bytes32 ecoProverSalt;
-        address ecoProver;
-        bytes ecoProverConstructorArgs;
+        bytes32[] aggregatorProverMembers;
+        bytes32 aggregatorProverSalt;
+        address aggregatorProver;
+        bytes aggregatorProverConstructorArgs;
     }
 
     function run() external {
@@ -124,7 +124,7 @@ contract Deploy is Script {
             ctx.polymerCrossVmProvers = new bytes32[](0);
         }
 
-        // Ordered, comma-separated member provers for EcoProver.
+        // Ordered, comma-separated member provers for AggregatorProver.
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
         // Set explicitly rather than derived from what was deployed this run —
         // silently-varying membership across chains is a security risk.
@@ -133,18 +133,19 @@ contract Deploy is Script {
         // FixedBytes(32) coercion rejects a plain 20-byte address (the form
         // operators will actually write) and rejects a trailing comma, and
         // the try/catch this replaced turned "configured wrong" into "not
-        // configured" — deployEcoProver/validateEcoProverMembers silently
+        // configured" — deployAggregatorProver/validateAggregatorProverMembers silently
         // never ran, with no symptom beyond a missing console line. Only the
         // empty string means "not requested"; every other value is parsed
         // explicitly below, and a malformed element reverts loudly rather
         // than silently falling back to an empty list.
-        string memory ecoProverMembersRaw = vm.envOr(
-            "ECO_PROVER_MEMBERS",
+        string memory aggregatorProverMembersRaw = vm.envOr(
+            "AGGREGATOR_PROVER_MEMBERS",
             string("")
         );
-        ctx.ecoProverMembers = bytes(ecoProverMembersRaw).length == 0
+        ctx.aggregatorProverMembers = bytes(aggregatorProverMembersRaw)
+            .length == 0
             ? new bytes32[](0)
-            : _parseEcoProverMembers(ecoProverMembersRaw);
+            : _parseAggregatorProverMembers(aggregatorProverMembersRaw);
 
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
@@ -192,9 +193,12 @@ contract Deploy is Script {
             ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
         }
 
-        bool hasEcoProver = ctx.ecoProverMembers.length > 0;
-        if (hasEcoProver) {
-            ctx.ecoProverSalt = getContractSalt(ctx.salt, "ECO_PROVER");
+        bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
+        if (hasAggregatorProver) {
+            ctx.aggregatorProverSalt = getContractSalt(
+                ctx.salt,
+                "AGGREGATOR_PROVER"
+            );
         }
 
         vm.startBroadcast();
@@ -230,9 +234,9 @@ contract Deploy is Script {
             deployPolymerProver(ctx);
         }
 
-        // Deploy EcoProver last: its members must already exist
-        if (hasEcoProver) {
-            deployEcoProver(ctx);
+        // Deploy AggregatorProver last: its members must already exist
+        if (hasAggregatorProver) {
+            deployAggregatorProver(ctx);
         }
 
         vm.stopBroadcast();
@@ -250,7 +254,7 @@ contract Deploy is Script {
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
         bool needsPortal = !hasExistingPortal &&
             (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
-        bool hasEcoProver = ctx.ecoProverMembers.length > 0;
+        bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
 
         uint num = 0;
         num = needsPortal ? num + 1 : num;
@@ -258,7 +262,7 @@ contract Deploy is Script {
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
         num = hasPolymer ? num + 1 : num;
-        num = hasEcoProver ? num + 1 : num;
+        num = hasAggregatorProver ? num + 1 : num;
 
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
@@ -305,11 +309,11 @@ contract Deploy is Script {
             });
         }
 
-        if (hasEcoProver) {
+        if (hasAggregatorProver) {
             contracts[count++] = VerificationData({
-                contractAddress: ctx.ecoProver,
-                contractPath: "contracts/prover/EcoProver.sol:EcoProver",
-                constructorArgs: ctx.ecoProverConstructorArgs,
+                contractAddress: ctx.aggregatorProver,
+                contractPath: "contracts/prover/AggregatorProver.sol:AggregatorProver",
+                constructorArgs: ctx.aggregatorProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -527,7 +531,7 @@ contract Deploy is Script {
      *      frame on a wrong-shaped payload, outside any try/catch. A member
      *      whose read function reverts under staticcall, or returns a
      *      wrong-shaped payload, is silently skipped forever at runtime by
-     *      EcoProver's own guards — and membership is immutable, so this is
+     *      AggregatorProver's own guards — and membership is immutable, so this is
      *      the last point such a member can be caught.
      *
      *      bytes32(0) is an unproven intent hash, so an honest member returns
@@ -557,7 +561,7 @@ contract Deploy is Script {
      * @notice Validates every aggregator member before deploying the aggregator
      * @dev A member holding an entry whose `destination` is wrong SHADOWS a
      *      valid proof held by a lower-priority member, because
-     *      EcoProver.provenIntents returns the first non-zero claimant.
+     *      AggregatorProver.provenIntents returns the first non-zero claimant.
      *      This bug class does not exist for a single prover, which stores
      *      exactly one ProofData per intentHash. IntentSource.withdraw
      *      recovers — it forwards a challenge on its wrong-destination
@@ -572,16 +576,16 @@ contract Deploy is Script {
      *      IntentSource.
      * @param ctx Deployment context carrying the member list and domain configs
      */
-    function validateEcoProverMembers(
+    function validateAggregatorProverMembers(
         DeploymentContext memory ctx
     ) internal view {
         bool allowUnverified = vm.envOr(
-            "ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS",
+            "AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS",
             false
         );
 
-        for (uint256 i = 0; i < ctx.ecoProverMembers.length; i++) {
-            bytes32 raw = ctx.ecoProverMembers[i];
+        for (uint256 i = 0; i < ctx.aggregatorProverMembers.length; i++) {
+            bytes32 raw = ctx.aggregatorProverMembers[i];
             require(uint256(raw) >> 160 == 0, "member is not an EVM address");
 
             address member = address(uint160(uint256(raw)));
@@ -624,7 +628,7 @@ contract Deploy is Script {
 
             // A member whose provenIntents reverts under staticcall, or
             // returns a wrong-shaped payload, is silently skipped forever at
-            // runtime by EcoProver.provenIntents' own guards — and membership
+            // runtime by AggregatorProver.provenIntents' own guards — and membership
             // is immutable, so this is the last point it can be caught.
             require(
                 _tryProvenIntentsShape(member),
@@ -663,52 +667,55 @@ contract Deploy is Script {
         }
     }
 
-    function deployEcoProver(
+    function deployAggregatorProver(
         DeploymentContext memory ctx
-    ) internal returns (address ecoProver) {
-        validateEcoProverMembers(ctx);
+    ) internal returns (address aggregatorProver) {
+        validateAggregatorProverMembers(ctx);
 
-        ctx.ecoProverConstructorArgs = abi.encode(ctx.ecoProverMembers);
+        ctx.aggregatorProverConstructorArgs = abi.encode(
+            ctx.aggregatorProverMembers
+        );
 
-        bytes memory ecoProverBytecode = abi.encodePacked(
-            type(EcoProver).creationCode,
-            ctx.ecoProverConstructorArgs
+        bytes memory aggregatorProverBytecode = abi.encodePacked(
+            type(AggregatorProver).creationCode,
+            ctx.aggregatorProverConstructorArgs
         );
 
         bool deployed;
-        (ctx.ecoProver, deployed) = deployWithCreate3(
-            ecoProverBytecode,
+        (ctx.aggregatorProver, deployed) = deployWithCreate3(
+            aggregatorProverBytecode,
             ctx.deployer,
-            ctx.ecoProverSalt
+            ctx.aggregatorProverSalt
         );
 
         // The CREATE3 salt excludes the member list, so a changed
-        // ECO_PROVER_MEMBERS with an unchanged SALT would otherwise
+        // AGGREGATOR_PROVER_MEMBERS with an unchanged SALT would otherwise
         // silently reuse the already-deployed contract's OLD members while
         // writeDeploymentData records the NEW constructor args for
         // verification — the operator would see a "success" log and believe
         // membership changed when it did not. Member order is priority order
         // and is consensus-critical, so require the on-chain set to match.
         if (deployed) {
-            bytes32[] memory onchain = EcoProver(ctx.ecoProver).getWhitelist();
+            bytes32[] memory onchain = AggregatorProver(ctx.aggregatorProver)
+                .getWhitelist();
             require(
-                onchain.length == ctx.ecoProverMembers.length,
-                "existing EcoProver has a different member set; change SALT"
+                onchain.length == ctx.aggregatorProverMembers.length,
+                "existing AggregatorProver has a different member set; change SALT"
             );
             for (uint256 i = 0; i < onchain.length; i++) {
                 require(
-                    onchain[i] == ctx.ecoProverMembers[i],
-                    "existing EcoProver member/order mismatch; change SALT"
+                    onchain[i] == ctx.aggregatorProverMembers[i],
+                    "existing AggregatorProver member/order mismatch; change SALT"
                 );
             }
         }
 
-        console.log("EcoProver :", ctx.ecoProver);
-        for (uint256 i = 0; i < ctx.ecoProverMembers.length; i++) {
+        console.log("AggregatorProver :", ctx.aggregatorProver);
+        for (uint256 i = 0; i < ctx.aggregatorProverMembers.length; i++) {
             console.log(
                 "  member",
                 i,
-                address(uint160(uint256(ctx.ecoProverMembers[i])))
+                address(uint160(uint256(ctx.aggregatorProverMembers[i])))
             );
         }
     }
@@ -724,15 +731,15 @@ contract Deploy is Script {
             block.chainid == TRON_NILE_CHAIN_ID;
     }
 
-    // Parses a comma-separated ECO_PROVER_MEMBERS list. Accepts, per element,
+    // Parses a comma-separated AGGREGATOR_PROVER_MEMBERS list. Accepts, per element,
     // either a 20-byte address ("0x" + 40 hex chars, the form operators will
     // actually write) or a full 32-byte bytes32 ("0x" + 64 hex chars),
     // left-padding the former to bytes32. Any other shape — including an
     // empty element from a trailing comma — reverts, naming the offending
     // element and its index, rather than silently discarding the whole list.
-    // Not called for an empty ECO_PROVER_MEMBERS string; that case is
+    // Not called for an empty AGGREGATOR_PROVER_MEMBERS string; that case is
     // handled by the caller as "not requested".
-    function _parseEcoProverMembers(
+    function _parseAggregatorProverMembers(
         string memory csv
     ) internal pure returns (bytes32[] memory) {
         string[] memory parts = vm.split(csv, ",");
@@ -752,7 +759,7 @@ contract Deploy is Script {
                 revert(
                     string(
                         abi.encodePacked(
-                            "ECO_PROVER_MEMBERS: malformed element at index ",
+                            "AGGREGATOR_PROVER_MEMBERS: malformed element at index ",
                             vm.toString(i),
                             ": '",
                             parts[i],

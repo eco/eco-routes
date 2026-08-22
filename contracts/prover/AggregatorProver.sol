@@ -8,7 +8,7 @@ import {Whitelist} from "../libs/Whitelist.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 
 /**
- * @title EcoProver
+ * @title AggregatorProver
  * @notice Reports an intent as proven when ANY member prover has proven it
  * @dev Stateless 1-of-N union over an immutable set of member provers. Records
  *      no proofs of its own and dispatches no messages: solvers prove through a
@@ -35,13 +35,13 @@ import {AddressConverter} from "../libs/AddressConverter.sol";
 ///      recipient. `data.sourceChainProver` in a `Portal.prove` /
 ///      `fulfillAndProve` call must be one of `getMembers()` resolved on the
 ///      SOURCE chain, never `reward.prover` (which may legitimately be this
-///      aggregator). `EcoProver` implements no `handle`, no `lzReceive`, and
+///      aggregator). `AggregatorProver` implements no `handle`, no `lzReceive`, and
 ///      no fallback, so delivery to it reverts on an unknown selector
 ///      forever — permanently stranding the message. For every other prover,
 ///      CREATE3 parity makes `reward.prover` the correct recipient too, which
 ///      makes this a real footgun: the pattern that works for every other
 ///      prover silently does not work here.
-contract EcoProver is IProver, ERC165, Whitelist, Semver {
+contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     using AddressConverter for bytes32;
 
     /// @notice Proof mechanism identifier
@@ -168,7 +168,7 @@ contract EcoProver is IProver, ERC165, Whitelist, Semver {
      *      still costs us quadratic memory-expansion gas; a member that
      *      simply burns gas without returning is the same failure mode by a
      *      different mechanism. This is tolerated because deploy-time
-     *      validation (`Deploy.validateEcoProverMembers`) only probes that
+     *      validation (`Deploy.validateAggregatorProverMembers`) only probes that
      *      each member exposes `chainIdByDomain(uint64)` — a duck-typed check
      *      that any contract implementing that one function passes, not a
      *      guarantee of `MessageBridgeProver`-descended or repo-built
@@ -212,7 +212,7 @@ contract EcoProver is IProver, ERC165, Whitelist, Semver {
      *      pays, but `_validateRefund` reads the same shadowed value, never
      *      forwards a challenge, and past `reward.deadline` refunds the
      *      creator while the solver who delivered goes unpaid. The mitigation
-     *      is `Deploy.validateEcoProverMembers`, which restricts members to
+     *      is `Deploy.validateAggregatorProverMembers`, which restricts members to
      *      provers whose `destination` is bridge-attested by
      *      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry
      *      itself remains in `IntentSource`.

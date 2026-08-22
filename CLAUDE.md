@@ -80,7 +80,7 @@ The system supports multiple bridge protocols through specialized prover contrac
 - **PolymerProver**: Polymer cross-chain verification
 - **CCIPProver**: Chainlink CCIP integration
 - **LocalProver**: Same-chain proof handling (with a `LocalProverTron` variant for TRON)
-- **EcoProver**: Read-only 1-of-N union over other provers on the same
+- **AggregatorProver**: Read-only 1-of-N union over other provers on the same
   chain. Records no proofs and dispatches no messages — `prove()` reverts;
   solvers prove through a concrete member. Reports an intent as proven when any
   member has proven it, so a creator can name a set of bridges at publish time
@@ -100,7 +100,7 @@ The system supports multiple bridge protocols through specialized prover contrac
   no-op `withdraw` as a bug by itself — check whether an earlier member's
   proof was just challenged out.
 
-Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is the root, and the message-bridge provers extend `MessageBridgeProver` (which itself extends `BaseProver`). All of those follow the standardized `(intentHash, claimant)` message format, using `bytes32` addresses for cross-VM compatibility. **`EcoProver` is the exception**: it is `IProver, ERC165, Whitelist, Semver` directly, does not extend `BaseProver` or `MessageBridgeProver`, and handles no message format at all — it dispatches no messages and has no `handle`/`lzReceive`/fallback. Do not assume `BaseProver` semantics for it: its `challengeIntentProof` is a blanket forwarder to every member (see its own NatSpec), not a delete-and-emit like `BaseProver`'s.
+Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is the root, and the message-bridge provers extend `MessageBridgeProver` (which itself extends `BaseProver`). All of those follow the standardized `(intentHash, claimant)` message format, using `bytes32` addresses for cross-VM compatibility. **`AggregatorProver` is the exception**: it is `IProver, ERC165, Whitelist, Semver` directly, does not extend `BaseProver` or `MessageBridgeProver`, and handles no message format at all — it dispatches no messages and has no `handle`/`lzReceive`/fallback. Do not assume `BaseProver` semantics for it: its `challengeIntentProof` is a blanket forwarder to every member (see its own NatSpec), not a delete-and-emit like `BaseProver`'s.
 
 ### Key Components
 
@@ -178,8 +178,8 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `CCIP_ROUTER` - Chainlink CCIP router address
 - Per-bridge cross-VM prover lists (comma-separated `bytes32` addresses): `HYPER_CROSS_VM_PROVERS`, `META_CROSS_VM_PROVERS`, `LAYERZERO_CROSS_VM_PROVERS`, `POLYMER_CROSS_VM_PROVERS`, `CCIP_CROSS_VM_PROVERS`
 - Per-bridge origin domain config (comma-separated `domain:chainId` pairs, e.g. `100:10,200:8453`; unset/empty parses to an empty array): `HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`, `CCIP_DOMAIN_CONFIG`. `HyperProver`/`MetaProver` resolvers fall back to `domain == chainId`, so `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG` are exceptions-only and may be left empty. `LayerZeroProver`/`CCIPProver` use a strict domain->chainId map with no fallback, so `LAYERZERO_DOMAIN_CONFIG`/`CCIP_DOMAIN_CONFIG` must enumerate every origin chain accepted.
-- `ECO_PROVER_MEMBERS` - Ordered, comma-separated member prover addresses
-  for `EcoProver` (max 8). Each element may be either a 20-byte address
+- `AGGREGATOR_PROVER_MEMBERS` - Ordered, comma-separated member prover addresses
+  for `AggregatorProver` (max 8). Each element may be either a 20-byte address
   (`0x` + 40 hex chars, the form operators will normally write) or a full
   32-byte `bytes32` (`0x` + 64 hex chars); the 20-byte form is left-padded
   automatically. **Order is priority** — the first member with a non-zero
@@ -187,8 +187,8 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   deployment; any other malformed value (wrong element length, a trailing
   comma, etc.) now **fails the deploy loudly** rather than silently
   skipping deployment the way an unparseable value once did.
-- `ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
-  allows `EcoProver` members that were not deployed in the current run
+- `AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
+  allows `AggregatorProver` members that were not deployed in the current run
   (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`). The EVM-shape,
   non-zero, has-code, and `chainIdByDomain`-presence checks still apply, but
   **domain-lane verification is skipped entirely** for members admitted this

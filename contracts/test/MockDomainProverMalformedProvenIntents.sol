@@ -7,7 +7,7 @@ pragma solidity ^0.8.26;
  *         bridge-attestation probe) but a malformed `provenIntents` that
  *         returns the wrong shape (32 bytes instead of the 64-byte ProofData
  *         encoding)
- * @dev Used to test Deploy.validateEcoProverMembers' provenIntents shape
+ * @dev Used to test Deploy.validateAggregatorProverMembers' provenIntents shape
  *      probe in isolation from the chainIdByDomain probe it sits behind.
  */
 contract MockDomainProverMalformedProvenIntents {

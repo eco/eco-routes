@@ -7,7 +7,7 @@ pragma solidity ^0.8.26;
  *         empty dynamic value, which ABI-encodes to exactly 64 bytes: an
  *         offset head 0x20 followed by a length word 0x00 — the same size as
  *         the correct ProofData shape
- * @dev Verifies EcoProver.provenIntents treats this payload as "no proof from
+ * @dev Verifies AggregatorProver.provenIntents treats this payload as "no proof from
  *      this member" (skip, fall through) rather than surfacing the ABI OFFSET
  *      WORD as a fabricated claimant. Unlike DirtyBitsProver/MalformedProver,
  *      which hand-craft their returndata with inline assembly, this contract

@@ -15,7 +15,7 @@ import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 ///      to tests
 contract DeployHarness is Deploy {
     function exposedValidate(DeploymentContext memory ctx) external view {
-        validateEcoProverMembers(ctx);
+        validateAggregatorProverMembers(ctx);
     }
 
     function emptyContext()
@@ -26,14 +26,14 @@ contract DeployHarness is Deploy {
         return ctx;
     }
 
-    function exposedParseEcoProverMembers(
+    function exposedParseAggregatorProverMembers(
         string memory csv
     ) external pure returns (bytes32[] memory) {
-        return _parseEcoProverMembers(csv);
+        return _parseAggregatorProverMembers(csv);
     }
 }
 
-contract EcoProverMemberValidationTest is Test {
+contract AggregatorProverMemberValidationTest is Test {
     DeployHarness internal harness;
     MockDomainProver internal hyper;
 
@@ -50,7 +50,7 @@ contract EcoProverMemberValidationTest is Test {
         bytes32[] memory members
     ) internal view returns (Deploy.DeploymentContext memory ctx) {
         ctx = harness.emptyContext();
-        ctx.ecoProverMembers = members;
+        ctx.aggregatorProverMembers = members;
         ctx.hyperProver = address(hyper);
     }
 
@@ -126,7 +126,7 @@ contract EcoProverMemberValidationTest is Test {
     // hatch") raced against a sibling case that flips the same env var to
     // "true" partway through its run (case 7) is not a rare flake: it was
     // observed failing on essentially every run of
-    // `forge test --match-contract EcoProverMemberValidationTest`, and only
+    // `forge test --match-contract AggregatorProverMemberValidationTest`, and only
     // passed reliably under `--threads 1`. Ordering the two assertions inside
     // a single test function makes them run sequentially by construction,
     // which removes the race without weakening either assertion (the
@@ -136,7 +136,7 @@ contract EcoProverMemberValidationTest is Test {
         // Defensive: pin the ambient value before asserting the default
         // (no-escape-hatch) behavior, in case a prior run in this process
         // left it set.
-        vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
+        vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
 
         MockDomainProver unknown = new MockDomainProver();
         Deploy.DeploymentContext memory ctx = _ctxWith(
@@ -150,17 +150,17 @@ contract EcoProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
 
         // Case 7: accepted once the escape hatch is enabled.
-        vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "true");
+        vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "true");
         harness.exposedValidate(ctx);
 
-        vm.setEnv("ECO_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
+        vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
     }
 
     /// @dev Pins the Fix-2 hardening: a member exposing chainIdByDomain (so
     ///      it clears the bridge-attestation probe) but whose provenIntents
     ///      returns the wrong shape (32 bytes instead of the 64-byte
     ///      ProofData encoding) must be rejected at DEPLOY time, since
-    ///      EcoProver.provenIntents would otherwise silently skip it forever
+    ///      AggregatorProver.provenIntents would otherwise silently skip it forever
     ///      at runtime — and membership is immutable, so this is the last
     ///      point such a member can be caught.
     function test_rejectsMalformedProvenIntentsShape() public {
@@ -294,29 +294,39 @@ contract EcoProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
-    /// @dev Pins the Fix-3 hardening: ECO_PROVER_MEMBERS accepts the
+    /// @dev Pins the Fix-3 hardening: AGGREGATOR_PROVER_MEMBERS accepts the
     ///      20-byte address form operators will actually write (Foundry's
     ///      strict vm.envBytes32 previously rejected this form outright,
     ///      and the try/catch it sat behind silently discarded the whole
     ///      list on that rejection).
-    function test_parseEcoProverMembers_acceptsAddressForm() public view {
+    function test_parseAggregatorProverMembers_acceptsAddressForm()
+        public
+        view
+    {
         string memory csv = vm.toString(address(0xBEEF));
-        bytes32[] memory members = harness.exposedParseEcoProverMembers(csv);
+        bytes32[] memory members = harness.exposedParseAggregatorProverMembers(
+            csv
+        );
         assertEq(members.length, 1);
         assertEq(members[0], _b32(address(0xBEEF)));
     }
 
     /// @dev The full 32-byte bytes32 form (needed for non-EVM cross-VM
     ///      members elsewhere in the repo) must still be accepted.
-    function test_parseEcoProverMembers_acceptsBytes32Form() public view {
+    function test_parseAggregatorProverMembers_acceptsBytes32Form()
+        public
+        view
+    {
         bytes32 expected = _b32(address(0xCAFE));
         string memory csv = vm.toString(expected);
-        bytes32[] memory members = harness.exposedParseEcoProverMembers(csv);
+        bytes32[] memory members = harness.exposedParseAggregatorProverMembers(
+            csv
+        );
         assertEq(members.length, 1);
         assertEq(members[0], expected);
     }
 
-    function test_parseEcoProverMembers_acceptsMixedAddressAndBytes32Forms()
+    function test_parseAggregatorProverMembers_acceptsMixedAddressAndBytes32Forms()
         public
         view
     {
@@ -327,7 +337,9 @@ contract EcoProverMemberValidationTest is Test {
                 vm.toString(_b32(address(0xCAFE)))
             )
         );
-        bytes32[] memory members = harness.exposedParseEcoProverMembers(csv);
+        bytes32[] memory members = harness.exposedParseAggregatorProverMembers(
+            csv
+        );
         assertEq(members.length, 2);
         assertEq(members[0], _b32(address(0xBEEF)));
         assertEq(members[1], _b32(address(0xCAFE)));
@@ -335,18 +347,20 @@ contract EcoProverMemberValidationTest is Test {
 
     /// @dev A malformed element must fail the deploy LOUDLY, never fall back
     ///      to an empty list the way the old try/catch did.
-    function test_parseEcoProverMembers_revertsOnMalformedElement() public {
+    function test_parseAggregatorProverMembers_revertsOnMalformedElement()
+        public
+    {
         vm.expectRevert(
             bytes(
-                "ECO_PROVER_MEMBERS: malformed element at index 0: '0xnotvalid' (expected a 20-byte address or 32-byte bytes32)"
+                "AGGREGATOR_PROVER_MEMBERS: malformed element at index 0: '0xnotvalid' (expected a 20-byte address or 32-byte bytes32)"
             )
         );
-        harness.exposedParseEcoProverMembers("0xnotvalid");
+        harness.exposedParseAggregatorProverMembers("0xnotvalid");
     }
 
     /// @dev Confirms the reported index tracks the ACTUAL offending element,
     ///      not just index 0, in a multi-element list.
-    function test_parseEcoProverMembers_revertsOnMalformedElementAtNonZeroIndex()
+    function test_parseAggregatorProverMembers_revertsOnMalformedElementAtNonZeroIndex()
         public
     {
         string memory csv = string(
@@ -354,25 +368,25 @@ contract EcoProverMemberValidationTest is Test {
         );
         vm.expectRevert(
             bytes(
-                "ECO_PROVER_MEMBERS: malformed element at index 1: '0xnotvalid' (expected a 20-byte address or 32-byte bytes32)"
+                "AGGREGATOR_PROVER_MEMBERS: malformed element at index 1: '0xnotvalid' (expected a 20-byte address or 32-byte bytes32)"
             )
         );
-        harness.exposedParseEcoProverMembers(csv);
+        harness.exposedParseAggregatorProverMembers(csv);
     }
 
     /// @dev A trailing comma splits into a final empty element. The old
     ///      vm.envBytes32-based parser rejected a trailing comma outright,
     ///      and its try/catch silently discarded the whole configured list
     ///      on that rejection. This must now fail loudly instead.
-    function test_parseEcoProverMembers_revertsOnTrailingComma() public {
+    function test_parseAggregatorProverMembers_revertsOnTrailingComma() public {
         string memory csv = string(
             abi.encodePacked(vm.toString(address(0xBEEF)), ",")
         );
         vm.expectRevert(
             bytes(
-                "ECO_PROVER_MEMBERS: malformed element at index 1: '' (expected a 20-byte address or 32-byte bytes32)"
+                "AGGREGATOR_PROVER_MEMBERS: malformed element at index 1: '' (expected a 20-byte address or 32-byte bytes32)"
             )
         );
-        harness.exposedParseEcoProverMembers(csv);
+        harness.exposedParseAggregatorProverMembers(csv);
     }
 }

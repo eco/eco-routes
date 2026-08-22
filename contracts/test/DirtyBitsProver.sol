@@ -7,7 +7,7 @@ pragma solidity ^0.8.26;
  *         bytes (the correct ProofData shape) but with every bit set,
  *         including the upper 96 bits of the address word and the upper 192
  *         bits of the uint64 word
- * @dev Verifies EcoProver.provenIntents treats a code-bearing member
+ * @dev Verifies AggregatorProver.provenIntents treats a code-bearing member
  *      returning a size-correct but bit-dirty payload as "no proof from this
  *      member" (skip, fall through) rather than reverting. Decoding this
  *      exact payload directly to (address, uint64) would revert in the

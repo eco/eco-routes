@@ -10,7 +10,7 @@ import {IProver} from "../interfaces/IProver.sol";
  * @dev Used to test aggregator member validation without deploying a full
  *      MessageBridgeProver and its bridge dependencies. `provenIntents`
  *      always returns a zero ProofData so the shape probe in
- *      Deploy.validateEcoProverMembers passes for an honest member.
+ *      Deploy.validateAggregatorProverMembers passes for an honest member.
  */
 contract MockDomainProver {
     mapping(uint64 => uint64) private _chainIdByDomain;
