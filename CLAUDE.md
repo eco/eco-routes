@@ -189,11 +189,14 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   skipping deployment the way an unparseable value once did.
 - `AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
   allows `AggregatorProver` members that were not deployed in the current run
-  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`). The EVM-shape,
-  non-zero, has-code, and `chainIdByDomain`-presence checks still apply, but
+  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`). Read once in
+  `run()` into `ctx.allowUnverifiedMembers`, so `validateAggregatorProverMembers`
+  is a pure function of the context and tests set a struct field rather than
+  mutating process-wide env state. The EVM-shape, non-zero, has-code,
+  `chainIdByDomain`-presence, and `provenIntents`-shape checks still apply, but
   **domain-lane verification is skipped entirely** for members admitted this
   way — there is no per-lane check to skip to, because a member outside the
-  matched set never reaches the domain-config loop. `CCIPProver` can *only*
+  matched set never reaches the domain-config loop. `CCIPProver` can _only_
   be admitted through this hatch: it is deployed by a separate script
   (`scripts/DeployCCIPProver.s.sol`), so it can never equal one of `ctx`'s own
   prover fields, and it uses a strict domain->chainId map with no fallback,

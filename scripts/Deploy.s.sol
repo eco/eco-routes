@@ -72,6 +72,7 @@ contract Deploy is Script {
         bytes layerZeroProverConstructorArgs;
         bytes polymerProverConstructorArgs;
         bytes32[] aggregatorProverMembers;
+        bool allowUnverifiedMembers;
         bytes32 aggregatorProverSalt;
         address aggregatorProver;
         bytes aggregatorProverConstructorArgs;
@@ -146,6 +147,17 @@ contract Deploy is Script {
             .length == 0
             ? new bytes32[](0)
             : _parseAggregatorProverMembers(aggregatorProverMembersRaw);
+
+        // Read here, with every other deploy input, rather than inside the
+        // validator. Reading it deep in a validator is what forced the tests
+        // to drive it with vm.setEnv — process-wide mutable state that is not
+        // sandboxed per test, so a revert between set and restore leaves the
+        // escape hatch ON for the rest of the process and turns one genuine
+        // failure into a cascade of false greens.
+        ctx.allowUnverifiedMembers = vm.envOr(
+            "AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS",
+            false
+        );
 
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
@@ -603,10 +615,7 @@ contract Deploy is Script {
     function validateAggregatorProverMembers(
         DeploymentContext memory ctx
     ) internal view {
-        bool allowUnverified = vm.envOr(
-            "AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS",
-            false
-        );
+        bool allowUnverified = ctx.allowUnverifiedMembers;
 
         for (uint256 i = 0; i < ctx.aggregatorProverMembers.length; i++) {
             bytes32 raw = ctx.aggregatorProverMembers[i];

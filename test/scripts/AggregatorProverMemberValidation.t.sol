@@ -119,43 +119,37 @@ contract AggregatorProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
-    // Cases 6 and 7 are combined into one test, deliberately.
-    //
-    // vm.setEnv mutates the REAL process environment, which Foundry does not
-    // sandbox per test. `forge test` defaults to running test functions
-    // concurrently across threads (`--threads` defaults to the logical core
-    // count), so a case reading the ambient default (case 6, "no escape
-    // hatch") raced against a sibling case that flips the same env var to
-    // "true" partway through its run (case 7) is not a rare flake: it was
-    // observed failing on essentially every run of
-    // `forge test --match-contract AggregatorProverMemberValidationTest`, and only
-    // passed reliably under `--threads 1`. Ordering the two assertions inside
-    // a single test function makes them run sequentially by construction,
-    // which removes the race without weakening either assertion (the
-    // negative case still asserts the exact revert string; the positive case
-    // still asserts no revert). See the task report for detail.
-    function test_escapeHatchGatesUnknownMembers() public {
-        // Defensive: pin the ambient value before asserting the default
-        // (no-escape-hatch) behavior, in case a prior run in this process
-        // left it set.
-        vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
-
+    /// @dev These two cases were previously merged into one function because
+    ///      they were driven by vm.setEnv, which mutates the REAL process
+    ///      environment (Foundry does not sandbox it per test) and raced under
+    ///      the parallel runner. The hatch is now read once in run() into
+    ///      ctx.allowUnverifiedMembers, so each case sets a struct field on its
+    ///      own ctx and they can be independent tests again. That also removes
+    ///      the sharper hazard the merge left behind: a revert partway through
+    ///      the merged function skipped the env restore, leaving the hatch ON
+    ///      for the rest of the process and turning one genuine failure into a
+    ///      cascade of false greens.
+    function test_rejectsUnknownMemberWithoutEscapeHatch() public {
         MockDomainProver unknown = new MockDomainProver();
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(unknown)))
         );
         // hyperProver stays pointed at `hyper` from _ctxWith, so `unknown`
         // matches none of hyperProver/metaProver/layerZeroProver.
+        ctx.allowUnverifiedMembers = false;
 
-        // Case 6: rejected without the escape hatch.
         vm.expectRevert(bytes("member is not a prover deployed in this run"));
         harness.exposedValidate(ctx);
+    }
 
-        // Case 7: accepted once the escape hatch is enabled.
-        vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "true");
+    function test_acceptsUnknownMemberWithEscapeHatch() public {
+        MockDomainProver unknown = new MockDomainProver();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(unknown)))
+        );
+        ctx.allowUnverifiedMembers = true;
+
         harness.exposedValidate(ctx);
-
-        vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
     }
 
     /// @dev Regression pin for the strict-decode trap in _tryChainIdByDomain.
