@@ -283,15 +283,39 @@ contract AggregatorProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
-    function test_acceptsEmptyDomainConfig() public view {
+    /// @dev HyperProver/MetaProver resolve an unregistered domain via
+    ///      `chainId != 0 ? chainId : originDomain`, so an omitted lane records
+    ///      a non-zero, plausible-looking WRONG destination rather than failing
+    ///      closed — a shadowing entry reached by a config omission, not a
+    ///      compromise. The per-lane loop is the only check on that map and it
+    ///      runs zero times on an empty config, so an explicit config is
+    ///      mandatory for these two members specifically.
+    function test_rejectsEmptyDomainConfigForFallbackMember() public {
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(hyper)))
         );
         ctx.hyperProver = address(hyper);
-        // ctx.hyperDomainConfig left empty on purpose: HYPER_DOMAIN_CONFIG is
-        // exceptions-only and legitimately unset for the default configuration.
-        // The unconditional chainIdByDomain(0) probe above still runs and must
-        // pass for `hyper` regardless.
+        // hyperDomainConfig deliberately left empty.
+
+        vm.expectRevert(
+            bytes(
+                "aggregator member needs an explicit domain config; its resolver falls back to domain==chainId"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev The mirror of the test above: LayerZeroProver inherits the strict
+    ///      MessageBridgeProver domain->chainId map with NO fallback and reverts
+    ///      UnregisteredDomain, so an omitted lane yields no proof at all rather
+    ///      than a wrong destination. It is therefore exempt from the
+    ///      explicit-config requirement, and this pins that exemption so the
+    ///      requirement is not silently widened to every member.
+    function test_acceptsEmptyDomainConfigForStrictMapMember() public {
+        MockDomainProver lz = new MockDomainProver();
+        Deploy.DeploymentContext memory ctx = _ctxWith(_one(_b32(address(lz))));
+        ctx.layerZeroProver = address(lz);
+        // layerZeroDomainConfig deliberately left empty.
 
         harness.exposedValidate(ctx);
     }

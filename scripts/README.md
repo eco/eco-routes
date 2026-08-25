@@ -68,6 +68,15 @@ Operational scripts for the Eco-Routes protocol.
   so leave it unset unless you have separately, out-of-band verified the
   member's domain table against the bridge operator's published values.
 
+  Note also that a `HyperProver`/`MetaProver` member requires a non-empty
+  `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`. Those resolvers fall back to
+  `chainId != 0 ? chainId : originDomain`, so an omitted lane records a
+  wrong-but-plausible destination instead of failing closed — which shadows a
+  valid proof held by a lower-priority member, and the refund path cannot
+  recover from that. This requirement applies **only** when the prover is an
+  aggregator member; for an ordinary deploy those configs stay exceptions-only.
+  `LayerZeroProver` is exempt (strict map, no fallback).
+
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated
   format). `CCIPProver` uses a strict domain->chainId map like LayerZero, so

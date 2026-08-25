@@ -669,10 +669,13 @@ contract Deploy is Script {
             );
 
             IMessageBridgeProver.Domain[] memory domains;
+            bool needsExplicitLanes;
             if (member == ctx.hyperProver) {
                 domains = ctx.hyperDomainConfig;
+                needsExplicitLanes = true;
             } else if (member == ctx.metaProver) {
                 domains = ctx.metaDomainConfig;
+                needsExplicitLanes = true;
             } else if (member == ctx.layerZeroProver) {
                 domains = ctx.layerZeroDomainConfig;
             } else {
@@ -682,6 +685,25 @@ contract Deploy is Script {
                 );
                 continue;
             }
+
+            // HyperProver/MetaProver resolve an unregistered domain via the
+            // `chainId != 0 ? chainId : originDomain` fallback, so they do NOT
+            // fail closed: an omitted lane records destination = originDomain,
+            // a non-zero, plausible-looking WRONG chain id. That is a shadowing
+            // entry reached by a config omission rather than a compromise, and
+            // the refund path cannot recover from it. The per-lane loop below is
+            // the only thing that verifies the map, and it runs zero times on an
+            // empty config — so for these two members an explicit config is
+            // mandatory, even though HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are
+            // exceptions-only (and may stay empty) for a NON-member deploy.
+            //
+            // LayerZeroProver is exempt: its strict domain->chainId map has no
+            // fallback and reverts UnregisteredDomain, so an omitted lane yields
+            // no proof at all rather than a wrong destination.
+            require(
+                !needsExplicitLanes || domains.length > 0,
+                "aggregator member needs an explicit domain config; its resolver falls back to domain==chainId"
+            );
 
             for (uint256 j = 0; j < domains.length; j++) {
                 (bool ok, uint64 resolved) = _tryChainIdByDomain(

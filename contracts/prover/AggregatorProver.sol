@@ -212,9 +212,25 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      pays, but `_validateRefund` reads the same shadowed value, never
      *      forwards a challenge, and past `reward.deadline` refunds the
      *      creator while the solver who delivered goes unpaid. The mitigation
-     *      is `Deploy.validateAggregatorProverMembers`, which restricts members to
-     *      provers whose `destination` is bridge-attested by
-     *      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry
+     *      is `Deploy.validateAggregatorProverMembers`, which admits only
+     *      `MessageBridgeProver` descendants — the provers whose `destination`
+     *      is cross-checked against the bridge origin domain in
+     *      `_handleCrossChainMessage`.
+     *
+     *      Be precise about how far that reaches. `HyperProver` and
+     *      `MetaProver` resolve an unregistered domain via
+     *      `chainId != 0 ? chainId : originDomain`, so they do NOT fail closed:
+     *      an omitted lane records `destination = originDomain`, a non-zero and
+     *      plausible-looking WRONG chain id. For those two the deploy validator
+     *      therefore also REQUIRES a non-empty domain config and round-trips
+     *      every configured lane, so "bridge-attested" does not silently reduce
+     *      to "the bridge's domain id happens to equal the chain id".
+     *      `LayerZeroProver` needs no such requirement: its strict
+     *      domain->chainId map has no fallback and reverts `UnregisteredDomain`.
+     *
+     *      Members admitted through
+     *      `AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS` skip the per-lane check
+     *      entirely and are audited out-of-band. The withdraw/refund asymmetry
      *      itself remains in `IntentSource`.
      * @param intentHash The intent hash to query
      * @return First non-zero member proof, or a zero ProofData if none

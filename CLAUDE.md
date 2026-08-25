@@ -92,7 +92,15 @@ The system supports multiple bridge protocols through specialized prover contrac
   cross-checked against the bridge origin domain in `_handleCrossChainMessage`.
   `PolymerProver` and `LocalProver` do not qualify and are rejected at deploy
   time — a member that can record a wrong `destination` shadows valid proofs held
-  by lower-priority members, and the refund path cannot recover from that. Even
+  by lower-priority members, and the refund path cannot recover from that.
+  `HyperProver`/`MetaProver` members additionally **require a non-empty
+  `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`**: their resolvers fall back to
+  `chainId != 0 ? chainId : originDomain`, so an omitted lane records a
+  wrong-but-plausible `destination` rather than failing closed, which is a
+  shadowing entry reachable from a config omission alone. `LayerZeroProver` is
+  exempt (strict map, reverts `UnregisteredDomain`). Note this requirement
+  applies only when the prover is an aggregator **member** — those two configs
+  remain exceptions-only for an ordinary deploy. Even
   with a fully validated member set, a shadowing entry (e.g. a genuinely
   wrong-destination proof from a live bridge) makes the **first** `withdraw`
   succeed while paying nothing: it forwards the challenge to every member and
