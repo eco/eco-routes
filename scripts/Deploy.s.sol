@@ -207,9 +207,9 @@ contract Deploy is Script {
 
         bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
         if (hasAggregatorProver) {
-            ctx.aggregatorProverSalt = getContractSalt(
+            ctx.aggregatorProverSalt = getAggregatorProverSalt(
                 ctx.salt,
-                "AGGREGATOR_PROVER"
+                ctx.aggregatorProverMembers
             );
         }
 
@@ -743,24 +743,29 @@ contract Deploy is Script {
             ctx.aggregatorProverSalt
         );
 
-        // The CREATE3 salt excludes the member list, so a changed
-        // AGGREGATOR_PROVER_MEMBERS with an unchanged SALT would otherwise
-        // silently reuse the already-deployed contract's OLD members while
-        // writeDeploymentData records the NEW constructor args for
-        // verification — the operator would see a "success" log and believe
-        // membership changed when it did not. Member order is priority order
-        // and is consensus-critical, so require the on-chain set to match.
+        // Belt-and-braces since getAggregatorProverSalt mixes the ordered member
+        // set into the salt: a changed member list now re-derives a DIFFERENT
+        // address, so `deployed == true` should imply an identical set. This
+        // readback is what catches the case where that assumption breaks —
+        // a hand-passed salt, or a member list that differs in a way the hash
+        // did not see. Member order is priority order and consensus-critical,
+        // so require the on-chain set to match exactly.
+        //
+        // Note the remedy is NOT "change SALT" any more: SALT is the root salt
+        // for the whole stack, and changing it re-derives every other prover
+        // address. Reaching this require means the member set and the salt
+        // genuinely disagree, which should be impossible via the normal path.
         if (deployed) {
             bytes32[] memory onchain = AggregatorProver(ctx.aggregatorProver)
                 .getWhitelist();
             require(
                 onchain.length == ctx.aggregatorProverMembers.length,
-                "existing AggregatorProver has a different member set; change SALT"
+                "existing AggregatorProver has a different member set at this salt"
             );
             for (uint256 i = 0; i < onchain.length; i++) {
                 require(
                     onchain[i] == ctx.aggregatorProverMembers[i],
-                    "existing AggregatorProver member/order mismatch; change SALT"
+                    "existing AggregatorProver member/order mismatch at this salt"
                 );
             }
         }
@@ -869,6 +874,46 @@ contract Deploy is Script {
         return
             keccak256(
                 abi.encode(rootSalt, keccak256(abi.encodePacked(contractName)))
+            );
+    }
+
+    /**
+     * @notice Derives the AggregatorProver's CREATE3 salt from the root salt AND
+     *         the ordered member set
+     * @dev CREATE3 addresses ignore bytecode and constructor args, so without the
+     *      member-set hash a changed member list would silently reuse the existing
+     *      aggregator — keeping the OLD members at the same address — and the only
+     *      remedy the script could offer was "change SALT". But SALT is the single
+     *      root salt for the whole stack, so changing it re-derives every prover
+     *      address too, and a member list naming the canonical in-use provers then
+     *      matches none of them. That made member validation effectively
+     *      first-deploy-only, disabled for exactly the deploys that mutate a
+     *      consensus-critical immutable set.
+     *
+     *      Mixing the member set in means a member change re-derives the
+     *      aggregator address on its own, leaving the root salt and every other
+     *      prover address untouched.
+     *
+     *      ORDER IS PART OF THE HASH, deliberately: order is priority, so
+     *      [Hyper, Meta] and [Meta, Hyper] are different deployments and must not
+     *      collide. A consequence is that the aggregator NO LONGER lands at the
+     *      same address on every chain when member sets differ per chain — which
+     *      is the honest outcome, since the member set is a constructor arg that
+     *      may legitimately differ per chain.
+     * @param rootSalt The root SALT for this release
+     * @param members Ordered member prover addresses as bytes32
+     * @return The aggregator-specific CREATE3 salt
+     */
+    function getAggregatorProverSalt(
+        bytes32 rootSalt,
+        bytes32[] memory members
+    ) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    getContractSalt(rootSalt, "AGGREGATOR_PROVER"),
+                    keccak256(abi.encode(members))
+                )
             );
     }
 

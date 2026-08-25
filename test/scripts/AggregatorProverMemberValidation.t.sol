@@ -33,6 +33,20 @@ contract DeployHarness is Deploy {
     ) external pure returns (bytes32[] memory) {
         return _parseAggregatorProverMembers(csv);
     }
+
+    function exposedAggregatorProverSalt(
+        bytes32 rootSalt,
+        bytes32[] memory members
+    ) external pure returns (bytes32) {
+        return getAggregatorProverSalt(rootSalt, members);
+    }
+
+    function exposedContractSalt(
+        bytes32 rootSalt,
+        string memory name
+    ) external pure returns (bytes32) {
+        return getContractSalt(rootSalt, name);
+    }
 }
 
 contract AggregatorProverMemberValidationTest is Test {
@@ -186,7 +200,9 @@ contract AggregatorProverMemberValidationTest is Test {
     ///      is an unproven hash.
     function test_rejectsMemberWithEmptyDynamicProvenIntents() public {
         MockDomainProverEmptyDynamic bad = new MockDomainProverEmptyDynamic();
-        Deploy.DeploymentContext memory ctx = _ctxWith(_one(_b32(address(bad))));
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(bad)))
+        );
         ctx.hyperProver = address(bad);
 
         vm.expectRevert(
@@ -453,5 +469,81 @@ contract AggregatorProverMemberValidationTest is Test {
             )
         );
         harness.exposedParseAggregatorProverMembers(csv);
+    }
+
+    // ---------------------------------------------------------------------
+    // AggregatorProver CREATE3 salt derivation
+    // ---------------------------------------------------------------------
+
+    /// @dev CREATE3 addresses ignore bytecode AND constructor args, so with the
+    ///      member set excluded from the salt a changed member list silently
+    ///      reused the existing aggregator, keeping the OLD members at the same
+    ///      address. The only remedy the script could offer was "change SALT" —
+    ///      but SALT is the single root salt for the whole stack, so changing it
+    ///      re-derives every prover address too and a member list naming the
+    ///      canonical in-use provers then matches none of them. That made member
+    ///      validation effectively first-deploy-only.
+    function test_salt_changesWithMemberSet() public view {
+        bytes32 root = keccak256("root");
+
+        bytes32[] memory one = new bytes32[](1);
+        one[0] = _b32(address(hyper));
+
+        bytes32[] memory two = new bytes32[](2);
+        two[0] = _b32(address(hyper));
+        two[1] = _b32(address(0xBEEF));
+
+        assertTrue(
+            harness.exposedAggregatorProverSalt(root, one) !=
+                harness.exposedAggregatorProverSalt(root, two),
+            "adding a member must re-derive the salt"
+        );
+    }
+
+    /// @dev Order is priority (provenIntents returns the first non-zero
+    ///      claimant), so [A, B] and [B, A] are genuinely different deployments
+    ///      and must not collide at one address.
+    function test_salt_changesWithMemberOrder() public view {
+        bytes32 root = keccak256("root");
+
+        bytes32[] memory ab = new bytes32[](2);
+        ab[0] = _b32(address(hyper));
+        ab[1] = _b32(address(0xBEEF));
+
+        bytes32[] memory ba = new bytes32[](2);
+        ba[0] = _b32(address(0xBEEF));
+        ba[1] = _b32(address(hyper));
+
+        assertTrue(
+            harness.exposedAggregatorProverSalt(root, ab) !=
+                harness.exposedAggregatorProverSalt(root, ba),
+            "member ORDER must re-derive the salt"
+        );
+    }
+
+    /// @dev The aggregator salt must not collide with the plain name-derived
+    ///      salt any other contract uses.
+    function test_salt_differsFromPlainContractSalt() public view {
+        bytes32 root = keccak256("root");
+        bytes32[] memory one = new bytes32[](1);
+        one[0] = _b32(address(hyper));
+
+        assertTrue(
+            harness.exposedAggregatorProverSalt(root, one) !=
+                harness.exposedContractSalt(root, "AGGREGATOR_PROVER"),
+            "must not collide with the name-only salt"
+        );
+    }
+
+    /// @dev Same inputs must be stable across calls, or redeploys would drift.
+    function test_salt_isDeterministic() public view {
+        bytes32 root = keccak256("root");
+        bytes32[] memory one = new bytes32[](1);
+        one[0] = _b32(address(hyper));
+
+        assertEq(
+            harness.exposedAggregatorProverSalt(root, one),
+            harness.exposedAggregatorProverSalt(root, one)
+        );
     }
 }

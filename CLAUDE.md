@@ -199,6 +199,13 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   deployment; any other malformed value (wrong element length, a trailing
   comma, etc.) now **fails the deploy loudly** rather than silently
   skipping deployment the way an unparseable value once did.
+  **The member set is mixed into the aggregator's CREATE3 salt**
+  (`getAggregatorProverSalt` = root salt + name + `keccak256(abi.encode(members))`),
+  so changing the list — or just its order — re-derives a new aggregator
+  address on its own, without touching `SALT` or any other prover's address.
+  The consequence is deliberate: the aggregator no longer lands at the same
+  address on every chain when member sets differ per chain, which is honest,
+  since the member set is a constructor arg that may legitimately differ.
 - `AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
   allows `AggregatorProver` members that were not deployed in the current run
   (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`). Read once in

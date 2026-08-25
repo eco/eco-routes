@@ -68,19 +68,26 @@ Operational scripts for the Eco-Routes protocol.
   so leave it unset unless you have separately, out-of-band verified the
   member's domain table against the bridge operator's published values.
 
-  Note also that a `HyperProver`/`MetaProver` member requires a non-empty
-  `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`. Those resolvers fall back to
-  `chainId != 0 ? chainId : originDomain`, so an omitted lane records a
-  wrong-but-plausible destination instead of failing closed — which shadows a
-  valid proof held by a lower-priority member, and the refund path cannot
-  recover from that. This requirement applies **only** when the prover is an
-  aggregator member; for an ordinary deploy those configs stay exceptions-only.
-  `LayerZeroProver` is exempt (strict map, no fallback).
+  Three things about the member set are worth knowing before you run this:
 
-  Every member must also already have code on the chain you are deploying to.
-  The constructor reverts `MemberHasNoCode` rather than skipping a codeless
-  member at runtime, so onboarding a chain before all members are live fails
-  loudly instead of quietly deploying a smaller trust set.
+  1. **The member set is part of the aggregator's CREATE3 salt.** Changing the
+     list, or just reordering it, re-derives a new aggregator address by itself
+     — you do **not** change `SALT`, which is the root salt for the whole stack
+     and would move every other prover's address too. The flip side is that the
+     aggregator only shares one address across chains where the member set is
+     identical.
+  2. **A `HyperProver`/`MetaProver` member requires a non-empty
+     `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`.** Those resolvers fall back to
+     `chainId != 0 ? chainId : originDomain`, so an omitted lane records a
+     wrong-but-plausible destination instead of failing closed — which shadows
+     a valid proof held by a lower-priority member, and the refund path cannot
+     recover from that. This requirement applies **only** when the prover is an
+     aggregator member; for an ordinary deploy those configs stay
+     exceptions-only. `LayerZeroProver` is exempt (strict map, no fallback).
+  3. **Every member must already have code on the chain you are deploying to.**
+     The constructor reverts `MemberHasNoCode` rather than skipping a codeless
+     member at runtime, so onboarding a chain before all members are live fails
+     loudly instead of quietly deploying a smaller trust set.
 
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated
