@@ -504,10 +504,18 @@ contract Deploy is Script {
      *      it reverts with empty returndata, which `try` catches cleanly — but if a
      *      callee ever returned success with the wrong returndata shape, an interface
      *      call would fail ABI decoding in the caller's frame, outside any `catch`.
-     *      Checking `success` and `ret.length == 32` here avoids that trap entirely.
+     *      Checking `success` and `ret.length == 32` covers only the short/long
+     *      payload class. The dirty-bits class needs the wide decode below:
+     *      `abi.decode(ret, (uint64))` is strict and would itself revert in this
+     *      frame on a returned word with non-zero upper bits. This matters
+     *      because the probe is applied UNCONDITIONALLY to every member,
+     *      including third-party ones admitted via
+     *      AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS — the only members whose
+     *      return shape we do not control.
      * @param member Candidate aggregator member address
      * @param domain Bridge origin domain to resolve
-     * @return ok True if `member` exposes `chainIdByDomain` and returned a uint64
+     * @return ok True if `member` exposes `chainIdByDomain` and returned a
+     *         single word whose value fits in uint64
      * @return chainId The resolved chainId (0 / meaningless if `ok` is false)
      */
     function _tryChainIdByDomain(
@@ -520,7 +528,15 @@ contract Deploy is Script {
         if (!success || ret.length != 32) {
             return (false, 0);
         }
-        return (true, abi.decode(ret, (uint64)));
+
+        // Decode WIDE then range-check: abi.decode(ret, (uint64)) is strict,
+        // so solc would revert in THIS frame on a word with non-zero upper
+        // bits — uncatchably, since there is no try/catch to land in.
+        uint256 raw = abi.decode(ret, (uint256));
+        if (raw >> 64 != 0) {
+            return (false, 0);
+        }
+        return (true, uint64(raw));
     }
 
     /**

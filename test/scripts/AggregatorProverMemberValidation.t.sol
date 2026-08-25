@@ -6,6 +6,7 @@ import {Deploy} from "../../scripts/Deploy.s.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {MockDomainProver} from "../../contracts/test/MockDomainProver.sol";
 import {MockDomainProverMalformedProvenIntents} from "../../contracts/test/MockDomainProverMalformedProvenIntents.sol";
+import {MockDomainProverDirtyChainId} from "../../contracts/test/MockDomainProverDirtyChainId.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
@@ -154,6 +155,29 @@ contract AggregatorProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
 
         vm.setEnv("AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS", "false");
+    }
+
+    /// @dev Regression pin for the strict-decode trap in _tryChainIdByDomain.
+    ///      Before the fix the probe did `abi.decode(ret, (uint64))`, which is
+    ///      strict: a member returning a word with non-zero upper bits made the
+    ///      PROBE ITSELF revert, in the script's own frame with no try/catch to
+    ///      land in, aborting the whole deploy with a bare decode error rather
+    ///      than surfacing the intended require. The probe now decodes wide and
+    ///      range-checks, so this member is cleanly REJECTED with the real
+    ///      message. If the strict decode is reintroduced this test fails with
+    ///      a decode revert instead of this expected string.
+    function test_rejectsMemberWithDirtyChainIdByDomain() public {
+        MockDomainProverDirtyChainId dirty = new MockDomainProverDirtyChainId();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(dirty)))
+        );
+
+        vm.expectRevert(
+            bytes(
+                "member does not expose chainIdByDomain; destination not bridge-attested"
+            )
+        );
+        harness.exposedValidate(ctx);
     }
 
     /// @dev Pins the Fix-2 hardening: a member exposing chainIdByDomain (so
