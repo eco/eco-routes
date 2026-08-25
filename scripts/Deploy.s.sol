@@ -14,6 +14,7 @@ import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
+import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract Deploy is Script {
@@ -70,6 +71,11 @@ contract Deploy is Script {
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
         bytes polymerProverConstructorArgs;
+        bytes32[] aggregatorProverMembers;
+        bool allowUnverifiedMembers;
+        bytes32 aggregatorProverSalt;
+        address aggregatorProver;
+        bytes aggregatorProverConstructorArgs;
     }
 
     function run() external {
@@ -119,6 +125,40 @@ contract Deploy is Script {
             ctx.polymerCrossVmProvers = new bytes32[](0);
         }
 
+        // Ordered, comma-separated member provers for AggregatorProver.
+        // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
+        // Set explicitly rather than derived from what was deployed this run —
+        // silently-varying membership across chains is a security risk.
+        //
+        // Read as a raw string, not vm.envBytes32: Foundry's strict
+        // FixedBytes(32) coercion rejects a plain 20-byte address (the form
+        // operators will actually write) and rejects a trailing comma, and
+        // the try/catch this replaced turned "configured wrong" into "not
+        // configured" — deployAggregatorProver/validateAggregatorProverMembers silently
+        // never ran, with no symptom beyond a missing console line. Only the
+        // empty string means "not requested"; every other value is parsed
+        // explicitly below, and a malformed element reverts loudly rather
+        // than silently falling back to an empty list.
+        string memory aggregatorProverMembersRaw = vm.envOr(
+            "AGGREGATOR_PROVER_MEMBERS",
+            string("")
+        );
+        ctx.aggregatorProverMembers = bytes(aggregatorProverMembersRaw)
+            .length == 0
+            ? new bytes32[](0)
+            : _parseAggregatorProverMembers(aggregatorProverMembersRaw);
+
+        // Read here, with every other deploy input, rather than inside the
+        // validator. Reading it deep in a validator is what forced the tests
+        // to drive it with vm.setEnv — process-wide mutable state that is not
+        // sandboxed per test, so a revert between set and restore leaves the
+        // escape hatch ON for the rest of the process and turns one genuine
+        // failure into a cascade of false greens.
+        ctx.allowUnverifiedMembers = vm.envOr(
+            "AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS",
+            false
+        );
+
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
         // their config is exceptions-only and may legitimately be empty.
@@ -165,6 +205,14 @@ contract Deploy is Script {
             ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
         }
 
+        bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
+        if (hasAggregatorProver) {
+            ctx.aggregatorProverSalt = getAggregatorProverSalt(
+                ctx.salt,
+                ctx.aggregatorProverMembers
+            );
+        }
+
         vm.startBroadcast();
 
         // Deploy deployer if it hasn't been deployed
@@ -198,6 +246,11 @@ contract Deploy is Script {
             deployPolymerProver(ctx);
         }
 
+        // Deploy AggregatorProver last: its members must already exist
+        if (hasAggregatorProver) {
+            deployAggregatorProver(ctx);
+        }
+
         vm.stopBroadcast();
 
         // Write deployment results to file
@@ -213,6 +266,7 @@ contract Deploy is Script {
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
         bool needsPortal = !hasExistingPortal &&
             (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+        bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
 
         uint num = 0;
         num = needsPortal ? num + 1 : num;
@@ -220,6 +274,7 @@ contract Deploy is Script {
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
         num = hasPolymer ? num + 1 : num;
+        num = hasAggregatorProver ? num + 1 : num;
 
         VerificationData[] memory contracts = new VerificationData[](num);
         uint count = 0;
@@ -262,6 +317,15 @@ contract Deploy is Script {
                 contractAddress: ctx.polymerProver,
                 contractPath: "contracts/prover/PolymerProver.sol:PolymerProver",
                 constructorArgs: ctx.polymerProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+
+        if (hasAggregatorProver) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.aggregatorProver,
+                contractPath: "contracts/prover/AggregatorProver.sol:AggregatorProver",
+                constructorArgs: ctx.aggregatorProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -441,6 +505,281 @@ contract Deploy is Script {
         console.log("PolymerProver :", ctx.polymerProver);
     }
 
+    /**
+     * @notice Probes whether `member` exposes `chainIdByDomain(uint64)` and, if so,
+     *         returns the resolved chainId
+     * @dev Uses a low-level staticcall rather than an interface call: chainIdByDomain
+     *      is defined on the concrete `MessageBridgeProver` base contract, not on the
+     *      `IMessageBridgeProver` interface, so there is no interface member to call
+     *      through. A staticcall also sidesteps a subtlety of `try`/`catch` against an
+     *      interface call: when the callee has no matching function and no fallback,
+     *      it reverts with empty returndata, which `try` catches cleanly — but if a
+     *      callee ever returned success with the wrong returndata shape, an interface
+     *      call would fail ABI decoding in the caller's frame, outside any `catch`.
+     *      Checking `success` and `ret.length == 32` covers only the short/long
+     *      payload class. The dirty-bits class needs the wide decode below:
+     *      `abi.decode(ret, (uint64))` is strict and would itself revert in this
+     *      frame on a returned word with non-zero upper bits. This matters
+     *      because the probe is applied UNCONDITIONALLY to every member,
+     *      including third-party ones admitted via
+     *      AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS — the only members whose
+     *      return shape we do not control.
+     * @param member Candidate aggregator member address
+     * @param domain Bridge origin domain to resolve
+     * @return ok True if `member` exposes `chainIdByDomain` and returned a
+     *         single word whose value fits in uint64
+     * @return chainId The resolved chainId (0 / meaningless if `ok` is false)
+     */
+    function _tryChainIdByDomain(
+        address member,
+        uint64 domain
+    ) internal view returns (bool ok, uint64 chainId) {
+        (bool success, bytes memory ret) = member.staticcall(
+            abi.encodeWithSignature("chainIdByDomain(uint64)", domain)
+        );
+        if (!success || ret.length != 32) {
+            return (false, 0);
+        }
+
+        // Decode WIDE then range-check: abi.decode(ret, (uint64)) is strict,
+        // so solc would revert in THIS frame on a word with non-zero upper
+        // bits — uncatchably, since there is no try/catch to land in.
+        uint256 raw = abi.decode(ret, (uint256));
+        if (raw >> 64 != 0) {
+            return (false, 0);
+        }
+        return (true, uint64(raw));
+    }
+
+    /**
+     * @notice Probes whether `member.provenIntents(bytes32)` returns a
+     *         well-formed 64-byte ProofData tuple
+     * @dev Mirrors _tryChainIdByDomain's low-level-staticcall style, for the
+     *      same reason: an interface call would ABI-decode-revert in THIS
+     *      frame on a wrong-shaped payload, outside any try/catch. A member
+     *      whose read function reverts under staticcall, or returns a
+     *      wrong-shaped payload, is silently skipped forever at runtime by
+     *      AggregatorProver's own guards — and membership is immutable, so this is
+     *      the last point such a member can be caught.
+     *
+     *      bytes32(0) is an unproven intent hash, so an honest member returns
+     *      (0, 0) — both words in range, 64 bytes. This checks SHAPE only; it
+     *      never requires a non-zero claimant.
+     * @param member Candidate aggregator member address
+     * @return ok True if `member` returned a well-formed 64-byte tuple with
+     *         both words in range
+     */
+    function _tryProvenIntentsShape(
+        address member
+    ) internal view returns (bool ok) {
+        (bool success, bytes memory ret) = member.staticcall(
+            abi.encodeWithSignature("provenIntents(bytes32)", bytes32(0))
+        );
+        if (!success || ret.length != 64) {
+            return false;
+        }
+        (uint256 rawClaimant, uint256 rawDestination) = abi.decode(
+            ret,
+            (uint256, uint256)
+        );
+        // Strict zero-equality, not a range check. bytes32(0) is an unproven
+        // hash, so an honest member returns exactly (0, 0). A range check
+        // (rawClaimant >> 160 == 0) waves through a single empty dynamic
+        // return value (bytes/string/array), which encodes to 64 bytes as
+        // offset 0x20 then length 0x00 — AggregatorProver.provenIntents
+        // rejects that identical payload at runtime via its zero-destination
+        // guard, skipping the member for EVERY intentHash, forever. This also
+        // subsumes the dirty-bits class.
+        return rawClaimant == 0 && rawDestination == 0;
+    }
+
+    /**
+     * @notice Validates every aggregator member before deploying the aggregator
+     * @dev A member holding an entry whose `destination` is wrong SHADOWS a
+     *      valid proof held by a lower-priority member, because
+     *      AggregatorProver.provenIntents returns the first non-zero claimant.
+     *      This bug class does not exist for a single prover, which stores
+     *      exactly one ProofData per intentHash. IntentSource.withdraw
+     *      recovers — it forwards a challenge on its wrong-destination
+     *      branch, so a second withdraw pays — but _validateRefund reads the
+     *      same shadowed value, never forwards a challenge, and past
+     *      reward.deadline refunds the creator while the solver who
+     *      delivered goes unpaid. This validator is the mitigation: it
+     *      restricts members to provers whose `destination` is
+     *      bridge-attested by MessageBridgeProver._handleCrossChainMessage,
+     *      removing the two config-triggered causes (codeless member,
+     *      non-bridge-attested member). The asymmetry itself remains in
+     *      IntentSource.
+     * @param ctx Deployment context carrying the member list and domain configs
+     */
+    function validateAggregatorProverMembers(
+        DeploymentContext memory ctx
+    ) internal view {
+        bool allowUnverified = ctx.allowUnverifiedMembers;
+
+        for (uint256 i = 0; i < ctx.aggregatorProverMembers.length; i++) {
+            bytes32 raw = ctx.aggregatorProverMembers[i];
+            require(uint256(raw) >> 160 == 0, "member is not an EVM address");
+
+            address member = address(uint160(uint256(raw)));
+            require(member != address(0), "member is zero address");
+
+            // A codeless member is skipped forever by the aggregator's
+            // code.length guard, silently shrinking the trust set to fewer
+            // members than the operator believes they configured.
+            require(member.code.length > 0, "member has no code on this chain");
+
+            // Defense-in-depth, not the real gate: PolymerProver writes
+            // _provenIntents through its own processIntent and never routes
+            // through BaseProver._processIntentProofs, so its destination is
+            // not bridge-attested. But PolymerProver is BaseProver+Whitelist,
+            // not a MessageBridgeProver descendant, so it has no
+            // chainIdByDomain and the unconditional probe below already
+            // rejects it one step earlier regardless of this check. This
+            // require is also a no-op exactly when it looks most needed: it
+            // is gated on ctx.polymerProver != address(0), so an operator who
+            // lists a previously-deployed PolymerProver as a member without
+            // POLYMER_CROSS_L2_PROVER_V2 set in this run never reaches it.
+            // Kept anyway because its error message is clearer than the
+            // probe's.
+            require(
+                ctx.polymerProver == address(0) || member != ctx.polymerProver,
+                "PolymerProver destination is not bridge-attested"
+            );
+
+            // chainIdByDomain exists only on MessageBridgeProver descendants —
+            // exactly the provers whose destination is bridge-attested via
+            // _handleCrossChainMessage. Its ABSENCE is the signal, so probe it
+            // unconditionally: the per-lane loop below cannot serve as the probe
+            // because HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are exceptions-only
+            // and are legitimately empty.
+            (bool probed, ) = _tryChainIdByDomain(member, 0);
+            require(
+                probed,
+                "member does not expose chainIdByDomain; destination not bridge-attested"
+            );
+
+            // A member whose provenIntents reverts under staticcall, or
+            // returns a wrong-shaped payload, is silently skipped forever at
+            // runtime by AggregatorProver.provenIntents' own guards — and membership
+            // is immutable, so this is the last point it can be caught.
+            require(
+                _tryProvenIntentsShape(member),
+                "member provenIntents does not return a well-formed ProofData"
+            );
+
+            IMessageBridgeProver.Domain[] memory domains;
+            bool needsExplicitLanes;
+            if (member == ctx.hyperProver) {
+                domains = ctx.hyperDomainConfig;
+                needsExplicitLanes = true;
+            } else if (member == ctx.metaProver) {
+                domains = ctx.metaDomainConfig;
+                needsExplicitLanes = true;
+            } else if (member == ctx.layerZeroProver) {
+                domains = ctx.layerZeroDomainConfig;
+            } else {
+                require(
+                    allowUnverified,
+                    "member is not a prover deployed in this run"
+                );
+                continue;
+            }
+
+            // HyperProver/MetaProver resolve an unregistered domain via the
+            // `chainId != 0 ? chainId : originDomain` fallback, so they do NOT
+            // fail closed: an omitted lane records destination = originDomain,
+            // a non-zero, plausible-looking WRONG chain id. That is a shadowing
+            // entry reached by a config omission rather than a compromise, and
+            // the refund path cannot recover from it. The per-lane loop below is
+            // the only thing that verifies the map, and it runs zero times on an
+            // empty config — so for these two members an explicit config is
+            // mandatory, even though HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are
+            // exceptions-only (and may stay empty) for a NON-member deploy.
+            //
+            // LayerZeroProver is exempt: its strict domain->chainId map has no
+            // fallback and reverts UnregisteredDomain, so an omitted lane yields
+            // no proof at all rather than a wrong destination.
+            require(
+                !needsExplicitLanes || domains.length > 0,
+                "aggregator member needs an explicit domain config; its resolver falls back to domain==chainId"
+            );
+
+            for (uint256 j = 0; j < domains.length; j++) {
+                (bool ok, uint64 resolved) = _tryChainIdByDomain(
+                    member,
+                    domains[j].domain
+                );
+                require(
+                    ok,
+                    "member does not expose chainIdByDomain; destination not bridge-attested"
+                );
+                require(
+                    resolved == domains[j].chainId,
+                    "member domain map disagrees with configured lane"
+                );
+            }
+        }
+    }
+
+    function deployAggregatorProver(
+        DeploymentContext memory ctx
+    ) internal returns (address aggregatorProver) {
+        validateAggregatorProverMembers(ctx);
+
+        ctx.aggregatorProverConstructorArgs = abi.encode(
+            ctx.aggregatorProverMembers
+        );
+
+        bytes memory aggregatorProverBytecode = abi.encodePacked(
+            type(AggregatorProver).creationCode,
+            ctx.aggregatorProverConstructorArgs
+        );
+
+        bool deployed;
+        (ctx.aggregatorProver, deployed) = deployWithCreate3(
+            aggregatorProverBytecode,
+            ctx.deployer,
+            ctx.aggregatorProverSalt
+        );
+
+        // Belt-and-braces since getAggregatorProverSalt mixes the ordered member
+        // set into the salt: a changed member list now re-derives a DIFFERENT
+        // address, so `deployed == true` should imply an identical set. This
+        // readback is what catches the case where that assumption breaks —
+        // a hand-passed salt, or a member list that differs in a way the hash
+        // did not see. Member order is priority order and consensus-critical,
+        // so require the on-chain set to match exactly.
+        //
+        // Note the remedy is NOT "change SALT" any more: SALT is the root salt
+        // for the whole stack, and changing it re-derives every other prover
+        // address. Reaching this require means the member set and the salt
+        // genuinely disagree, which should be impossible via the normal path.
+        if (deployed) {
+            bytes32[] memory onchain = AggregatorProver(ctx.aggregatorProver)
+                .getWhitelist();
+            require(
+                onchain.length == ctx.aggregatorProverMembers.length,
+                "existing AggregatorProver has a different member set at this salt"
+            );
+            for (uint256 i = 0; i < onchain.length; i++) {
+                require(
+                    onchain[i] == ctx.aggregatorProverMembers[i],
+                    "existing AggregatorProver member/order mismatch at this salt"
+                );
+            }
+        }
+
+        console.log("AggregatorProver :", ctx.aggregatorProver);
+        for (uint256 i = 0; i < ctx.aggregatorProverMembers.length; i++) {
+            console.log(
+                "  member",
+                i,
+                address(uint160(uint256(ctx.aggregatorProverMembers[i])))
+            );
+        }
+    }
+
     function isDeployed(address _addr) internal view returns (bool) {
         return _addr.code.length > 0;
     }
@@ -450,6 +789,48 @@ contract Deploy is Script {
             block.chainid == TRON_MAINNET_CHAIN_ID ||
             block.chainid == TRON_SHASTA_CHAIN_ID ||
             block.chainid == TRON_NILE_CHAIN_ID;
+    }
+
+    // Parses a comma-separated AGGREGATOR_PROVER_MEMBERS list. Accepts, per element,
+    // either a 20-byte address ("0x" + 40 hex chars, the form operators will
+    // actually write) or a full 32-byte bytes32 ("0x" + 64 hex chars),
+    // left-padding the former to bytes32. Any other shape — including an
+    // empty element from a trailing comma — reverts, naming the offending
+    // element and its index, rather than silently discarding the whole list.
+    // Not called for an empty AGGREGATOR_PROVER_MEMBERS string; that case is
+    // handled by the caller as "not requested".
+    function _parseAggregatorProverMembers(
+        string memory csv
+    ) internal pure returns (bytes32[] memory) {
+        string[] memory parts = vm.split(csv, ",");
+        bytes32[] memory members = new bytes32[](parts.length);
+
+        for (uint256 i = 0; i < parts.length; i++) {
+            uint256 elementLength = bytes(parts[i]).length;
+            if (elementLength == 42) {
+                // "0x" + 40 hex chars
+                members[i] = bytes32(
+                    uint256(uint160(vm.parseAddress(parts[i])))
+                );
+            } else if (elementLength == 66) {
+                // "0x" + 64 hex chars
+                members[i] = vm.parseBytes32(parts[i]);
+            } else {
+                revert(
+                    string(
+                        abi.encodePacked(
+                            "AGGREGATOR_PROVER_MEMBERS: malformed element at index ",
+                            vm.toString(i),
+                            ": '",
+                            parts[i],
+                            "' (expected a 20-byte address or 32-byte bytes32)"
+                        )
+                    )
+                );
+            }
+        }
+
+        return members;
     }
 
     // Parses a comma-separated list of "domain:chainId" pairs into a
@@ -493,6 +874,46 @@ contract Deploy is Script {
         return
             keccak256(
                 abi.encode(rootSalt, keccak256(abi.encodePacked(contractName)))
+            );
+    }
+
+    /**
+     * @notice Derives the AggregatorProver's CREATE3 salt from the root salt AND
+     *         the ordered member set
+     * @dev CREATE3 addresses ignore bytecode and constructor args, so without the
+     *      member-set hash a changed member list would silently reuse the existing
+     *      aggregator — keeping the OLD members at the same address — and the only
+     *      remedy the script could offer was "change SALT". But SALT is the single
+     *      root salt for the whole stack, so changing it re-derives every prover
+     *      address too, and a member list naming the canonical in-use provers then
+     *      matches none of them. That made member validation effectively
+     *      first-deploy-only, disabled for exactly the deploys that mutate a
+     *      consensus-critical immutable set.
+     *
+     *      Mixing the member set in means a member change re-derives the
+     *      aggregator address on its own, leaving the root salt and every other
+     *      prover address untouched.
+     *
+     *      ORDER IS PART OF THE HASH, deliberately: order is priority, so
+     *      [Hyper, Meta] and [Meta, Hyper] are different deployments and must not
+     *      collide. A consequence is that the aggregator NO LONGER lands at the
+     *      same address on every chain when member sets differ per chain — which
+     *      is the honest outcome, since the member set is a constructor arg that
+     *      may legitimately differ per chain.
+     * @param rootSalt The root SALT for this release
+     * @param members Ordered member prover addresses as bytes32
+     * @return The aggregator-specific CREATE3 salt
+     */
+    function getAggregatorProverSalt(
+        bytes32 rootSalt,
+        bytes32[] memory members
+    ) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    getContractSalt(rootSalt, "AGGREGATOR_PROVER"),
+                    keccak256(abi.encode(members))
+                )
             );
     }
 
