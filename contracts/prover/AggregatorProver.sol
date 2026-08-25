@@ -255,17 +255,21 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
 
             if (!success || ret.length != 64) continue;
 
-            // Decode as two uint256 words first: unlike decoding directly to
+            // Decode to (bytes32, uint256) first: unlike decoding directly to
             // (address, uint64), this cannot revert for any 64-byte payload.
-            // Dirty high-order bits are then rejected by range check, exactly
-            // like a wrong-length payload, rather than left to solc's strict
-            // (address, uint64) decoder, which WOULD revert in this frame.
-            (uint256 rawClaimant, uint256 rawDestination) = abi.decode(
+            // Dirty high-order bits are then rejected by the checks below,
+            // exactly like a wrong-length payload, rather than left to solc's
+            // strict (address, uint64) decoder, which WOULD revert in this frame.
+            (bytes32 rawClaimant, uint256 rawDestination) = abi.decode(
                 ret,
-                (uint256, uint256)
+                (bytes32, uint256)
             );
 
-            if (rawClaimant >> 160 != 0 || rawDestination >> 64 != 0) {
+            // isValidAddress is the same >> 160 test AddressConverter applies
+            // everywhere else; using it keeps one canonical notion of "this
+            // word is an address" and makes the toAddress() below provably
+            // revert-free.
+            if (!rawClaimant.isValidAddress() || rawDestination >> 64 != 0) {
                 continue;
             }
 
@@ -278,7 +282,7 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
             // _resolveChainId reverts UnregisteredDomain(0).
             if (rawDestination == 0) continue;
 
-            address claimant = address(uint160(rawClaimant));
+            address claimant = rawClaimant.toAddress();
             uint64 destination = uint64(rawDestination);
 
             if (claimant != address(0)) {
