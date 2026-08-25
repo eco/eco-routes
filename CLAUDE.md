@@ -100,7 +100,11 @@ The system supports multiple bridge protocols through specialized prover contrac
   shadowing entry reachable from a config omission alone. `LayerZeroProver` is
   exempt (strict map, reverts `UnregisteredDomain`). Note this requirement
   applies only when the prover is an aggregator **member** — those two configs
-  remain exceptions-only for an ordinary deploy. Even
+  remain exceptions-only for an ordinary deploy. Members are also required to
+  have **code on this chain at construction**: the constructor reverts
+  `MemberHasNoCode` rather than silently skipping them at runtime, so deploying
+  on a chain where a member is not live yet fails rather than quietly shrinking
+  the trust set. Even
   with a fully validated member set, a shadowing entry (e.g. a genuinely
   wrong-destination proof from a live bridge) makes the **first** `withdraw`
   succeed while paying nothing: it forwards the challenge to every member and

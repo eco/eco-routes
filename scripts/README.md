@@ -77,6 +77,11 @@ Operational scripts for the Eco-Routes protocol.
   aggregator member; for an ordinary deploy those configs stay exceptions-only.
   `LayerZeroProver` is exempt (strict map, no fallback).
 
+  Every member must also already have code on the chain you are deploying to.
+  The constructor reverts `MemberHasNoCode` rather than skipping a codeless
+  member at runtime, so onboarding a chain before all members are live fails
+  loudly instead of quietly deploying a smaller trust set.
+
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated
   format). `CCIPProver` uses a strict domain->chainId map like LayerZero, so

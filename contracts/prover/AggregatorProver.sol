@@ -63,6 +63,9 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     /// @notice Member appears more than once in the set
     error DuplicateMember(bytes32 member);
 
+    /// @notice Thrown when a member has no code on this chain at construction
+    error MemberHasNoCode(address member);
+
     /// @notice Emitted once per member at construction, so the immutable,
     ///         setter-less set is auditable after deploy
     /// @param member Member prover address
@@ -109,7 +112,29 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
                 }
             }
 
-            emit MemberRegistered(member.toAddress(), i);
+            address memberAddr = member.toAddress();
+
+            // Fail closed here so the read paths do not have to guard at
+            // runtime. A codeless member would otherwise be skipped forever by
+            // provenIntents (silently shrinking the trust set to fewer members
+            // than the operator believes they configured) and would revert
+            // challengeIntentProof outright, since solc's extcodesize check on
+            // a void high-level call lands in THIS frame, outside the catch.
+            //
+            // Checking once at construction is sound because code cannot
+            // disappear afterwards: post-EIP-6780 SELFDESTRUCT only clears code
+            // when it runs in the same transaction that created the contract,
+            // and no chain this aggregator targets predates Cancun. There is no
+            // AggregatorProverTron variant; TRON deploys via scripts/tron.
+            //
+            // Consequence, deliberately accepted: on a chain where a member is
+            // not live yet, deployment REVERTS rather than silently deploying a
+            // smaller set at the same address.
+            if (memberAddr.code.length == 0) {
+                revert MemberHasNoCode(memberAddr);
+            }
+
+            emit MemberRegistered(memberAddr, i);
         }
     }
 
@@ -244,8 +269,10 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
         for (uint256 i = 0; i < length; ++i) {
             address member = members[i].toAddress();
 
-            if (member.code.length == 0) continue;
-
+            // No code.length guard: the constructor already rejects codeless
+            // members, and a staticcall to a codeless address returns success
+            // with EMPTY returndata anyway, which the ret.length != 64 check
+            // below rejects. Dropping it saves an EXTCODESIZE per member.
             (bool success, bytes memory ret) = member.staticcall(
                 abi.encodeWithSelector(
                     IProver.provenIntents.selector,
@@ -321,15 +348,15 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
         for (uint256 i = 0; i < length; ++i) {
             address member = members[i].toAddress();
 
-            // Load-bearing, not defensive filler: solc's extcodesize check
-            // inside a high-level `try` call reverts in THIS frame when the
-            // target is codeless, outside any `catch` — the `try/catch`
-            // below only guards the CALL itself, not the codeless-target
-            // case. Without this, a member deployed only on other chains
-            // would revert this whole function, and the wrong-destination
-            // branch in IntentSource.withdraw that calls it would revert too.
-            if (member.code.length == 0) continue;
-
+            // No code.length guard: the constructor rejects codeless members and
+            // code cannot disappear afterwards (EIP-6780), so the codeless case
+            // is unreachable. It is worth stating what it would cost if that
+            // assumption ever broke: solc's extcodesize check on this void
+            // high-level call reverts in THIS frame, outside the `catch` below,
+            // so this whole function would revert — and with it the
+            // wrong-destination branch of IntentSource.withdraw that calls it,
+            // breaking batchWithdraw's per-intent isolation. The `try/catch`
+            // guards the CALL, never the codeless-target case.
             try
                 IProver(member).challengeIntentProof(
                     destination,

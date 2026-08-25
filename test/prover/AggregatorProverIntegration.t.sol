@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AggregatorProver} from "../../contracts/prover/AggregatorProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
+import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 
@@ -155,9 +156,14 @@ contract AggregatorProverIntegrationTest is Test {
         assertEq(solver.balance - before, REWARD * 3);
     }
 
-    function test_refund_worksAfterDeadlineWithCodelessMember() public {
+    /// @dev Previously used a codeless member as the misbehaving entry; the
+    ///      constructor now rejects those, so a REVERTING member carries the
+    ///      same case. What is being pinned is unchanged: a misbehaving
+    ///      higher-priority member must not block refund after the deadline.
+    function test_refund_worksAfterDeadlineWithMisbehavingMember() public {
+        RevertingProver bad = new RevertingProver();
         bytes32[] memory members = new bytes32[](2);
-        members[0] = bytes32(uint256(uint160(address(0xDEAD)))); // codeless
+        members[0] = bytes32(uint256(uint160(address(bad))));
         members[1] = bytes32(uint256(uint160(address(proverB))));
         AggregatorProver agg = new AggregatorProver(members);
 

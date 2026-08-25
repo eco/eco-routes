@@ -158,14 +158,19 @@ contract AggregatorProverTest is Test {
     function test_constructor_acceptsMaxMembersSet() public {
         uint256 maxMembers = aggregator.MAX_MEMBERS();
         bytes32[] memory eight = new bytes32[](maxMembers);
+        address[] memory expected = new address[](maxMembers);
+        // Real deployed provers, not address(1..8): those are precompiles with
+        // no code, which the constructor now rejects outright.
         for (uint256 i = 0; i < maxMembers; ++i) {
-            eight[i] = bytes32(uint256(i + 1));
+            address m = address(new TestProver(address(portal)));
+            expected[i] = m;
+            eight[i] = _b32(m);
         }
         AggregatorProver agg = new AggregatorProver(eight);
         address[] memory members = agg.getMembers();
         assertEq(members.length, maxMembers);
         for (uint256 i = 0; i < maxMembers; ++i) {
-            assertEq(members[i], address(uint160(i + 1)));
+            assertEq(members[i], expected[i]);
         }
     }
 
@@ -222,15 +227,21 @@ contract AggregatorProverTest is Test {
         assertEq(proof.claimant, address(0xA11CE));
     }
 
-    function test_provenIntents_skipsCodelessMember() public {
+    /// @dev Codeless members are now rejected AT CONSTRUCTION rather than
+    ///      skipped at runtime. Fail-closed is the point: a silently skipped
+    ///      member shrinks the trust set below what the operator configured, and
+    ///      membership is immutable, so there is no later remedy. The tradeoff
+    ///      is that deploying on a chain where a member is not live yet reverts.
+    function test_constructor_rejectsCodelessMember() public {
         address codeless = address(0xDEAD);
-        AggregatorProver agg = new AggregatorProver(
-            _pair(codeless, address(proverB))
-        );
-        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
-        IProver.ProofData memory proof = agg.provenIntents(HASH);
-        assertEq(proof.claimant, address(0xBEEF));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AggregatorProver.MemberHasNoCode.selector,
+                codeless
+            )
+        );
+        new AggregatorProver(_pair(codeless, address(proverB)));
     }
 
     function test_provenIntents_skipsRevertingMember() public {
@@ -244,10 +255,15 @@ contract AggregatorProverTest is Test {
         assertEq(proof.claimant, address(0xBEEF));
     }
 
-    function test_provenIntents_skipsCodelessAndRevertingTogether() public {
+    /// @dev Two misbehaving-but-code-bearing members ahead of a healthy one.
+    ///      The codeless variant of this case moved to
+    ///      test_constructor_rejectsCodelessMember, since it can no longer be
+    ///      constructed.
+    function test_provenIntents_skipsMultipleMisbehavingMembers() public {
         RevertingProver bad = new RevertingProver();
+        MalformedProver malformed = new MalformedProver();
         AggregatorProver agg = new AggregatorProver(
-            _triple(address(0xDEAD), address(bad), address(proverB))
+            _triple(address(malformed), address(bad), address(proverB))
         );
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
@@ -314,8 +330,9 @@ contract AggregatorProverTest is Test {
 
     function test_provenIntents_returnsZeroWhenAllMembersMisbehave() public {
         RevertingProver bad = new RevertingProver();
+        MalformedProver malformed = new MalformedProver();
         AggregatorProver agg = new AggregatorProver(
-            _pair(address(0xDEAD), address(bad))
+            _pair(address(malformed), address(bad))
         );
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
@@ -386,10 +403,16 @@ contract AggregatorProverTest is Test {
         assertEq(aggregator.provenIntents(intentHash).claimant, address(0xB0B));
     }
 
-    function test_challenge_toleratesRevertingAndCodelessMembers() public {
+    /// @dev The codeless half of this case is gone by construction; what
+    ///      remains is the one that still matters — a REVERTING member must not
+    ///      stop the challenge reaching later members, since
+    ///      IntentSource.withdraw calls this on its wrong-destination branch and
+    ///      a revert here would break batchWithdraw's per-intent isolation.
+    function test_challenge_toleratesRevertingAndMalformedMembers() public {
         RevertingProver bad = new RevertingProver();
+        MalformedProver malformed = new MalformedProver();
         AggregatorProver agg = new AggregatorProver(
-            _triple(address(0xDEAD), address(bad), address(proverB))
+            _triple(address(malformed), address(bad), address(proverB))
         );
 
         bytes32 routeHash = keccak256("route");
