@@ -7,6 +7,7 @@ import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgePro
 import {MockDomainProver} from "../../contracts/test/MockDomainProver.sol";
 import {MockDomainProverMalformedProvenIntents} from "../../contracts/test/MockDomainProverMalformedProvenIntents.sol";
 import {MockDomainProverDirtyChainId} from "../../contracts/test/MockDomainProverDirtyChainId.sol";
+import {MockDomainProverEmptyDynamic} from "../../contracts/test/MockDomainProverEmptyDynamic.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
@@ -175,6 +176,28 @@ contract AggregatorProverMemberValidationTest is Test {
         vm.expectRevert(
             bytes(
                 "member does not expose chainIdByDomain; destination not bridge-attested"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev Regression pin for the empty-dynamic gap in _tryProvenIntentsShape.
+    ///      An empty `bytes` return encodes to exactly 64 bytes (offset 0x20,
+    ///      length 0x00), so it passes both the length check and the old range
+    ///      check (0x20 >> 160 == 0). AggregatorProver.provenIntents rejects
+    ///      that same payload at runtime via its zero-destination guard, so the
+    ///      member would be skipped for EVERY intentHash forever — and
+    ///      membership is immutable. The probe now requires both words to be
+    ///      exactly zero, which an honest member satisfies because bytes32(0)
+    ///      is an unproven hash.
+    function test_rejectsMemberWithEmptyDynamicProvenIntents() public {
+        MockDomainProverEmptyDynamic bad = new MockDomainProverEmptyDynamic();
+        Deploy.DeploymentContext memory ctx = _ctxWith(_one(_b32(address(bad))));
+        ctx.hyperProver = address(bad);
+
+        vm.expectRevert(
+            bytes(
+                "member provenIntents does not return a well-formed ProofData"
             )
         );
         harness.exposedValidate(ctx);

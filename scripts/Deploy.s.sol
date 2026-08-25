@@ -570,7 +570,15 @@ contract Deploy is Script {
             ret,
             (uint256, uint256)
         );
-        return rawClaimant >> 160 == 0 && rawDestination >> 64 == 0;
+        // Strict zero-equality, not a range check. bytes32(0) is an unproven
+        // hash, so an honest member returns exactly (0, 0). A range check
+        // (rawClaimant >> 160 == 0) waves through a single empty dynamic
+        // return value (bytes/string/array), which encodes to 64 bytes as
+        // offset 0x20 then length 0x00 — AggregatorProver.provenIntents
+        // rejects that identical payload at runtime via its zero-destination
+        // guard, skipping the member for EVERY intentHash, forever. This also
+        // subsumes the dirty-bits class.
+        return rawClaimant == 0 && rawDestination == 0;
     }
 
     /**
