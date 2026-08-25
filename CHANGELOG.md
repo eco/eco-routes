@@ -1,3 +1,6 @@
+## 2.11.0 (2026-08-25)
+
+* feat(prover): add AggregatorProver, a 1-of-N union prover (#433) ([49de5bb](https://github.com/eco/eco-routes/commit/49de5bb)), closes [#433](https://github.com/eco/eco-routes/issues/433) [hi#level](https://github.com/hi/issues/level)
 ## 2.10.0 (2026-08-04)
 
 * fix(erc7683): bind gasless order.user to reward.creator in openFor (#421) ([84f9d88](https://github.com/eco/eco-routes/commit/84f9d88)), closes [#421](https://github.com/eco/eco-routes/issues/421)
