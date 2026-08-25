@@ -435,4 +435,79 @@ contract AggregatorProverTest is Test {
         emit ChallengeForwarded(intentHash);
         aggregator.challengeIntentProof(DESTINATION, routeHash, rewardHash);
     }
+
+    /// @dev re1ro nit: the already-deployed member-set readback in
+    ///      deployAggregatorProver had no test. That guard compares
+    ///      getWhitelist() against the configured members, so pin the property
+    ///      it depends on — getWhitelist() returns members in EXACTLY the
+    ///      constructor order, left-padded. If that ever changed, the guard
+    ///      would compare misaligned entries and either pass wrongly or fail
+    ///      spuriously on a correct redeploy.
+    function test_getWhitelist_preservesConstructorOrderAndPadding() public {
+        TestProver first = new TestProver(address(portal));
+        TestProver second = new TestProver(address(portal));
+        TestProver third = new TestProver(address(portal));
+
+        bytes32[] memory configured = _triple(
+            address(first),
+            address(second),
+            address(third)
+        );
+        AggregatorProver agg = new AggregatorProver(configured);
+
+        bytes32[] memory onchain = agg.getWhitelist();
+        assertEq(onchain.length, configured.length);
+        for (uint256 i = 0; i < configured.length; ++i) {
+            assertEq(
+                onchain[i],
+                configured[i],
+                "whitelist entry must match configured member exactly"
+            );
+            assertEq(
+                uint256(onchain[i]) >> 160,
+                0,
+                "entry must be left-padded"
+            );
+        }
+    }
+
+    /// @dev Records the worst-case fan-out cost so it is written down rather
+    ///      than rediscovered. Worst case is MAX_MEMBERS where NO member holds
+    ///      the proof, since that walks every member without short-circuiting.
+    ///      eco-solver's blind-fallback withdrawal gas floor is 150k, so this
+    ///      number matters before anyone raises MAX_MEMBERS. The ceilings below
+    ///      are regression tripwires, not targets.
+    function test_gas_worstCaseFanOutAtMaxMembers() public {
+        uint256 maxMembers = aggregator.MAX_MEMBERS();
+        bytes32[] memory members = new bytes32[](maxMembers);
+        for (uint256 i = 0; i < maxMembers; ++i) {
+            members[i] = _b32(address(new TestProver(address(portal))));
+        }
+        AggregatorProver agg = new AggregatorProver(members);
+
+        // COLD first: this is the realistic withdraw path, where each member is
+        // touched for the first time and pays the 2600-gas cold-account charge.
+        // It is the number to weigh against eco-solver's 150k floor.
+        uint256 gasBefore = gasleft();
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        uint256 coldGas = gasBefore - gasleft();
+
+        // WARM second: the members are now in the access list, so this isolates
+        // the fan-out logic itself from first-touch costs.
+        gasBefore = gasleft();
+        agg.provenIntents(HASH);
+        uint256 warmGas = gasBefore - gasleft();
+
+        assertEq(proof.claimant, address(0), "no member holds this proof");
+        emit log_named_uint(
+            "worst-case fan-out gas, COLD (8 members)",
+            coldGas
+        );
+        emit log_named_uint(
+            "worst-case fan-out gas, WARM (8 members)",
+            warmGas
+        );
+        assertLt(coldGas, 60_000, "cold fan-out gas regressed past tripwire");
+        assertLt(warmGas, 30_000, "warm fan-out gas regressed past tripwire");
+    }
 }
