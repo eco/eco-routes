@@ -23,12 +23,12 @@ intent1  (same-chain, ARB → ARB)
     [2] IntentChainer.chain(order)
                                   │
                                   ├─ measures its USDC balance          = amountIn
-                                  ├─ publishes intent2                   (route carries amountIn − fee)
+                                  ├─ publishes intent2                   (route carries the scaled net)
                                   └─ pushes amountIn into intent2's vault
                                                     │
 intent2  (ARB → BASE)                               ▼
-  reward.tokens [USDC, amountIn]          solver delivers amountIn − fee on the destination,
-  route         amountIn − fee            whose calls swap it and pay the user
+  reward.tokens [USDC, amountIn]          solver delivers the scaled net on the destination,
+  route         scaled net                whose calls swap it and pay the user
 ```
 
 The user signs and funds only intent1. Everything after that is solver-executed.
@@ -48,14 +48,41 @@ cannot pay out.
 
 ## Two amounts, one measurement
 
-| value            | goes to                   | meaning                                                |
-| ---------------- | ------------------------- | ------------------------------------------------------ |
-| `amountIn`       | `reward.tokens[0].amount` | escrowed on the source; what intent2's solver collects |
-| `amountIn - fee` | every route slot          | what that solver must deliver on the destination       |
+| value                                  | goes to                   | meaning                                                |
+| -------------------------------------- | ------------------------- | ------------------------------------------------------ |
+| `amountIn`                             | `reward.tokens[0].amount` | escrowed on the source; what intent2's solver collects |
+| `ceil((amountIn - fee) * scale / WAD)` | every route slot          | what that solver must deliver on the destination       |
 
-`fee` is flat, in the token's own units, fixed when intent1 is signed. It is intent2's solver's entire
-margin. Because it is flat rather than a rate, a larger-than-expected swap output raises the delivery
-obligation one-for-one and leaves the solver's take unchanged — the upside stays with the user.
+`fee` is flat, in the **source** token's units, deducted **before** scaling. It is intent2's solver's
+entire margin. Because it is flat rather than a rate, a larger-than-expected swap output raises the
+delivery obligation one-for-one and leaves the solver's take unchanged — the upside stays with the user.
+Taking it before the conversion keeps the margin independent of the scale factor.
+
+### Units are not the same across chains
+
+`scale` converts source units into destination units, `WAD`-denominated. It is needed because "the same
+token" is not the same unit everywhere: USDC is 6 decimals on Ethereum, Base and Solana, but Binance-Peg
+USDC on BNB Chain is 18, and Arc's native USDC is 18 against a 6-decimal ERC20 wrapper — see
+`NATIVE_USDC_SCALING` in `../deposit/DepositAddress_CCTPMint_Arc.sol`.
+
+| lane            | `scale` |
+| --------------- | ------- |
+| same units      | `1e18`  |
+| 6 → 18 decimals | `1e30`  |
+| 18 → 6 decimals | `1e6`   |
+
+The denominator is **decimal, not binary**, on purpose. Unit conversions are powers of ten, so a decimal
+denominator represents every one of them exactly in both directions; a binary denominator (Q128 and
+friends) cannot — `2^128 / 1e12` is not an integer, so a downscaling lane would lean on rounding to
+recover a value it should have computed exactly.
+
+Rounding is toward the user (up), because the written value is the solver's delivery **floor** — rounding
+down would shave the last unit off what the user receives on every downscaling lane. Ceil rounding also
+makes a zero obligation unreachable: with `netAmountIn >= 1` and `scale >= 1` the quotient is always at
+least 1, so the contract carries no explicit zero-obligation check.
+
+Applied proportionally, `scale` carries a price as well as a unit change without reintroducing a surplus
+leak: a bigger `amountIn` raises the obligation in the same proportion.
 
 ## Slots and segments
 

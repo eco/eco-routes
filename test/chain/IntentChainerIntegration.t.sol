@@ -38,6 +38,7 @@ contract IntentChainerIntegrationTest is BaseTest {
     uint64 internal intentOneDeadline;
     uint64 internal intentTwoDeadline;
     bytes32 internal constant MARKER = bytes32(type(uint256).max);
+    uint256 internal constant WAD = 1e18;
 
     function setUp() public override {
         super.setUp();
@@ -406,6 +407,7 @@ contract IntentChainerIntegrationTest is BaseTest {
                 slots: slots,
                 reward: _intentTwoReward(0),
                 fee: fee,
+                scale: WAD,
                 minAmountIn: minAmountIn
             });
     }

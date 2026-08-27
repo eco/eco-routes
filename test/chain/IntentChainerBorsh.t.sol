@@ -49,6 +49,7 @@ contract IntentChainerBorshTest is Test {
     bytes32 internal constant EXECUTOR_ATA = bytes32(uint256(0xEFAB));
     bytes32 internal constant RECIPIENT_ATA = bytes32(uint256(0x5555));
     uint64 internal constant DEADLINE_DURATION = 7 days;
+    uint256 internal constant WAD = 1e18;
 
     address internal depositor;
     address internal creator;
@@ -220,6 +221,7 @@ contract IntentChainerBorshTest is Test {
                     tokens: rewardTokens
                 }),
                 fee: 0,
+                scale: WAD,
                 minAmountIn: 0
             });
     }

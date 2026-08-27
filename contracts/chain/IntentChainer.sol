@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
 import {Reward} from "../types/Intent.sol";
@@ -16,8 +17,10 @@ import {Reward} from "../types/Intent.sol";
  *      output of whatever intent1's earlier calls produced -- typically a DEX swap that named this contract
  *      as its recipient. It measures that balance -- the ONE runtime measurement in the whole flow -- and
  *      derives from it the two amounts of a second intent (intent2) whose every other field was fixed when
- *      intent1 was signed: `amountIn` is escrowed as intent2's reward, and `amountIn - fee` is written into
- *      the route as what intent2's solver must deliver. The flat `fee` is that solver's entire margin.
+ *      intent1 was signed: `amountIn` is escrowed as intent2's reward, and the fee-deducted, unit-scaled
+ *      remainder is written into the route as what intent2's solver must deliver. The flat `fee` is that
+ *      solver's entire margin; the scale converts source units into destination units, which are NOT the
+ *      same thing for the same token across chains.
  *
  *      WHY THIS IS SAFE WITHOUT ACCESS CONTROL. Route calls reach every contract through the Portal's single
  *      shared {Executor}, which any fulfiller of any intent drives permissionlessly, so `msg.sender` proves
@@ -48,8 +51,9 @@ contract IntentChainer is ReentrancyGuard {
 
     /**
      * @notice A position in intent2's route bytes that receives the destination amount.
-     * @dev Every slot receives the SAME scalar, `amountIn - fee`. That is what the solver of intent2 must
-     *      supply on the destination, and it appears once as `route.tokens[0].amount` and again inside any
+     * @dev Every slot receives the SAME scalar, `ceil((amountIn - fee) * scale / WAD)`. That is what the
+     *      solver of intent2 must supply on the destination, and it appears once as
+     *      `route.tokens[0].amount` and again inside any
      *      call that moves it (the `transfer(swapper, ...)` that feeds a destination swap). Because both
      *      want the identical number, no per-slot discriminator is needed. Width and byte order are the
      *      destination VM's, not this chain's: an EVM route carries `abi.encode`d 32-byte big-endian words,
@@ -76,11 +80,29 @@ contract IntentChainer is ReentrancyGuard {
      * @param slots Positions receiving the measured amount, in route order.
      * @param reward Intent2's reward. MUST carry exactly one leg, in `token`, with no native amount; the
      *        leg's `amount` field is ignored on input and overwritten with the measured amount.
-     * @param fee Flat spread kept by intent2's solver, in `token`'s smallest unit. The reward leg escrows
-     *        `amountIn` while the route obliges the solver to deliver only `amountIn - fee`, so the
-     *        difference is its entire margin. Fixed at intent1 signing time, so it is a flat fee on a
-     *        floating amount, not a rate -- a larger-than-expected swap output raises what the solver must
-     *        deliver one-for-one and leaves its take unchanged.
+     * @param fee Flat spread kept by intent2's solver, in the SOURCE token's smallest unit, deducted
+     *        BEFORE scaling. The reward leg escrows `amountIn` while the route obliges the solver to
+     *        deliver the scaled remainder, so the difference is its entire margin. Fixed at intent1
+     *        signing time, so it is a flat fee on a floating amount, not a rate -- a larger-than-expected
+     *        swap output raises what the solver must deliver one-for-one and leaves its take unchanged.
+     * @param scale Source-to-destination conversion, {WAD}-denominated:
+     *        `amountOut = ceil((amountIn - fee) * scale / WAD)`.
+     *
+     *        The conversion exists because "the same token" does not mean the same UNIT across chains.
+     *        USDC is 6 decimals on Ethereum, Base and Solana, but Binance-Peg USDC on BNB Chain is 18, and
+     *        Arc's native USDC is 18 against a 6-decimal ERC20 wrapper (see
+     *        {DepositAddress_CCTPMint_Arc}'s `NATIVE_USDC_SCALING`).
+     *
+     *        The denominator is DECIMAL on purpose. Unit conversions are powers of ten, so a decimal
+     *        denominator represents every one of them exactly in both directions, where a binary
+     *        denominator (Q128 and friends) cannot: 6-to-18 is `scale = 1e30`, 18-to-6 is `scale = 1e6`,
+     *        and a same-unit lane is `scale = WAD`, all integers.
+     *
+     *        The ratio is applied proportionally, so it carries a price as well as a unit change without
+     *        reintroducing a surplus leak: a bigger `amountIn` raises the obligation in the same
+     *        proportion. Rounding is toward the USER (up), because this value is the solver's delivery
+     *        FLOOR -- rounding it down would quietly shave the last unit off what the user receives on
+     *        every downscaling lane.
      * @param minAmountIn Floor on the measured amount. Reverts below it, so a swap that under-delivered
      *        unwinds intent1 rather than publishing an intent nobody will fill.
      */
@@ -91,10 +113,16 @@ contract IntentChainer is ReentrancyGuard {
         Slot[] slots;
         Reward reward;
         uint256 fee;
+        uint256 scale;
         uint256 minAmountIn;
     }
 
     // ============ Constants ============
+
+    /// @notice Fixed-point denominator for {Order.scale}.
+    /// @dev Decimal, not binary, so every power-of-ten unit conversion is exact in both directions. Matches
+    ///      the WAD convention v3 adopts for `RewardToken.rate`.
+    uint256 public constant WAD = 1e18;
 
     /// @notice Upper bound on slots per order, bounding the concatenation loop's gas.
     uint256 public constant MAX_SLOTS = 8;
@@ -119,7 +147,7 @@ contract IntentChainer is ReentrancyGuard {
      * @param vault Intent2's deterministic vault, which now holds `amountIn`.
      * @param token The measured token.
      * @param amountIn The measured amount, escrowed as intent2's reward.
-     * @param amountOut `amountIn - fee`, written to every route slot.
+     * @param amountOut The scaled destination obligation, written to every route slot.
      */
     event IntentChained(
         bytes32 indexed intentHash,
@@ -157,6 +185,9 @@ contract IntentChainer is ReentrancyGuard {
 
     /// @notice The flat fee is at or above the measured amount, leaving nothing to deliver.
     error FeeExceedsAmount(uint256 amountIn, uint256 fee);
+
+    /// @notice {Order.scale} is zero, which would oblige the solver to deliver nothing.
+    error InvalidScale();
 
     /// @notice A slot width is zero or above 32.
     error InvalidSlotWidth(uint8 width);
@@ -196,7 +227,7 @@ contract IntentChainer is ReentrancyGuard {
      * @return intentHash Intent2's hash.
      * @return vault Intent2's vault, now holding the measured amount.
      * @return amountIn The measured amount, escrowed as intent2's reward.
-     * @return amountOut `amountIn - fee`, the destination obligation written to every slot.
+     * @return amountOut The scaled destination obligation written to every slot.
      */
     function chain(
         Order calldata order
@@ -212,17 +243,7 @@ contract IntentChainer is ReentrancyGuard {
     {
         _validate(order);
 
-        amountIn = IERC20(order.token).balanceOf(address(this));
-        if (amountIn == 0) {
-            revert ZeroAmount();
-        }
-        if (amountIn < order.minAmountIn) {
-            revert AmountBelowFloor(amountIn, order.minAmountIn);
-        }
-        if (amountIn <= order.fee) {
-            revert FeeExceedsAmount(amountIn, order.fee);
-        }
-        amountOut = amountIn - order.fee;
+        (amountIn, amountOut) = _measure(order);
 
         Reward memory reward = order.reward;
         reward.tokens[0].amount = amountIn;
@@ -249,6 +270,42 @@ contract IntentChainer is ReentrancyGuard {
     // ============ Internal Functions ============
 
     /**
+     * @notice Measure the held balance and derive the two amounts intent2 is built from.
+     * @dev The fee is taken FIRST, in source units, and only then converted to destination units. The other
+     *      order would make the solver's take depend on the scale factor rather than on the fee alone.
+     *
+     *      Ceil rounding serves two purposes. It rounds toward the USER, since `amountOut` is the solver's
+     *      delivery floor. And it guarantees a non-zero obligation: with `netAmountIn >= 1` and
+     *      `scale >= 1` the quotient is strictly positive, so no order can oblige a solver to deliver
+     *      nothing while collecting the whole escrow. That is why there is no zero-obligation check.
+     * @param order The validated order.
+     * @return amountIn The measured balance, escrowed as intent2's reward.
+     * @return amountOut The scaled destination obligation.
+     */
+    function _measure(
+        Order calldata order
+    ) internal view returns (uint256 amountIn, uint256 amountOut) {
+        amountIn = IERC20(order.token).balanceOf(address(this));
+
+        if (amountIn == 0) {
+            revert ZeroAmount();
+        }
+        if (amountIn < order.minAmountIn) {
+            revert AmountBelowFloor(amountIn, order.minAmountIn);
+        }
+        if (amountIn <= order.fee) {
+            revert FeeExceedsAmount(amountIn, order.fee);
+        }
+
+        amountOut = Math.mulDiv(
+            amountIn - order.fee,
+            order.scale,
+            WAD,
+            Math.Rounding.Ceil
+        );
+    }
+
+    /**
      * @notice Rejects a malformed order before anything is measured or moved.
      * @param order The order to validate.
      */
@@ -260,6 +317,12 @@ contract IntentChainer is ReentrancyGuard {
         }
         if (order.segments.length != slotCount + 1) {
             revert SegmentCountMismatch(order.segments.length, slotCount);
+        }
+
+        // A zero scale would publish an intent obliging the solver to deliver nothing while still
+        // collecting the whole escrow.
+        if (order.scale == 0) {
+            revert InvalidScale();
         }
 
         // Exactly one leg, in the measured token. A leg in any other token could never be funded from here --

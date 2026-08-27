@@ -31,6 +31,7 @@ contract IntentChainerTest is BaseTest {
     uint256 internal constant SWAP_OUT = 990e6;
     uint256 internal constant FEE = 5e6;
     bytes32 internal constant MARKER = bytes32(type(uint256).max);
+    uint256 internal constant WAD = 1e18;
 
     function setUp() public override {
         super.setUp();
@@ -113,6 +114,97 @@ contract IntentChainerTest is BaseTest {
             expectedHash,
             "published intent2 matches the amount-substituted template"
         );
+    }
+
+    // ============ Unit scaling ============
+
+    /**
+     * @notice A 6-to-18 decimal lane (e.g. Base USDC to Binance-Peg USDC) scales the obligation exactly.
+     */
+    function test_chain_scalesUpAcrossADecimalMismatch() public {
+        IntentChainer.Order memory order = _evmOrder(0, 0);
+        order.scale = 1e30; // 1e12 * WAD
+        tokenB.mint(address(chainer), SWAP_OUT);
+
+        (, , uint256 amountIn, uint256 amountOut) = chainer.chain(order);
+
+        assertEq(amountIn, SWAP_OUT, "reward stays in source units");
+        assertEq(
+            amountOut,
+            SWAP_OUT * 1e12,
+            "obligation is expressed in 18-decimal units"
+        );
+    }
+
+    /**
+     * @notice An 18-to-6 lane scales down exactly -- no dust lost to a binary denominator.
+     */
+    function test_chain_scalesDownAcrossADecimalMismatch() public {
+        uint256 measured = 3e18;
+
+        IntentChainer.Order memory order = _evmOrder(0, 0);
+        order.scale = 1e6; // WAD / 1e12
+        tokenB.mint(address(chainer), measured);
+
+        (, , uint256 amountIn, uint256 amountOut) = chainer.chain(order);
+
+        assertEq(amountIn, measured, "reward stays in source units");
+        assertEq(amountOut, 3e6, "exact down-conversion, no truncation");
+    }
+
+    /**
+     * @notice Scaling rounds toward the user, since the written value is the solver's delivery floor.
+     */
+    function test_chain_scalingRoundsInTheUsersFavour() public {
+        IntentChainer.Order memory order = _evmOrder(0, 0);
+        order.scale = 1e6; // WAD / 1e12
+        tokenB.mint(address(chainer), 3e18 + 1); // one wei past an exact conversion
+
+        (, , , uint256 amountOut) = chainer.chain(order);
+
+        assertEq(amountOut, 3e6 + 1, "a partial unit rounds up, not away");
+    }
+
+    /**
+     * @notice The fee is taken in source units before the conversion, so scale cannot move the margin.
+     */
+    function test_chain_feeIsDeductedBeforeScaling() public {
+        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        order.scale = 1e30;
+        tokenB.mint(address(chainer), SWAP_OUT);
+
+        (, , , uint256 amountOut) = chainer.chain(order);
+
+        assertEq(
+            amountOut,
+            (SWAP_OUT - FEE) * 1e12,
+            "fee applies to the source amount, then scales"
+        );
+    }
+
+    function test_chain_revertsOnZeroScale() public {
+        IntentChainer.Order memory order = _evmOrder(0, 0);
+        order.scale = 0;
+        tokenB.mint(address(chainer), SWAP_OUT);
+
+        vm.expectRevert(IntentChainer.InvalidScale.selector);
+        chainer.chain(order);
+    }
+
+    /**
+     * @notice The obligation can never round to zero, however extreme the down-conversion.
+     * @dev This is why there is no explicit zero-obligation check in the contract: with `netAmountIn >= 1`
+     *      and `scale >= 1` the ceil-rounded quotient is always at least 1, so a solver can never be
+     *      obliged to deliver nothing while collecting the whole escrow.
+     */
+    function test_chain_obligationNeverRoundsToZero() public {
+        IntentChainer.Order memory order = _evmOrder(0, 0);
+        order.scale = 1; // the most extreme down-conversion expressible
+        tokenB.mint(address(chainer), 1); // and the smallest possible measurement
+
+        (, , , uint256 amountOut) = chainer.chain(order);
+
+        assertEq(amountOut, 1, "ceil floors the obligation at one unit");
     }
 
     function test_chain_littleEndianSlotWritesBorshByteOrder() public {
@@ -385,6 +477,7 @@ contract IntentChainerTest is BaseTest {
                 slots: slots,
                 reward: _rewardWithAmount(0),
                 fee: fee,
+                scale: WAD,
                 minAmountIn: minAmountIn
             });
     }
