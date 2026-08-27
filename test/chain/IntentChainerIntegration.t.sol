@@ -31,7 +31,9 @@ contract IntentChainerIntegrationTest is BaseTest {
     uint64 internal constant DEST_CHAIN = 8453;
     uint256 internal constant SWAP_IN = 1000e6;
     uint256 internal constant SWAP_OUT = 990e6;
-    uint256 internal constant FEE = 5e6;
+    /// @dev A same-unit lane less a 100bps solver spread. 990e6 * 0.99 == 980.1e6 exactly.
+    uint256 internal constant SPREAD = 0.99e18;
+    uint256 internal constant SWAP_NET = 980_100_000;
     uint64 internal constant INTENT_TWO_LIFETIME = 2 days;
 
     /// @dev Pinned at setUp so fixtures stay byte-identical across a `_timeTravel`.
@@ -60,13 +62,16 @@ contract IntentChainerIntegrationTest is BaseTest {
      * @notice Intent1 fulfilled, intent2 published and pushed, proven, then withdrawn by its claimant.
      */
     function test_lifecycle_chainedIntentIsWithdrawableByItsClaimant() public {
-        (bytes32 hash2, address vault2) = _runChain(bytes32(uint256(1)), FEE);
+        (bytes32 hash2, address vault2) = _runChain(
+            bytes32(uint256(1)),
+            SPREAD
+        );
 
         assertEq(tokenB.balanceOf(vault2), SWAP_OUT, "vault funded");
         assertTrue(
             portal.isIntentFunded(
                 DEST_CHAIN,
-                _routeBytes(SWAP_OUT - FEE),
+                _routeBytes(SWAP_NET),
                 _intentTwoReward(SWAP_OUT)
             ),
             "balance-based funded check passes without fund()"
@@ -77,7 +82,7 @@ contract IntentChainerIntegrationTest is BaseTest {
         uint256 before = tokenB.balanceOf(claimant);
         portal.withdraw(
             DEST_CHAIN,
-            keccak256(_routeBytes(SWAP_OUT - FEE)),
+            keccak256(_routeBytes(SWAP_NET)),
             _intentTwoReward(SWAP_OUT)
         );
 
@@ -95,15 +100,12 @@ contract IntentChainerIntegrationTest is BaseTest {
     }
 
     /**
-     * @notice The fee is the gap between what intent2 escrows and what its route obliges.
+     * @notice The solver's spread is the gap between what intent2 escrows and what its route obliges.
      */
-    function test_lifecycle_feeIsTheGapBetweenEscrowAndObligation() public {
-        (, address vault2) = _runChain(bytes32(uint256(2)), FEE);
+    function test_lifecycle_spreadIsTheGapBetweenEscrowAndObligation() public {
+        (, address vault2) = _runChain(bytes32(uint256(2)), SPREAD);
 
-        Route memory published = abi.decode(
-            _routeBytes(SWAP_OUT - FEE),
-            (Route)
-        );
+        Route memory published = abi.decode(_routeBytes(SWAP_NET), (Route));
 
         assertEq(
             tokenB.balanceOf(vault2),
@@ -112,13 +114,13 @@ contract IntentChainerIntegrationTest is BaseTest {
         );
         assertEq(
             published.tokens[0].amount,
-            SWAP_OUT - FEE,
-            "obligation is net of the fee"
+            SWAP_NET,
+            "obligation is net of the spread"
         );
         assertEq(
             tokenB.balanceOf(vault2) - published.tokens[0].amount,
-            FEE,
-            "the difference is exactly the fee"
+            SWAP_OUT - SWAP_NET,
+            "the difference is exactly the spread"
         );
     }
 
@@ -126,7 +128,7 @@ contract IntentChainerIntegrationTest is BaseTest {
      * @notice An unsolved intent2 refunds to its creator after the deadline, permissionlessly.
      */
     function test_lifecycle_unsolvedChainedIntentRefundsToCreator() public {
-        _runChain(bytes32(uint256(3)), FEE);
+        _runChain(bytes32(uint256(3)), SPREAD);
 
         _timeTravel(intentTwoDeadline + 1);
 
@@ -134,7 +136,7 @@ contract IntentChainerIntegrationTest is BaseTest {
         vm.prank(otherPerson);
         portal.refund(
             DEST_CHAIN,
-            keccak256(_routeBytes(SWAP_OUT - FEE)),
+            keccak256(_routeBytes(SWAP_NET)),
             _intentTwoReward(SWAP_OUT)
         );
 
@@ -152,7 +154,10 @@ contract IntentChainerIntegrationTest is BaseTest {
      *      creator -- `_validateRefund` passes once the status is no longer Initial/Funded.
      */
     function test_lifecycle_vaultSurplusIsSweptToCreatorAfterWithdraw() public {
-        (bytes32 hash2, address vault2) = _runChain(bytes32(uint256(4)), FEE);
+        (bytes32 hash2, address vault2) = _runChain(
+            bytes32(uint256(4)),
+            SPREAD
+        );
 
         uint256 donation = 7e6;
         tokenB.mint(vault2, donation);
@@ -160,7 +165,7 @@ contract IntentChainerIntegrationTest is BaseTest {
         _addProof(hash2, uint96(DEST_CHAIN), claimant);
         portal.withdraw(
             DEST_CHAIN,
-            keccak256(_routeBytes(SWAP_OUT - FEE)),
+            keccak256(_routeBytes(SWAP_NET)),
             _intentTwoReward(SWAP_OUT)
         );
 
@@ -173,7 +178,7 @@ contract IntentChainerIntegrationTest is BaseTest {
         uint256 before = tokenB.balanceOf(creator);
         portal.refund(
             DEST_CHAIN,
-            keccak256(_routeBytes(SWAP_OUT - FEE)),
+            keccak256(_routeBytes(SWAP_NET)),
             _intentTwoReward(SWAP_OUT)
         );
 
@@ -192,7 +197,7 @@ contract IntentChainerIntegrationTest is BaseTest {
     function test_atomicity_underDeliveredSwapRevertsTheWholeFulfillment()
         public
     {
-        IntentChainer.Order memory order = _order(FEE, SWAP_OUT + 1);
+        IntentChainer.Order memory order = _order(SPREAD, SWAP_OUT + 1);
 
         uint256 solverBefore = _prepareSolver(solver, SWAP_IN);
 
@@ -225,12 +230,12 @@ contract IntentChainerIntegrationTest is BaseTest {
      *      produce the same intent2 hash, which is exactly the collision an SDK must avoid.
      */
     function test_atomicity_settledIntentTwoHashRevertsBeforeAnyPush() public {
-        (bytes32 hash2, ) = _runChain(bytes32(uint256(6)), FEE);
+        (bytes32 hash2, ) = _runChain(bytes32(uint256(6)), SPREAD);
 
         _addProof(hash2, uint96(DEST_CHAIN), claimant);
         portal.withdraw(
             DEST_CHAIN,
-            keccak256(_routeBytes(SWAP_OUT - FEE)),
+            keccak256(_routeBytes(SWAP_NET)),
             _intentTwoReward(SWAP_OUT)
         );
         assertEq(
@@ -240,7 +245,7 @@ contract IntentChainerIntegrationTest is BaseTest {
         );
 
         // A second intent1 -- different salt, same committed order -- collides on intent2's hash.
-        IntentChainer.Order memory order = _order(FEE, 0);
+        IntentChainer.Order memory order = _order(SPREAD, 0);
         uint256 solverBefore = _prepareSolver(solver2, SWAP_IN);
 
         vm.prank(solver2);
@@ -268,7 +273,7 @@ contract IntentChainerIntegrationTest is BaseTest {
      * @notice Neither the chainer nor the shared Executor retains a balance after a clean run.
      */
     function test_atomicity_noResidueInChainerOrExecutor() public {
-        _runChain(bytes32(uint256(8)), FEE);
+        _runChain(bytes32(uint256(8)), SPREAD);
 
         assertEq(
             tokenB.balanceOf(address(chainer)),
@@ -292,9 +297,9 @@ contract IntentChainerIntegrationTest is BaseTest {
     /// @notice Fulfil an intent1 that swaps into the chainer and invokes it. Returns intent2's identity.
     function _runChain(
         bytes32 saltOne,
-        uint256 fee
+        uint256 scale
     ) internal returns (bytes32 hash2, address vault2) {
-        IntentChainer.Order memory order = _order(fee, 0);
+        IntentChainer.Order memory order = _order(scale, 0);
 
         _prepareSolver(solver, SWAP_IN);
         vm.prank(solver);
@@ -305,7 +310,7 @@ contract IntentChainerIntegrationTest is BaseTest {
             bytes32(uint256(uint160(claimant)))
         );
 
-        bytes memory routeBytes = _routeBytes(SWAP_OUT - fee);
+        bytes memory routeBytes = _routeBytes(SWAP_NET);
         hash2 = keccak256(
             abi.encodePacked(
                 DEST_CHAIN,
@@ -385,7 +390,7 @@ contract IntentChainerIntegrationTest is BaseTest {
 
     /// @notice Build the order the way an SDK does: encode with a sentinel, split on it.
     function _order(
-        uint256 fee,
+        uint256 scale,
         uint256 minAmountIn
     ) internal view returns (IntentChainer.Order memory) {
         bytes[] memory segments = _splitOnMarker(
@@ -406,8 +411,7 @@ contract IntentChainerIntegrationTest is BaseTest {
                 segments: segments,
                 slots: slots,
                 reward: _intentTwoReward(0),
-                fee: fee,
-                scale: WAD,
+                scale: scale,
                 minAmountIn: minAmountIn
             });
     }

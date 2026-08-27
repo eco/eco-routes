@@ -153,16 +153,17 @@ contract IntentChainerBorshTest is Test {
     }
 
     /**
-     * @notice The flat fee lands in the route while the reward keeps the full measured amount.
+     * @notice The solver's spread lands in the route while the reward keeps the full measured amount.
+     * @dev 2_500_000 * 0.96 == 2_400_000 exactly, so the reproduction stays byte-exact.
      */
-    function test_chain_feeSplitsRewardFromDestinationObligation() public {
-        uint256 fee = 100_000; // 0.1 USDC
+    function test_chain_spreadSplitsRewardFromDestinationObligation() public {
+        uint256 expectedOut = 2_400_000;
 
         bytes memory routeA = _captureDepositRoute(AMOUNT_A);
-        bytes memory expected = _captureDepositRoute(AMOUNT_B - fee);
+        bytes memory expected = _captureDepositRoute(expectedOut);
 
         IntentChainer.Order memory order = _orderFromReference(routeA);
-        order.fee = fee;
+        order.scale = 0.96e18;
         usdc.mint(address(chainer), AMOUNT_B);
 
         bytes memory produced = _captureChainerRoute(order);
@@ -170,12 +171,12 @@ contract IntentChainerBorshTest is Test {
         assertEq(
             produced,
             expected,
-            "route must carry amountIn - fee at both slots"
+            "route must carry the scaled amount at both slots"
         );
         assertEq(
             _readU64LE(produced, TOKENS_AMOUNT_OFFSET),
-            AMOUNT_B - fee,
-            "destination obligation is net of the fee"
+            expectedOut,
+            "destination obligation is net of the spread"
         );
     }
 
@@ -220,7 +221,6 @@ contract IntentChainerBorshTest is Test {
                     nativeAmount: 0,
                     tokens: rewardTokens
                 }),
-                fee: 0,
                 scale: WAD,
                 minAmountIn: 0
             });

@@ -29,7 +29,9 @@ contract IntentChainerTest is BaseTest {
     uint64 internal constant DEST_CHAIN = 8453;
     uint256 internal constant SWAP_IN = 1000e6;
     uint256 internal constant SWAP_OUT = 990e6;
-    uint256 internal constant FEE = 5e6;
+    /// @dev A same-unit lane less a 100bps solver spread. 990e6 * 0.99 == 980.1e6 exactly.
+    uint256 internal constant SPREAD = 0.99e18;
+    uint256 internal constant SWAP_NET = 980_100_000;
     bytes32 internal constant MARKER = bytes32(type(uint256).max);
     uint256 internal constant WAD = 1e18;
 
@@ -50,7 +52,7 @@ contract IntentChainerTest is BaseTest {
      *         it; the chainer publishes intent2 and pushes the swap output into intent2's vault.
      */
     function test_chain_publishesAndFundsIntentTwoThroughFulfill() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
 
         Route memory route1 = _intentOneRoute(order);
         Reward memory reward1 = _intentOneReward();
@@ -62,10 +64,7 @@ contract IntentChainerTest is BaseTest {
             abi.encodePacked(destination1, routeHash1, rewardHash1)
         );
 
-        (bytes32 expectedHash2, ) = _expectedIntentTwo(
-            SWAP_OUT,
-            SWAP_OUT - FEE
-        );
+        (bytes32 expectedHash2, ) = _expectedIntentTwo(SWAP_OUT, SWAP_NET);
         address vault2 = _expectedVaultTwo();
 
         tokenA.mint(solver, SWAP_IN);
@@ -99,16 +98,16 @@ contract IntentChainerTest is BaseTest {
     // ============ Amount population ============
 
     function test_chain_writesAmountInToRewardAndAmountOutToSlots() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
         tokenB.mint(address(chainer), SWAP_OUT);
 
-        (bytes32 expectedHash, ) = _expectedIntentTwo(SWAP_OUT, SWAP_OUT - FEE);
+        (bytes32 expectedHash, ) = _expectedIntentTwo(SWAP_OUT, SWAP_NET);
 
         (bytes32 intentHash, , uint256 amountIn, uint256 amountOut) = chainer
             .chain(order);
 
         assertEq(amountIn, SWAP_OUT, "reward leg escrows the measured amount");
-        assertEq(amountOut, SWAP_OUT - FEE, "route legs carry amountIn - fee");
+        assertEq(amountOut, SWAP_NET, "route legs carry the scaled amount");
         assertEq(
             intentHash,
             expectedHash,
@@ -122,8 +121,7 @@ contract IntentChainerTest is BaseTest {
      * @notice A 6-to-18 decimal lane (e.g. Base USDC to Binance-Peg USDC) scales the obligation exactly.
      */
     function test_chain_scalesUpAcrossADecimalMismatch() public {
-        IntentChainer.Order memory order = _evmOrder(0, 0);
-        order.scale = 1e30; // 1e12 * WAD
+        IntentChainer.Order memory order = _evmOrder(1e30, 0); // 1e12 * WAD
         tokenB.mint(address(chainer), SWAP_OUT);
 
         (, , uint256 amountIn, uint256 amountOut) = chainer.chain(order);
@@ -142,8 +140,7 @@ contract IntentChainerTest is BaseTest {
     function test_chain_scalesDownAcrossADecimalMismatch() public {
         uint256 measured = 3e18;
 
-        IntentChainer.Order memory order = _evmOrder(0, 0);
-        order.scale = 1e6; // WAD / 1e12
+        IntentChainer.Order memory order = _evmOrder(1e6, 0); // WAD / 1e12
         tokenB.mint(address(chainer), measured);
 
         (, , uint256 amountIn, uint256 amountOut) = chainer.chain(order);
@@ -156,8 +153,7 @@ contract IntentChainerTest is BaseTest {
      * @notice Scaling rounds toward the user, since the written value is the solver's delivery floor.
      */
     function test_chain_scalingRoundsInTheUsersFavour() public {
-        IntentChainer.Order memory order = _evmOrder(0, 0);
-        order.scale = 1e6; // WAD / 1e12
+        IntentChainer.Order memory order = _evmOrder(1e6, 0); // WAD / 1e12
         tokenB.mint(address(chainer), 3e18 + 1); // one wei past an exact conversion
 
         (, , , uint256 amountOut) = chainer.chain(order);
@@ -166,25 +162,25 @@ contract IntentChainerTest is BaseTest {
     }
 
     /**
-     * @notice The fee is taken in source units before the conversion, so scale cannot move the margin.
+     * @notice A unit conversion and a solver spread compose into the single scale.
+     * @dev 6-to-18 decimals (1e12) less 100bps, expressed as one number.
      */
-    function test_chain_feeIsDeductedBeforeScaling() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
-        order.scale = 1e30;
+    function test_chain_scaleCarriesUnitsAndSpreadTogether() public {
+        IntentChainer.Order memory order = _evmOrder((1e30 * 99) / 100, 0);
         tokenB.mint(address(chainer), SWAP_OUT);
 
-        (, , , uint256 amountOut) = chainer.chain(order);
+        (, , uint256 amountIn, uint256 amountOut) = chainer.chain(order);
 
+        assertEq(amountIn, SWAP_OUT, "reward escrows the whole measurement");
         assertEq(
             amountOut,
-            (SWAP_OUT - FEE) * 1e12,
-            "fee applies to the source amount, then scales"
+            SWAP_NET * 1e12,
+            "one scale expresses both the unit change and the spread"
         );
     }
 
     function test_chain_revertsOnZeroScale() public {
         IntentChainer.Order memory order = _evmOrder(0, 0);
-        order.scale = 0;
         tokenB.mint(address(chainer), SWAP_OUT);
 
         vm.expectRevert(IntentChainer.InvalidScale.selector);
@@ -193,13 +189,12 @@ contract IntentChainerTest is BaseTest {
 
     /**
      * @notice The obligation can never round to zero, however extreme the down-conversion.
-     * @dev This is why there is no explicit zero-obligation check in the contract: with `netAmountIn >= 1`
+     * @dev This is why there is no explicit zero-obligation check in the contract: with `amountIn >= 1`
      *      and `scale >= 1` the ceil-rounded quotient is always at least 1, so a solver can never be
      *      obliged to deliver nothing while collecting the whole escrow.
      */
     function test_chain_obligationNeverRoundsToZero() public {
-        IntentChainer.Order memory order = _evmOrder(0, 0);
-        order.scale = 1; // the most extreme down-conversion expressible
+        IntentChainer.Order memory order = _evmOrder(1, 0); // most extreme down-conversion expressible
         tokenB.mint(address(chainer), 1); // and the smallest possible measurement
 
         (, , , uint256 amountOut) = chainer.chain(order);
@@ -209,7 +204,7 @@ contract IntentChainerTest is BaseTest {
 
     function test_chain_littleEndianSlotWritesBorshByteOrder() public {
         uint256 amount = 0x0102;
-        uint256 fee = 0;
+        uint256 scale = WAD;
 
         bytes[] memory segments = new bytes[](2);
         segments[0] = hex"aabbcc";
@@ -218,7 +213,7 @@ contract IntentChainerTest is BaseTest {
         IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](1);
         slots[0] = IntentChainer.Slot({width: 8, littleEndian: true});
 
-        IntentChainer.Order memory order = _order(segments, slots, fee, 0);
+        IntentChainer.Order memory order = _order(segments, slots, scale, 0);
         tokenB.mint(address(chainer), amount);
 
         bytes memory expectedRoute = abi.encodePacked(
@@ -252,7 +247,7 @@ contract IntentChainerTest is BaseTest {
         slots[0] = IntentChainer.Slot({width: 8, littleEndian: true});
 
         uint256 tooBig = uint256(type(uint64).max) + 1;
-        IntentChainer.Order memory order = _order(segments, slots, 0, 0);
+        IntentChainer.Order memory order = _order(segments, slots, WAD, 0);
         tokenB.mint(address(chainer), tooBig);
 
         vm.expectRevert(
@@ -273,7 +268,7 @@ contract IntentChainerTest is BaseTest {
         IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](1);
         slots[0] = IntentChainer.Slot({width: 0, littleEndian: false});
 
-        IntentChainer.Order memory order = _order(segments, slots, 0, 0);
+        IntentChainer.Order memory order = _order(segments, slots, WAD, 0);
         tokenB.mint(address(chainer), SWAP_OUT);
 
         vm.expectRevert(
@@ -288,14 +283,14 @@ contract IntentChainerTest is BaseTest {
     // ============ Measurement guards ============
 
     function test_chain_revertsOnZeroBalance() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
 
         vm.expectRevert(IntentChainer.ZeroAmount.selector);
         chainer.chain(order);
     }
 
     function test_chain_revertsBelowFloor() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, SWAP_OUT + 1);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, SWAP_OUT + 1);
         tokenB.mint(address(chainer), SWAP_OUT);
 
         vm.expectRevert(
@@ -308,24 +303,10 @@ contract IntentChainerTest is BaseTest {
         chainer.chain(order);
     }
 
-    function test_chain_revertsWhenFeeSwallowsAmount() public {
-        IntentChainer.Order memory order = _evmOrder(SWAP_OUT, 0);
-        tokenB.mint(address(chainer), SWAP_OUT);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IntentChainer.FeeExceedsAmount.selector,
-                SWAP_OUT,
-                SWAP_OUT
-            )
-        );
-        chainer.chain(order);
-    }
-
     // ============ Template validation ============
 
     function test_chain_revertsOnSegmentCountMismatch() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
 
         bytes[] memory short = new bytes[](order.segments.length - 1);
         for (uint256 i = 0; i < short.length; ++i) {
@@ -344,7 +325,7 @@ contract IntentChainerTest is BaseTest {
     }
 
     function test_chain_revertsOnRewardTokenMismatch() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
         order.reward.tokens[0].token = address(tokenA);
 
         vm.expectRevert(
@@ -358,7 +339,7 @@ contract IntentChainerTest is BaseTest {
     }
 
     function test_chain_revertsOnNativeReward() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
         order.reward.nativeAmount = 1;
 
         vm.expectRevert(IntentChainer.NativeRewardNotSupported.selector);
@@ -366,7 +347,7 @@ contract IntentChainerTest is BaseTest {
     }
 
     function test_chain_revertsOnStaleDeadline() public {
-        IntentChainer.Order memory order = _evmOrder(FEE, 0);
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
         order.reward.deadline = uint64(block.timestamp + 1);
 
         vm.expectRevert(
@@ -447,7 +428,7 @@ contract IntentChainerTest is BaseTest {
      *         every runtime position, then split the blob on that sentinel into literal segments.
      */
     function _evmOrder(
-        uint256 fee,
+        uint256 scale,
         uint256 minAmountIn
     ) internal view returns (IntentChainer.Order memory) {
         bytes memory marked = abi.encode(_intentTwoRoute(uint256(MARKER)));
@@ -460,13 +441,13 @@ contract IntentChainerTest is BaseTest {
             slots[i] = IntentChainer.Slot({width: 32, littleEndian: false});
         }
 
-        return _order(segments, slots, fee, minAmountIn);
+        return _order(segments, slots, scale, minAmountIn);
     }
 
     function _order(
         bytes[] memory segments,
         IntentChainer.Slot[] memory slots,
-        uint256 fee,
+        uint256 scale,
         uint256 minAmountIn
     ) internal view returns (IntentChainer.Order memory) {
         return
@@ -476,8 +457,7 @@ contract IntentChainerTest is BaseTest {
                 segments: segments,
                 slots: slots,
                 reward: _rewardWithAmount(0),
-                fee: fee,
-                scale: WAD,
+                scale: scale,
                 minAmountIn: minAmountIn
             });
     }
@@ -579,10 +559,7 @@ contract IntentChainerTest is BaseTest {
 
     /// @notice Intent2's vault, predicted from the amount-substituted template.
     function _expectedVaultTwo() internal view returns (address) {
-        (, bytes memory routeBytes) = _expectedIntentTwo(
-            SWAP_OUT,
-            SWAP_OUT - FEE
-        );
+        (, bytes memory routeBytes) = _expectedIntentTwo(SWAP_OUT, SWAP_NET);
 
         return
             portal.intentVaultAddress(

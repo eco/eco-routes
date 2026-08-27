@@ -17,10 +17,10 @@ import {Reward} from "../types/Intent.sol";
  *      output of whatever intent1's earlier calls produced -- typically a DEX swap that named this contract
  *      as its recipient. It measures that balance -- the ONE runtime measurement in the whole flow -- and
  *      derives from it the two amounts of a second intent (intent2) whose every other field was fixed when
- *      intent1 was signed: `amountIn` is escrowed as intent2's reward, and the fee-deducted, unit-scaled
- *      remainder is written into the route as what intent2's solver must deliver. The flat `fee` is that
- *      solver's entire margin; the scale converts source units into destination units, which are NOT the
- *      same thing for the same token across chains.
+ *      intent1 was signed: `amountIn` is escrowed as intent2's reward, and `amountIn * scale` is written
+ *      into the route as what intent2's solver must deliver. The gap between them is that solver's margin,
+ *      and `scale` also carries the source-to-destination unit conversion -- which is NOT the identity for
+ *      the same token across chains.
  *
  *      WHY THIS IS SAFE WITHOUT ACCESS CONTROL. Route calls reach every contract through the Portal's single
  *      shared {Executor}, which any fulfiller of any intent drives permissionlessly, so `msg.sender` proves
@@ -51,7 +51,7 @@ contract IntentChainer is ReentrancyGuard {
 
     /**
      * @notice A position in intent2's route bytes that receives the destination amount.
-     * @dev Every slot receives the SAME scalar, `ceil((amountIn - fee) * scale / WAD)`. That is what the
+     * @dev Every slot receives the SAME scalar, `ceil(amountIn * scale / WAD)`. That is what the
      *      solver of intent2 must supply on the destination, and it appears once as
      *      `route.tokens[0].amount` and again inside any
      *      call that moves it (the `transfer(swapper, ...)` that feeds a destination swap). Because both
@@ -80,29 +80,32 @@ contract IntentChainer is ReentrancyGuard {
      * @param slots Positions receiving the measured amount, in route order.
      * @param reward Intent2's reward. MUST carry exactly one leg, in `token`, with no native amount; the
      *        leg's `amount` field is ignored on input and overwritten with the measured amount.
-     * @param fee Flat spread kept by intent2's solver, in the SOURCE token's smallest unit, deducted
-     *        BEFORE scaling. The reward leg escrows `amountIn` while the route obliges the solver to
-     *        deliver the scaled remainder, so the difference is its entire margin. Fixed at intent1
-     *        signing time, so it is a flat fee on a floating amount, not a rate -- a larger-than-expected
-     *        swap output raises what the solver must deliver one-for-one and leaves its take unchanged.
-     * @param scale Source-to-destination conversion, {WAD}-denominated:
-     *        `amountOut = ceil((amountIn - fee) * scale / WAD)`.
+     * @param scale The ENTIRE source-to-destination transform, {WAD}-denominated:
+     *        `amountOut = ceil(amountIn * scale / WAD)`. It carries both the unit conversion and intent2's
+     *        solver spread, because those compose into one ratio and there is no reason to commit two
+     *        numbers where one will do.
      *
-     *        The conversion exists because "the same token" does not mean the same UNIT across chains.
-     *        USDC is 6 decimals on Ethereum, Base and Solana, but Binance-Peg USDC on BNB Chain is 18, and
-     *        Arc's native USDC is 18 against a 6-decimal ERC20 wrapper (see
-     *        {DepositAddress_CCTPMint_Arc}'s `NATIVE_USDC_SCALING`).
+     *        THE UNIT PART exists because "the same token" does not mean the same UNIT across chains. USDC
+     *        is 6 decimals on Ethereum, Base and Solana, but Binance-Peg USDC on BNB Chain is 18, and Arc's
+     *        native USDC is 18 against a 6-decimal ERC20 wrapper (see {DepositAddress_CCTPMint_Arc}'s
+     *        `NATIVE_USDC_SCALING`).
      *
      *        The denominator is DECIMAL on purpose. Unit conversions are powers of ten, so a decimal
      *        denominator represents every one of them exactly in both directions, where a binary
-     *        denominator (Q128 and friends) cannot: 6-to-18 is `scale = 1e30`, 18-to-6 is `scale = 1e6`,
-     *        and a same-unit lane is `scale = WAD`, all integers.
+     *        denominator (Q128 and friends) cannot: 6-to-18 is `1e30`, 18-to-6 is `1e6`, and a same-unit
+     *        lane is `WAD`, all integers. A spread multiplies in: same units less 50bps is `0.995e18`.
      *
-     *        The ratio is applied proportionally, so it carries a price as well as a unit change without
-     *        reintroducing a surplus leak: a bigger `amountIn` raises the obligation in the same
-     *        proportion. Rounding is toward the USER (up), because this value is the solver's delivery
-     *        FLOOR -- rounding it down would quietly shave the last unit off what the user receives on
-     *        every downscaling lane.
+     *        THE SPREAD PART is PROPORTIONAL, not flat. The reward leg escrows the whole measured
+     *        `amountIn` while the route obliges only `amountIn * scale`, so the difference is the solver's
+     *        entire margin, and it grows with the amount. That is a deliberate trade: a flat fee would
+     *        price destination gas independently of size, but it cannot be folded into a ratio, and the
+     *        only thing that moves `amountIn` here is swap slippage -- a percent or so around a known
+     *        expectation -- over which the two are indistinguishable. Use `minAmountIn` to express "too
+     *        small to be worth filling"; it says that directly, where a flat fee only said it by accident.
+     *
+     *        Rounding is toward the USER (up), because this value is the solver's delivery FLOOR --
+     *        rounding it down would quietly shave the last unit off what the user receives on every
+     *        downscaling lane.
      * @param minAmountIn Floor on the measured amount. Reverts below it, so a swap that under-delivered
      *        unwinds intent1 rather than publishing an intent nobody will fill.
      */
@@ -112,7 +115,6 @@ contract IntentChainer is ReentrancyGuard {
         bytes[] segments;
         Slot[] slots;
         Reward reward;
-        uint256 fee;
         uint256 scale;
         uint256 minAmountIn;
     }
@@ -182,9 +184,6 @@ contract IntentChainer is ReentrancyGuard {
 
     /// @notice The measured amount is below the order's floor.
     error AmountBelowFloor(uint256 amountIn, uint256 minAmountIn);
-
-    /// @notice The flat fee is at or above the measured amount, leaving nothing to deliver.
-    error FeeExceedsAmount(uint256 amountIn, uint256 fee);
 
     /// @notice {Order.scale} is zero, which would oblige the solver to deliver nothing.
     error InvalidScale();
@@ -271,13 +270,10 @@ contract IntentChainer is ReentrancyGuard {
 
     /**
      * @notice Measure the held balance and derive the two amounts intent2 is built from.
-     * @dev The fee is taken FIRST, in source units, and only then converted to destination units. The other
-     *      order would make the solver's take depend on the scale factor rather than on the fee alone.
-     *
-     *      Ceil rounding serves two purposes. It rounds toward the USER, since `amountOut` is the solver's
-     *      delivery floor. And it guarantees a non-zero obligation: with `netAmountIn >= 1` and
-     *      `scale >= 1` the quotient is strictly positive, so no order can oblige a solver to deliver
-     *      nothing while collecting the whole escrow. That is why there is no zero-obligation check.
+     * @dev Ceil rounding serves two purposes. It rounds toward the USER, since `amountOut` is the solver's
+     *      delivery floor. And it guarantees a non-zero obligation: with `amountIn >= 1` and `scale >= 1`
+     *      the quotient is strictly positive, so no order can oblige a solver to deliver nothing while
+     *      collecting the whole escrow. That is why there is no zero-obligation check.
      * @param order The validated order.
      * @return amountIn The measured balance, escrowed as intent2's reward.
      * @return amountOut The scaled destination obligation.
@@ -293,16 +289,8 @@ contract IntentChainer is ReentrancyGuard {
         if (amountIn < order.minAmountIn) {
             revert AmountBelowFloor(amountIn, order.minAmountIn);
         }
-        if (amountIn <= order.fee) {
-            revert FeeExceedsAmount(amountIn, order.fee);
-        }
 
-        amountOut = Math.mulDiv(
-            amountIn - order.fee,
-            order.scale,
-            WAD,
-            Math.Rounding.Ceil
-        );
+        amountOut = Math.mulDiv(amountIn, order.scale, WAD, Math.Rounding.Ceil);
     }
 
     /**
