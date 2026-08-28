@@ -42,9 +42,16 @@ Called as the last `Call` of an executing intent, it:
 3. calls `Portal.publish`, which returns intent2's vault address
 4. transfers the measured balance into that vault
 
-`publish` runs **before** the transfer. It both hands back the vault address and rejects a hash that has
-already settled, so any failure reverts the outer intent whole rather than stranding tokens in a vault that
-cannot pay out.
+`publish` runs **before** the transfer, because it hands back the vault address — which cannot be derived
+here — and because every failure should revert the outer intent whole rather than strand tokens in a vault
+that cannot pay out.
+
+It does **not** reject every colliding hash, and the gap is the operating window rather than an edge.
+`IntentSource._validatePublish` refuses only `Withdrawn` and `Refunded`; re-publishing an `Initial` or
+`Funded` intent is deliberately idempotent. Since the chainer never funds intent2, it sits at `Initial` for
+its whole useful life — so a second `chain` on a colliding order would re-publish and push a second
+`amountIn` into the same vault, merging two chains into one intent with no signal. The vault balance read
+immediately before the transfer is what closes that; `publish` closes only the terminal half.
 
 ## Two amounts, one measurement
 
@@ -186,6 +193,10 @@ Three invariants are not enforceable on-chain:
 - **Fresh salt per order.** Intent2's salt is fixed in the committed template, so two orders sharing a salt
   _and_ landing on the same measured amount produce the same intent hash. If that hash has already settled,
   `publish` reverts `IntentAlreadyExists` and unwinds intent1.
+- **Route deadline.** `MIN_DEADLINE_BUFFER` guards `reward.deadline`. Intent2's **route** deadline lives
+  inside the opaque bytes and cannot be read here at all, so an intent2 whose route deadline has already
+  passed publishes and funds successfully, is unfulfillable, and locks the escrow until `reward.deadline` —
+  the longer of the two by construction. This is the one deadline with no on-chain backstop on either VM.
 - **Deadline headroom.** Intent2's deadlines are absolute and fixed when intent1 is signed, but intent1 may
   be fulfilled any time up to its own route deadline. The contract rejects a reward deadline inside
   `MIN_DEADLINE_BUFFER`, but leaving real headroom is the builder's job. Set intent2's reward deadline
@@ -195,6 +206,10 @@ Three invariants are not enforceable on-chain:
   the token leg declares, the difference is left on the shared `Executor`, which has no sweep and is
   claimable by the next fulfiller of any intent. Emit both from one value.
 
+Note the donation row says _any_ token: `order.token` is chosen by the order, and `chain` sweeps that
+token's entire balance, so anything mistakenly sent to a widely-known singleton is reachable — not only the
+lane's own asset.
+
 ## Recovery
 
 | state                                      | who recovers                                                                 | how                                                |
@@ -203,7 +218,7 @@ Three invariants are not enforceable on-chain:
 | amount will not fit a slot's width         | nobody needs to — intent1 reverts whole                                      | —                                                  |
 | intent2 published and funded, never solved | `reward.creator`                                                             | `refund()` after `reward.deadline`, permissionless |
 | intent2 solved                             | claimant takes `amountIn`; any surplus in the vault goes to `reward.creator` | `withdraw()`, then `refund()`                      |
-| tokens donated to the chainer              | whoever chains next                                                          | swept into their intent                            |
+| any token sent to the chainer              | whoever chains next                                                          | swept into their intent                            |
 
 ## Deployment
 

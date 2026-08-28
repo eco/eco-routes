@@ -223,11 +223,64 @@ contract IntentChainerIntegrationTest is BaseTest {
     }
 
     /**
+     * @notice A colliding hash reverts while intent2 is still UNSETTLED -- the state it is normally in.
+     * @dev This is the case the settled-hash test below does not reach, and it is the one that actually
+     *      occurs. `IntentSource._validatePublish` rejects only `Withdrawn` and `Refunded`; re-publishing an
+     *      `Initial` intent is deliberately idempotent, and intent2 is `Initial` for its whole useful life
+     *      because the chainer never funds it. So `publish` does not reject this collision -- the vault
+     *      balance read before the push does. Without it the second push would top up the same vault,
+     *      consuming a second intent1 and producing no second delivery.
+     */
+    function test_atomicity_collidingHashRevertsWhileIntentTwoIsUnsettled()
+        public
+    {
+        (bytes32 hash2, address vault2) = _runChain(
+            bytes32(uint256(10)),
+            SPREAD
+        );
+
+        assertEq(
+            uint8(portal.getRewardStatus(hash2)),
+            uint8(IIntentSource.Status.Initial),
+            "intent2 is unsettled -- publish will not reject a repeat"
+        );
+        assertEq(tokenB.balanceOf(vault2), SWAP_OUT, "vault funded once");
+
+        // A second intent1 -- different salt, same committed order, same swap output -- collides.
+        IntentChainer.Order memory order = _order(SPREAD, 0);
+        uint256 solverBefore = _prepareSolver(solver2, SWAP_IN);
+
+        vm.prank(solver2);
+        vm.expectRevert();
+        portal.fulfill(
+            _intentOneHash(bytes32(uint256(11)), order),
+            _intentOneRoute(bytes32(uint256(11)), order),
+            keccak256(abi.encode(_intentOneReward())),
+            bytes32(uint256(uint160(claimant)))
+        );
+
+        assertEq(
+            tokenB.balanceOf(vault2),
+            SWAP_OUT,
+            "vault was not topped up a second time"
+        );
+        assertEq(
+            tokenA.balanceOf(solver2),
+            solverBefore,
+            "second solver keeps their input"
+        );
+        assertEq(
+            tokenB.balanceOf(address(chainer)),
+            0,
+            "nothing left in the chainer"
+        );
+    }
+
+    /**
      * @notice A template whose intent2 hash has already settled reverts rather than losing the push.
-     * @dev This is the salt-reuse failure mode. Because `publish` runs BEFORE the transfer, a hash that is
-     *      already Withdrawn aborts intent1 whole -- the tokens never reach a vault that could not pay them
-     *      back out. Two intent1s with different salts but an identical order and an identical swap output
-     *      produce the same intent2 hash, which is exactly the collision an SDK must avoid.
+     * @dev The terminal half of the same failure mode: here `publish` itself rejects, because `Withdrawn` is
+     *      one of the two states `_validatePublish` refuses. Kept alongside the unsettled case above so both
+     *      halves stay pinned.
      */
     function test_atomicity_settledIntentTwoHashRevertsBeforeAnyPush() public {
         (bytes32 hash2, ) = _runChain(bytes32(uint256(6)), SPREAD);

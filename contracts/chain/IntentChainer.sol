@@ -197,8 +197,14 @@ contract IntentChainer is ReentrancyGuard {
     /// @notice Intent2's reward deadline is in the past or inside {MIN_DEADLINE_BUFFER}.
     error DeadlineTooSoon(uint64 deadline, uint256 timestamp);
 
-    /// @notice The vault holds less than was declared after the push, e.g. a fee-on-transfer token.
-    error PushShortfall(address vault, uint256 expected, uint256 actual);
+    /// @notice The transfer moved less into the vault than was declared, e.g. a fee-on-transfer token.
+    error PushShortfall(address vault, uint256 expected, uint256 delivered);
+
+    /// @notice Intent2's vault already holds at least the amount being pushed.
+    /// @dev A salt collision: the same order resolving to a hash that has already been chained. Nothing
+    ///      legitimate pre-funds this address, since it depends on the measured amount. See
+    ///      {_pushAndVerify} for why `publish` does not catch this on its own.
+    error VaultAlreadyFunded(address vault, uint256 balance);
 
     // ============ Constructor ============
 
@@ -219,9 +225,16 @@ contract IntentChainer is ReentrancyGuard {
     /**
      * @notice Measure this contract's balance of one token and publish a second intent escrowing it.
      * @dev Ordering is load-bearing. The route is built and `publish` is called BEFORE any value moves, so
-     *      every validation failure -- and a hash that has already settled -- reverts intent1 whole rather
-     *      than stranding tokens in a vault that cannot pay out. `publish` also hands back the vault address,
-     *      which is why it runs before the transfer rather than after.
+     *      every validation failure reverts intent1 whole rather than stranding tokens in a vault that
+     *      cannot pay out. `publish` also hands back the vault address, which is why it runs before the
+     *      transfer rather than after.
+     *
+     *      `publish` does NOT reject every colliding hash, and the gap is the operating window rather than
+     *      an edge: `IntentSource._validatePublish` rejects only `Withdrawn` and `Refunded`, and publishing
+     *      an `Initial` or `Funded` intent is deliberately idempotent. Because this contract never calls
+     *      `fund`, intent2 sits at `Initial` for its whole useful life -- so a second `chain` on a colliding
+     *      order would re-publish and push a second `amountIn` into the same vault, merging two chains into
+     *      one intent with no signal. {_pushAndVerify} is what actually closes that.
      * @param order The committed intent2 template. See {Order}.
      * @return intentHash Intent2's hash.
      * @return vault Intent2's vault, now holding the measured amount.
@@ -253,20 +266,48 @@ contract IntentChainer is ReentrancyGuard {
             reward
         );
 
-        IERC20(order.token).safeTransfer(vault, amountIn);
-
-        // The Portal decides funded/unfunded by reading the vault's live balance, so a token that delivers
-        // less than it was sent (fee-on-transfer, rebasing) would leave intent2 quietly under-funded and
-        // payable only in part. Reject it here while intent1 can still be unwound.
-        uint256 delivered = IERC20(order.token).balanceOf(vault);
-        if (delivered < amountIn) {
-            revert PushShortfall(vault, amountIn, delivered);
-        }
+        _pushAndVerify(order.token, vault, amountIn);
 
         emit IntentChained(intentHash, vault, order.token, amountIn, amountOut);
     }
 
     // ============ Internal Functions ============
+
+    /**
+     * @notice Move the measured balance into intent2's vault, bracketing the transfer with the two checks
+     *         that make it safe.
+     * @dev Reading the vault BEFORE the transfer does the work `publish` cannot. `_validatePublish` lets an
+     *      `Initial` intent be re-published, and intent2 is `Initial` for its whole useful life because this
+     *      contract never funds it -- so a colliding order would otherwise top the same vault up a second
+     *      time, consuming a second intent1 and producing no second delivery. Nothing legitimate can
+     *      pre-fund this address: it depends on the measured amount, so it is unknowable until this call
+     *      runs. A balance already covering the push therefore means the hash is not fresh.
+     *
+     *      Comparing a DELTA afterwards, rather than the absolute balance, is what keeps the shortfall check
+     *      honest. The vault address is computable by anyone reading intent1's calldata, so an absolute
+     *      comparison could be satisfied by a donation instead of by this transfer -- masking exactly the
+     *      fee-on-transfer case the check exists to catch.
+     * @param token The measured token.
+     * @param vault Intent2's vault.
+     * @param amountIn The amount to push.
+     */
+    function _pushAndVerify(
+        address token,
+        address vault,
+        uint256 amountIn
+    ) internal {
+        uint256 balanceBefore = IERC20(token).balanceOf(vault);
+        if (balanceBefore >= amountIn) {
+            revert VaultAlreadyFunded(vault, balanceBefore);
+        }
+
+        IERC20(token).safeTransfer(vault, amountIn);
+
+        uint256 delivered = IERC20(token).balanceOf(vault) - balanceBefore;
+        if (delivered < amountIn) {
+            revert PushShortfall(vault, amountIn, delivered);
+        }
+    }
 
     /**
      * @notice Measure the held balance and derive the two amounts intent2 is built from.
@@ -354,6 +395,9 @@ contract IntentChainer is ReentrancyGuard {
     ) internal pure returns (bytes memory route) {
         uint256 slotCount = order.slots.length;
 
+        // `bytes.concat` reallocates and copies the whole accumulated route on every iteration, so this is
+        // quadratic in segment count. {MAX_SLOTS} is what keeps that acceptable -- at most eight copies of a
+        // route that is itself small. Raising the bound means revisiting this loop, not just the constant.
         route = order.segments[0];
         for (uint256 i = 0; i < slotCount; ++i) {
             route = bytes.concat(
