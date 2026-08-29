@@ -315,6 +315,19 @@ contract IntentChainer is ReentrancyGuard {
      *      delivery floor. And it guarantees a non-zero obligation: with `amountIn >= 1` and `scale >= 1`
      *      the quotient is strictly positive, so no order can oblige a solver to deliver nothing while
      *      collecting the whole escrow. That is why there is no zero-obligation check.
+     *
+     *      {Math-mulDiv} is used for that ROUNDING MODE, not for its wide intermediate, and the distinction
+     *      is worth stating because it is easy to get backwards. Precision here is fixed by {WAD} alone --
+     *      `ceil(amountIn * scale / WAD)` is one exact integer, and no intermediate width changes it by a
+     *      unit. The 512-bit path buys only RANGE, and the range is not close to binding: overflow of a
+     *      plain `amountIn * scale` needs the product to reach `2^256`, which on a 6-to-18 lane
+     *      (`scale = 1e30`) means an `amountIn` above `1.16e47` -- some seventeen orders of magnitude past
+     *      an 18-decimal token with a trillion-unit supply. Under checked arithmetic that case would revert
+     *      rather than wrap in any event.
+     *
+     *      What it does earn is a ceiling with no overflow edge of its own. The hand-rolled form,
+     *      `(amountIn * scale + WAD - 1) / WAD`, introduces exactly the boundary overflow the plain
+     *      expression does not have; `mulDiv` adds its increment after the division instead.
      * @param order The validated order.
      * @return amountIn The measured balance, escrowed as intent2's reward.
      * @return amountOut The scaled destination obligation.

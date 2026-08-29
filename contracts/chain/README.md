@@ -79,6 +79,12 @@ USDC is 18 against a 6-decimal ERC20 wrapper — see `NATIVE_USDC_SCALING` in
 | 18 → 6 decimals              | `1e6`             |
 | 6 → 18 decimals, less 100bps | `1e30 * 99 / 100` |
 
+`WAD` is the fixed denominator and `scale` is the per-order value — `1e18` is only what `scale` equals
+when the lane happens to be 1:1. Precision comes from `WAD` and nothing else: `ceil(amountIn * scale / WAD)`
+is one exact integer, so the width of the intermediate changes range, never the answer. `Math.mulDiv` is
+used for its rounding mode, not its 512-bit path; overflow of a plain multiply would need an `amountIn`
+some seventeen orders of magnitude past any real token supply.
+
 The denominator is **decimal, not binary**, on purpose. Unit conversions are powers of ten, so a decimal
 denominator represents every one of them exactly in both directions; a binary denominator (Q128 and
 friends) cannot — `2^128 / 1e12` is not an integer, so a downscaling lane would lean on rounding to
