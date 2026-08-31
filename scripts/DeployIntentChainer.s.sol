@@ -38,7 +38,7 @@ contract DeployIntentChainer is Script {
     ///      V1 pinned the Portal as a constructor immutable, which made the contract per-environment and
     ///      got deployed against the ephemeral Portal by mistake. V2 moves the Portal into `Order`, so one
     ///      deployment serves every Portal and there is no deploy-time binding left to get wrong.
-    string constant CHAINER_VERSION = "INTENT_CHAINER_V2";
+    string constant CHAINER_VERSION = "INTENT_CHAINER_V3";
 
     function run() external {
         bytes32 rootSalt = vm.envBytes32("SALT");

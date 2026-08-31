@@ -170,24 +170,32 @@ inside `calls[k].data` — the `transfer(swapper, amount)` that feeds a destinat
 big-endian words. The SDK builds segments by encoding the route with a sentinel in every runtime position
 and splitting on it; `../../test/chain/IntentChainer.t.sol` does exactly that.
 
-## Why it publishes and never funds
+## Publishing is optional; funding never happens
 
-`publish` and nothing else.
+`order.publish` gates the Portal call. It buys **only discoverability**, because nothing else depends on it:
+the vault address comes from `intentVaultAddress`, a pure prediction, and the already-settled rejection is
+asserted explicitly against `getRewardStatus` rather than inherited from `publish` reverting.
 
-- **Funding is unnecessary.** `IntentSource._fundToken` returns early once `balanceOf(vault) >= amount`,
+Set it `true` for anything an off-chain solver must find — `IntentPublished` is the only event carrying
+intent2's route as complete bytes plus every `Reward` field, and since the amount did not exist until
+execution, no third party can reconstruct intent2 without it. Set it `false` when the caller is itself the
+solver, or when an indexer rebuilds intent2 from the chainer's own `IntentChained` event.
+
+It is committed like every other order field, so a solver executing intent1 cannot suppress publication to
+keep the resulting intent2 to itself.
+
+Funding, by contrast, never happens at all.
+
+- **It is unnecessary.** `IntentSource._fundToken` returns early once `balanceOf(vault) >= amount`,
   and `_validateWithdraw` accepts `Status.Initial`. A pushed-but-unfunded intent is fully withdrawable by
   the proven claimant. `fund()` buys a status flag and an event.
-- **Funding is unsafe from here.** Every funding entry point — `fund`, `fundFor`, `publishAndFund`,
+- **It is unsafe from here.** Every funding entry point — `fund`, `fundFor`, `publishAndFund`,
   `publishAndFundFor`, `open`, `openFor` — ends in `Refund.excessNative()`, which forwards the Portal's
   **entire** native balance to `msg.sender`. Reached re-entrantly from inside a route call, `msg.sender` is
   the chainer, so it would silently capture the solver's in-flight ETH. The contract is non-payable and has
   no `receive()` to keep that unreachable.
-- **`publish` is what makes intent2 findable.** `IntentPublished` is the only event carrying the route as
-  complete bytes plus every `Reward` field. Since the amount did not exist until execution, no off-chain
-  party can reconstruct intent2 without it.
-
-Intent2 therefore settles at `Status.Initial`, which is normal and not a sign of under-funding —
-`isIntentFunded` reads live vault balances and returns true.
+  Intent2 therefore settles at `Status.Initial`, which is normal and not a sign of under-funding —
+  `isIntentFunded` reads live vault balances and returns true.
 
 ## Why no access control
 

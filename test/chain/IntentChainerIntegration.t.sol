@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 import {BaseTest} from "../BaseTest.sol";
 import {IntentChainer} from "../../contracts/chain/IntentChainer.sol";
@@ -345,6 +346,66 @@ contract IntentChainerIntegrationTest is BaseTest {
         );
     }
 
+    /**
+     * @notice With publish off, intent2 is still funded and still withdrawable by its proven claimant.
+     * @dev The point of the flag: publish buys discoverability and nothing else. The vault address comes
+     *      from `intentVaultAddress`, and the settled check reads `getRewardStatus` -- neither depends on
+     *      publishing -- so the escrow behaves identically. What a solver loses is `IntentPublished`.
+     */
+    function test_publishFlag_offStillFundsAWithdrawableIntent() public {
+        IntentChainer.Order memory order = _order(SPREAD, 0);
+        order.publish = false;
+
+        _prepareSolver(solver, SWAP_IN);
+        vm.recordLogs();
+        vm.prank(solver);
+        portal.fulfill(
+            _intentOneHash(bytes32(uint256(20)), order),
+            _intentOneRoute(bytes32(uint256(20)), order),
+            keccak256(abi.encode(_intentOneReward())),
+            bytes32(uint256(uint160(claimant)))
+        );
+
+        // No IntentPublished anywhere in the transaction.
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i = 0; i < logs.length; ++i) {
+            assertTrue(
+                logs[i].topics[0] != IIntentSource.IntentPublished.selector,
+                "publish:false must not emit IntentPublished"
+            );
+        }
+
+        bytes memory routeBytes = _routeBytes(SWAP_NET);
+        bytes32 hash2 = keccak256(
+            abi.encodePacked(
+                DEST_CHAIN,
+                keccak256(routeBytes),
+                keccak256(abi.encode(_intentTwoReward(SWAP_OUT)))
+            )
+        );
+        address vault2 = portal.intentVaultAddress(
+            DEST_CHAIN,
+            routeBytes,
+            _intentTwoReward(SWAP_OUT)
+        );
+
+        assertEq(tokenB.balanceOf(vault2), SWAP_OUT, "vault funded anyway");
+
+        _addProof(hash2, uint96(DEST_CHAIN), claimant);
+        uint256 before = tokenB.balanceOf(claimant);
+        portal.withdraw(
+            DEST_CHAIN,
+            keccak256(routeBytes),
+            _intentTwoReward(SWAP_OUT)
+        );
+
+        assertEq(
+            tokenB.balanceOf(claimant) - before,
+            SWAP_OUT,
+            "claimant is paid without any publish having happened"
+        );
+    }
+
     // ============ Drivers ============
 
     /// @notice Fulfil an intent1 that swaps into the chainer and invokes it. Returns intent2's identity.
@@ -459,6 +520,7 @@ contract IntentChainerIntegrationTest is BaseTest {
 
         return
             IntentChainer.Order({
+                publish: true,
                 portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,

@@ -210,6 +210,7 @@ contract IntentChainerBorshTest is Test {
 
         return
             IntentChainer.Order({
+                publish: true,
                 portal: address(portal),
                 token: address(usdc),
                 destination: destinationChain,

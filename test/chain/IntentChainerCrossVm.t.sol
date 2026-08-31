@@ -163,6 +163,7 @@ contract IntentChainerCrossVmTest is BaseTest {
 
         return
             IntentChainer.Order({
+                publish: true,
                 portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,

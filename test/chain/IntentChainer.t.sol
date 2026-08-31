@@ -452,6 +452,7 @@ contract IntentChainerTest is BaseTest {
     ) internal view returns (IntentChainer.Order memory) {
         return
             IntentChainer.Order({
+                publish: true,
                 portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,

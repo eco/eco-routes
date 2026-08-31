@@ -73,6 +73,20 @@ contract IntentChainer is ReentrancyGuard {
      *      `segments[0] ‖ enc(slots[0]) ‖ segments[1] ‖ ... ‖ segments[n]` -- so a mis-stated write position
      *      is not expressible, and the same encoding serves an EVM destination and a Borsh one without this
      *      contract knowing which it is holding.
+     * @param publish Whether to call `Portal.publish`, which emits `IntentPublished` -- the only event
+     *        carrying intent2's route as complete bytes plus every {Reward} field. Since the amount did not
+     *        exist until execution, no third party can reconstruct intent2 without it, so `true` is what any
+     *        flow depending on an off-chain solver wants.
+     *
+     *        It buys ONLY discoverability. The vault address comes from {IIntentSource-intentVaultAddress},
+     *        a pure prediction that needs no publish, and the already-settled rejection is made explicitly
+     *        against {IIntentSource-getRewardStatus} rather than inherited from `publish` reverting. Set it
+     *        `false` when the caller is itself the solver, or when an indexer reconstructs intent2 from this
+     *        contract's own {IntentChained} event -- the order is in the committed calldata and the splice
+     *        is deterministic.
+     *
+     *        Committed like every other field, so a solver executing intent1 cannot suppress publication to
+     *        keep the resulting intent2 to itself.
      * @param portal The Portal to publish intent2 to, and whose vault the measured balance is pushed
      *        into. A FIELD rather than a constructor immutable so one deployment serves every Portal --
      *        production, ephemeral, a future redeploy -- and so choosing the wrong one is a per-order
@@ -120,6 +134,7 @@ contract IntentChainer is ReentrancyGuard {
      *        unwinds intent1 rather than publishing an intent nobody will fill.
      */
     struct Order {
+        bool publish;
         address portal;
         address token;
         uint64 destination;
@@ -156,13 +171,16 @@ contract IntentChainer is ReentrancyGuard {
      * @param token The measured token.
      * @param amountIn The measured amount, escrowed as intent2's reward.
      * @param amountOut The scaled destination obligation, written to every route slot.
+     * @param published Whether this call also emitted the Portal's canonical `IntentPublished`. An indexer
+     *        that sees `false` must reconstruct intent2 from the committed order rather than wait for it.
      */
     event IntentChained(
         bytes32 indexed intentHash,
         address indexed vault,
         address indexed token,
         uint256 amountIn,
-        uint256 amountOut
+        uint256 amountOut,
+        bool published
     );
 
     // ============ Errors ============
@@ -205,6 +223,10 @@ contract IntentChainer is ReentrancyGuard {
 
     /// @notice The transfer moved less into the vault than was declared, e.g. a fee-on-transfer token.
     error PushShortfall(address vault, uint256 expected, uint256 delivered);
+
+    /// @notice Intent2's hash has already settled, so a push into its vault could not be paid out.
+    /// @dev Checked explicitly rather than inherited from `publish` reverting, because publish is optional.
+    error IntentAlreadySettled(bytes32 intentHash, IIntentSource.Status status);
 
     /// @notice Intent2's vault already holds at least the amount being pushed.
     /// @dev A salt collision: the same order resolving to a hash that has already been chained. Nothing
@@ -252,18 +274,60 @@ contract IntentChainer is ReentrancyGuard {
         Reward memory reward = order.reward;
         reward.tokens[0].amount = amountIn;
 
-        (intentHash, vault) = IIntentSource(order.portal).publish(
+        bytes memory route = _buildRoute(order, amountOut);
+        IIntentSource portal = IIntentSource(order.portal);
+
+        // Resolved WITHOUT publishing. `publish` returns the vault too, but making the flag optional means
+        // neither the address nor the settled check may depend on it.
+        (intentHash, , ) = portal.getIntentHash(
             order.destination,
-            _buildRoute(order, amountOut),
+            route,
             reward
         );
+        vault = portal.intentVaultAddress(order.destination, route, reward);
+
+        _requireNotSettled(portal, intentHash);
+
+        if (order.publish) {
+            portal.publish(order.destination, route, reward);
+        }
 
         _pushAndVerify(order.token, vault, amountIn);
 
-        emit IntentChained(intentHash, vault, order.token, amountIn, amountOut);
+        emit IntentChained(
+            intentHash,
+            vault,
+            order.token,
+            amountIn,
+            amountOut,
+            order.publish
+        );
     }
 
     // ============ Internal Functions ============
+
+    /**
+     * @notice Reject a hash that has already paid out or refunded.
+     * @dev `IntentSource._validatePublish` refuses `Withdrawn` and `Refunded`, and inheriting that side
+     *      effect would leave the terminal case unguarded whenever `order.publish` is false. Asserted
+     *      directly instead, so the protection holds either way. The `Initial`-state collision -- the one
+     *      that actually occurs, since this contract never funds intent2 -- is caught in {_pushAndVerify}.
+     * @param portal The Portal to ask.
+     * @param intentHash Intent2's hash.
+     */
+    function _requireNotSettled(
+        IIntentSource portal,
+        bytes32 intentHash
+    ) internal view {
+        IIntentSource.Status status = portal.getRewardStatus(intentHash);
+
+        if (
+            status != IIntentSource.Status.Initial &&
+            status != IIntentSource.Status.Funded
+        ) {
+            revert IntentAlreadySettled(intentHash, status);
+        }
+    }
 
     /**
      * @notice Move the measured balance into intent2's vault, bracketing the transfer with the two checks
