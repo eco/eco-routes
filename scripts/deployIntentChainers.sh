@@ -18,16 +18,19 @@
 # Environment variables (required):
 #   PRIVATE_KEY        - Deployer private key
 #   SALT               - Root salt for CREATE3 (bytes32 hex)
-#   CHAIN_IDS          - Space-separated chain ids. No default: this repo holds
-#                        no registry of where eco-routes is deployed, so the list
-#                        has to come from whoever owns that record.
-#   PORTAL_<chain id>  - Portal address on that chain, e.g. PORTAL_8453=0x...
-#                        The chainer's only constructor argument, and it differs
-#                        per chain even though the chainer's own address does not.
+#   ALCHEMY_API_KEY    - Fills the Alchemy RPC templates below
 #
 # Optional:
-#   RPC_<chain id>     - RPC override, e.g. RPC_8453=https://...
-#                        Falls back to a public endpoint for known chains.
+#   PORTAL             - Portal address (defaults to the known deployment, which
+#                        is the SAME address on every chain — Portal is deployed
+#                        deterministically, so this is one value, not a table)
+#   CHAIN_IDS          - Space-separated override. Defaults to MAINNETS below.
+#   PORTAL_<chain id>  - Per-chain Portal override, if one ever diverges
+#   RPC_<chain id>     - Per-chain RPC override
+#
+# The default chain list was MEASURED, not assumed: each entry was confirmed to
+# carry Portal bytecode by eth_getCode at the address above. Testnets are listed
+# separately and are not deployed to by default.
 #
 # Usage:
 #   PRIVATE_KEY=0x... SALT=0x... CHAIN_IDS="10 8453 42161" \
@@ -68,7 +71,19 @@ unset _CALLER_CHAIN_IDS
 
 : "${PRIVATE_KEY:?PRIVATE_KEY is required}"
 : "${SALT:?SALT is required}"
-: "${CHAIN_IDS:?CHAIN_IDS is required — this repo has no registry of deployed chains}"
+: "${ALCHEMY_API_KEY:?ALCHEMY_API_KEY is required for the RPC templates}"
+
+# Portal carries the same address on every chain it is deployed to.
+PORTAL="${PORTAL:-0x399Dbd5DF04f83103F77A58cBa2B7c4d3cdede97}"
+
+# Confirmed to hold Portal bytecode. Sanko (1996), inEVM (2525), Rari
+# (1380012617), Form (478) and Molten (360) are in eco-chains but were not
+# reachable over a public endpoint — add them once an RPC is available and the
+# Portal is confirmed there.
+MAINNETS="1 10 56 130 137 146 169 466 480 999 5000 5330 8333 8453 9745 33139 42161 42220 57073 10241024"
+TESTNETS="84532 11155111 11155420"
+
+CHAIN_IDS="${CHAIN_IDS:-$MAINNETS}"
 
 rpc_url() {
     local override
@@ -78,21 +93,40 @@ rpc_url() {
         return
     fi
 
+    # Mirrors eco/eco-chains src/assets/chain.json, the source the release
+    # tooling already uses, with public endpoints where that file has none.
     case "$1" in
-        1)     echo "https://ethereum.publicnode.com" ;;
-        10)    echo "https://mainnet.optimism.io" ;;
-        130)   echo "https://mainnet.unichain.org" ;;
-        137)   echo "https://polygon-rpc.com" ;;
-        146)   echo "https://rpc.soniclabs.com" ;;
-        480)   echo "https://worldchain-mainnet.g.alchemy.com/public" ;;
-        8453)  echo "https://mainnet.base.org" ;;
-        42161) echo "https://arb1.arbitrum.io/rpc" ;;
-        *)     echo "" ;;
+        1)          echo "https://eth-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        10)         echo "https://opt-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        56)         echo "https://bnb-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        130)        echo "https://unichain-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        137)        echo "https://polygon-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        146)        echo "https://sonic-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        169)        echo "https://manta-pacific.calderachain.xyz/http" ;;
+        466)        echo "https://rpc.appchain.xyz/http" ;;
+        480)        echo "https://worldchain-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        999)        echo "https://hyperliquid-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        5000)       echo "https://mantle-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        5330)       echo "https://superseed-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        8333)       echo "https://mainnet-rpc.b3.fun/http" ;;
+        8453)       echo "https://base-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        9745)       echo "https://rpc.plasma.to" ;;
+        33139)      echo "https://rpc.apechain.com/http" ;;
+        42161)      echo "https://arb-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        42220)      echo "https://celo-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        57073)      echo "https://ink-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        10241024)   echo "https://rpc.alienxchain.io/http" ;;
+        84532)      echo "https://base-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        11155111)   echo "https://eth-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        11155420)   echo "https://opt-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
+        *)          echo "" ;;
     esac
 }
 
 portal_address() {
-    eval "echo \${PORTAL_$1:-}"
+    local override
+    override="$(eval "echo \${PORTAL_$1:-}")"
+    echo "${override:-$PORTAL}"
 }
 
 # ---------- preflight ----------
@@ -117,7 +151,7 @@ for chain_id in $CHAIN_IDS; do
         continue
     fi
     if [ -z "$portal" ]; then
-        echo "  [$chain_id] no Portal — set PORTAL_$chain_id" >&2
+        echo "  [$chain_id] no Portal — set PORTAL or PORTAL_$chain_id" >&2
         FAILED=1
         continue
     fi
