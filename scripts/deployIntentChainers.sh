@@ -21,31 +21,19 @@
 #   ALCHEMY_API_KEY    - Fills the Alchemy RPC templates below
 #
 # Optional:
-#   PORTAL             - Portal address (defaults to the known deployment, which
-#                        is the SAME address on every chain — Portal is deployed
-#                        deterministically, so this is one value, not a table)
 #   CHAIN_IDS          - Space-separated override. Defaults to MAINNETS below.
-#   PORTAL_<chain id>  - Per-chain Portal override, if one ever diverges
 #   RPC_<chain id>     - Per-chain RPC override
 #
-# The default chain list was MEASURED, not assumed: each entry was confirmed to
-# carry Portal bytecode by eth_getCode at the address above. Testnets are listed
-# separately and are not deployed to by default.
+# The default chain list was MEASURED: each entry was confirmed to carry a
+# Portal deployment. The chainer itself binds to NO Portal -- `order.portal`
+# names it per order -- so this list is only "where chaining is useful", not a
+# binding. Testnets are listed separately and not deployed to by default.
 #
 # Usage:
 #   PRIVATE_KEY=0x... SALT=0x... CHAIN_IDS="10 8453 42161" \
-#     PORTAL_10=0x... PORTAL_8453=0x... PORTAL_42161=0x... \
 #     ./scripts/deployIntentChainers.sh
 #
 #   ... same, plus --broadcast   # actually deploys
-#
-# --allow-missing-portal downgrades the no-code-at-Portal check from fatal to a
-# warning. Only correct when Portal is known to be coming to that chain: Portal
-# is address-deterministic, so a chainer deployed ahead of it is dormant rather
-# than broken, and starts working the moment Portal lands at the same address.
-# Every chain() call reverts until then. Deploying this way also spends the
-# CREATE3 salt, so an Order ABI change afterwards leaves a stale chainer at the
-# address the SDK treats as canonical.
 #
 # NOT FOR TRON. eco-routes supports TRON through a separate toolchain, and the
 # CREATE3 deployer this script targets does not exist there. A TRON chainer needs
@@ -57,11 +45,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BROADCAST=0
-ALLOW_MISSING_PORTAL=0
 for arg in "$@"; do
     case "$arg" in
         --broadcast) BROADCAST=1 ;;
-        --allow-missing-portal) ALLOW_MISSING_PORTAL=1 ;;
         *) echo "unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
@@ -83,8 +69,6 @@ unset _CALLER_CHAIN_IDS
 : "${SALT:?SALT is required}"
 : "${ALCHEMY_API_KEY:?ALCHEMY_API_KEY is required for the RPC templates}"
 
-# Portal carries the same address on every chain it is deployed to.
-PORTAL="${PORTAL:-0x399Dbd5DF04f83103F77A58cBa2B7c4d3cdede97}"
 
 # Confirmed to hold Portal bytecode. Sanko (1996), inEVM (2525), Rari
 # (1380012617), Form (478) and Molten (360) are in eco-chains but were not
@@ -134,12 +118,6 @@ rpc_url() {
     esac
 }
 
-portal_address() {
-    local override
-    override="$(eval "echo \${PORTAL_$1:-}")"
-    echo "${override:-$PORTAL}"
-}
-
 # ---------- preflight ----------
 #
 # Every check here runs against every chain BEFORE anything is broadcast
@@ -154,35 +132,14 @@ echo
 FAILED=0
 for chain_id in $CHAIN_IDS; do
     rpc="$(rpc_url "$chain_id")"
-    portal="$(portal_address "$chain_id")"
 
     if [ -z "$rpc" ]; then
         echo "  [$chain_id] no RPC — set RPC_$chain_id" >&2
         FAILED=1
         continue
     fi
-    if [ -z "$portal" ]; then
-        echo "  [$chain_id] no Portal — set PORTAL or PORTAL_$chain_id" >&2
-        FAILED=1
-        continue
-    fi
 
-    # A chainer bound to an address with no code is dead on arrival: it would
-    # publish into a Portal whose Executor never calls it, stranding every order
-    # ever built against it. Cheaper to catch here than after broadcast.
-    code="$(cast code "$portal" --rpc-url "$rpc" 2>/dev/null || echo "0x")"
-    if [ "$code" = "0x" ] || [ -z "$code" ]; then
-        if [ "$ALLOW_MISSING_PORTAL" -eq 1 ]; then
-            echo "  [$chain_id] Portal $portal has NO CODE — deploying dormant (--allow-missing-portal)"
-            continue
-        fi
-        echo "  [$chain_id] Portal $portal has no code on this chain" >&2
-        echo "  [$chain_id] pass --allow-missing-portal if Portal is known to be coming" >&2
-        FAILED=1
-        continue
-    fi
-
-    echo "  [$chain_id] portal $portal ok"
+    echo "  [$chain_id] rpc ok"
 done
 
 if [ "$FAILED" -ne 0 ]; then
@@ -242,12 +199,11 @@ echo
 echo "deploying"
 for chain_id in $CHAIN_IDS; do
     rpc="$(rpc_url "$chain_id")"
-    portal="$(portal_address "$chain_id")"
 
     echo
     echo "  [$chain_id] ..."
     (
-        cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" PORTAL="$portal" \
+        cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" \
             forge script scripts/DeployIntentChainer.s.sol \
             --rpc-url "$rpc" --broadcast --slow
     )

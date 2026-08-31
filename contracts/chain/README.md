@@ -242,12 +242,12 @@ lane's own asset.
 `scripts/DeployIntentChainer.s.sol`, CREATE3, one per Portal per chain:
 
 ```
-PRIVATE_KEY=0x... SALT=0x... PORTAL=0x... forge script \
+PRIVATE_KEY=0x... SALT=0x... forge script \
   scripts/DeployIntentChainer.s.sol --rpc-url <RPC_URL> --broadcast --slow
 ```
 
 CREATE3 derives the address from `(deployer, salt)` alone, so the chainer lands at the same address on every
-chain even where the Portal differs — orders name it inside a committed `call.target`, so one address to
+chain. Nothing environment-specific is baked in — the Portal is an order field — orders name it inside a committed `call.target`, so one address to
 hard-code is worth more here than usual. Bump `CHAINER_VERSION` on any constructor or `Order` ABI change:
 without a salt bump a new ABI would land on the old address and orders committed against the old shape would
 decode into the new one.

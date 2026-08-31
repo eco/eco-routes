@@ -23,7 +23,7 @@ import {IntentChainer} from "../contracts/chain/IntentChainer.sol";
  *      top of the old address and orders committed against the old shape would decode into the new one.
  *
  * @dev Usage:
- *      PRIVATE_KEY=0x... SALT=0x... PORTAL=0x... forge script \
+ *      PRIVATE_KEY=0x... SALT=0x... forge script \
  *        scripts/DeployIntentChainer.s.sol --rpc-url <RPC_URL> --broadcast --slow
  *
  *      To predict the address without deploying:
