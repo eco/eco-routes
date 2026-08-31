@@ -39,6 +39,14 @@
 #
 #   ... same, plus --broadcast   # actually deploys
 #
+# --allow-missing-portal downgrades the no-code-at-Portal check from fatal to a
+# warning. Only correct when Portal is known to be coming to that chain: Portal
+# is address-deterministic, so a chainer deployed ahead of it is dormant rather
+# than broken, and starts working the moment Portal lands at the same address.
+# Every chain() call reverts until then. Deploying this way also spends the
+# CREATE3 salt, so an Order ABI change afterwards leaves a stale chainer at the
+# address the SDK treats as canonical.
+#
 # NOT FOR TRON. eco-routes supports TRON through a separate toolchain, and the
 # CREATE3 deployer this script targets does not exist there. A TRON chainer needs
 # its own path; do not add a TRON chain id to CHAIN_IDS.
@@ -49,9 +57,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BROADCAST=0
+ALLOW_MISSING_PORTAL=0
 for arg in "$@"; do
     case "$arg" in
         --broadcast) BROADCAST=1 ;;
+        --allow-missing-portal) ALLOW_MISSING_PORTAL=1 ;;
         *) echo "unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
@@ -116,6 +126,7 @@ rpc_url() {
         42220)      echo "https://celo-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         57073)      echo "https://ink-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         10241024)   echo "https://rpc.alienxchain.io/http" ;;
+        143)        echo "https://rpc.monad.xyz" ;;
         84532)      echo "https://base-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         11155111)   echo "https://eth-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         11155420)   echo "https://opt-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
@@ -161,7 +172,12 @@ for chain_id in $CHAIN_IDS; do
     # ever built against it. Cheaper to catch here than after broadcast.
     code="$(cast code "$portal" --rpc-url "$rpc" 2>/dev/null || echo "0x")"
     if [ "$code" = "0x" ] || [ -z "$code" ]; then
+        if [ "$ALLOW_MISSING_PORTAL" -eq 1 ]; then
+            echo "  [$chain_id] Portal $portal has NO CODE — deploying dormant (--allow-missing-portal)"
+            continue
+        fi
         echo "  [$chain_id] Portal $portal has no code on this chain" >&2
+        echo "  [$chain_id] pass --allow-missing-portal if Portal is known to be coming" >&2
         FAILED=1
         continue
     fi
