@@ -73,6 +73,16 @@ contract IntentChainer is ReentrancyGuard {
      *      `segments[0] ‖ enc(slots[0]) ‖ segments[1] ‖ ... ‖ segments[n]` -- so a mis-stated write position
      *      is not expressible, and the same encoding serves an EVM destination and a Borsh one without this
      *      contract knowing which it is holding.
+     * @param portal The Portal to publish intent2 to, and whose vault the measured balance is pushed
+     *        into. A FIELD rather than a constructor immutable so one deployment serves every Portal --
+     *        production, ephemeral, a future redeploy -- and so choosing the wrong one is a per-order
+     *        mistake rather than a per-chain one baked in at deploy time.
+     *
+     *        Nothing is lost by letting the caller name it. The whole {Order} rides inside
+     *        `intent1.route.calls[k].data`, covered by intent1's hash, so a solver cannot alter it: the
+     *        party funding intent1 picks the Portal, exactly as they pick `reward.creator`. And this
+     *        contract holds no state and no privileges to protect -- it is a pure function of the measured
+     *        balance and the order.
      * @param token The single ERC20 measured here, escrowed as intent2's reward.
      * @param destination Intent2's destination chain id.
      * @param segments Literal route bytes between slots. MUST be `slots.length + 1` entries; the first and
@@ -110,6 +120,7 @@ contract IntentChainer is ReentrancyGuard {
      *        unwinds intent1 rather than publishing an intent nobody will fill.
      */
     struct Order {
+        address portal;
         address token;
         uint64 destination;
         bytes[] segments;
@@ -136,11 +147,6 @@ contract IntentChainer is ReentrancyGuard {
     ///      loudly here instead.
     uint64 public constant MIN_DEADLINE_BUFFER = 5 minutes;
 
-    // ============ Immutables ============
-
-    /// @notice The Portal this contract publishes intent2 to. Also the Portal whose Executor calls in.
-    IIntentSource public immutable PORTAL;
-
     // ============ Events ============
 
     /**
@@ -161,7 +167,7 @@ contract IntentChainer is ReentrancyGuard {
 
     // ============ Errors ============
 
-    /// @notice The Portal address was zero.
+    /// @notice `order.portal` is the zero address.
     error InvalidPortal();
 
     /// @notice `segments.length` is not `slots.length + 1`.
@@ -206,20 +212,6 @@ contract IntentChainer is ReentrancyGuard {
     ///      {_pushAndVerify} for why `publish` does not catch this on its own.
     error VaultAlreadyFunded(address vault, uint256 balance);
 
-    // ============ Constructor ============
-
-    /**
-     * @notice Binds this contract to one Portal.
-     * @param portal The Portal to publish intent2 to.
-     */
-    constructor(address portal) {
-        if (portal == address(0)) {
-            revert InvalidPortal();
-        }
-
-        PORTAL = IIntentSource(portal);
-    }
-
     // ============ External Functions ============
 
     /**
@@ -260,7 +252,7 @@ contract IntentChainer is ReentrancyGuard {
         Reward memory reward = order.reward;
         reward.tokens[0].amount = amountIn;
 
-        (intentHash, vault) = PORTAL.publish(
+        (intentHash, vault) = IIntentSource(order.portal).publish(
             order.destination,
             _buildRoute(order, amountOut),
             reward

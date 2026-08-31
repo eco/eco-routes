@@ -108,6 +108,17 @@ down would shave the last unit off what the user receives on every downscaling l
 makes a zero obligation unreachable: with `amountIn >= 1` and `scale >= 1` the quotient is always at least
 1, so the contract carries no explicit zero-obligation check.
 
+### The Portal is a field, not a deployment binding
+
+`order.portal` names the Portal to publish into. It is part of the order rather than a constructor
+immutable, so one deployment serves every Portal — production, ephemeral, a later redeploy — and picking the
+wrong one is a per-order mistake instead of a per-chain one baked in at deploy time.
+
+Nothing is given up by letting the caller name it. The whole order rides inside intent1's calldata and is
+covered by intent1's hash, so a solver cannot alter it: whoever funds intent1 picks the Portal exactly as
+they pick `reward.creator`. And the contract holds no state and no privileges to protect — it is a pure
+function of the measured balance and the order.
+
 ## Slots and segments
 
 The route is opaque bytes; for a non-EVM destination it is not ABI-encoded at all. Rather than carry the

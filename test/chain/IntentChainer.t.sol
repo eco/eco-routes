@@ -38,7 +38,7 @@ contract IntentChainerTest is BaseTest {
     function setUp() public override {
         super.setUp();
 
-        chainer = new IntentChainer(address(portal));
+        chainer = new IntentChainer();
         swapper = new MockSwapper();
         solver = makeAddr("solver");
 
@@ -452,6 +452,7 @@ contract IntentChainerTest is BaseTest {
     ) internal view returns (IntentChainer.Order memory) {
         return
             IntentChainer.Order({
+                portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,
                 segments: segments,

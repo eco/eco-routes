@@ -35,7 +35,7 @@ contract IntentChainerCrossVmTest is BaseTest {
     function setUp() public override {
         super.setUp();
 
-        chainer = new IntentChainer(address(portal));
+        chainer = new IntentChainer();
     }
 
     /**
@@ -163,6 +163,7 @@ contract IntentChainerCrossVmTest is BaseTest {
 
         return
             IntentChainer.Order({
+                portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,
                 segments: segments,

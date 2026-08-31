@@ -76,7 +76,7 @@ contract IntentChainerBorshTest is Test {
             factory.deploy(RECIPIENT_ATA, depositor)
         );
 
-        chainer = new IntentChainer(address(portal));
+        chainer = new IntentChainer();
     }
 
     // ============ Layout ============
@@ -210,6 +210,7 @@ contract IntentChainerBorshTest is Test {
 
         return
             IntentChainer.Order({
+                portal: address(portal),
                 token: address(usdc),
                 destination: destinationChain,
                 segments: segments,

@@ -45,7 +45,7 @@ contract IntentChainerIntegrationTest is BaseTest {
     function setUp() public override {
         super.setUp();
 
-        chainer = new IntentChainer(address(portal));
+        chainer = new IntentChainer();
         swapper = new IntegrationSwapper();
         solver = makeAddr("chainSolver");
         solver2 = makeAddr("chainSolver2");
@@ -459,6 +459,7 @@ contract IntentChainerIntegrationTest is BaseTest {
 
         return
             IntentChainer.Order({
+                portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,
                 segments: segments,
