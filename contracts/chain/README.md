@@ -223,4 +223,4 @@ precompile compatibility must be verified before enabling Solana items.
 The Solana fixtures are checked against eco-routes-svm ref
 `95c728850955d3c9aa7c62ba08a87db5be89e220` and generated independently with the Solana SDK,
 not this Solidity implementation. See
-[testdata/generate-solana-vectors.cjs](../../test/chain/testdata/generate-solana-vectors.cjs).
+[scripts/generateSolanaVaultVectors.cjs](../../scripts/generateSolanaVaultVectors.cjs).

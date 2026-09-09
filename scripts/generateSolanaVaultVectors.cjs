@@ -1,5 +1,5 @@
 // Independent fixtures: run from eco-routes with @solana/web3.js and @solana/spl-token available.
-// Example: NODE_PATH=../eco-solver/node_modules node test/chain/testdata/generate-solana-vectors.cjs
+// Example: NODE_PATH=../eco-solver/node_modules node scripts/generateSolanaVaultVectors.cjs
 // Writes JSON to stdout only. The vault golden is read from the pinned eco-routes-svm commit.
 const { execFileSync } = require("node:child_process")
 const crypto = require("node:crypto")
