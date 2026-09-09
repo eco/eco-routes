@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+/* solhint-disable no-console */
+
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 
@@ -30,7 +32,7 @@ import {IntentChainer} from "../contracts/chain/IntentChainer.sol";
  *        scripts/DeployIntentChainer.s.sol --sig "predictAddress()" --rpc-url <RPC_URL>
  */
 contract DeployIntentChainer is Script {
-    ICreate3Deployer constant create3Deployer =
+    ICreate3Deployer internal constant CREATE3_DEPLOYER =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
     /// @dev Salt discriminator. Bump on any implementation change.
@@ -39,9 +41,10 @@ contract DeployIntentChainer is Script {
     ///      deployment serves every Portal and there is no deploy-time binding left to get wrong.
     ///      V3 adds the committed publish flag. V4 replaces amount-only slots with typed templates and
     ///      dependency-first remote vault derivation. This changes the unshipped chainer's Order ABI.
-    string constant CHAINER_VERSION = "INTENT_CHAINER_V4";
+    string internal constant CHAINER_VERSION = "INTENT_CHAINER_V4";
 
     function run() external {
+        _preflight();
         bytes32 rootSalt = vm.envBytes32("SALT");
         address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
 
@@ -50,7 +53,7 @@ contract DeployIntentChainer is Script {
         // No constructor arguments: the Portal is named per order, not per deployment.
         bytes memory bytecode = type(IntentChainer).creationCode;
 
-        address predicted = create3Deployer.deployedAddress(
+        address predicted = CREATE3_DEPLOYER.deployedAddress(
             bytes(""),
             deployer,
             salt
@@ -60,15 +63,16 @@ contract DeployIntentChainer is Script {
         console.log("Predicted addr :", predicted);
 
         if (predicted.code.length > 0) {
-            console.log("Already deployed at:", predicted);
+            _verifyDeployment(predicted);
+            console.log("Already deployed and verified at:", predicted);
             return;
         }
 
         vm.startBroadcast(deployer);
 
-        address deployed = create3Deployer.deploy(bytecode, salt);
+        address deployed = CREATE3_DEPLOYER.deploy(bytecode, salt);
         require(deployed == predicted, "Address mismatch");
-        require(deployed.code.length > 0, "Deployment failed");
+        _verifyDeployment(deployed);
 
         vm.stopBroadcast();
 
@@ -79,19 +83,76 @@ contract DeployIntentChainer is Script {
 
     /// @notice Predict the chainer address without deploying (dry-run).
     function predictAddress() external {
+        _preflight();
         bytes32 rootSalt = vm.envBytes32("SALT");
         address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
         bytes32 salt = _contractSalt(rootSalt, CHAINER_VERSION);
 
-        address predicted = create3Deployer.deployedAddress(
+        address predicted = CREATE3_DEPLOYER.deployedAddress(
             bytes(""),
             deployer,
             salt
         );
 
+        if (predicted.code.length > 0) _verifyDeployment(predicted);
+
         console.log("Chain ID       :", block.chainid);
         console.log("Predicted addr :", predicted);
         console.log("Deployed       :", predicted.code.length > 0);
+    }
+
+    /// @notice Verify the predicted address after broadcasting, using a fresh RPC view.
+    function verifyAddress() external {
+        _preflight();
+        address deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
+        bytes32 salt = _contractSalt(vm.envBytes32("SALT"), CHAINER_VERSION);
+        address predicted = CREATE3_DEPLOYER.deployedAddress(
+            bytes(""),
+            deployer,
+            salt
+        );
+        _verifyDeployment(predicted);
+        console.log("Verified at    :", predicted);
+    }
+
+    /// @dev The shell runner binds each RPC to its requested chain ID. No Portal is assumed.
+    function _preflight() internal view {
+        require(
+            block.chainid == vm.envOr("EXPECTED_CHAIN_ID", block.chainid),
+            "Unexpected chain ID"
+        );
+        require(
+            address(CREATE3_DEPLOYER).code.length > 0,
+            "CREATE3 deployer missing"
+        );
+        require(
+            sha256("abc") ==
+                0xba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad,
+            "SHA-256 precompile unavailable"
+        );
+        (bool success, bytes memory output) = address(0x05).staticcall(
+            abi.encode(
+                uint256(32),
+                uint256(32),
+                uint256(32),
+                uint256(2),
+                uint256(5),
+                uint256(17)
+            )
+        );
+        require(
+            success &&
+                output.length == 32 &&
+                abi.decode(output, (uint256)) == 15,
+            "MODEXP precompile unavailable"
+        );
+    }
+
+    function _verifyDeployment(address deployed) internal view {
+        require(
+            deployed.codehash == keccak256(type(IntentChainer).runtimeCode),
+            "IntentChainer runtime mismatch"
+        );
     }
 
     /// @notice Derive a per-contract salt from the root salt, matching the repo's CREATE3 convention.

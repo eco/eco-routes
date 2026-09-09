@@ -9,9 +9,9 @@
 # chains wants one address to hard-code rather than a per-chain table.
 #
 # Salt: INTENT_CHAINER_V4 (see CHAINER_VERSION in DeployIntentChainer.s.sol).
-# Bump it there on any constructor or `Order` ABI change — CREATE3 derives the
-# address from (deployer, salt) alone, so without a bump a new ABI lands on the
-# old address and orders committed against the old shape decode into the new one.
+# Bump it there on any implementation change — CREATE3 derives the address from
+# (deployer, salt) alone. An occupied salt cannot replace an older implementation;
+# existing code must match the current compiled runtime exactly.
 #
 # DEFAULTS TO A DRY RUN. Nothing is broadcast without an explicit --broadcast.
 #
@@ -52,7 +52,7 @@ for arg in "$@"; do
     esac
 done
 
-# Load .env if present. Caller-provided env vars take precedence.
+# Load .env if present, preserving the caller's explicit chain selection.
 _CALLER_CHAIN_IDS="${CHAIN_IDS:-}"
 if [ -f "$ROOT_DIR/.env" ]; then
     set -a
@@ -70,18 +70,16 @@ unset _CALLER_CHAIN_IDS
 : "${ALCHEMY_API_KEY:?ALCHEMY_API_KEY is required for the RPC templates}"
 
 
-# Confirmed to hold Portal bytecode. Sanko (1996), inEVM (2525), Rari
-# (1380012617), Form (478) and Molten (360) are in eco-chains but were not
-# reachable over a public endpoint — add them once an RPC is available and the
-# Portal is confirmed there.
-MAINNETS="1 10 56 130 137 146 169 466 480 999 5000 5330 8333 8453 9745 33139 42161 42220 57073 10241024"
+# Operator-selected V4 rollout, verified on 2026-09-09. Unfunded networks were
+# explicitly excluded; CHAIN_IDS can opt them back in after they are ready.
+MAINNETS="1 10 56 130 137 143 146 480 999 8453 9745 42161 42220 57073"
 TESTNETS="84532 11155111 11155420"
 
 CHAIN_IDS="${CHAIN_IDS:-$MAINNETS}"
 
 rpc_url() {
-    local override
-    override="$(eval "echo \${RPC_$1:-}")"
+    local override_name="RPC_$1"
+    local override="${!override_name:-}"
     if [ -n "$override" ]; then
         echo "$override"
         return
@@ -118,11 +116,22 @@ rpc_url() {
     esac
 }
 
+gas_estimate_multiplier() {
+    # HyperEVM's V4 deployment simulates below 2.9M gas. Default 130% padding
+    # exceeds its live 3M small-block limit; 105% was simulated and deployed.
+    # Revalidate this headroom whenever the implementation changes.
+    case "$1" in
+        999) echo 105 ;;
+        *)   echo 130 ;;
+    esac
+}
+
 # ---------- preflight ----------
 #
-# Every check here runs against every chain BEFORE anything is broadcast
-# anywhere, so a misconfigured chain halts the run instead of leaving a partial
-# deployment across the fleet.
+# RPC selection, chain identity, CREATE3, precompiles, existing runtime and
+# consistent address prediction are checked fleet-wide before broadcasting.
+# This is not an atomic cross-chain deployment: later RPC/gas failures can still
+# leave a partial rollout. Verified existing deployments make reruns idempotent.
 
 echo "IntentChainer deployment"
 echo "chains : $CHAIN_IDS"
@@ -131,6 +140,10 @@ echo
 
 FAILED=0
 for chain_id in $CHAIN_IDS; do
+    if ! [[ "$chain_id" =~ ^[1-9][0-9]*$ ]]; then
+        echo "invalid chain id: $chain_id" >&2
+        exit 1
+    fi
     rpc="$(rpc_url "$chain_id")"
 
     if [ -z "$rpc" ]; then
@@ -160,12 +173,15 @@ EXPECTED=""
 for chain_id in $CHAIN_IDS; do
     rpc="$(rpc_url "$chain_id")"
 
-    predicted="$(
-        cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" \
+    if ! predicted="$(
+        cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" EXPECTED_CHAIN_ID="$chain_id" \
             forge script scripts/DeployIntentChainer.s.sol \
             --sig "predictAddress()" --rpc-url "$rpc" 2>/dev/null |
             grep -oE "Predicted addr *: 0x[0-9a-fA-F]{40}" | grep -oE "0x[0-9a-fA-F]{40}" | head -1
-    )"
+    )"; then
+        echo "  [$chain_id] preflight failed — check RPC chain, CREATE3, precompiles and existing runtime" >&2
+        exit 1
+    fi
 
     if [ -z "$predicted" ]; then
         echo "  [$chain_id] could not predict address" >&2
@@ -203,10 +219,31 @@ for chain_id in $CHAIN_IDS; do
     echo
     echo "  [$chain_id] ..."
     (
-        cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" \
+        cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" EXPECTED_CHAIN_ID="$chain_id" \
             forge script scripts/DeployIntentChainer.s.sol \
-            --rpc-url "$rpc" --broadcast --slow
+            --rpc-url "$rpc" --broadcast --slow \
+            --gas-estimate-multiplier "$(gas_estimate_multiplier "$chain_id")"
     )
+
+    # A receipt can reach one RPC backend before another sees the new runtime.
+    # Retry read-only verification, never the deployment transaction itself.
+    verified=0
+    for attempt in 1 2 3 4 5; do
+        if (
+            cd "$ROOT_DIR" && PRIVATE_KEY="$PRIVATE_KEY" SALT="$SALT" EXPECTED_CHAIN_ID="$chain_id" \
+                forge script scripts/DeployIntentChainer.s.sol \
+                --sig "verifyAddress()" --rpc-url "$rpc" >/dev/null 2>&1
+        ); then
+            verified=1
+            break
+        fi
+        if [ "$attempt" -lt 5 ]; then sleep 2; fi
+    done
+    if [ "$verified" -ne 1 ]; then
+        echo "  [$chain_id] runtime verification failed — reconcile the receipt before retrying" >&2
+        exit 1
+    fi
+    echo "  [$chain_id] runtime verified"
 done
 
 echo

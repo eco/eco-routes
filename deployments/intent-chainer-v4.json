@@ -1,0 +1,161 @@
+{
+  "contract": "IntentChainer",
+  "version": "INTENT_CHAINER_V4",
+  "address": "0x96f7DBa7E587f359a8f585C335fe510E4dC9bCC0",
+  "deployer": "0xF78F0f828ed32F6DD135AF03fba362a290b6F860",
+  "create3Deployer": "0xC6BAd1EbAF366288dA6FB5689119eDd695a66814",
+  "create3Salt": "0xf6767cdb65a269e1705c158ffdce30463c2f87920eaa8430798212d9416f2826",
+  "sourceCommit": "37ec01c87d3fc676a8d9f5c20e69f9e899fff274",
+  "implementationCommit": "f8572a1971a7302d719878281bd3556fcb183463",
+  "runtimeCodeHash": "0x38ea7e536fc710aa9f077b88d072672ea6bd373963d12944e083d833b53b8ef7",
+  "runtimeBytes": 11035,
+  "compiler": {
+    "version": "0.8.27",
+    "optimizerRuns": 1000000,
+    "viaIR": true,
+    "evmVersion": "paris",
+    "cborMetadata": false,
+    "bytecodeHash": "none"
+  },
+  "verifiedAt": "2026-09-09T14:06:13.667Z",
+  "verification": [
+    "Successful deployment receipt and exact factory calldata",
+    "Full deployed runtime byte-for-byte match",
+    "WAD and MAX_ITEMS read-only calls",
+    "SHA-256 and MODEXP precompile probes"
+  ],
+  "chains": [
+    {
+      "chainId": 1,
+      "name": "Ethereum",
+      "transactionHash": "0xa983e849f8362b6557c1a5ce56b53b6fc30fbd16cd782937a0c6a5697d8a5030",
+      "blockNumber": 25940283,
+      "blockHash": "0x5205b63bf29dadb3eb1a3627728ce6503593a1cfb2dbcfbb368df89a5592f6ab",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 10,
+      "name": "Optimism",
+      "transactionHash": "0xdf629d14078e0734883713f34a7396d0297852ca0734b4b97205847ebe53f653",
+      "blockNumber": 156681879,
+      "blockHash": "0x43e0f1505983dbf4c16623de8391145460a355166ead6fe82839de4e06a34a50",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 56,
+      "name": "BNB Chain",
+      "transactionHash": "0x40ca8aa53fbcce881538972512bd567ffb9134972706d12f39fadbe3c14936d8",
+      "blockNumber": 120890760,
+      "blockHash": "0x1fc5fdc24c67665779f6670e9509c1565b5f3ea7540b56d0f175e7e8058fd112",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 130,
+      "name": "Unichain",
+      "transactionHash": "0x371e46b2de6d6a44861faf6cd1c2a85b1285a8d067cee2d05ac4e7b73d71cbf3",
+      "blockNumber": 58214204,
+      "blockHash": "0x8f1855c6ed535f5f4d6e0bf70279a3fc4c5ccee18a1e0caea4929a803798ab19",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 137,
+      "name": "Polygon",
+      "transactionHash": "0x965cc5a93896d124697da476ac80b49d115d8591c366eafe46de80fa14f33d1e",
+      "blockNumber": 93505021,
+      "blockHash": "0xee4d76d87b99da78c623e5366c37ba4401d2174fa9659bb68dde52603315dd67",
+      "gasUsed": "2589418",
+      "status": "verified"
+    },
+    {
+      "chainId": 143,
+      "name": "Monad",
+      "transactionHash": "0xca0a397178b936e1527317b5f98c7f7ca47792fa1060354973034bac74fde346",
+      "blockNumber": 103343935,
+      "blockHash": "0x363483cc89ca2333dada4431ba013868e300ef75b593416ddb0e9ee22532e665",
+      "gasUsed": "3574481",
+      "status": "verified"
+    },
+    {
+      "chainId": 146,
+      "name": "Sonic",
+      "transactionHash": "0x0be79b214c5ce5bbd5d99cb97107fdeb1a52944701d5f05f65d07e7bda4ff7e4",
+      "blockNumber": 78935000,
+      "blockHash": "0x9f2d8403faca6d263ff5ea32eb69000c03b4509432472f159816dbd0a36d8cb5",
+      "gasUsed": "2687168",
+      "status": "verified"
+    },
+    {
+      "chainId": 480,
+      "name": "World Chain",
+      "transactionHash": "0xdaec90f7e3a6055b4912739f02673e434491dbd61c434b24e702987317e6f7eb",
+      "blockNumber": 34813467,
+      "blockHash": "0x923de010b38b25efe2b165086f8cc95ab3101d8ad67434cd413cee7edab490e6",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 999,
+      "name": "HyperEVM",
+      "transactionHash": "0x8cbef0235ec2b8ed8630257b1d6f1611d8e95a7a698b6364a50a7f6a3ad20978",
+      "blockNumber": 45451547,
+      "blockHash": "0x873ba9e3d4e914decc7d7524a702bbea61ab0988c72bb336c207bbc1d6a83042",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 8453,
+      "name": "Base",
+      "transactionHash": "0xc93160097407e926d3f79f67feedec032ed4bf6b17f35660dca55e9509ec51c7",
+      "blockNumber": 51086557,
+      "blockHash": "0x06c5a85389527dd91d7d8788a8f40312e055aaa33c1fa1368fb36885246a15df",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 9745,
+      "name": "Plasma",
+      "transactionHash": "0x25ae7d7ca6fa100f90591db61a7042403f1fb9b68f46d0c353fb001c3ca8756a",
+      "blockNumber": 32022021,
+      "blockHash": "0x97ac49d0408afa94540d83fc34ffe82ad19d886e88bddb4739802eb3b575dfa1",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 42161,
+      "name": "Arbitrum One",
+      "transactionHash": "0xabfb5e4e57f72d0fc693888e792a3a570d2963017562061ff38781cf4f527069",
+      "blockNumber": 503388071,
+      "blockHash": "0x041f7200dffb3e067f1e4807e5f355e3f888062d86c1072164b998c646804ba2",
+      "gasUsed": "2600953",
+      "status": "verified"
+    },
+    {
+      "chainId": 42220,
+      "name": "Celo",
+      "transactionHash": "0xc2c2831faea2ff34542aa617041231ac607981a509dda295eedbedca7c232c11",
+      "blockNumber": 77061831,
+      "blockHash": "0xc1f4494012fb8d591e77817184e455ba02f642d7c57d97b77668d01521996c72",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
+      "chainId": 57073,
+      "name": "Ink",
+      "transactionHash": "0x0336951a80eb045aae2988b8e3e45e3d26461bdc3577174f793430fdad398a1d",
+      "blockNumber": 55464185,
+      "blockHash": "0x716d7e6ecb33ccdb78dd660fff854e8bed8c28987ffa6ce6d7064b71d6c58157",
+      "gasUsed": "2588578",
+      "status": "verified"
+    }
+  ],
+  "excludedChainIds": [169, 466, 2020, 5000, 5330, 8333, 33139, 10241024],
+  "exclusionReason": "Excluded by operator after zero native gas balances were confirmed; no transactions sent.",
+  "deploymentNotes": [
+    "HyperEVM deployment used Foundry --gas-estimate-multiplier 105 after a successful 2.9M-gas simulation under the live 3M small-block limit; no HyperCore account-mode changes or asset transfers were made.",
+    "Existing Portals and previous chainer deployments were not modified. Solver/SDK configuration was not changed."
+  ]
+}

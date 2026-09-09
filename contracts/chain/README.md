@@ -193,21 +193,44 @@ amount transforms remain proportional; this feature does not add a flat-fee expr
 
 ## Deployment and compatibility
 
-The user confirmed this chainer is unshipped: Order and chain's ABI are updated directly,
-without a legacy entrypoint. Existing amount-only fixtures still produce identical route,
-reward, intent-hash and local-vault outputs when represented as Amount items.
+V4 replaces the unshipped amount-only Order and chain ABI directly, without a legacy
+entrypoint. Existing amount-only fixtures still produce identical route, reward,
+intent-hash and local-vault outputs when represented as Amount items. CREATE3 ignores
+bytecode, so V4 uses a new salt/version rather than modifying an older deployment.
 
-Deploy version **INTENT_CHAINER_V4** before eco-solver uses the new ABI. CREATE3 ignores
-bytecode, so a new salt/version is required to distinguish an older implementation.
-No deployment is performed by this PR.
+**INTENT_CHAINER_V4** was deployed and verified on 2026-09-09 at:
+
+`0x96f7DBa7E587f359a8f585C335fe510E4dC9bCC0`
+
+The address is identical on all 14 rollout chains: **1, 10, 56, 130, 137, 143, 146,
+480, 999, 8453, 9745, 42161, 42220, 57073**. See the
+[deployment manifest](../../deployments/intent-chainer-v4.json) for receipts, source
+commits, compiler settings and the exact runtime-code hash. Each deployment passed
+receipt, bytecode, read-only getter and SHA-256/MODEXP precompile checks.
+
+The operator excluded unfunded chains **169, 466, 2020, 5000, 5330, 8333, 33139,
+10241024**; no deployment transactions were sent there. Existing Portals and previous
+chainer deployments were not changed. Solver/SDK adoption is a separate step: callers
+must use the V4 address and new ABI together.
 
 A new chainer is required on **each chain executing chain()**, not automatically on a
-remote recipient chain or the chain executing a later CCTP burn. The requested EVM fleet
-checklist is **1, 10, 130, 137, 146, 480, 999, 2020, 8453, 9745, 42161**; enable each only
-after deploying/verifying the new chainer there. TRON needs its compatible build/deployment
-if it executes chain(), not merely when it is a recipient. A Solana destination requires
-no new EVM chainer or Portal deployment for this derivation feature. Source-chain
-precompile compatibility must be verified before enabling Solana items.
+remote recipient chain or the chain executing a later CCTP burn. TRON needs its compatible
+build/deployment if it executes chain(), not merely when it is a recipient. A Solana
+destination requires no new EVM chainer or Portal deployment for this derivation feature.
+Verify source-chain precompile compatibility before enabling Solana items elsewhere.
+
+Use the existing rollout script: `./scripts/deployIntentChainers.sh` is a dry run;
+add `--broadcast` to deploy. Its default is the 14-chain fleet above. `CHAIN_IDS`
+overrides the selection, and `RPC_<chain id>` overrides an endpoint. The script checks
+chain identity, CREATE3 availability, precompiles, existing runtime and consistent
+address prediction before broadcasting. It verifies runtime again afterward and
+skips an existing deployment only when its bytecode matches exactly.
+
+HyperEVM uses `--gas-estimate-multiplier 105`: V4 was simulated below 2.9M gas,
+whereas Foundry's default 130% padding exceeds the observed 3M small-block limit.
+Revalidate this headroom when changing the implementation. No big-block account-mode
+change is needed for V4. Cross-chain deployment is not atomic; reconcile receipts
+after a failure, then rerun to skip already-verified deployments.
 
 ## Validation
 
