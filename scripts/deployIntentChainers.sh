@@ -8,7 +8,7 @@
 # is covered by intent1's hash, so an SDK building orders for several source
 # chains wants one address to hard-code rather than a per-chain table.
 #
-# Salt: INTENT_CHAINER_V1 (see CHAINER_VERSION in DeployIntentChainer.s.sol).
+# Salt: INTENT_CHAINER_V4 (see CHAINER_VERSION in DeployIntentChainer.s.sol).
 # Bump it there on any constructor or `Order` ABI change — CREATE3 derives the
 # address from (deployer, salt) alone, so without a bump a new ABI lands on the
 # old address and orders committed against the old shape decode into the new one.

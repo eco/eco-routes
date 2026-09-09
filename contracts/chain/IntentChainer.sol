@@ -9,6 +9,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IIntentSource} from "../interfaces/IIntentSource.sol";
 import {Reward} from "../types/Intent.sol";
+import {IntentTemplate} from "./IntentTemplate.sol";
 
 /**
  * @title IntentChainer
@@ -17,10 +18,11 @@ import {Reward} from "../types/Intent.sol";
  *      output of whatever intent1's earlier calls produced -- typically a DEX swap that named this contract
  *      as its recipient. It measures that balance -- the ONE runtime measurement in the whole flow -- and
  *      derives from it the two amounts of a second intent (intent2) whose every other field was fixed when
- *      intent1 was signed: `amountIn` is escrowed as intent2's reward, and `amountIn * scale` is written
- *      into the route as what intent2's solver must deliver. The gap between them is that solver's margin,
- *      and `scale` also carries the source-to-destination unit conversion -- which is NOT the identity for
- *      the same token across chains.
+ *      intent1 was signed: `amountIn` is escrowed as intent2's reward, and
+ *      `amountOut = ceil(amountIn * scale / WAD)` is available alongside amountIn to the route's typed
+ *      items. A conventional amount-only route uses amountOut as its solver delivery obligation; scale
+ *      carries the proportional margin and unit conversion. Nested vault items render downstream
+ *      intents from that same measurement and splice their recipients into the route as data.
  *
  *      WHY THIS IS SAFE WITHOUT ACCESS CONTROL. Route calls reach every contract through the Portal's single
  *      shared {Executor}, which any fulfiller of any intent drives permissionlessly, so `msg.sender` proves
@@ -37,12 +39,11 @@ import {Reward} from "../types/Intent.sol";
  *      re-entrantly from inside a route call that is what this contract would be, so it would silently
  *      capture the solver's in-flight ETH. This contract therefore touches `publish` and nothing else.
  *
- *      WHY `publish` IS UNCONDITIONAL. It does three jobs at once: it returns intent2's vault address (which
- *      cannot be derived here -- the Portal's vault implementation is a `private immutable` with no getter),
- *      it emits the only event carrying intent2's route as complete bytes plus every {Reward} field, and it
- *      rejects a hash that has already settled. Funding is deliberately NOT called: `IntentSource._fundToken`
- *      returns early once `balanceOf(vault) >= amount`, and `_validateWithdraw` accepts `Status.Initial`, so a
- *      pushed-but-unfunded intent is fully withdrawable by the proven claimant.
+ *      PUBLISH IS OPTIONAL; SETTLEMENT CHECKS ARE NOT. The local Portal predicts the local reward vault.
+ *      Its status is checked even when publish is false. Publishing emits the completed route and
+ *      reward for discovery; it does not control where value moves. Funding is deliberately NOT called:
+ *      withdraw accepts Status.Initial and pays from the live vault balance. Rendered remote vaults are
+ *      only bytes inside the route and cannot redirect the local push.
  */
 contract IntentChainer is ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -50,96 +51,27 @@ contract IntentChainer is ReentrancyGuard {
     // ============ Types ============
 
     /**
-     * @notice A position in intent2's route bytes that receives the destination amount.
-     * @dev Every slot receives the SAME scalar, `ceil(amountIn * scale / WAD)`. That is what the
-     *      solver of intent2 must supply on the destination, and it appears once as
-     *      `route.tokens[0].amount` and again inside any
-     *      call that moves it (the `transfer(swapper, ...)` that feeds a destination swap). Because both
-     *      want the identical number, no per-slot discriminator is needed. Width and byte order are the
-     *      destination VM's, not this chain's: an EVM route carries `abi.encode`d 32-byte big-endian words,
-     *      while a Solana route carries Borsh 8-byte little-endian u64s.
-     * @param width Bytes written, 1..32. A value that does not fit reverts rather than truncating.
-     * @param littleEndian True for Borsh/Solana byte order, false for EVM big-endian words.
-     */
-    struct Slot {
-        uint8 width;
-        bool littleEndian;
-    }
-
-    /**
-     * @notice A fully committed intent2, minus the one amount that does not exist yet.
-     * @dev The route is carried as literal SEGMENTS surrounding the {Slot} positions rather than as whole
-     *      bytes plus numeric offsets. The route is rebuilt by concatenation --
-     *      `segments[0] ‖ enc(slots[0]) ‖ segments[1] ‖ ... ‖ segments[n]` -- so a mis-stated write position
-     *      is not expressible, and the same encoding serves an EVM destination and a Borsh one without this
-     *      contract knowing which it is holding.
-     * @param publish Whether to call `Portal.publish`, which emits `IntentPublished` -- the only event
-     *        carrying intent2's route as complete bytes plus every {Reward} field. Since the amount did not
-     *        exist until execution, no third party can reconstruct intent2 without it, so `true` is what any
-     *        flow depending on an off-chain solver wants.
-     *
-     *        It buys ONLY discoverability. The vault address comes from {IIntentSource-intentVaultAddress},
-     *        a pure prediction that needs no publish, and the already-settled rejection is made explicitly
-     *        against {IIntentSource-getRewardStatus} rather than inherited from `publish` reverting. Set it
-     *        `false` when the caller is itself the solver, or when an indexer reconstructs intent2 from this
-     *        contract's own {IntentChained} event -- the order is in the committed calldata and the splice
-     *        is deterministic.
-     *
-     *        Committed like every other field, so a solver executing intent1 cannot suppress publication to
-     *        keep the resulting intent2 to itself.
-     * @param portal The Portal to publish intent2 to, and whose vault the measured balance is pushed
-     *        into. A FIELD rather than a constructor immutable so one deployment serves every Portal --
-     *        production, ephemeral, a future redeploy -- and so choosing the wrong one is a per-order
-     *        mistake rather than a per-chain one baked in at deploy time.
-     *
-     *        Nothing is lost by letting the caller name it. The whole {Order} rides inside
-     *        `intent1.route.calls[k].data`, covered by intent1's hash, so a solver cannot alter it: the
-     *        party funding intent1 picks the Portal, exactly as they pick `reward.creator`. And this
-     *        contract holds no state and no privileges to protect -- it is a pure function of the measured
-     *        balance and the order.
-     * @param token The single ERC20 measured here, escrowed as intent2's reward.
-     * @param destination Intent2's destination chain id.
-     * @param segments Literal route bytes between slots. MUST be `slots.length + 1` entries; the first and
-     *        last may be empty.
-     * @param slots Positions receiving the measured amount, in route order.
-     * @param reward Intent2's reward. MUST carry exactly one leg, in `token`, with no native amount; the
-     *        leg's `amount` field is ignored on input and overwritten with the measured amount.
-     * @param scale The ENTIRE source-to-destination transform, {WAD}-denominated:
-     *        `amountOut = ceil(amountIn * scale / WAD)`. It carries both the unit conversion and intent2's
-     *        solver spread, because those compose into one ratio and there is no reason to commit two
-     *        numbers where one will do.
-     *
-     *        THE UNIT PART exists because "the same token" does not mean the same UNIT across chains. USDC
-     *        is 6 decimals on Ethereum, Base and Solana, but Binance-Peg USDC on BNB Chain is 18, and Arc's
-     *        native USDC is 18 against a 6-decimal ERC20 wrapper (see {DepositAddress_CCTPMint_Arc}'s
-     *        `NATIVE_USDC_SCALING`).
-     *
-     *        The denominator is DECIMAL on purpose. Unit conversions are powers of ten, so a decimal
-     *        denominator represents every one of them exactly in both directions, where a binary
-     *        denominator (Q128 and friends) cannot: 6-to-18 is `1e30`, 18-to-6 is `1e6`, and a same-unit
-     *        lane is `WAD`, all integers. A spread multiplies in: same units less 50bps is `0.995e18`.
-     *
-     *        THE SPREAD PART is PROPORTIONAL, not flat. The reward leg escrows the whole measured
-     *        `amountIn` while the route obliges only `amountIn * scale`, so the difference is the solver's
-     *        entire margin, and it grows with the amount. That is a deliberate trade: a flat fee would
-     *        price destination gas independently of size, but it cannot be folded into a ratio, and the
-     *        only thing that moves `amountIn` here is swap slippage -- a percent or so around a known
-     *        expectation -- over which the two are indistinguishable. Use `minAmountIn` to express "too
-     *        small to be worth filling"; it says that directly, where a flat fee only said it by accident.
-     *
-     *        Rounding is toward the USER (up), because this value is the solver's delivery FLOOR --
-     *        rounding it down would quietly shave the last unit off what the user receives on every
-     *        downscaling lane.
-     * @param minAmountIn Floor on the measured amount. Reverts below it, so a swap that under-delivered
-     *        unwinds intent1 rather than publishing an intent nobody will fill.
+     * @notice A locally funded child intent with a fully committed, dynamically rendered route.
+     * @dev The entire template program, including downstream rewards, derivation tags/configs and node
+     *      references, rides inside intent1's hashed calldata. Nested vaults are addresses inserted in
+     *      the route, NOT recipients of this contract's local transfer. No new custody or approvals.
+     * @param publish Whether to publish intent2 for discoverability. Settlement checks are unconditional.
+     * @param portal The LOCAL Portal whose reward vault receives the measured token.
+     * @param token The single local ERC20 measured and escrowed.
+     * @param destination Intent2's route execution chain.
+     * @param template Dependency-first downstream intents and the root route's segments/items.
+     * @param reward Local reward: exactly one leg in token, no native amount. Its amount is overwritten.
+     * @param scale WAD-denominated transform: amountOut = ceil(amountIn * scale / WAD). Carries both
+     *        unit conversion and proportional spread (1e18 identity, 1e30 for 6->18, 1e6 for 18->6).
+     *        Amount items explicitly select amountIn or amountOut and any further transform.
+     * @param minAmountIn Reject a measured balance below this floor, reverting the outer fulfillment.
      */
     struct Order {
         bool publish;
         address portal;
         address token;
         uint64 destination;
-        bytes[] segments;
-        Slot[] slots;
+        IntentTemplate.Program template;
         Reward reward;
         uint256 scale;
         uint256 minAmountIn;
@@ -152,8 +84,8 @@ contract IntentChainer is ReentrancyGuard {
     ///      the WAD convention v3 adopts for `RewardToken.rate`.
     uint256 public constant WAD = 1e18;
 
-    /// @notice Upper bound on slots per order, bounding the concatenation loop's gas.
-    uint256 public constant MAX_SLOTS = 8;
+    /// @notice Per-template item bound; nodes and aggregate rendered bytes are also bounded.
+    uint256 public constant MAX_ITEMS = IntentTemplate.MAX_ITEMS;
 
     /// @notice Minimum time intent2's reward deadline must clear `block.timestamp` by.
     /// @dev Intent2's deadlines are fixed when intent1 is signed, but intent1 may be fulfilled at any point
@@ -170,7 +102,7 @@ contract IntentChainer is ReentrancyGuard {
      * @param vault Intent2's deterministic vault, which now holds `amountIn`.
      * @param token The measured token.
      * @param amountIn The measured amount, escrowed as intent2's reward.
-     * @param amountOut The scaled destination obligation, written to every route slot.
+     * @param amountOut The scaled amount available to template items selecting AmountSource.Output.
      * @param published Whether this call also emitted the Portal's canonical `IntentPublished`. An indexer
      *        that sees `false` must reconstruct intent2 from the committed order rather than wait for it.
      */
@@ -187,12 +119,6 @@ contract IntentChainer is ReentrancyGuard {
 
     /// @notice `order.portal` is the zero address.
     error InvalidPortal();
-
-    /// @notice `segments.length` is not `slots.length + 1`.
-    error SegmentCountMismatch(uint256 segments, uint256 slots);
-
-    /// @notice `slots.length` exceeds {MAX_SLOTS}.
-    error TooManySlots(uint256 count, uint256 max);
 
     /// @notice The reward does not carry exactly one leg.
     error InvalidRewardLegCount(uint256 count);
@@ -211,12 +137,6 @@ contract IntentChainer is ReentrancyGuard {
 
     /// @notice {Order.scale} is zero, which would oblige the solver to deliver nothing.
     error InvalidScale();
-
-    /// @notice A slot width is zero or above 32.
-    error InvalidSlotWidth(uint8 width);
-
-    /// @notice The measured amount does not fit the slot, e.g. a Solana u64 slot and an 18-decimal amount.
-    error AmountExceedsSlotWidth(uint256 amount, uint8 width);
 
     /// @notice Intent2's reward deadline is in the past or inside {MIN_DEADLINE_BUFFER}.
     error DeadlineTooSoon(uint64 deadline, uint256 timestamp);
@@ -238,10 +158,10 @@ contract IntentChainer is ReentrancyGuard {
 
     /**
      * @notice Measure this contract's balance of one token and publish a second intent escrowing it.
-     * @dev Ordering is load-bearing. The route is built and `publish` is called BEFORE any value moves, so
-     *      every validation failure reverts intent1 whole rather than stranding tokens in a vault that
-     *      cannot pay out. `publish` also hands back the vault address, which is why it runs before the
-     *      transfer rather than after.
+     * @dev Render nested templates and resolve/check the LOCAL vault before any value moves. Optional
+     *      publication also precedes the transfer. Every validation failure reverts the outer intent
+     *      whole. Remote recipients are populated route data for a later fulfillment; chain itself
+     *      performs no remote transfer or CCTP burn.
      *
      *      `publish` does NOT reject every colliding hash, and the gap is the operating window rather than
      *      an edge: `IntentSource._validatePublish` rejects only `Withdrawn` and `Refunded`, and publishing
@@ -253,7 +173,7 @@ contract IntentChainer is ReentrancyGuard {
      * @return intentHash Intent2's hash.
      * @return vault Intent2's vault, now holding the measured amount.
      * @return amountIn The measured amount, escrowed as intent2's reward.
-     * @return amountOut The scaled destination obligation written to every slot.
+     * @return amountOut The scaled destination obligation available to template amount items.
      */
     function chain(
         Order calldata order
@@ -274,7 +194,11 @@ contract IntentChainer is ReentrancyGuard {
         Reward memory reward = order.reward;
         reward.tokens[0].amount = amountIn;
 
-        bytes memory route = _buildRoute(order, amountOut);
+        bytes memory route = IntentTemplate.render(
+            order.template,
+            amountIn,
+            amountOut
+        );
         IIntentSource portal = IIntentSource(order.portal);
 
         // Resolved WITHOUT publishing. `publish` returns the vault too, but making the flag optional means
@@ -408,14 +332,8 @@ contract IntentChainer is ReentrancyGuard {
      * @param order The order to validate.
      */
     function _validate(Order calldata order) internal view {
-        uint256 slotCount = order.slots.length;
-
-        if (slotCount > MAX_SLOTS) {
-            revert TooManySlots(slotCount, MAX_SLOTS);
-        }
-        if (order.segments.length != slotCount + 1) {
-            revert SegmentCountMismatch(order.segments.length, slotCount);
-        }
+        if (order.portal == address(0)) revert InvalidPortal();
+        IntentTemplate.validateShape(order.template.route);
 
         // A zero scale would publish an intent obliging the solver to deliver nothing while still
         // collecting the whole escrow.
@@ -446,66 +364,6 @@ contract IntentChainer is ReentrancyGuard {
 
         if (order.reward.deadline < block.timestamp + MIN_DEADLINE_BUFFER) {
             revert DeadlineTooSoon(order.reward.deadline, block.timestamp);
-        }
-    }
-
-    /**
-     * @notice Rebuild intent2's route bytes, splicing the destination amount into every slot.
-     * @dev Concatenation, not overwriting: the caller commits the bytes AROUND each amount rather than an
-     *      offset INTO a blob, so there is no arithmetic that can land a write on a Borsh vector length, an
-     *      SPL account pubkey, or an ABI tail offset.
-     * @param order The order supplying segments and slots.
-     * @param amountOut The destination amount to write into every slot.
-     * @return route The route bytes to publish.
-     */
-    function _buildRoute(
-        Order calldata order,
-        uint256 amountOut
-    ) internal pure returns (bytes memory route) {
-        uint256 slotCount = order.slots.length;
-
-        // `bytes.concat` reallocates and copies the whole accumulated route on every iteration, so this is
-        // quadratic in segment count. {MAX_SLOTS} is what keeps that acceptable -- at most eight copies of a
-        // route that is itself small. Raising the bound means revisiting this loop, not just the constant.
-        route = order.segments[0];
-        for (uint256 i = 0; i < slotCount; ++i) {
-            route = bytes.concat(
-                route,
-                _encodeAmount(amountOut, order.slots[i]),
-                order.segments[i + 1]
-            );
-        }
-    }
-
-    /**
-     * @notice Encode the measured amount for one slot's width and byte order.
-     * @dev Reverts rather than truncating when the value does not fit. Silent truncation is the dangerous
-     *      case: an amount wrapped into a Solana u64 would publish an intent2 that is well-formed, fillable
-     *      and pays out a fraction of what was escrowed.
-     * @param amount The value to encode.
-     * @param slot The slot's width and byte order.
-     * @return out Exactly `slot.width` bytes.
-     */
-    function _encodeAmount(
-        uint256 amount,
-        Slot calldata slot
-    ) internal pure returns (bytes memory out) {
-        uint8 width = slot.width;
-
-        if (width == 0 || width > 32) {
-            revert InvalidSlotWidth(width);
-        }
-        if (width < 32 && amount >> (uint256(width) * 8) != 0) {
-            revert AmountExceedsSlotWidth(amount, width);
-        }
-
-        out = new bytes(width);
-        for (uint256 i = 0; i < width; ++i) {
-            // casting to 'uint8' is safe because truncation to the low byte IS the operation -- the
-            // fits-in-width check above already rejected every value with a set bit above `width` bytes.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint8 byteValue = uint8(amount >> (8 * i));
-            out[slot.littleEndian ? i : width - 1 - i] = bytes1(byteValue);
         }
     }
 }

@@ -6,6 +6,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {BaseTest} from "../BaseTest.sol";
 import {IntentChainer} from "../../contracts/chain/IntentChainer.sol";
+import {IntentTemplate} from "../../contracts/chain/IntentTemplate.sol";
+import {TemplateFixtures} from "./TemplateFixtures.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Call, Reward, Route, TokenAmount} from "../../contracts/types/Intent.sol";
 import {TestERC20} from "../../contracts/test/TestERC20.sol";
@@ -210,8 +212,8 @@ contract IntentChainerTest is BaseTest {
         segments[0] = hex"aabbcc";
         segments[1] = hex"ddee";
 
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](1);
-        slots[0] = IntentChainer.Slot({width: 8, littleEndian: true});
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](1);
+        slots[0] = TemplateFixtures.amount(8, true);
 
         IntentChainer.Order memory order = _order(segments, slots, scale, 0);
         tokenB.mint(address(chainer), amount);
@@ -243,8 +245,8 @@ contract IntentChainerTest is BaseTest {
         segments[0] = hex"aa";
         segments[1] = hex"bb";
 
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](1);
-        slots[0] = IntentChainer.Slot({width: 8, littleEndian: true});
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](1);
+        slots[0] = TemplateFixtures.amount(8, true);
 
         uint256 tooBig = uint256(type(uint64).max) + 1;
         IntentChainer.Order memory order = _order(segments, slots, WAD, 0);
@@ -252,7 +254,7 @@ contract IntentChainerTest is BaseTest {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IntentChainer.AmountExceedsSlotWidth.selector,
+                IntentTemplate.AmountDoesNotFit.selector,
                 tooBig,
                 uint8(8)
             )
@@ -265,15 +267,15 @@ contract IntentChainerTest is BaseTest {
         segments[0] = hex"aa";
         segments[1] = hex"bb";
 
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](1);
-        slots[0] = IntentChainer.Slot({width: 0, littleEndian: false});
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](1);
+        slots[0] = TemplateFixtures.amount(0, false);
 
         IntentChainer.Order memory order = _order(segments, slots, WAD, 0);
         tokenB.mint(address(chainer), SWAP_OUT);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IntentChainer.InvalidSlotWidth.selector,
+                IntentTemplate.InvalidAmountWidth.selector,
                 uint8(0)
             )
         );
@@ -308,17 +310,19 @@ contract IntentChainerTest is BaseTest {
     function test_chain_revertsOnSegmentCountMismatch() public {
         IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
 
-        bytes[] memory short = new bytes[](order.segments.length - 1);
+        bytes[] memory short = new bytes[](
+            order.template.route.segments.length - 1
+        );
         for (uint256 i = 0; i < short.length; ++i) {
-            short[i] = order.segments[i];
+            short[i] = order.template.route.segments[i];
         }
-        order.segments = short;
+        order.template.route.segments = short;
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IntentChainer.SegmentCountMismatch.selector,
+                IntentTemplate.SegmentCountMismatch.selector,
                 short.length,
-                order.slots.length
+                order.template.route.items.length
             )
         );
         chainer.chain(order);
@@ -434,11 +438,11 @@ contract IntentChainerTest is BaseTest {
         bytes memory marked = abi.encode(_intentTwoRoute(uint256(MARKER)));
         bytes[] memory segments = _splitOnMarker(marked);
 
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](
             segments.length - 1
         );
         for (uint256 i = 0; i < slots.length; ++i) {
-            slots[i] = IntentChainer.Slot({width: 32, littleEndian: false});
+            slots[i] = TemplateFixtures.amount(32, false);
         }
 
         return _order(segments, slots, scale, minAmountIn);
@@ -446,7 +450,7 @@ contract IntentChainerTest is BaseTest {
 
     function _order(
         bytes[] memory segments,
-        IntentChainer.Slot[] memory slots,
+        IntentTemplate.Item[] memory slots,
         uint256 scale,
         uint256 minAmountIn
     ) internal view returns (IntentChainer.Order memory) {
@@ -456,8 +460,7 @@ contract IntentChainerTest is BaseTest {
                 portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,
-                segments: segments,
-                slots: slots,
+                template: TemplateFixtures.program(segments, slots),
                 reward: _rewardWithAmount(0),
                 scale: scale,
                 minAmountIn: minAmountIn

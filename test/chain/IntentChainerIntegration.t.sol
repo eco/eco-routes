@@ -7,6 +7,8 @@ import {Vm} from "forge-std/Vm.sol";
 
 import {BaseTest} from "../BaseTest.sol";
 import {IntentChainer} from "../../contracts/chain/IntentChainer.sol";
+import {IntentTemplate} from "../../contracts/chain/IntentTemplate.sol";
+import {TemplateFixtures} from "./TemplateFixtures.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Call, Reward, Route, TokenAmount} from "../../contracts/types/Intent.sol";
 
@@ -511,11 +513,11 @@ contract IntentChainerIntegrationTest is BaseTest {
             abi.encode(_intentTwoRoute(uint256(MARKER)))
         );
 
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](
             segments.length - 1
         );
         for (uint256 i = 0; i < slots.length; ++i) {
-            slots[i] = IntentChainer.Slot({width: 32, littleEndian: false});
+            slots[i] = TemplateFixtures.amount(32, false);
         }
 
         return
@@ -524,8 +526,7 @@ contract IntentChainerIntegrationTest is BaseTest {
                 portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,
-                segments: segments,
-                slots: slots,
+                template: TemplateFixtures.program(segments, slots),
                 reward: _intentTwoReward(0),
                 scale: scale,
                 minAmountIn: minAmountIn

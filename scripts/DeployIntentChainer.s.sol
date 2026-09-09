@@ -18,9 +18,8 @@ import {IntentChainer} from "../contracts/chain/IntentChainer.sol";
  *      chainer inside `intent1.route.calls[k].target`, which is covered by intent1's hash, so an SDK that
  *      builds orders for several source chains wants one address to hard-code rather than a per-chain table.
  *
- * @dev Bump CHAINER_VERSION whenever the {IntentChainer.Order} ABI changes.
- *      CREATE3 ignores bytecode when deriving the address, so without a salt bump a new ABI would land on
- *      top of the old address and orders committed against the old shape would decode into the new one.
+ * @dev Bump CHAINER_VERSION whenever the deployed implementation changes. CREATE3 ignores bytecode
+ *      when deriving the address; the same salt cannot deploy the new implementation over an old one.
  *
  * @dev Usage:
  *      PRIVATE_KEY=0x... SALT=0x... forge script \
@@ -34,11 +33,13 @@ contract DeployIntentChainer is Script {
     ICreate3Deployer constant create3Deployer =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
-    /// @dev Salt discriminator. Bump on any `Order` ABI change.
+    /// @dev Salt discriminator. Bump on any implementation change.
     ///      V1 pinned the Portal as a constructor immutable, which made the contract per-environment and
     ///      got deployed against the ephemeral Portal by mistake. V2 moves the Portal into `Order`, so one
     ///      deployment serves every Portal and there is no deploy-time binding left to get wrong.
-    string constant CHAINER_VERSION = "INTENT_CHAINER_V3";
+    ///      V3 adds the committed publish flag. V4 replaces amount-only slots with typed templates and
+    ///      dependency-first remote vault derivation. This changes the unshipped chainer's Order ABI.
+    string constant CHAINER_VERSION = "INTENT_CHAINER_V4";
 
     function run() external {
         bytes32 rootSalt = vm.envBytes32("SALT");

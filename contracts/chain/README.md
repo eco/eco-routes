@@ -1,261 +1,226 @@
-# Intent Chaining
+# Intent chaining
 
-`IntentChainer` (`IntentChainer.sol`) publishes an intent whose amount does not exist
-until another intent executes.
+`IntentChainer.chain(order)` measures one local ERC-20 balance, renders a child intent,
+optionally publishes it, and pushes the measured balance into that child's **local**
+reward vault. It keeps no balance at rest in the intended flow.
 
-## The problem
+The route can now contain two kinds of dynamic item: an amount, or the vault recipient
+of another, downstream intent. A downstream intent also has templates for its route
+and reward, so its hash and vault address can depend on that same initial measurement.
 
-An intent's reward amount is part of `Reward`, which is part of the intent hash, which is the CREATE2 salt
-for its vault. So an intent whose amount is only known at execution time cannot be built, hashed, or funded
-ahead of time — the vault address itself moves with the amount.
+## Execution boundary
 
-That blocks any flow where one intent's output feeds another's input. The motivating case is a cross-chain
-swap expressed as two intents:
+```text
+intent1 executes: swap -> chainer receives tokens -> chain(order)
+  measure amountIn; compute amountOut
+  render downstream intents -> derive remote recipients
+  render intent2 route, including its complete CCTP mintRecipient
+  resolve/check intent2 LOCAL vault -> optionally publish -> push amountIn locally
 
-```
-Arbitrum                                            Base / Solana
-────────────────────────────────────────            ─────────────────────
-intent1  (same-chain, ARB → ARB)
-  route.tokens  [WETH, amountIn]
-  route.calls
-    [0] WETH.transfer(swapper, amountIn)
-    [1] swapper.swap(→ IntentChainer)      ── produces an amount nobody knew in advance
-    [2] IntentChainer.chain(order)
-                                  │
-                                  ├─ measures its USDC balance          = amountIn
-                                  ├─ publishes intent2                   (route carries the scaled amount)
-                                  └─ pushes amountIn into intent2's vault
-                                                    │
-intent2  (ARB → BASE)                               ▼
-  reward.tokens [USDC, amountIn]          solver delivers the scaled amount on the destination,
-  route         amountIn * scale          whose calls swap it and pay the user
+later: intent2 executes its already-populated route, including any CCTP burn
+later: the bridge mints to the remote intent's vault / Solana vault ATA
 ```
 
-The user signs and funds only intent1. Everything after that is solver-executed.
+The chainer does not burn, bridge, approve a messenger, or transfer locally to a remote
+address. Executor does not need to splice return values between calls. There is no new
+escrow: the local child vault and remote downstream vault remain the custody accounts.
 
-## What the chainer does
+## Order and template layout
 
-Called as the last `Call` of an executing intent, it:
-
-1. measures its own balance of one ERC20 — the single runtime measurement in the whole flow
-2. rebuilds intent2's route with that amount spliced in
-3. calls `Portal.publish`, which returns intent2's vault address
-4. transfers the measured balance into that vault
-
-`publish` runs **before** the transfer, because it hands back the vault address — which cannot be derived
-here — and because every failure should revert the outer intent whole rather than strand tokens in a vault
-that cannot pay out.
-
-It does **not** reject every colliding hash, and the gap is the operating window rather than an edge.
-`IntentSource._validatePublish` refuses only `Withdrawn` and `Refunded`; re-publishing an `Initial` or
-`Funded` intent is deliberately idempotent. Since the chainer never funds intent2, it sits at `Initial` for
-its whole useful life — so a second `chain` on a colliding order would re-publish and push a second
-`amountIn` into the same vault, merging two chains into one intent with no signal. The vault balance read
-immediately before the transfer is what closes that; `publish` closes only the terminal half.
-
-## Two amounts, one measurement
-
-| value                          | goes to                   | meaning                                                |
-| ------------------------------ | ------------------------- | ------------------------------------------------------ |
-| `amountIn`                     | `reward.tokens[0].amount` | escrowed on the source; what intent2's solver collects |
-| `ceil(amountIn * scale / WAD)` | every route slot          | what that solver must deliver on the destination       |
-
-One committed number, `scale`, does the whole source-to-destination transform. The reward leg escrows the
-full measured `amountIn` while the route obliges only the scaled amount, so the gap between them is
-intent2's solver's entire margin.
-
-### Units are not the same across chains
-
-Part of `scale` is a unit conversion, needed because "the same token" is not the same unit everywhere:
-USDC is 6 decimals on Ethereum, Base and Solana, but Binance-Peg USDC on BNB Chain is 18, and Arc's native
-USDC is 18 against a 6-decimal ERC20 wrapper — see `NATIVE_USDC_SCALING` in
-`../deposit/DepositAddress_CCTPMint_Arc.sol`.
-
-| lane                         | `scale`           |
-| ---------------------------- | ----------------- |
-| same units, no spread        | `1e18`            |
-| same units, less 100bps      | `0.99e18`         |
-| 6 → 18 decimals              | `1e30`            |
-| 18 → 6 decimals              | `1e6`             |
-| 6 → 18 decimals, less 100bps | `1e30 * 99 / 100` |
-
-`WAD` is the fixed denominator and `scale` is the per-order value — `1e18` is only what `scale` equals
-when the lane happens to be 1:1. Precision comes from `WAD` and nothing else: `ceil(amountIn * scale / WAD)`
-is one exact integer, so the width of the intermediate changes range, never the answer. `Math.mulDiv` is
-used for its rounding mode, not its 512-bit path; overflow of a plain multiply would need an `amountIn`
-some seventeen orders of magnitude past any real token supply.
-
-The denominator is **decimal, not binary**, on purpose. Unit conversions are powers of ten, so a decimal
-denominator represents every one of them exactly in both directions; a binary denominator (Q128 and
-friends) cannot — `2^128 / 1e12` is not an integer, so a downscaling lane would lean on rounding to
-recover a value it should have computed exactly.
-
-### The spread is proportional, not flat
-
-There is no separate flat fee field. A flat fee and a ratio are different functions of `amountIn` — flat
-keeps the solver's take constant as the amount moves, proportional lets it grow — and a flat one cannot be
-folded into a ratio. The trade is deliberate:
-
-- **Lost:** pricing destination gas independently of size, which is genuinely fixed.
-- **Kept:** everything else, because the only thing that moves `amountIn` here is swap slippage, a percent
-  or so around a known expectation, over which the two are indistinguishable.
-
-Use `minAmountIn` to say "too small to be worth filling". It says that directly, where a flat fee only
-said it as a side effect of the subtraction underflowing.
-
-Rounding is toward the user (up), because the written value is the solver's delivery **floor** — rounding
-down would shave the last unit off what the user receives on every downscaling lane. Ceil rounding also
-makes a zero obligation unreachable: with `amountIn >= 1` and `scale >= 1` the quotient is always at least
-1, so the contract carries no explicit zero-obligation check.
-
-### The Portal is a field, not a deployment binding
-
-`order.portal` names the Portal to publish into. It is part of the order rather than a constructor
-immutable, so one deployment serves every Portal — production, ephemeral, a later redeploy — and picking the
-wrong one is a per-order mistake instead of a per-chain one baked in at deploy time.
-
-Nothing is given up by letting the caller name it. The whole order rides inside intent1's calldata and is
-covered by intent1's hash, so a solver cannot alter it: whoever funds intent1 picks the Portal exactly as
-they pick `reward.creator`. And the contract holds no state and no privileges to protect — it is a pure
-function of the measured balance and the order.
-
-## Slots and segments
-
-The route is opaque bytes; for a non-EVM destination it is not ABI-encoded at all. Rather than carry the
-whole blob plus numeric write offsets, an order carries the literal bytes **around** each amount:
-
-```
-route = segments[0] ‖ enc(slots[0]) ‖ segments[1] ‖ … ‖ segments[n]
+```solidity
+struct Order {
+  bool publish;
+  address portal; // LOCAL reward Portal
+  address token; // measured local ERC-20
+  uint64 destination; // where the child route executes
+  IntentTemplate.Program template;
+  Reward reward; // one local token leg; amount overwritten with amountIn
+  uint256 scale;
+  uint256 minAmountIn;
+}
 ```
 
-with `segments.length == slots.length + 1`. A mis-stated write position is not expressible, and the same
-representation serves an EVM destination and a Borsh one without the contract knowing which it holds.
+A program contains `Vault[] vaults` and a root `Template route`. Each template has:
 
-Each `Slot` is just geometry — `width` in bytes and `littleEndian` — because every slot receives the same
-number. A value that does not fit its width reverts; it is never truncated.
+```text
+Template { bytes[] segments; Item[] items; }
+Item     { ItemKind kind; bytes config; }
 
-### Solana
-
-A Solana route is Borsh, and the amount appears **twice** — once as `route.tokens[0].amount` and again
-inside the SPL `transfer_checked` instruction data. Both are 8-byte little-endian u64, so amounts above
-`type(uint64).max` are rejected. For the shape that `DepositAddress_USDCTransfer_Solana._encodeRoute`
-emits (one token, one call, four account metas):
-
-```
-  0  salt               32
- 32  deadline            8  u64 LE
- 40  portal             32
- 72  native_amount       8  u64 LE
- 80  tokens.len          4  u32 LE
- 84  tokens[0].token    32
-116  tokens[0].amount    8  u64 LE   ← slot
-124  calls.len           4  u32 LE
-128  calls[0].target    32
-160  calls[0].data.len   4  u32 LE
-164  instrData.len       4  u32 LE
-168  0x0c                1            transfer_checked discriminator
-169  amount              8  u64 LE   ← slot
-177  decimals            1
+rendered = segments[0] || render(items[0]) || segments[1] || ... || segments[n]
+segments.length == items.length + 1
 ```
 
-Those offsets hold only for that shape — a second call or a different account list moves the one at 169,
-which is exactly why orders carry segments rather than offsets.
-`../../test/chain/IntentChainerBorsh.t.sol` pins this by cutting a route the production encoder emitted for one
-amount and requiring the chainer to reproduce, byte for byte, what that encoder emits for a different one.
+The SDK's conceptual nested tree is flattened into **dependency-first nodes** in
+`program.vaults`. Node i may reference only nodes with index < i. The root route can
+reference any node. Self references, forward references, cycles, and missing references
+revert. Shared downstream nodes are evaluated once and may be referenced repeatedly.
 
-### EVM
+Each vault node contains:
 
-An EVM route is `abi.encode(Route)`, and the amount typically appears in `route.tokens[0].amount` and again
-inside `calls[k].data` — the `transfer(swapper, amount)` that feeds a destination swap. Both are 32-byte
-big-endian words. The SDK builds segments by encoding the route with a sentinel in every runtime position
-and splitting on it; `../../test/chain/IntentChainer.t.sol` does exactly that.
-
-## Publishing is optional; funding never happens
-
-`order.publish` gates the Portal call. It buys **only discoverability**, because nothing else depends on it:
-the vault address comes from `intentVaultAddress`, a pure prediction, and the already-settled rejection is
-asserted explicitly against `getRewardStatus` rather than inherited from `publish` reverting.
-
-Set it `true` for anything an off-chain solver must find — `IntentPublished` is the only event carrying
-intent2's route as complete bytes plus every `Reward` field, and since the amount did not exist until
-execution, no third party can reconstruct intent2 without it. Set it `false` when the caller is itself the
-solver, or when an indexer rebuilds intent2 from the chainer's own `IntentChained` event.
-
-It is committed like every other order field, so a solver executing intent1 cannot suppress publication to
-keep the resulting intent2 to itself.
-
-Funding, by contrast, never happens at all.
-
-- **It is unnecessary.** `IntentSource._fundToken` returns early once `balanceOf(vault) >= amount`,
-  and `_validateWithdraw` accepts `Status.Initial`. A pushed-but-unfunded intent is fully withdrawable by
-  the proven claimant. `fund()` buys a status flag and an event.
-- **It is unsafe from here.** Every funding entry point — `fund`, `fundFor`, `publishAndFund`,
-  `publishAndFundFor`, `open`, `openFor` — ends in `Refund.excessNative()`, which forwards the Portal's
-  **entire** native balance to `msg.sender`. Reached re-entrantly from inside a route call, `msg.sender` is
-  the chainer, so it would silently capture the solver's in-flight ETH. The contract is non-payable and has
-  no `receive()` to keep that unreachable.
-  Intent2 therefore settles at `Status.Initial`, which is normal and not a sign of under-funding —
-  `isIntentFunded` reads live vault balances and returns true.
-
-## Why no access control
-
-Route calls reach every contract through the Portal's single shared `Executor`, which any fulfiller of any
-intent drives permissionlessly. `msg.sender` proves only that _some_ route call is running, never whose, so
-a caller gate would buy nothing.
-
-The authorization anchor is intent1's own hash instead. The entire `Order` — intent2's route bytes, its
-`reward.creator`, the fee, the floor — rides inside `intent1.route.calls[k].data`, which is covered by
-`keccak256(abi.encode(route))`, which is covered by the `intentHash` that `Inbox` re-derives and checks
-before executing anything. A solver cannot alter the order it is executing.
-
-The residual exposure is a balance donated to the contract out-of-band, which the next caller sweeps into
-their own intent. The intended flow never leaves a balance at rest.
-
-## What the SDK must get right
-
-Three invariants are not enforceable on-chain:
-
-- **Fresh salt per order.** Intent2's salt is fixed in the committed template, so two orders sharing a salt
-  _and_ landing on the same measured amount produce the same intent hash. If that hash has already settled,
-  `publish` reverts `IntentAlreadyExists` and unwinds intent1.
-- **Route deadline.** `MIN_DEADLINE_BUFFER` guards `reward.deadline`. Intent2's **route** deadline lives
-  inside the opaque bytes and cannot be read here at all, so an intent2 whose route deadline has already
-  passed publishes and funds successfully, is unfulfillable, and locks the escrow until `reward.deadline` —
-  the longer of the two by construction. This is the one deadline with no on-chain backstop on either VM.
-- **Deadline headroom.** Intent2's deadlines are absolute and fixed when intent1 is signed, but intent1 may
-  be fulfilled any time up to its own route deadline. The contract rejects a reward deadline inside
-  `MIN_DEADLINE_BUFFER`, but leaving real headroom is the builder's job. Set intent2's reward deadline
-  comfortably beyond intent1's route deadline.
-- **Slot and call agreement.** If a route's `tokens[j].amount` and the calldata that moves it are cut as
-  separate slots, they receive the same value — but if the template's _calls_ expect a different amount than
-  the token leg declares, the difference is left on the shared `Executor`, which has no sweep and is
-  claimable by the next fulfiller of any intent. Emit both from one value.
-
-Note the donation row says _any_ token: `order.token` is chosen by the order, and `chain` sweeps that
-token's entire balance, so anything mistakenly sent to a widely-known singleton is reachable — not only the
-lane's own asset.
-
-## Recovery
-
-| state                                      | who recovers                                                                 | how                                                |
-| ------------------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------- |
-| swap under-delivered below `minAmountIn`   | nobody needs to — intent1 reverts whole                                      | —                                                  |
-| amount will not fit a slot's width         | nobody needs to — intent1 reverts whole                                      | —                                                  |
-| intent2 published and funded, never solved | `reward.creator`                                                             | `refund()` after `reward.deadline`, permissionless |
-| intent2 solved                             | claimant takes `amountIn`; any surplus in the vault goes to `reward.creator` | `withdraw()`, then `refund()`                      |
-| any token sent to the chainer              | whoever chains next                                                          | swept into their intent                            |
-
-## Deployment
-
-`scripts/DeployIntentChainer.s.sol`, CREATE3, one per Portal per chain:
-
-```
-PRIVATE_KEY=0x... SALT=0x... forge script \
-  scripts/DeployIntentChainer.s.sol --rpc-url <RPC_URL> --broadcast --slow
+```text
+Vault {
+  uint64 destination;       // downstream intent's route execution chain
+  Template route;
+  Template reward;          // ENTIRE remote Reward serialization
+  VaultDerivation derivation;
+}
+VaultDerivation { VaultKind kind; bytes config; }
 ```
 
-CREATE3 derives the address from `(deployer, salt)` alone, so the chainer lands at the same address on every
-chain. Nothing environment-specific is baked in — the Portal is an order field — orders name it inside a committed `call.target`, so one address to
-hard-code is worth more here than usual. Bump `CHAINER_VERSION` on any constructor or `Order` ABI change:
-without a salt bump a new ABI would land on the old address and orders committed against the old shape would
-decode into the new one.
+The renderer builds route/reward bytes, then computes:
+
+```text
+intentHash = keccak256(uint64_be(destination) || keccak256(route) || keccak256(reward))
+recipient  = derive(intentHash, derivation)
+```
+
+For an EVM reward, render the complete `abi.encode(Reward)`, including its outer tuple
+offset and array encoding. For a Solana reward, render Borsh (u64 little-endian fields,
+32-byte pubkeys, and u32 little-endian vector lengths). Merely serializing EVM addresses
+as bytes32 does not turn an EVM reward into a Solana reward.
+
+## Tagged configurations
+
+Every `config` uses standard `abi.encode` of the specified schema, not packed encoding.
+Unknown/invalid tags, missing fields, malformed ABI, and trailing config bytes revert.
+All tags reserve zero as invalid.
+
+| Item kind  | Config                                             | Rendered bytes      |
+| ---------- | -------------------------------------------------- | ------------------- |
+| Amount (1) | `AmountConfig(source, scale, width, littleEndian)` | Exactly width bytes |
+| Vault (2)  | `abi.encode(uint256 vaultIndex)`                   | Exactly 32 bytes    |
+
+`AmountSource.Input` (1) selects the initially measured amountIn;
+`AmountSource.Output` (2) selects `ceil(amountIn * order.scale / 1e18)`.
+An amount item applies its own positive WAD-denominated scale with ceiling rounding.
+Use item scale `1e18` for no additional transform. All items share the initial context;
+nesting never triggers another balance measurement.
+
+Widths must be 1..32, and values that do not fit revert. Use width 32/big-endian for
+ABI words and width 8/little-endian for Borsh u64s. Vault items always return a full
+32-byte recipient; EVM/TRON addresses are left-zero-padded, Solana ATAs are not truncated.
+
+### EVM and TRON vaults
+
+`VaultKind.EvmCreate2` (1) decodes:
+
+```solidity
+struct EvmConfig {
+  address portal;
+  bytes1 prefix;
+  address implementation;
+  bytes32 initCodeHash;
+}
+```
+
+```text
+vault = last20(keccak256(prefix || portal || intentHash || initCodeHash))
+initCodeHash = keccak256(remote Proxy.creationCode || abi.encode(implementation))
+```
+
+All four fields are required and committed. The formula never reads address(this),
+uses local Proxy bytecode, or assumes a chain ID or a 0xff prefix. Standard EVM uses
+0xff; TRON uses 0x41 AND VaultTron's implementation/hash. Worldchain's different
+Portal is simply another explicit deployer.
+
+Implementation is already embedded in initCodeHash. The renderer checks presence,
+not whether that pair matches deployed remote code. The author must obtain the
+correct remote Portal, implementation and bytecode hash; no remote chain state can
+be attested by this calculation.
+
+### Solana vault ATAs
+
+`VaultKind.SolanaAta` (2) decodes:
+
+```solidity
+struct SolanaConfig {
+  bytes32 portalProgramId;
+  bytes32 tokenProgramId;
+  bytes32 mint;
+}
+```
+
+All three identifiers must be nonzero. The associated-token program ID is the canonical
+`ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL`.
+
+```text
+vault = find_program_address(["vault", intentHash], portalProgramId)
+recipient = find_program_address([vault, tokenProgramId, mint], ATA_PROGRAM_ID)
+```
+
+Both bumps are **computed**, not caller input. Search starts at 255 and returns the first
+off-curve SHA-256 digest. Curve membership is checked with Edwards25519 field arithmetic
+and MODEXP (0x05), following the approach in [Sauce PR #416](https://github.com/eco/sauce/pull/416).
+The predicate matches Solana's dalek decompression, not a stricter signature/public-key
+decoder: noncanonical y is reduced and x=0 with a set sign bit is not additionally rejected.
+
+Each nested search is capped at **32 attempts, bumps 255 through 224**. If the canonical
+bump is lower, rendering reverts with `PdaSearchExhausted`; it never substitutes a
+different address. Both SHA-256 (0x02) and MODEXP (0x05) must be present and return 32
+bytes; errors or malformed responses revert.
+
+This deliberately supersedes the original caller-supplied-bump/SHA-only proposal.
+A fixed program ID does not fix the bump: the intent hash depends on the measured
+amount. Committing bumps would prevent substitution but not prove canonicality. A
+non-canonical bump can produce an off-curve address that the Portal/ATA program does
+not use; a CCTP mint there may be unrecoverable. Therefore this API accepts **no bumps**,
+and appended bump fields are rejected as noncanonical config encoding.
+
+## Bounds and authority
+
+- At most 8 downstream vault nodes and 8 items per route/reward template.
+- At most 32 KiB aggregate rendered bytes across every nested route/reward and the root.
+- At most 32 curve checks per PDA, two PDAs per Solana vault node.
+- The entire Order, including nested templates/configs/references, is committed in
+  intent1's route calldata and therefore its intent hash. Changing a config changes
+  that identity; a fulfiller cannot substitute it while executing the original intent.
+- Rendering makes no user-selected external calls. Only the fixed cryptographic
+  precompiles are called before the usual local Portal/token operations.
+
+As before, the residual exposure is a balance donated to the shared chainer out-of-band:
+the next caller can chain that balance into their own order. The intended atomic flow
+leaves no balance at rest. Remote rendering introduces no additional custody, deferred
+chainer transfer, approvals, callbacks, or sweep endpoint.
+
+The local settlement guard runs even when `publish=false`. The local vault must not
+already cover the amount being pushed, and its balance increase must cover the whole
+push. These are **local** guarantees, not assertions about remote settlement status.
+
+The author/SDK remains responsible for valid opaque route/reward semantics, fresh salts,
+deadline headroom, prover/token identifiers, slot/call agreement, and bridge fee treatment.
+In particular, a CCTP remote reward must describe the amount actually minted. Template
+amount transforms remain proportional; this feature does not add a flat-fee expression.
+
+## Deployment and compatibility
+
+The user confirmed this chainer is unshipped: Order and chain's ABI are updated directly,
+without a legacy entrypoint. Existing amount-only fixtures still produce identical route,
+reward, intent-hash and local-vault outputs when represented as Amount items.
+
+Deploy version **INTENT_CHAINER_V4** before eco-solver uses the new ABI. CREATE3 ignores
+bytecode, so a new salt/version is required to distinguish an older implementation.
+No deployment is performed by this PR.
+
+A new chainer is required on **each chain executing chain()**, not automatically on a
+remote recipient chain or the chain executing a later CCTP burn. The requested EVM fleet
+checklist is **1, 10, 130, 137, 146, 480, 999, 2020, 8453, 9745, 42161**; enable each only
+after deploying/verifying the new chainer there. TRON needs its compatible build/deployment
+if it executes chain(), not merely when it is a recipient. A Solana destination requires
+no new EVM chainer or Portal deployment for this derivation feature. Source-chain
+precompile compatibility must be verified before enabling Solana items.
+
+## Validation
+
+- Existing Foundry amount, Borsh production-encoder, cross-VM fixture and local lifecycle tests.
+- Independent standard-EVM/Worldchain CREATE2 expectations and explicit 0x41/VaultTron tests.
+- Nested route/reward rendering, dependency/reference bounds, config validation and commitment tests.
+- Real Portal fulfillment -> local child vault -> later populated burn -> claimant withdrawal.
+- SVM Portal's own vault golden plus its SDK-derived ATA, 128 independent vault/ATA vectors,
+  128 curve-membership vectors, and dynamic Borsh reward fixtures.
+- Non-canonical off-curve candidate rejection, rejected caller bump injection, failed precompiles,
+  and bounded-search exhaustion.
+
+The Solana fixtures are checked against eco-routes-svm ref
+`95c728850955d3c9aa7c62ba08a87db5be89e220` and generated independently with the Solana SDK,
+not this Solidity implementation. See
+[testdata/generate-solana-vectors.cjs](../../test/chain/testdata/generate-solana-vectors.cjs).

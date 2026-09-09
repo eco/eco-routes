@@ -7,6 +7,8 @@ import {Vm} from "forge-std/Vm.sol";
 
 import {BaseTest} from "../BaseTest.sol";
 import {IntentChainer} from "../../contracts/chain/IntentChainer.sol";
+import {IntentTemplate} from "../../contracts/chain/IntentTemplate.sol";
+import {TemplateFixtures} from "./TemplateFixtures.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {Reward, TokenAmount} from "../../contracts/types/Intent.sol";
 
@@ -139,7 +141,9 @@ contract IntentChainerCrossVmTest is BaseTest {
         ) {
             ++slotCount;
         }
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](slotCount);
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](
+            slotCount
+        );
         for (uint256 i = 0; i < slotCount; ++i) {
             string memory slotBase = string.concat(
                 base,
@@ -147,15 +151,15 @@ contract IntentChainerCrossVmTest is BaseTest {
                 vm.toString(i),
                 "]"
             );
-            slots[i] = IntentChainer.Slot({
-                width: uint8(
+            slots[i] = TemplateFixtures.amount(
+                uint8(
                     vm.parseJsonUint(json, string.concat(slotBase, ".width"))
                 ),
-                littleEndian: vm.parseJsonBool(
+                vm.parseJsonBool(
                     json,
                     string.concat(slotBase, ".little_endian")
                 )
-            });
+            );
         }
 
         TokenAmount[] memory rewardTokens = new TokenAmount[](1);
@@ -167,8 +171,7 @@ contract IntentChainerCrossVmTest is BaseTest {
                 portal: address(portal),
                 token: address(tokenB),
                 destination: DEST_CHAIN,
-                segments: segments,
-                slots: slots,
+                template: TemplateFixtures.program(segments, slots),
                 reward: Reward({
                     deadline: uint64(block.timestamp + 7 days),
                     creator: creator,

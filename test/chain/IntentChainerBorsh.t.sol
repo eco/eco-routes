@@ -6,6 +6,8 @@ import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 
 import {IntentChainer} from "../../contracts/chain/IntentChainer.sol";
+import {IntentTemplate} from "../../contracts/chain/IntentTemplate.sol";
+import {TemplateFixtures} from "./TemplateFixtures.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {DepositFactory_USDCTransfer_Solana} from "../../contracts/deposit/DepositFactory_USDCTransfer_Solana.sol";
 import {DepositAddress_USDCTransfer_Solana} from "../../contracts/deposit/DepositAddress_USDCTransfer_Solana.sol";
@@ -144,7 +146,7 @@ contract IntentChainerBorshTest is Test {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IntentChainer.AmountExceedsSlotWidth.selector,
+                IntentTemplate.AmountDoesNotFit.selector,
                 tooBig,
                 uint8(8)
             )
@@ -199,9 +201,9 @@ contract IntentChainerBorshTest is Test {
             referenceRoute.length - (SPL_AMOUNT_OFFSET + 8)
         );
 
-        IntentChainer.Slot[] memory slots = new IntentChainer.Slot[](2);
-        slots[0] = IntentChainer.Slot({width: 8, littleEndian: true});
-        slots[1] = IntentChainer.Slot({width: 8, littleEndian: true});
+        IntentTemplate.Item[] memory slots = new IntentTemplate.Item[](2);
+        slots[0] = TemplateFixtures.amount(8, true);
+        slots[1] = TemplateFixtures.amount(8, true);
 
         TokenAmount[] memory rewardTokens = new TokenAmount[](1);
         rewardTokens[0] = TokenAmount({token: address(usdc), amount: 0});
@@ -214,8 +216,7 @@ contract IntentChainerBorshTest is Test {
                 portal: address(portal),
                 token: address(usdc),
                 destination: destinationChain,
-                segments: segments,
-                slots: slots,
+                template: TemplateFixtures.program(segments, slots),
                 reward: Reward({
                     deadline: uint64(block.timestamp + DEADLINE_DURATION),
                     creator: creator,
