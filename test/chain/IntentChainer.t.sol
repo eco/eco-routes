@@ -307,6 +307,21 @@ contract IntentChainerTest is BaseTest {
 
     // ============ Template validation ============
 
+    function test_chain_revertsOnZeroPortal() public {
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
+        order.portal = address(0);
+        vm.expectRevert(IntentChainer.InvalidPortal.selector);
+        chainer.chain(order);
+    }
+
+    function test_chain_revertsOnCodelessPortalBeforeMeasuring() public {
+        IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
+        order.portal = makeAddr("codelessPortal");
+        order.token = address(0); // Prove validation occurs before even querying the token.
+        vm.expectRevert(IntentChainer.InvalidPortal.selector);
+        chainer.chain(order);
+    }
+
     function test_chain_revertsOnSegmentCountMismatch() public {
         IntentChainer.Order memory order = _evmOrder(SPREAD, 0);
 

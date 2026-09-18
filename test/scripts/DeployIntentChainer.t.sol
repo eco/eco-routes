@@ -30,6 +30,25 @@ contract DeployIntentChainerTest is Test {
         script.verifyAddress();
     }
 
+    function test_predictUsesV5SaltRatherThanOccupiedV4Salt() public {
+        bytes32 rootSalt = bytes32(uint256(42));
+        bytes32 v4Salt = keccak256(
+            abi.encode(rootSalt, keccak256(bytes("INTENT_CHAINER_V4")))
+        );
+        bytes32 v5Salt = keccak256(
+            abi.encode(rootSalt, keccak256(bytes("INTENT_CHAINER_V5")))
+        );
+        assertNotEq(v4Salt, v5Salt);
+        vm.expectCall(
+            FACTORY,
+            abi.encodeCall(
+                ICreate3Deployer.deployedAddress,
+                (bytes(""), vm.addr(1), v5Salt)
+            )
+        );
+        script.predictAddress();
+    }
+
     function test_runSkipsVerifiedExistingDeployment() public {
         vm.etch(PREDICTED, type(IntentChainer).runtimeCode);
         vm.mockCallRevert(

@@ -8,7 +8,7 @@
 # is covered by intent1's hash, so an SDK building orders for several source
 # chains wants one address to hard-code rather than a per-chain table.
 #
-# Salt: INTENT_CHAINER_V4 (see CHAINER_VERSION in DeployIntentChainer.s.sol).
+# Salt: INTENT_CHAINER_V5 (see CHAINER_VERSION in DeployIntentChainer.s.sol).
 # Bump it there on any implementation change — CREATE3 derives the address from
 # (deployer, salt) alone. An occupied salt cannot replace an older implementation;
 # existing code must match the current compiled runtime exactly.

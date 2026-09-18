@@ -265,6 +265,8 @@ library IntentTemplate {
             }
             if (value.length > remaining) revert TemplateTooLarge();
             remaining -= value.length;
+            // Repeated copies are bounded by MAX_ITEMS and MAX_RENDERED_BYTES. Revisit the
+            // allocation strategy before raising either bound; concatenation is not linear overall.
             result = bytes.concat(result, value, template.segments[i + 1]);
         }
     }

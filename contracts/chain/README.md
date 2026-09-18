@@ -177,19 +177,39 @@ and appended bump fields are rejected as noncanonical config encoding.
 - Rendering makes no user-selected external calls. Only the fixed cryptographic
   precompiles are called before the usual local Portal/token operations.
 
-As before, the residual exposure is a balance donated to the shared chainer out-of-band:
-the next caller can chain that balance into their own order. The intended atomic flow
+As before, the residual exposure is any token donated to the shared chainer out-of-band:
+`order.token` is caller-chosen, so the next caller can chain that token's entire balance
+into their own order. The intended atomic flow
 leaves no balance at rest. Remote rendering introduces no additional custody, deferred
 chainer transfer, approvals, callbacks, or sweep endpoint.
 
-The local settlement guard runs even when `publish=false`. The local vault must not
-already cover the amount being pushed, and its balance increase must cover the whole
-push. These are **local** guarantees, not assertions about remote settlement status.
+The local settlement guard runs even when `publish=false`: Withdrawn and Refunded
+children are rejected. The vault may already hold any balance, but its balance increase
+from this transfer must cover the whole measured push. Prefunding cannot mask an
+outbound transfer fee. These are **local** guarantees, not assertions about remote
+settlement status.
+
+Child identity is the builder's responsibility. Use fresh child route salts when
+different parents must produce independent children; the parent hash is not mixed into
+the child hash. Distinct parents that reuse the complete child preimage and measure
+the same amount fund the same unsettled vault. A top-up does not increase that child's
+declared reward or delivery obligation: the solver withdraws the declared reward, and
+surplus can be refunded to the creator after withdrawal. The same parent still cannot
+be fulfilled twice (Inbox enforces this). The removed `VaultAlreadyFunded` rejection
+was a prefunding policy, not the parent replay check; it is not replaced by an
+empty-vault requirement.
 
 The author/SDK remains responsible for valid opaque route/reward semantics, fresh salts,
 deadline headroom, prover/token identifiers, slot/call agreement, and bridge fee treatment.
 In particular, a CCTP remote reward must describe the amount actually minted. Template
 amount transforms remain proportional; this feature does not add a flat-fee expression.
+`_calculateAmountOut` isolates the proportional calculation from balance measurement
+without changing its ceiling rounding or introducing fees.
+
+The on-chain five-minute buffer validates only the local **reward** deadline. Child
+and downstream **route** deadlines are inside opaque templates and are not validated
+by the chainer. Builders must give them enough headroom for later fulfillment; passing
+the reward-deadline check does not establish route freshness.
 
 ## Deployment and compatibility
 
@@ -197,6 +217,14 @@ V4 replaces the unshipped amount-only Order and chain ABI directly, without a le
 entrypoint. Existing amount-only fixtures still produce identical route, reward,
 intent-hash and local-vault outputs when represented as Amount items. CREATE3 ignores
 bytecode, so V4 uses a new salt/version rather than modifying an older deployment.
+
+**Current source targets INTENT_CHAINER_V5 and is not deployed.** V5 retains V4's Order
+and chain ABI, permits prefunded child vaults, extracts the output calculation, and
+reports `InvalidPortal` for zero/codeless Portals. The rollout script now selects V5's
+new CREATE3 salt; it cannot overwrite or reuse the deployed V4 address. The V4 manifest
+below remains historical deployment evidence, not evidence that V5 is live. Using V5
+requires a separate chainer-only deployment on the execution chains and client address
+updates. No Portal or Vault redeployment is needed.
 
 **INTENT_CHAINER_V4** was deployed and verified on 2026-09-09 at:
 
@@ -211,7 +239,8 @@ receipt, bytecode, read-only getter and SHA-256/MODEXP precompile checks.
 The operator excluded unfunded chains **169, 466, 2020, 5000, 5330, 8333, 33139,
 10241024**; no deployment transactions were sent there. Existing Portals and previous
 chainer deployments were not changed. Solver/SDK adoption is a separate step: callers
-must use the V4 address and new ABI together.
+must use the address and behavior of the version actually deployed. The V4 address
+still has the prefunding rejection; none of these source changes alters it.
 
 A new chainer is required on **each chain executing chain()**, not automatically on a
 remote recipient chain or the chain executing a later CCTP burn. TRON needs its compatible
@@ -238,6 +267,11 @@ after a failure, then rerun to skip already-verified deployments.
 - Independent standard-EVM/Worldchain CREATE2 expectations and explicit 0x41/VaultTron tests.
 - Nested route/reward rendering, dependency/reference bounds, config validation and commitment tests.
 - Real Portal fulfillment -> local child vault -> later populated burn -> claimant withdrawal.
+- Prefunded vaults below/equal/above the push, distinct-parent child reuse, same-parent
+  replay rejection, and unchanged ceil-rounding/amount fixtures.
+- Outbound fee-on-transfer failures through real Portal/Executor calls assert exact
+  wrapped PushShortfall and full balance/claimant rollback, with and without publication.
+  Hardhat mined-receipt regressions additionally assert no logs survive the reverted transaction.
 - SVM Portal's own vault golden plus its SDK-derived ATA, 128 independent vault/ATA vectors,
   128 curve-membership vectors, and dynamic Borsh reward fixtures.
 - Non-canonical off-curve candidate rejection, rejected caller bump injection, failed precompiles,

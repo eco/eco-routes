@@ -8,27 +8,8 @@ import {IntentTemplate as T} from "../../contracts/chain/IntentTemplate.sol";
 import {Call, Reward, Route, TokenAmount} from "../../contracts/types/Intent.sol";
 import {TemplateFixtures as F} from "./TemplateFixtures.sol";
 import {TemplateHarness} from "./IntentTemplate.t.sol";
-import {TestERC20} from "../../contracts/test/TestERC20.sol";
+import {FeeOnPushToken} from "../../contracts/test/FeeOnPushToken.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-
-contract FeeOnPushToken is TestERC20 {
-    address internal immutable feeSender;
-    constructor(address sender) TestERC20("Fee on push", "FEE") {
-        feeSender = sender;
-    }
-    function _update(
-        address from,
-        address to,
-        uint256 value
-    ) internal override {
-        if (from == feeSender && to != address(0) && value > 0) {
-            super._update(from, address(0), 1);
-            super._update(from, to, value - 1);
-        } else {
-            super._update(from, to, value);
-        }
-    }
-}
 
 /// @dev CCTP is an external boundary: capture the exact burn arguments and consume the approved token.
 contract CapturingBurn {

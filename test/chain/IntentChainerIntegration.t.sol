@@ -10,6 +10,9 @@ import {IntentChainer} from "../../contracts/chain/IntentChainer.sol";
 import {IntentTemplate} from "../../contracts/chain/IntentTemplate.sol";
 import {TemplateFixtures} from "./TemplateFixtures.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
+import {IInbox} from "../../contracts/interfaces/IInbox.sol";
+import {IExecutor} from "../../contracts/interfaces/IExecutor.sol";
+import {FeeOnPushToken} from "../../contracts/test/FeeOnPushToken.sol";
 import {Call, Reward, Route, TokenAmount} from "../../contracts/types/Intent.sol";
 
 /// @notice Stands in for a DEX: pays a fixed output to a named recipient out of its own inventory.
@@ -22,8 +25,8 @@ contract IntegrationSwapper {
 /**
  * @title IntentChainerIntegrationTest
  * @notice End-to-end lifecycle of a chained pair, driven only through real Portal entry points.
- * @dev Every test here starts from a solver calling `portal.fulfill` on intent1 and follows the money all
- *      the way to a `withdraw` or a `refund` on intent2. Nothing calls `chain()` directly.
+ * @dev Tests drive real `portal.fulfill` calls and check funding, rollback, withdrawal or refund.
+ *      Nothing calls `chain()` directly.
  */
 contract IntentChainerIntegrationTest is BaseTest {
     IntentChainer internal chainer;
@@ -226,17 +229,9 @@ contract IntentChainerIntegrationTest is BaseTest {
     }
 
     /**
-     * @notice A colliding hash reverts while intent2 is still UNSETTLED -- the state it is normally in.
-     * @dev This is the case the settled-hash test below does not reach, and it is the one that actually
-     *      occurs. `IntentSource._validatePublish` rejects only `Withdrawn` and `Refunded`; re-publishing an
-     *      `Initial` intent is deliberately idempotent, and intent2 is `Initial` for its whole useful life
-     *      because the chainer never funds it. So `publish` does not reject this collision -- the vault
-     *      balance read before the push does. Without it the second push would top up the same vault,
-     *      consuming a second intent1 and producing no second delivery.
+     * @notice Different parents may fund the same unsettled child; child-salt uniqueness is caller-owned.
      */
-    function test_atomicity_collidingHashRevertsWhileIntentTwoIsUnsettled()
-        public
-    {
+    function test_funding_distinctParentsMayReuseUnsettledChild() public {
         (bytes32 hash2, address vault2) = _runChain(
             bytes32(uint256(10)),
             SPREAD
@@ -249,14 +244,15 @@ contract IntentChainerIntegrationTest is BaseTest {
         );
         assertEq(tokenB.balanceOf(vault2), SWAP_OUT, "vault funded once");
 
-        // A second intent1 -- different salt, same committed order, same swap output -- collides.
+        // Deliberately reuse the child template, but not the parent identity.
         IntentChainer.Order memory order = _order(SPREAD, 0);
         uint256 solverBefore = _prepareSolver(solver2, SWAP_IN);
+        bytes32 parent2 = _intentOneHash(bytes32(uint256(11)), order);
+        assertNotEq(parent2, _intentOneHash(bytes32(uint256(10)), order));
 
         vm.prank(solver2);
-        vm.expectRevert();
         portal.fulfill(
-            _intentOneHash(bytes32(uint256(11)), order),
+            parent2,
             _intentOneRoute(bytes32(uint256(11)), order),
             keccak256(abi.encode(_intentOneReward())),
             bytes32(uint256(uint160(claimant)))
@@ -264,26 +260,232 @@ contract IntentChainerIntegrationTest is BaseTest {
 
         assertEq(
             tokenB.balanceOf(vault2),
-            SWAP_OUT,
-            "vault was not topped up a second time"
+            2 * SWAP_OUT,
+            "both measured pushes reach the same vault"
         );
         assertEq(
             tokenA.balanceOf(solver2),
-            solverBefore,
-            "second solver keeps their input"
+            solverBefore - SWAP_IN,
+            "second parent executes independently"
         );
         assertEq(
             tokenB.balanceOf(address(chainer)),
             0,
             "nothing left in the chainer"
         );
+        assertEq(
+            portal.claimants(parent2),
+            bytes32(uint256(uint160(claimant)))
+        );
+
+        _addProof(hash2, uint96(DEST_CHAIN), claimant);
+        uint256 claimantBefore = tokenB.balanceOf(claimant);
+        portal.withdraw(
+            DEST_CHAIN,
+            keccak256(_routeBytes(SWAP_NET)),
+            _intentTwoReward(SWAP_OUT)
+        );
+        assertEq(
+            tokenB.balanceOf(claimant) - claimantBefore,
+            SWAP_OUT,
+            "reward is not doubled"
+        );
+        assertEq(tokenB.balanceOf(vault2), SWAP_OUT, "second push is surplus");
+        uint256 creatorBefore = tokenB.balanceOf(creator);
+        portal.refund(
+            DEST_CHAIN,
+            keccak256(_routeBytes(SWAP_NET)),
+            _intentTwoReward(SWAP_OUT)
+        );
+        assertEq(tokenB.balanceOf(creator) - creatorBefore, SWAP_OUT);
+    }
+
+    function test_atomicity_sameParentCannotBeFulfilledTwice() public {
+        bytes32 parentSalt = bytes32(uint256(12));
+        (, address vault2) = _runChain(parentSalt, SPREAD);
+        IntentChainer.Order memory order = _order(SPREAD, 0);
+        bytes32 parent = _intentOneHash(parentSalt, order);
+        uint256 solverBefore = _prepareSolver(solver2, SWAP_IN);
+
+        vm.prank(solver2);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IInbox.IntentAlreadyFulfilled.selector,
+                parent
+            )
+        );
+        portal.fulfill(
+            parent,
+            _intentOneRoute(parentSalt, order),
+            keccak256(abi.encode(_intentOneReward())),
+            bytes32(uint256(uint160(claimant)))
+        );
+
+        assertEq(tokenA.balanceOf(solver2), solverBefore);
+        assertEq(tokenB.balanceOf(vault2), SWAP_OUT);
+    }
+
+    function test_funding_prefundedVaultBelowPush() public {
+        _assertPrefundedVault(1, true);
+    }
+
+    function test_funding_prefundedVaultEqualToPush() public {
+        _assertPrefundedVault(SWAP_OUT, true);
+    }
+
+    function test_funding_prefundedVaultAbovePush() public {
+        _assertPrefundedVault(SWAP_OUT * 2, true);
+    }
+
+    function test_funding_prefundedVaultWithoutPublication() public {
+        _assertPrefundedVault(SWAP_OUT * 2, false);
+    }
+
+    function _assertPrefundedVault(uint256 prefunding, bool publish) internal {
+        IntentChainer.Order memory order = _order(SPREAD, SWAP_OUT);
+        order.publish = publish;
+        address vault2 = portal.intentVaultAddress(
+            DEST_CHAIN,
+            _routeBytes(SWAP_NET),
+            _intentTwoReward(SWAP_OUT)
+        );
+        uint256 before = tokenB.balanceOf(vault2);
+        tokenB.mint(vault2, prefunding);
+        bytes32 parentSalt = keccak256(abi.encode(prefunding, publish));
+        _prepareSolver(solver, SWAP_IN);
+        vm.prank(solver);
+        portal.fulfill(
+            _intentOneHash(parentSalt, order),
+            _intentOneRoute(parentSalt, order),
+            keccak256(abi.encode(_intentOneReward())),
+            bytes32(uint256(uint160(claimant)))
+        );
+        assertEq(tokenB.balanceOf(vault2), before + prefunding + SWAP_OUT);
+        assertEq(tokenB.balanceOf(address(chainer)), 0);
+    }
+
+    function test_atomicity_outboundFeeRollsBackFulfillment() public {
+        _assertOutboundFeeRollback(0, true, false);
+    }
+
+    function test_atomicity_prefundingCannotMaskOutboundFee() public {
+        _assertOutboundFeeRollback(SWAP_OUT * 2, true, false);
+    }
+
+    function test_atomicity_outboundFeeRollsBackWithoutPublication() public {
+        _assertOutboundFeeRollback(SWAP_OUT * 2, false, false);
+    }
+
+    function test_atomicity_outboundFeeRestoresPreexistingChainerBalance()
+        public
+    {
+        _assertOutboundFeeRollback(SWAP_OUT * 2, true, true);
+    }
+
+    /// @dev The Executor wraps PushShortfall in CallFailed: assert both layers exactly.
+    ///      Receipt-level log rollback is covered by IntentChainer.spec.ts; recordLogs records
+    ///      execution traces, including reverted logs, rather than a mined transaction receipt.
+    function _assertOutboundFeeRollback(
+        uint256 prefunding,
+        bool publish,
+        bool preseedChainer
+    ) internal {
+        FeeOnPushToken feeToken = new FeeOnPushToken(address(chainer));
+        IntentChainer.Order memory order = _order(SPREAD, SWAP_OUT);
+        order.token = address(feeToken);
+        order.reward.tokens[0].token = address(feeToken);
+        order.publish = publish;
+        Reward memory childReward = _intentTwoReward(SWAP_OUT);
+        childReward.tokens[0].token = address(feeToken);
+        bytes memory childRoute = _routeBytes(SWAP_NET);
+        address vault2 = portal.intentVaultAddress(
+            DEST_CHAIN,
+            childRoute,
+            childReward
+        );
+        (bytes32 childHash, , ) = portal.getIntentHash(
+            DEST_CHAIN,
+            childRoute,
+            childReward
+        );
+        feeToken.mint(vault2, prefunding);
+        feeToken.mint(
+            preseedChainer ? address(chainer) : address(swapper),
+            SWAP_OUT
+        );
+        uint256 chainerBefore = feeToken.balanceOf(address(chainer));
+        uint256 swapperBefore = feeToken.balanceOf(address(swapper));
+        uint256 supplyBefore = feeToken.totalSupply();
+        uint256 solverBefore = _prepareSolver(solver, SWAP_IN);
+        uint256 inputBefore = tokenA.balanceOf(address(swapper));
+        Route memory parentRoute = _intentOneRoute(bytes32(uint256(30)), order);
+        parentRoute.calls[1].data = abi.encodeCall(
+            IntegrationSwapper.swap,
+            (address(feeToken), preseedChainer ? 0 : SWAP_OUT, address(chainer))
+        );
+        bytes32 rewardHash = keccak256(abi.encode(_intentOneReward()));
+        bytes32 parent = keccak256(
+            abi.encodePacked(
+                uint64(block.chainid),
+                keccak256(abi.encode(parentRoute)),
+                rewardHash
+            )
+        );
+        bytes memory shortfall = abi.encodeWithSelector(
+            IntentChainer.PushShortfall.selector,
+            vault2,
+            SWAP_OUT,
+            SWAP_OUT - 1
+        );
+
+        vm.prank(solver);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IExecutor.CallFailed.selector,
+                parentRoute.calls[2],
+                shortfall
+            )
+        );
+        portal.fulfill(
+            parent,
+            parentRoute,
+            rewardHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+
+        assertEq(
+            feeToken.balanceOf(address(chainer)),
+            chainerBefore,
+            "chainer restored"
+        );
+        assertEq(feeToken.balanceOf(vault2), prefunding, "vault unchanged");
+        assertEq(
+            feeToken.balanceOf(address(swapper)),
+            swapperBefore,
+            "swap undone"
+        );
+        assertEq(feeToken.totalSupply(), supplyBefore, "fee burn undone");
+        assertEq(tokenA.balanceOf(solver), solverBefore, "solver refunded");
+        assertEq(
+            tokenA.balanceOf(address(swapper)),
+            inputBefore,
+            "input transfer undone"
+        );
+        assertEq(
+            tokenA.balanceOf(address(portal.executor())),
+            0,
+            "no executor residue"
+        );
+        assertEq(portal.claimants(parent), bytes32(0), "parent not fulfilled");
+        assertEq(
+            uint8(portal.getRewardStatus(childHash)),
+            uint8(IIntentSource.Status.Initial)
+        );
     }
 
     /**
      * @notice A template whose intent2 hash has already settled reverts rather than losing the push.
-     * @dev The terminal half of the same failure mode: here `publish` itself rejects, because `Withdrawn` is
-     *      one of the two states `_validatePublish` refuses. Kept alongside the unsettled case above so both
-     *      halves stay pinned.
+     * @dev Unlike prefunding an unsettled child, pushing after settlement is rejected unconditionally.
      */
     function test_atomicity_settledIntentTwoHashRevertsBeforeAnyPush() public {
         (bytes32 hash2, ) = _runChain(bytes32(uint256(6)), SPREAD);

@@ -13,7 +13,7 @@ import {IntentTemplate} from "./IntentTemplate.sol";
 
 /**
  * @title IntentChainer
- * @notice Publishes a second intent whose amount is not known until the first intent executes.
+ * @notice Funds and optionally publishes a second intent using a runtime-measured amount.
  * @dev Called as the last {Call} of an executing intent (intent1), at which point this contract holds the
  *      output of whatever intent1's earlier calls produced -- typically a DEX swap that named this contract
  *      as its recipient. It measures that balance -- the ONE runtime measurement in the whole flow -- and
@@ -55,6 +55,8 @@ contract IntentChainer is ReentrancyGuard {
      * @dev The entire template program, including downstream rewards, derivation tags/configs and node
      *      references, rides inside intent1's hashed calldata. Nested vaults are addresses inserted in
      *      the route, NOT recipients of this contract's local transfer. No new custody or approvals.
+     *      Builders must choose fresh child route salts when independent children are intended. The
+     *      parent hash is not mixed into the child hash; existing child-vault balances are permitted.
      * @param publish Whether to publish intent2 for discoverability. Settlement checks are unconditional.
      * @param portal The LOCAL Portal whose reward vault receives the measured token.
      * @param token The single local ERC20 measured and escrowed.
@@ -97,9 +99,9 @@ contract IntentChainer is ReentrancyGuard {
     // ============ Events ============
 
     /**
-     * @notice A second intent was published and funded from a measured balance.
+     * @notice A second intent was funded and optionally published from a measured balance.
      * @param intentHash Intent2's hash.
-     * @param vault Intent2's deterministic vault, which now holds `amountIn`.
+     * @param vault Intent2's deterministic vault, whose balance increased by at least `amountIn`.
      * @param token The measured token.
      * @param amountIn The measured amount, escrowed as intent2's reward.
      * @param amountOut The scaled amount available to template items selecting AmountSource.Output.
@@ -117,7 +119,7 @@ contract IntentChainer is ReentrancyGuard {
 
     // ============ Errors ============
 
-    /// @notice `order.portal` is the zero address.
+    /// @notice `order.portal` is zero or has no deployed code. This is not Portal identity attestation.
     error InvalidPortal();
 
     /// @notice The reward does not carry exactly one leg.
@@ -148,30 +150,23 @@ contract IntentChainer is ReentrancyGuard {
     /// @dev Checked explicitly rather than inherited from `publish` reverting, because publish is optional.
     error IntentAlreadySettled(bytes32 intentHash, IIntentSource.Status status);
 
-    /// @notice Intent2's vault already holds at least the amount being pushed.
-    /// @dev A salt collision: the same order resolving to a hash that has already been chained. Nothing
-    ///      legitimate pre-funds this address, since it depends on the measured amount. See
-    ///      {_pushAndVerify} for why `publish` does not catch this on its own.
-    error VaultAlreadyFunded(address vault, uint256 balance);
-
     // ============ External Functions ============
 
     /**
-     * @notice Measure this contract's balance of one token and publish a second intent escrowing it.
+     * @notice Measure one token balance, escrow it for a second intent, and optionally publish that intent.
      * @dev Render nested templates and resolve/check the LOCAL vault before any value moves. Optional
      *      publication also precedes the transfer. Every validation failure reverts the outer intent
      *      whole. Remote recipients are populated route data for a later fulfillment; chain itself
      *      performs no remote transfer or CCTP burn.
      *
-     *      `publish` does NOT reject every colliding hash, and the gap is the operating window rather than
-     *      an edge: `IntentSource._validatePublish` rejects only `Withdrawn` and `Refunded`, and publishing
-     *      an `Initial` or `Funded` intent is deliberately idempotent. Because this contract never calls
-     *      `fund`, intent2 sits at `Initial` for its whole useful life -- so a second `chain` on a colliding
-     *      order would re-publish and push a second `amountIn` into the same vault, merging two chains into
-     *      one intent with no signal. {_pushAndVerify} is what actually closes that.
+     *      Child-salt uniqueness is the builder's responsibility. Distinct parents may deliberately
+     *      resolve to the same unsettled child: its vault may already hold any balance. A new push does
+     *      not increase that child's declared reward or delivery obligation. Only this contract's
+     *      measured balance sets the new amounts; existing vault balances are not swept or counted.
+     *      Parent replay is independently rejected by Inbox, and terminal children remain rejected here.
      * @param order The committed intent2 template. See {Order}.
      * @return intentHash Intent2's hash.
-     * @return vault Intent2's vault, now holding the measured amount.
+     * @return vault Intent2's vault, credited with at least the measured amount in addition to any prefunding.
      * @return amountIn The measured amount, escrowed as intent2's reward.
      * @return amountOut The scaled destination obligation available to template amount items.
      */
@@ -234,8 +229,8 @@ contract IntentChainer is ReentrancyGuard {
      * @notice Reject a hash that has already paid out or refunded.
      * @dev `IntentSource._validatePublish` refuses `Withdrawn` and `Refunded`, and inheriting that side
      *      effect would leave the terminal case unguarded whenever `order.publish` is false. Asserted
-     *      directly instead, so the protection holds either way. The `Initial`-state collision -- the one
-     *      that actually occurs, since this contract never funds intent2 -- is caught in {_pushAndVerify}.
+     *      directly instead, so the protection holds either way. Initial and Funded children may receive
+     *      additional pushes; builders are responsible for distinct child identities when required.
      * @param portal The Portal to ask.
      * @param intentHash Intent2's hash.
      */
@@ -254,19 +249,10 @@ contract IntentChainer is ReentrancyGuard {
     }
 
     /**
-     * @notice Move the measured balance into intent2's vault, bracketing the transfer with the two checks
-     *         that make it safe.
-     * @dev Reading the vault BEFORE the transfer does the work `publish` cannot. `_validatePublish` lets an
-     *      `Initial` intent be re-published, and intent2 is `Initial` for its whole useful life because this
-     *      contract never funds it -- so a colliding order would otherwise top the same vault up a second
-     *      time, consuming a second intent1 and producing no second delivery. Nothing legitimate can
-     *      pre-fund this address: it depends on the measured amount, so it is unknowable until this call
-     *      runs. A balance already covering the push therefore means the hash is not fresh.
-     *
-     *      Comparing a DELTA afterwards, rather than the absolute balance, is what keeps the shortfall check
-     *      honest. The vault address is computable by anyone reading intent1's calldata, so an absolute
-     *      comparison could be satisfied by a donation instead of by this transfer -- masking exactly the
-     *      fee-on-transfer case the check exists to catch.
+     * @notice Move the measured balance into intent2's vault and verify this transfer's delivery.
+     * @dev Prefunding is allowed. Comparing the balance DELTA, not the absolute balance, prevents an
+     *      existing balance from masking a fee-on-transfer shortfall. No assumption of an empty or fresh
+     *      vault is made, and a vault's previous balance does not change the templated amounts.
      * @param token The measured token.
      * @param vault Intent2's vault.
      * @param amountIn The amount to push.
@@ -277,10 +263,6 @@ contract IntentChainer is ReentrancyGuard {
         uint256 amountIn
     ) internal {
         uint256 balanceBefore = IERC20(token).balanceOf(vault);
-        if (balanceBefore >= amountIn) {
-            revert VaultAlreadyFunded(vault, balanceBefore);
-        }
-
         IERC20(token).safeTransfer(vault, amountIn);
 
         uint256 delivered = IERC20(token).balanceOf(vault) - balanceBefore;
@@ -291,6 +273,27 @@ contract IntentChainer is ReentrancyGuard {
 
     /**
      * @notice Measure the held balance and derive the two amounts intent2 is built from.
+     * @param order The validated order.
+     * @return amountIn The measured balance, escrowed as intent2's reward.
+     * @return amountOut The scaled destination obligation.
+     */
+    function _measure(
+        Order calldata order
+    ) internal view returns (uint256 amountIn, uint256 amountOut) {
+        amountIn = IERC20(order.token).balanceOf(address(this));
+
+        if (amountIn == 0) {
+            revert ZeroAmount();
+        }
+        if (amountIn < order.minAmountIn) {
+            revert AmountBelowFloor(amountIn, order.minAmountIn);
+        }
+
+        amountOut = _calculateAmountOut(amountIn, order.scale);
+    }
+
+    /**
+     * @notice Calculate the destination obligation separately from balance measurement.
      * @dev Ceil rounding serves two purposes. It rounds toward the USER, since `amountOut` is the solver's
      *      delivery floor. And it guarantees a non-zero obligation: with `amountIn >= 1` and `scale >= 1`
      *      the quotient is strictly positive, so no order can oblige a solver to deliver nothing while
@@ -308,23 +311,15 @@ contract IntentChainer is ReentrancyGuard {
      *      What it does earn is a ceiling with no overflow edge of its own. The hand-rolled form,
      *      `(amountIn * scale + WAD - 1) / WAD`, introduces exactly the boundary overflow the plain
      *      expression does not have; `mulDiv` adds its increment after the division instead.
-     * @param order The validated order.
-     * @return amountIn The measured balance, escrowed as intent2's reward.
-     * @return amountOut The scaled destination obligation.
+     * @param amountIn The positive measured balance.
+     * @param scale The validated positive WAD-denominated conversion and proportional spread.
+     * @return amountOut The ceil-rounded destination obligation. No flat fee is applied.
      */
-    function _measure(
-        Order calldata order
-    ) internal view returns (uint256 amountIn, uint256 amountOut) {
-        amountIn = IERC20(order.token).balanceOf(address(this));
-
-        if (amountIn == 0) {
-            revert ZeroAmount();
-        }
-        if (amountIn < order.minAmountIn) {
-            revert AmountBelowFloor(amountIn, order.minAmountIn);
-        }
-
-        amountOut = Math.mulDiv(amountIn, order.scale, WAD, Math.Rounding.Ceil);
+    function _calculateAmountOut(
+        uint256 amountIn,
+        uint256 scale
+    ) internal pure returns (uint256 amountOut) {
+        return Math.mulDiv(amountIn, scale, WAD, Math.Rounding.Ceil);
     }
 
     /**
@@ -332,7 +327,8 @@ contract IntentChainer is ReentrancyGuard {
      * @param order The order to validate.
      */
     function _validate(Order calldata order) internal view {
-        if (order.portal == address(0)) revert InvalidPortal();
+        if (order.portal == address(0) || order.portal.code.length == 0)
+            revert InvalidPortal();
         IntentTemplate.validateShape(order.template.route);
 
         // A zero scale would publish an intent obliging the solver to deliver nothing while still
@@ -341,10 +337,8 @@ contract IntentChainer is ReentrancyGuard {
             revert InvalidScale();
         }
 
-        // Exactly one leg, in the measured token. A leg in any other token could never be funded from here --
-        // the vault address is unknowable in advance, so nothing else can pre-fund it -- and once such an
-        // intent is proven its vault is bricked: `_validateRefund` reverts `IntentNotClaimed` for as long as
-        // the proof stands, while `recoverToken` refuses reward tokens.
+        // This contract funds and verifies exactly one leg, in the measured token. Arbitrary prefunding
+        // is allowed, but cannot establish delivery of an additional reward leg through this call.
         if (order.reward.tokens.length != 1) {
             revert InvalidRewardLegCount(order.reward.tokens.length);
         }

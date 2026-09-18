@@ -41,7 +41,8 @@ contract DeployIntentChainer is Script {
     ///      deployment serves every Portal and there is no deploy-time binding left to get wrong.
     ///      V3 adds the committed publish flag. V4 replaces amount-only slots with typed templates and
     ///      dependency-first remote vault derivation. This changes the unshipped chainer's Order ABI.
-    string internal constant CHAINER_VERSION = "INTENT_CHAINER_V4";
+    ///      V5 permits prefunded child vaults, extracts output calculation, and rejects codeless Portals.
+    string internal constant CHAINER_VERSION = "INTENT_CHAINER_V5";
 
     function run() external {
         _preflight();
