@@ -187,6 +187,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
     /**
      * @notice Validates multiple Solana log proofs in a batch
+     * @dev Atomic: any proof that reverts discards the whole batch; there is no
+     *      per-element isolation. An empty array is a no-op.
      * @param proofs Array of Solana log proofs to validate
      */
     function validateSolanaBatch(bytes[] calldata proofs) external {

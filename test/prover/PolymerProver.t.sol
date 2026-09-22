@@ -23,6 +23,14 @@ contract PolymerProverTest is BaseTest {
     /// Raw key of the whitelisted Solana polymer-prover program.
     bytes32 internal constant SOLANA_PROGRAM_ID =
         0xec0000000000000000000000000000000000000000000000000000000000ec00;
+    /// SOLANA_PROGRAM_ID >> 8 and >> 16: keys whose first byte(s) are 0x00, so their
+    /// canonical base58 carries one leading `1` per zero byte. Their encodings in
+    /// testBase58EncodesLeadingZeroBytes were computed off-chain with a reference
+    /// base58 implementation, not with Base58.sol.
+    bytes32 internal constant SOLANA_PROGRAM_ID_ONE_ZERO =
+        0x00ec0000000000000000000000000000000000000000000000000000000000ec;
+    bytes32 internal constant SOLANA_PROGRAM_ID_TWO_ZEROS =
+        0x0000ec0000000000000000000000000000000000000000000000000000000000;
     /// Mirrors PolymerProver.SOLANA_LOG_HEX_LENGTH; asserted in testInitializesSolanaConfig
     uint256 internal constant SOLANA_LOG_HEX_LENGTH = 160;
 
@@ -1000,17 +1008,30 @@ contract PolymerProverTest is BaseTest {
 
     // ------------- SOLANA LOG PROOF VALIDATION -------------
 
-    /// @notice Registers `logs` as a fresh Solana proof entry and returns its handle
-    function _setSolanaProof(
+    /// @notice Registers `logs` as a fresh Solana proof entry attributed to
+    ///         `polymerChainId` / `programId` and returns its handle. Always use the
+    ///         returned handle: the mock appends, so a literal index is only right
+    ///         for the first proof a test registers.
+    function _setSolanaProofFor(
+        uint32 polymerChainId,
+        bytes32 programId,
         string[] memory logs
     ) internal returns (bytes memory proof) {
         return
             abi.encodePacked(
-                crossL2ProverV2.setSolLogs(
-                    SOLANA_POLYMER_CHAIN_ID,
-                    SOLANA_PROGRAM_ID,
-                    logs
-                )
+                crossL2ProverV2.setSolLogs(polymerChainId, programId, logs)
+            );
+    }
+
+    /// @notice `_setSolanaProofFor` with the whitelisted program on Polymer's Solana id
+    function _setSolanaProof(
+        string[] memory logs
+    ) internal returns (bytes memory proof) {
+        return
+            _setSolanaProofFor(
+                SOLANA_POLYMER_CHAIN_ID,
+                SOLANA_PROGRAM_ID,
+                logs
             );
     }
 
@@ -1098,13 +1119,20 @@ contract PolymerProverTest is BaseTest {
         }
     }
 
-    /// @dev The parser accepts every head shape Polymer might plausibly return, since its
-    ///      exact stripping is documented but unverified: bare, Polymer's `Prove: ` left
-    ///      in, the raw runtime line, and `Prove:` stripped without its trailing space.
+    /// @dev Pins every head shape `_processSolanaLog` tolerates, since Polymer's exact
+    ///      stripping is documented but unverified against the deployed indexer: bare
+    ///      (both prefixes gone), Polymer's `Prove: ` left in, `Prove:` without its
+    ///      trailing space, the runtime prefix with `Prove: ` stripped as Polymer
+    ///      documents, the raw runtime line with both, extra spaces after the runtime
+    ///      prefix, and a bare leading space. Keep in sync with the head in
+    ///      PolymerProver._processSolanaLog.
     function testValidateSolanaToleratesPrefixShapes() public {
-        string[4] memory prefixes = [
+        string[7] memory prefixes = [
             "",
             "Prove: ",
+            "Prove:",
+            "Program log: ",
+            "Program log:  ",
             "Program log: Prove: ",
             " "
         ];
@@ -1304,78 +1332,160 @@ contract PolymerProverTest is BaseTest {
         }
     }
 
-    /// @dev Mutation fuzz over the hand-rolled parser: flip one byte of a valid line.
-    ///      Either the call reverts and nothing is recorded, or it parses and the only
-    ///      intent it may have recorded is this one. A flip inside the 40-char claimant
-    ///      address is the one mutation that legitimately records a different claimant.
+    /// @dev Differential mutation test over the hand-rolled parser: flip one byte of a
+    ///      valid line and assert the exact outcome a model of the wire format predicts.
+    ///      A flip in the head (`program: `, the canonical base58 id, `, `) must revert;
+    ///      a non-hex byte in the payload must revert InvalidSolanaLog; a hex byte is
+    ///      patched into a model payload and the contract must then revert on the
+    ///      mutated destination, skip a foreign source or a non-EVM/zero claimant, or
+    ///      record exactly the mutated intent hash and claimant. A control proof
+    ///      recorded before the fuzzed call pins that no branch touches other slots
+    ///      (a revert rolls back only the fuzzed call).
     function testFuzzValidateSolanaMutatedLog(uint256 idx, uint8 b) public {
+        bytes32 controlHash = keccak256("fuzz-control");
+        string[] memory controlLogs = new string[](1);
+        controlLogs[0] = _validLog(controlHash);
+        polymerProver.validateSolana(_setSolanaProof(controlLogs));
+
         bytes32 intentHash = keccak256("fuzz-line");
         bytes memory line = bytes(_validLog(intentHash));
         idx = bound(idx, 0, line.length - 1);
         vm.assume(uint8(line[idx]) != b);
-        bool inClaimantAddress = idx >= line.length - 40;
+        uint256 hexStart = line.length - SOLANA_LOG_HEX_LENGTH;
         line[idx] = bytes1(b);
         string[] memory logs = new string[](1);
         logs[0] = string(line);
         bytes memory proof = _setSolanaProof(logs);
 
-        try polymerProver.validateSolana(proof) {
-            IProver.ProofData memory p = polymerProver.provenIntents(
-                intentHash
-            );
-            if (p.claimant != address(0)) {
-                if (!inClaimantAddress) assertEq(p.claimant, claimant);
-                assertEq(p.destination, SOLANA_CHAIN_ID);
-            }
+        if (idx < hexStart) {
+            // `program: `, the base58 id or `, `: InvalidSolanaLog or
+            // SolanaLogProgramMismatch depending on which byte moved.
+            vm.expectRevert();
+            polymerProver.validateSolana(proof);
+        } else if (!_isHexChar(b)) {
+            vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+            polymerProver.validateSolana(proof);
+        } else {
+            _assertMutatedPayloadOutcome(proof, intentHash, idx - hexStart, b);
+        }
+
+        assertEq(polymerProver.provenIntents(controlHash).claimant, claimant);
+        assertEq(
+            polymerProver.provenIntents(controlHash).destination,
+            SOLANA_CHAIN_ID
+        );
+    }
+
+    /// @dev Model for a hex-region flip: patch nibble `o` of the valid payload with the
+    ///      hex char `b`, read the fields back, and assert in the contract's own order
+    ///      (destination is checked before source).
+    function _assertMutatedPayloadOutcome(
+        bytes memory proof,
+        bytes32 intentHash,
+        uint256 o,
+        uint8 b
+    ) internal {
+        bytes memory payload = abi.encodePacked(
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+        uint8 cur = uint8(payload[o / 2]);
+        payload[o / 2] = o % 2 == 0
+            ? bytes1((_nibbleOf(b) << 4) | (cur & 0x0f))
+            : bytes1((cur & 0xf0) | _nibbleOf(b));
+        uint64 source = uint64(bytes8(_word(payload, 0)));
+        uint64 destination = uint64(bytes8(_word(payload, 8)));
+        bytes32 mutHash = _word(payload, 16);
+        bytes32 mutClaimant = _word(payload, 48);
+
+        if (destination != SOLANA_CHAIN_ID) {
+            vm.expectRevert(PolymerProver.InvalidDestinationChain.selector);
+            polymerProver.validateSolana(proof);
+        } else if (source != block.chainid) {
+            // the line returns false, so matched == 0
+            vm.expectRevert(PolymerProver.InvalidSourceChain.selector);
+            polymerProver.validateSolana(proof);
+        } else if (
+            uint256(mutClaimant) >> 160 != 0 ||
+            uint160(uint256(mutClaimant)) == 0
+        ) {
+            polymerProver.validateSolana(proof);
+            assertEq(polymerProver.provenIntents(mutHash).claimant, address(0));
+        } else {
+            address mutAddr = address(uint160(uint256(mutClaimant)));
+            _expectEmit();
+            emit IProver.IntentProven(mutHash, mutAddr, SOLANA_CHAIN_ID);
+            polymerProver.validateSolana(proof);
+            assertEq(polymerProver.provenIntents(mutHash).claimant, mutAddr);
             assertEq(
-                polymerProver.provenIntents(keccak256("sentinel")).claimant,
-                address(0)
-            );
-        } catch {
-            assertEq(
-                polymerProver.provenIntents(intentHash).claimant,
-                address(0)
+                polymerProver.provenIntents(mutHash).destination,
+                SOLANA_CHAIN_ID
             );
         }
+    }
+
+    /// @dev Reads 32 bytes of `data` at `offset`; the model's copy of _slice32
+    function _word(
+        bytes memory data,
+        uint256 offset
+    ) internal pure returns (bytes32 out) {
+        assembly {
+            out := mload(add(add(data, 0x20), offset))
+        }
+    }
+
+    function _isHexChar(uint8 c) internal pure returns (bool) {
+        return
+            (c >= 0x30 && c <= 0x39) ||
+            (c >= 0x61 && c <= 0x66) ||
+            (c >= 0x41 && c <= 0x46);
+    }
+
+    /// @dev Value of a hex char the caller has already checked with _isHexChar
+    function _nibbleOf(uint8 c) internal pure returns (uint8) {
+        if (c <= 0x39) return c - 0x30;
+        if (c >= 0x61) return c - 0x61 + 10;
+        return c - 0x41 + 10;
     }
 
     function testValidateSolanaBatch() public {
         bytes32 hashA = keccak256("a");
         bytes32 hashB = keccak256("b");
         string[] memory logsA = new string[](1);
-        logsA[0] = _solanaLog(
-            SOLANA_PROGRAM_ID,
-            uint64(block.chainid),
-            SOLANA_CHAIN_ID,
-            hashA,
-            bytes32(uint256(uint160(claimant)))
-        );
+        logsA[0] = _validLog(hashA);
         string[] memory logsB = new string[](1);
-        logsB[0] = _solanaLog(
-            SOLANA_PROGRAM_ID,
-            uint64(block.chainid),
-            SOLANA_CHAIN_ID,
-            hashB,
-            bytes32(uint256(uint160(claimant)))
-        );
-        crossL2ProverV2.setSolLogs(
-            SOLANA_POLYMER_CHAIN_ID,
-            SOLANA_PROGRAM_ID,
-            logsA
-        );
-        crossL2ProverV2.setSolLogs(
-            SOLANA_POLYMER_CHAIN_ID,
-            SOLANA_PROGRAM_ID,
-            logsB
-        );
+        logsB[0] = _validLog(hashB);
 
         bytes[] memory proofs = new bytes[](2);
-        proofs[0] = abi.encodePacked(uint256(0));
-        proofs[1] = abi.encodePacked(uint256(1));
+        proofs[0] = _setSolanaProof(logsA);
+        proofs[1] = _setSolanaProof(logsB);
         polymerProver.validateSolanaBatch(proofs);
 
         assertEq(polymerProver.provenIntents(hashA).claimant, claimant);
         assertEq(polymerProver.provenIntents(hashB).claimant, claimant);
+    }
+
+    /// @dev The batch loop has no per-element try/catch: one malformed proof reverts every
+    ///      element, including intents earlier proofs already recorded. All-or-nothing is a
+    ///      decision, not an accident — a relayer must resubmit the batch without the bad proof.
+    function testValidateSolanaBatchOneBadProofRevertsAll() public {
+        string[] memory logsA = new string[](1);
+        logsA[0] = _validLog(keccak256("a"));
+        string[] memory logsB = new string[](1);
+        logsB[0] = "program: garbage";
+
+        bytes[] memory proofs = new bytes[](2);
+        proofs[0] = _setSolanaProof(logsA);
+        proofs[1] = _setSolanaProof(logsB);
+
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolanaBatch(proofs);
+        assertEq(
+            polymerProver.provenIntents(keccak256("a")).claimant,
+            address(0)
+        );
     }
 
     // ------------- SOLANA LOG PROOF REJECTION -------------
@@ -1397,14 +1507,14 @@ contract PolymerProverTest is BaseTest {
     function testValidateSolanaRevertsOnWrongPolymerChainId() public {
         string[] memory logs = new string[](1);
         logs[0] = _validLog(keccak256("x"));
-        crossL2ProverV2.setSolLogs(
+        bytes memory proof = _setSolanaProofFor(
             SOLANA_POLYMER_CHAIN_ID + 1,
             SOLANA_PROGRAM_ID,
             logs
         );
 
         vm.expectRevert(PolymerProver.InvalidDestinationChain.selector);
-        polymerProver.validateSolana(abi.encodePacked(uint256(0)));
+        polymerProver.validateSolana(proof);
     }
 
     function testValidateSolanaRevertsOnNonWhitelistedProgram() public {
@@ -1417,7 +1527,11 @@ contract PolymerProverTest is BaseTest {
             keccak256("x"),
             bytes32(uint256(uint160(claimant)))
         );
-        crossL2ProverV2.setSolLogs(SOLANA_POLYMER_CHAIN_ID, other, logs);
+        bytes memory proof = _setSolanaProofFor(
+            SOLANA_POLYMER_CHAIN_ID,
+            other,
+            logs
+        );
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1425,7 +1539,7 @@ contract PolymerProverTest is BaseTest {
                 other
             )
         );
-        polymerProver.validateSolana(abi.encodePacked(uint256(0)));
+        polymerProver.validateSolana(proof);
     }
 
     function testValidateSolanaRevertsOnNoLogs() public {
@@ -1454,7 +1568,10 @@ contract PolymerProverTest is BaseTest {
 
     function testValidateSolanaRevertsOnNonCanonicalProgramId() public {
         // Same numeric value as the canonical id, but with base58 leading-zero padding:
-        // the comparison is against the canonical string, not the decoded number.
+        // the comparison is against the canonical string, not the decoded number. The
+        // prefixed `1` is non-canonical only because SOLANA_PROGRAM_ID's first byte is
+        // nonzero; for a key that starts with 0x00 a leading `1` IS canonical, see
+        // testBase58EncodesLeadingZeroBytes and testValidateSolanaAcceptsLeadingZeroProgramId.
         string[] memory logs = new string[](1);
         logs[0] = _solanaLogWithProgramSegment(
             string.concat(
@@ -1686,18 +1803,73 @@ contract PolymerProverTest is BaseTest {
         );
     }
 
+    /// @dev Pins Base58.encode's leading-zero-byte branch (one `1` per 0x00 lead byte),
+    ///      which validateSolana's canonical-string comparison depends on and which no
+    ///      other program ID in this suite reaches. Literals are from an off-chain
+    ///      reference base58, not from Base58.sol, so a mis-vendoring of that assembly
+    ///      fails here rather than rejecting every proof from such a program.
+    function testBase58EncodesLeadingZeroBytes() public pure {
+        assertEq(
+            Base58.encode(abi.encodePacked(SOLANA_PROGRAM_ID_ONE_ZERO)),
+            "14bijitV5HcXvZTNHKpmiXWtC7s9b8JE8fDsCWTZNKco"
+        );
+        assertEq(
+            Base58.encode(abi.encodePacked(SOLANA_PROGRAM_ID_TWO_ZEROS)),
+            "11pHhwoZBwWoRpgWHqfvBKF2BDtEjAox5ucYK1nSTaf"
+        );
+        assertEq(
+            Base58.decodeWord("14bijitV5HcXvZTNHKpmiXWtC7s9b8JE8fDsCWTZNKco"),
+            SOLANA_PROGRAM_ID_ONE_ZERO
+        );
+        assertEq(
+            Base58.decodeWord("11pHhwoZBwWoRpgWHqfvBKF2BDtEjAox5ucYK1nSTaf"),
+            SOLANA_PROGRAM_ID_TWO_ZEROS
+        );
+    }
+
+    /// @dev End to end through expectedProgramStrHash for a program whose canonical
+    ///      base58 carries a leading `1`.
+    function testValidateSolanaAcceptsLeadingZeroProgramId() public {
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = SOLANA_PROGRAM_ID_ONE_ZERO;
+        PolymerProver p = new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            32 * 1024,
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_CHAIN_ID,
+            provers
+        );
+        bytes32 intentHash = keccak256("leading-zero-program");
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID_ONE_ZERO,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+        bytes memory proof = _setSolanaProofFor(
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_PROGRAM_ID_ONE_ZERO,
+            logs
+        );
+
+        p.validateSolana(proof);
+        assertEq(p.provenIntents(intentHash).claimant, claimant);
+        assertEq(p.provenIntents(intentHash).destination, SOLANA_CHAIN_ID);
+    }
+
     function testValidateSolanaAcceptsSvmGoldenLogLine() public {
         PolymerProver golden = _deployGoldenProver();
         vm.chainId(SVM_GOLDEN_SOURCE_CHAIN_ID);
 
         string[] memory logs = new string[](1);
         logs[0] = SVM_GOLDEN_LOG;
-        bytes memory proof = abi.encodePacked(
-            crossL2ProverV2.setSolLogs(
-                SOLANA_POLYMER_CHAIN_ID,
-                SVM_PROGRAM_KEY,
-                logs
-            )
+        bytes memory proof = _setSolanaProofFor(
+            SOLANA_POLYMER_CHAIN_ID,
+            SVM_PROGRAM_KEY,
+            logs
         );
 
         // Parses end to end (a foreign source or any malformed field would revert);
@@ -1730,12 +1902,10 @@ contract PolymerProverTest is BaseTest {
 
         string[] memory logs = new string[](1);
         logs[0] = string(line);
-        bytes memory proof = abi.encodePacked(
-            crossL2ProverV2.setSolLogs(
-                SOLANA_POLYMER_CHAIN_ID,
-                SVM_PROGRAM_KEY,
-                logs
-            )
+        bytes memory proof = _setSolanaProofFor(
+            SOLANA_POLYMER_CHAIN_ID,
+            SVM_PROGRAM_KEY,
+            logs
         );
 
         _expectEmit();
