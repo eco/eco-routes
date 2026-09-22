@@ -8,6 +8,7 @@ import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol"
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Base58} from "../../contracts/libs/Base58.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 contract PolymerProverTest is BaseTest {
     PolymerProver internal polymerProver;
@@ -22,7 +23,29 @@ contract PolymerProverTest is BaseTest {
     /// Raw key of the whitelisted Solana polymer-prover program.
     bytes32 internal constant SOLANA_PROGRAM_ID =
         0xec0000000000000000000000000000000000000000000000000000000000ec00;
+    /// Mirrors PolymerProver.SOLANA_LOG_HEX_LENGTH; asserted in testInitializesSolanaConfig
     uint256 internal constant SOLANA_LOG_HEX_LENGTH = 160;
+
+    /// The exact line eco-routes-svm's polymer-prover emits, copied verbatim from
+    /// programs/polymer-prover/src/instructions/prove/testdata/prove_log_line_format.golden.
+    /// Do not regenerate locally: this pins the cross-repo wire format (the `Prove: `
+    /// prefix, `program: `, the `, ` separator, and the 8/8/32/32 field widths and order).
+    /// If the SVM golden changes, this literal and its counterpart must change together.
+    string internal constant SVM_GOLDEN_LOG =
+        "Prove: program: EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo, 000000000000210500000000536f6c4e11111111111111111111111111111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222";
+    /// Raw key of `EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo` (lib.rs `declare_id!`),
+    /// computed independently of Base58.sol so this also pins the vendored decoder.
+    bytes32 internal constant SVM_PROGRAM_KEY =
+        0xca5445780a23c1d4727275c6bf8058df776758b51fb5059eda89aaa673fd1934;
+    /// Intent hash field of the golden payload (offset 16, 32 bytes of 0x11).
+    bytes32 internal constant SVM_GOLDEN_INTENT_HASH =
+        0x1111111111111111111111111111111111111111111111111111111111111111;
+    /// Source chain in the golden payload (0x2105) and the eco-svm-std NON-mainnet
+    /// CHAIN_ID in its destination field (0x536f6c4e = 1399811150, Solana devnet).
+    /// Deliberately not SOLANA_CHAIN_ID (1399811149, mainnet): the golden was produced
+    /// without `--features mainnet`. Do not "fix" this to the mainnet constant.
+    uint64 internal constant SVM_GOLDEN_SOURCE_CHAIN_ID = 8453;
+    uint64 internal constant SVM_GOLDEN_DEST_CHAIN_ID = 0x536f6c4e;
 
     bytes32 constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(uint64,bytes)");
@@ -185,9 +208,23 @@ contract PolymerProverTest is BaseTest {
         assertEq(polymerProver.SOLANA_CHAIN_ID(), SOLANA_CHAIN_ID);
         assertTrue(polymerProver.isWhitelisted(SOLANA_PROGRAM_ID));
         assertEq(polymerProver.getWhitelistSize(), 2);
+
+        // 160 hex chars = eco-routes-svm polymer-prover PROVE_LOG_PAYLOAD_LEN (80 bytes):
+        // source u64 || destination u64 || intent hash || claimant. Shared ABI.
+        assertEq(polymerProver.SOLANA_LOG_HEX_LENGTH(), SOLANA_LOG_HEX_LENGTH);
+        // the test encoder must agree with the contract's expected payload length
+        bytes memory line = bytes(_validLog(keccak256("abi-pin")));
+        assertEq(
+            line.length,
+            bytes("program: ").length +
+                bytes(Base58.encode(abi.encodePacked(SOLANA_PROGRAM_ID)))
+                    .length +
+                2 +
+                SOLANA_LOG_HEX_LENGTH
+        );
     }
 
-    function testConstructorRejectsZeroSolanaChainId() public {
+    function testConstructorRejectsZeroSolanaEcoChainId() public {
         bytes32[] memory provers = new bytes32[](0);
         vm.expectRevert(PolymerProver.InvalidSolanaChainConfig.selector);
         new PolymerProver(
@@ -196,6 +233,19 @@ contract PolymerProverTest is BaseTest {
             32 * 1024,
             SOLANA_POLYMER_CHAIN_ID,
             0,
+            provers
+        );
+    }
+
+    function testConstructorRejectsZeroSolanaPolymerChainId() public {
+        bytes32[] memory provers = new bytes32[](0);
+        vm.expectRevert(PolymerProver.InvalidSolanaChainConfig.selector);
+        new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            32 * 1024,
+            0,
+            SOLANA_CHAIN_ID,
             provers
         );
     }
@@ -465,6 +515,46 @@ contract PolymerProverTest is BaseTest {
         );
         assertEq(proofData.claimant, claimant);
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
+    }
+
+    /// @dev processIntent is shared with validateSolana; a zero claimant is the
+    ///      "unproven" sentinel and must never be recorded or announced (BaseProver parity)
+    function testValidateSkipsZeroClaimant() public {
+        bytes32 hashZero = keccak256("zero-claimant");
+        bytes32 hashKept = keccak256("kept-claimant");
+        bytes32[] memory intentHashes = new bytes32[](2);
+        bytes32[] memory claimants = new bytes32[](2);
+        intentHashes[0] = hashZero;
+        claimants[0] = bytes32(0);
+        intentHashes[1] = hashKept;
+        claimants[1] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        vm.recordLogs();
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1); // only the kept pair emits IntentProven
+        assertEq(logs[0].topics[1], hashKept);
+
+        IProver.ProofData memory zero = polymerProver.provenIntents(hashZero);
+        assertEq(zero.claimant, address(0));
+        assertEq(zero.destination, 0); // slot untouched
+        assertEq(polymerProver.provenIntents(hashKept).claimant, claimant);
     }
 
     function testValidateEmitsAlreadyProvenForDuplicate() public {
@@ -910,16 +1000,53 @@ contract PolymerProverTest is BaseTest {
 
     // ------------- SOLANA LOG PROOF VALIDATION -------------
 
+    /// @notice Registers `logs` as a fresh Solana proof entry and returns its handle
     function _setSolanaProof(
         string[] memory logs
     ) internal returns (bytes memory proof) {
-        crossL2ProverV2.setSolLogs(
-            SOLANA_POLYMER_CHAIN_ID,
-            SOLANA_PROGRAM_ID,
-            logs
+        return
+            abi.encodePacked(
+                crossL2ProverV2.setSolLogs(
+                    SOLANA_POLYMER_CHAIN_ID,
+                    SOLANA_PROGRAM_ID,
+                    logs
+                )
+            );
+    }
+
+    /// @dev A line whose program segment is `programSegment`, payload otherwise valid
+    function _solanaLogWithProgramSegment(
+        string memory programSegment,
+        bytes32 intentHash
+    ) internal view returns (string memory) {
+        bytes memory payload = abi.encodePacked(
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(uint160(claimant)))
         );
-        // Sol entries index independently of the EVM ones; this is the first.
-        return abi.encodePacked(uint256(0));
+        return
+            string.concat(
+                "program: ",
+                programSegment,
+                ", ",
+                _hexNoPrefix(payload)
+            );
+    }
+
+    /// @dev Deploys a prover matching the environment the SVM golden was produced in
+    function _deployGoldenProver() internal returns (PolymerProver) {
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = SVM_PROGRAM_KEY;
+        return
+            new PolymerProver(
+                address(portal),
+                address(crossL2ProverV2),
+                32 * 1024,
+                SOLANA_POLYMER_CHAIN_ID,
+                SVM_GOLDEN_DEST_CHAIN_ID,
+                provers
+            );
     }
 
     function testValidateSolanaSingleLog() public {
@@ -971,23 +1098,68 @@ contract PolymerProverTest is BaseTest {
         }
     }
 
-    function testValidateSolanaToleratesUnstrippedPrefix() public {
-        bytes32 intentHash = _hashIntent(intent);
+    /// @dev The parser accepts every head shape Polymer might plausibly return, since its
+    ///      exact stripping is documented but unverified: bare, Polymer's `Prove: ` left
+    ///      in, the raw runtime line, and `Prove:` stripped without its trailing space.
+    function testValidateSolanaToleratesPrefixShapes() public {
+        string[4] memory prefixes = [
+            "",
+            "Prove: ",
+            "Program log: Prove: ",
+            " "
+        ];
+        for (uint256 i = 0; i < prefixes.length; i++) {
+            bytes32 intentHash = keccak256(abi.encode("prefix-shape", i));
+            string[] memory logs = new string[](1);
+            logs[0] = string.concat(prefixes[i], _validLog(intentHash));
+            bytes memory proof = _setSolanaProof(logs);
+
+            _expectEmit();
+            emit IProver.IntentProven(intentHash, claimant, SOLANA_CHAIN_ID);
+            polymerProver.validateSolana(proof);
+            assertEq(
+                polymerProver.provenIntents(intentHash).claimant,
+                claimant
+            );
+        }
+    }
+
+    function testValidateSolanaRevertsOnNearMissPrefix() public {
+        // The widened head must not swallow a near miss of Polymer's prefix.
         string[] memory logs = new string[](1);
         logs[0] = string.concat(
-            "Prove: ",
-            _solanaLog(
-                SOLANA_PROGRAM_ID,
-                uint64(block.chainid),
-                SOLANA_CHAIN_ID,
-                intentHash,
-                bytes32(uint256(uint160(claimant)))
-            )
+            "Program log: Proven: ",
+            _validLog(keccak256("x"))
         );
         bytes memory proof = _setSolanaProof(logs);
 
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
         polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaAcceptsUppercaseHex() public {
+        bytes32 intentHash = keccak256("upper");
+        bytes memory line = bytes(_validLog(intentHash));
+        // Upper-case only the hex payload; the base58 program ID is case-sensitive.
+        uint256 hexLen = polymerProver.SOLANA_LOG_HEX_LENGTH();
+        for (uint256 i = line.length - hexLen; i < line.length; i++) {
+            if (line[i] >= 0x61 && line[i] <= 0x66) {
+                line[i] = bytes1(uint8(line[i]) - 0x20);
+            }
+        }
+        string[] memory logs = new string[](1);
+        logs[0] = string(line);
+        bytes memory proof = _setSolanaProof(logs);
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, claimant, SOLANA_CHAIN_ID);
+        polymerProver.validateSolana(proof);
+
         assertEq(polymerProver.provenIntents(intentHash).claimant, claimant);
+        assertEq(
+            polymerProver.provenIntents(intentHash).destination,
+            SOLANA_CHAIN_ID
+        );
     }
 
     function testValidateSolanaEmitsAlreadyProvenForDuplicate() public {
@@ -1008,23 +1180,163 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validateSolana(proof);
     }
 
-    function testValidateSolanaSkipsNonEvmClaimant() public {
-        bytes32 intentHash = _hashIntent(intent);
+    function testValidateSolanaSkipsNonEvmClaimantAndContinues() public {
+        bytes32 hashSkipped = keccak256("skipped");
+        bytes32 hashKept = keccak256("kept");
+        string[] memory logs = new string[](2);
+        // non-EVM (32-byte) claimant: skipped, must not abort the remaining logs
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            hashSkipped,
+            bytes32(uint256(1) << 200)
+        );
+        logs[1] = _validLog(hashKept);
+        bytes memory proof = _setSolanaProof(logs);
+
+        _expectEmit();
+        emit IProver.IntentProven(hashKept, claimant, SOLANA_CHAIN_ID);
+        polymerProver.validateSolana(proof);
+
+        // skipped: no partial write (and therefore no IntentProven — processIntent
+        // writes and emits together)
+        assertEq(polymerProver.provenIntents(hashSkipped).claimant, address(0));
+        assertEq(polymerProver.provenIntents(hashSkipped).destination, 0);
+        // kept: the loop continued past the skip
+        assertEq(polymerProver.provenIntents(hashKept).claimant, claimant);
+        assertEq(
+            polymerProver.provenIntents(hashKept).destination,
+            SOLANA_CHAIN_ID
+        );
+    }
+
+    function testValidateSolanaSkipsZeroClaimant() public {
+        bytes32 intentHash = keccak256("zero");
         string[] memory logs = new string[](1);
         logs[0] = _solanaLog(
             SOLANA_PROGRAM_ID,
             uint64(block.chainid),
             SOLANA_CHAIN_ID,
             intentHash,
-            bytes32(uint256(1) << 200) // not a 160-bit address
+            bytes32(0)
         );
         bytes memory proof = _setSolanaProof(logs);
 
+        vm.recordLogs();
         polymerProver.validateSolana(proof);
+        assertEq(vm.getRecordedLogs().length, 0); // no IntentProven
+
+        IProver.ProofData memory pd = polymerProver.provenIntents(intentHash);
+        assertEq(pd.claimant, address(0));
+        assertEq(pd.destination, 0); // slot untouched — fails without the guard
+    }
+
+    function testValidateSolanaSkipsZeroClaimantAndContinues() public {
+        bytes32 hashZero = keccak256("zero");
+        bytes32 hashKept = keccak256("kept");
+        string[] memory logs = new string[](2);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            hashZero,
+            bytes32(0)
+        );
+        logs[1] = _validLog(hashKept);
+        bytes memory proof = _setSolanaProof(logs);
+
+        _expectEmit();
+        emit IProver.IntentProven(hashKept, claimant, SOLANA_CHAIN_ID);
+        polymerProver.validateSolana(proof);
+
+        assertEq(polymerProver.provenIntents(hashZero).claimant, address(0));
+        assertEq(polymerProver.provenIntents(hashZero).destination, 0);
+        assertEq(polymerProver.provenIntents(hashKept).claimant, claimant);
+    }
+
+    function testValidateSolanaSkipsForeignSourceLineAndRecordsOurs() public {
+        // One Solana tx can carry `Prove:` lines for several EVM source chains;
+        // a line for another chain is skipped, ours is still recorded.
+        string[] memory logs = new string[](2);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid) + 1,
+            SOLANA_CHAIN_ID,
+            keccak256("foreign"),
+            bytes32(uint256(uint160(claimant)))
+        );
+        logs[1] = _validLog(keccak256("ours"));
+        bytes memory proof = _setSolanaProof(logs);
+
+        _expectEmit();
+        emit IProver.IntentProven(keccak256("ours"), claimant, SOLANA_CHAIN_ID);
+        polymerProver.validateSolana(proof);
+
         assertEq(
-            polymerProver.provenIntents(intentHash).claimant,
+            polymerProver.provenIntents(keccak256("ours")).claimant,
+            claimant
+        );
+        assertEq(
+            polymerProver.provenIntents(keccak256("foreign")).claimant,
             address(0)
         );
+    }
+
+    /// @dev 24 = eco-routes-svm polymer-prover MAX_INTENTS_PER_PROVE, the most
+    ///      `Prove:` lines one Solana tx can emit untruncated. The EVM side has no
+    ///      per-proof cap, so this pins that the production batch size parses.
+    function testValidateSolanaAtSvmBatchCeiling() public {
+        uint256 n = 24;
+        string[] memory logs = new string[](n);
+        bytes32[] memory hashes = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) {
+            hashes[i] = keccak256(abi.encode("svm-ceiling", i));
+            logs[i] = _validLog(hashes[i]);
+        }
+        polymerProver.validateSolana(_setSolanaProof(logs));
+        for (uint256 i = 0; i < n; i++) {
+            assertEq(polymerProver.provenIntents(hashes[i]).claimant, claimant);
+            assertEq(
+                polymerProver.provenIntents(hashes[i]).destination,
+                SOLANA_CHAIN_ID
+            );
+        }
+    }
+
+    /// @dev Mutation fuzz over the hand-rolled parser: flip one byte of a valid line.
+    ///      Either the call reverts and nothing is recorded, or it parses and the only
+    ///      intent it may have recorded is this one. A flip inside the 40-char claimant
+    ///      address is the one mutation that legitimately records a different claimant.
+    function testFuzzValidateSolanaMutatedLog(uint256 idx, uint8 b) public {
+        bytes32 intentHash = keccak256("fuzz-line");
+        bytes memory line = bytes(_validLog(intentHash));
+        idx = bound(idx, 0, line.length - 1);
+        vm.assume(uint8(line[idx]) != b);
+        bool inClaimantAddress = idx >= line.length - 40;
+        line[idx] = bytes1(b);
+        string[] memory logs = new string[](1);
+        logs[0] = string(line);
+        bytes memory proof = _setSolanaProof(logs);
+
+        try polymerProver.validateSolana(proof) {
+            IProver.ProofData memory p = polymerProver.provenIntents(
+                intentHash
+            );
+            if (p.claimant != address(0)) {
+                if (!inClaimantAddress) assertEq(p.claimant, claimant);
+                assertEq(p.destination, SOLANA_CHAIN_ID);
+            }
+            assertEq(
+                polymerProver.provenIntents(keccak256("sentinel")).claimant,
+                address(0)
+            );
+        } catch {
+            assertEq(
+                polymerProver.provenIntents(intentHash).claimant,
+                address(0)
+            );
+        }
     }
 
     function testValidateSolanaBatch() public {
@@ -1140,11 +1452,70 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validateSolana(proof);
     }
 
+    function testValidateSolanaRevertsOnNonCanonicalProgramId() public {
+        // Same numeric value as the canonical id, but with base58 leading-zero padding:
+        // the comparison is against the canonical string, not the decoded number.
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLogWithProgramSegment(
+            string.concat(
+                "1",
+                Base58.encode(abi.encodePacked(SOLANA_PROGRAM_ID))
+            ),
+            keccak256("x")
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.SolanaLogProgramMismatch.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnNonBase58ProgramChars() public {
+        // `0`, `O`, `I`, `l` are outside the base58 alphabet; no library decode
+        // is involved, so this is the contract's own error, not Base58's.
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLogWithProgramSegment("0OIl", keccak256("x"));
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.SolanaLogProgramMismatch.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnOverlongProgramField() public {
+        // 50 base58 chars would overflow a 256-bit decode; the canonical-string
+        // comparison never decodes, so it fails closed with the declared error.
+        bytes memory big = new bytes(50);
+        for (uint256 i = 0; i < big.length; i++) {
+            big[i] = "z";
+        }
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLogWithProgramSegment(string(big), keccak256("x"));
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.SolanaLogProgramMismatch.selector);
+        polymerProver.validateSolana(proof);
+    }
+
     function testValidateSolanaRevertsOnMissingProgramPrefix() public {
         string[] memory logs = new string[](1);
         logs[0] = "hello world";
         bytes memory proof = _setSolanaProof(logs);
 
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnTruncatedLog() public {
+        // Shorter than both `Prove:` and `program: `, so the bounds guard in
+        // _startsWithAt is what rejects, not a byte compare.
+        string[] memory logs = new string[](1);
+
+        logs[0] = "prog";
+        bytes memory proof = _setSolanaProof(logs);
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+
+        logs[0] = "";
+        proof = _setSolanaProof(logs);
         vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
         polymerProver.validateSolana(proof);
     }
@@ -1170,6 +1541,28 @@ contract PolymerProverTest is BaseTest {
 
         vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
         polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnWrongSeparator() public {
+        // The byte after the comma must be a space. Same total length, so the
+        // length check still passes and the separator check is what reverts.
+        // It sits deterministically at length - hexLen - 1 because the length
+        // check pins `comma + 2 + hexLen == length`.
+        uint256 sep = bytes(_validLog(keccak256("x"))).length -
+            polymerProver.SOLANA_LOG_HEX_LENGTH() -
+            1;
+        bytes1[2] memory replacements = [bytes1(","), bytes1("0")];
+        for (uint256 i = 0; i < replacements.length; i++) {
+            bytes memory line = bytes(_validLog(keccak256("x")));
+            assertEq(line[sep], " ");
+            line[sep] = replacements[i];
+            string[] memory logs = new string[](1);
+            logs[0] = string(line);
+            bytes memory proof = _setSolanaProof(logs);
+
+            vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+            polymerProver.validateSolana(proof);
+        }
     }
 
     function testValidateSolanaRevertsOnNonHexPayload() public {
@@ -1227,9 +1620,9 @@ contract PolymerProverTest is BaseTest {
         );
     }
 
-    function testValidateSolanaProofIsChallengeable() public {
+    function testValidateSolanaProofSurvivesMatchingChallenge() public {
         // A Solana-recorded proof carries destination SOLANA_CHAIN_ID; challenging
-        // with a different destination deletes it, same as EVM-recorded proofs.
+        // with that same destination is a no-op and the proof is kept.
         bytes32 routeHash = keccak256("route");
         bytes32 rewardHash = keccak256("reward");
         bytes32 intentHash = keccak256(
@@ -1250,6 +1643,108 @@ contract PolymerProverTest is BaseTest {
         );
         // matching destination: kept
         assertEq(polymerProver.provenIntents(intentHash).claimant, claimant);
+    }
+
+    function testValidateSolanaProofIsChallengeable() public {
+        // A log may carry an intentHash committed to a destination other than Solana;
+        // challengeIntentProof is the safety mechanism that removes such a proof.
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        uint64 otherDestination = SOLANA_CHAIN_ID + 1;
+        bytes32 wrongHash = keccak256(
+            abi.encodePacked(otherDestination, routeHash, rewardHash)
+        );
+
+        string[] memory logs = new string[](1);
+        logs[0] = _validLog(wrongHash); // payload destination is still SOLANA_CHAIN_ID
+        polymerProver.validateSolana(_setSolanaProof(logs));
+        assertEq(
+            polymerProver.provenIntents(wrongHash).destination,
+            SOLANA_CHAIN_ID
+        );
+
+        _expectEmit();
+        emit IProver.IntentProofInvalidated(wrongHash);
+        polymerProver.challengeIntentProof(
+            otherDestination,
+            routeHash,
+            rewardHash
+        );
+        assertEq(polymerProver.provenIntents(wrongHash).claimant, address(0));
+    }
+
+    // ------------- SOLANA GOLDEN (cross-repo wire format) -------------
+
+    function testBase58DecodesSvmProgramId() public pure {
+        assertEq(
+            Base58.decodeWord("EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo"),
+            SVM_PROGRAM_KEY
+        );
+        assertEq(
+            Base58.encode(abi.encodePacked(SVM_PROGRAM_KEY)),
+            "EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo"
+        );
+    }
+
+    function testValidateSolanaAcceptsSvmGoldenLogLine() public {
+        PolymerProver golden = _deployGoldenProver();
+        vm.chainId(SVM_GOLDEN_SOURCE_CHAIN_ID);
+
+        string[] memory logs = new string[](1);
+        logs[0] = SVM_GOLDEN_LOG;
+        bytes memory proof = abi.encodePacked(
+            crossL2ProverV2.setSolLogs(
+                SOLANA_POLYMER_CHAIN_ID,
+                SVM_PROGRAM_KEY,
+                logs
+            )
+        );
+
+        // Parses end to end (a foreign source or any malformed field would revert);
+        // the non-EVM claimant (0x2222..22) is skipped, not recorded.
+        golden.validateSolana(proof);
+        assertEq(
+            golden.provenIntents(SVM_GOLDEN_INTENT_HASH).claimant,
+            address(0)
+        );
+        assertEq(golden.provenIntents(SVM_GOLDEN_INTENT_HASH).destination, 0);
+    }
+
+    /// Same pinned line with ONLY the trailing 64-char claimant field swapped for an
+    /// EVM-shaped one. Everything before it is the golden, byte for byte. This is the
+    /// vector that catches a field-order swap: it asserts the hash comes from offset
+    /// 16 and the claimant from offset 48.
+    function testValidateSolanaGoldenLineWithEvmClaimantEmitsIntentProven()
+        public
+    {
+        PolymerProver golden = _deployGoldenProver();
+        vm.chainId(SVM_GOLDEN_SOURCE_CHAIN_ID);
+
+        bytes memory line = bytes(SVM_GOLDEN_LOG);
+        bytes memory claimantHex = bytes(
+            _hexNoPrefix(abi.encodePacked(bytes32(uint256(uint160(claimant)))))
+        );
+        for (uint256 i = 0; i < 64; i++) {
+            line[line.length - 64 + i] = claimantHex[i];
+        }
+
+        string[] memory logs = new string[](1);
+        logs[0] = string(line);
+        bytes memory proof = abi.encodePacked(
+            crossL2ProverV2.setSolLogs(
+                SOLANA_POLYMER_CHAIN_ID,
+                SVM_PROGRAM_KEY,
+                logs
+            )
+        );
+
+        _expectEmit();
+        emit IProver.IntentProven(
+            SVM_GOLDEN_INTENT_HASH,
+            claimant,
+            SVM_GOLDEN_DEST_CHAIN_ID
+        );
+        golden.validateSolana(proof);
     }
 }
 

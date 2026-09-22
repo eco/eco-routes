@@ -32,7 +32,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /// @notice Length of the hex payload in a Solana `Prove:` log: 80 bytes = 160 chars
     uint256 public constant SOLANA_LOG_HEX_LENGTH = 160;
     bytes internal constant SOLANA_LOG_PROGRAM_PREFIX = "program: ";
-    bytes internal constant SOLANA_LOG_PROVE_PREFIX = "Prove: ";
+    /// @dev Polymer documents that it strips this from the lines it returns; tolerated if not
+    bytes internal constant SOLANA_LOG_PROVE_PREFIX = "Prove:";
+    /// @dev What the Solana runtime prepends to every `msg!` line in a transaction log
+    bytes internal constant SOLANA_LOG_RUNTIME_PREFIX = "Program log: ";
 
     // Events
     event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
@@ -198,7 +201,23 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      * @dev Each log line is `program: <base58 program id>, <160 hex chars>` where the hex is
      *      source chain ID (8) ‖ destination chain ID (8) ‖ intent hash (32) ‖ claimant (32).
      *      Polymer authenticates `programID` and `chainId`; the base58 id inside the line is
-     *      re-checked against `programID` as defense in depth against log misattribution.
+     *      compared byte-for-byte against the canonical base58 encoding of `programID` as
+     *      defense in depth against log misattribution. A program field that is not that
+     *      exact string (wrong id, non-base58 chars, over-long, non-canonical leading `1`s)
+     *      reverts SolanaLogProgramMismatch; every other malformed line reverts
+     *      InvalidSolanaLog. Both fail closed and abort the whole proof.
+     *
+     *      A Polymer Solana proof is scoped to a whole transaction while `source` is set per
+     *      `portal::prove` instruction, so one transaction can legitimately carry `Prove:`
+     *      lines for several EVM source chains. Lines whose source is another chain are
+     *      skipped rather than reverted, or the proof would be unusable on every chain in it.
+     *      At least one line must be for this chain, else InvalidSourceChain, so a proof
+     *      submitted to the wrong chain's prover still fails loudly instead of succeeding as
+     *      a no-op. Claimants that are not 160-bit EVM addresses, or are zero, are skipped.
+     *
+     *      Pinned against eco-routes-svm
+     *      programs/polymer-prover/src/instructions/prove/testdata/prove_log_line_format.golden
+     *      by testValidateSolanaAcceptsSvmGoldenLogLine.
      * @param proof Proof of a Solana transaction's logs from Polymer's prove api
      */
     function validateSolana(bytes calldata proof) public {
@@ -208,24 +227,55 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             string[] memory logMessages
         ) = CROSS_L2_PROVER_V2.validateSolLogs(proof);
 
-        if (chainId != SOLANA_POLYMER_CHAIN_ID) revert InvalidDestinationChain();
+        if (chainId != SOLANA_POLYMER_CHAIN_ID)
+            revert InvalidDestinationChain();
         if (!isWhitelisted(programID)) revert InvalidSolanaProgram(programID);
         if (logMessages.length == 0) revert EmptyProofData();
 
+        // canonical base58 of the authenticated program id, hashed once for the loop
+        bytes32 expectedProgramStrHash = keccak256(
+            bytes(Base58.encode(abi.encodePacked(programID)))
+        );
+
+        uint256 matched = 0;
         for (uint256 i = 0; i < logMessages.length; i++) {
-            _processSolanaLog(bytes(logMessages[i]), programID);
+            if (
+                _processSolanaLog(bytes(logMessages[i]), expectedProgramStrHash)
+            ) {
+                matched++;
+            }
         }
+        if (matched == 0) revert InvalidSourceChain();
     }
 
     /**
      * @notice Parses one proven Solana log line and records its intent
-     * @param log The log line, with or without Polymer's `Prove: ` prefix
-     * @param programID The authenticated emitting program from the proof
+     * @dev The head tolerates, in this order, the Solana runtime `Program log: ` prefix and
+     *      Polymer's `Prove:` prefix, each optional and each followed by any number of
+     *      spaces, before the required `program: `. Polymer documents that it strips
+     *      `Prove: ` from the lines it returns; that is unverified against the deployed
+     *      indexer, and the tolerance is confined to the head. The `, <hex>` tail is
+     *      byte-exact: exactly SOLANA_LOG_HEX_LENGTH hex chars and nothing after them.
+     * @param log The log line, with or without the Solana runtime `Program log: ` and/or
+     *        Polymer's `Prove:` prefix
+     * @param expectedProgramStrHash keccak256 of the canonical base58 encoding of the
+     *        authenticated emitting program
+     * @return ours True when the line is for this chain (recorded, or skipped only because
+     *         its claimant is not an EVM address); false when its source is another chain
      */
-    function _processSolanaLog(bytes memory log, bytes32 programID) internal {
-        uint256 cursor = 0;
+    function _processSolanaLog(
+        bytes memory log,
+        bytes32 expectedProgramStrHash
+    ) internal returns (bool ours) {
+        uint256 cursor = _skipSpaces(log, 0);
+        if (_startsWithAt(log, SOLANA_LOG_RUNTIME_PREFIX, cursor)) {
+            cursor = _skipSpaces(
+                log,
+                cursor + SOLANA_LOG_RUNTIME_PREFIX.length
+            );
+        }
         if (_startsWithAt(log, SOLANA_LOG_PROVE_PREFIX, cursor)) {
-            cursor += SOLANA_LOG_PROVE_PREFIX.length;
+            cursor = _skipSpaces(log, cursor + SOLANA_LOG_PROVE_PREFIX.length);
         }
         if (!_startsWithAt(log, SOLANA_LOG_PROGRAM_PREFIX, cursor)) {
             revert InvalidSolanaLog();
@@ -249,7 +299,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         for (uint256 i = 0; i < programStr.length; i++) {
             programStr[i] = log[cursor + i];
         }
-        if (Base58.decodeWord(string(programStr)) != programID) {
+        if (keccak256(programStr) != expectedProgramStrHash) {
             revert SolanaLogProgramMismatch();
         }
 
@@ -260,11 +310,30 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         bytes32 intentHash = _slice32(payload, 16);
         bytes32 claimantBytes = _slice32(payload, 48);
 
-        if (source != uint64(block.chainid)) revert InvalidSourceChain();
+        // Checked before the source filter: every line from this one program carries
+        // the same hard-coded CHAIN_ID, so a mismatch is a bug or misattribution on
+        // any line, whatever its source.
         if (destination != SOLANA_CHAIN_ID) revert InvalidDestinationChain();
-        if (claimantBytes >> 160 != 0) return;
+        // Full-width comparison like the EVM path: `source` widens to uint256, so a
+        // chain whose id exceeds 2^64-1 (which the 8-byte field cannot encode) fails
+        // closed instead of matching mod 2^64.
+        if (source != block.chainid) return false;
+        // Ours, but the claimant is not an EVM address. Must run before toAddress.
+        if (claimantBytes >> 160 != 0) return true;
 
         processIntent(intentHash, claimantBytes.toAddress(), destination);
+        return true;
+    }
+
+    /// @dev Index of the first non-space byte at or after `at`, or `log.length`
+    function _skipSpaces(
+        bytes memory log,
+        uint256 at
+    ) internal pure returns (uint256) {
+        while (at < log.length && log[at] == " ") {
+            at++;
+        }
+        return at;
     }
 
     /// @dev True when `haystack[at..]` begins with `needle`
@@ -291,8 +360,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     }
 
     /**
-     * @dev Decodes SOLANA_LOG_HEX_LENGTH lowercase or uppercase hex chars of `src` starting
-     *      at `start` into 80 bytes. Reverts InvalidSolanaLog on a non-hex char.
+     * @dev Decodes SOLANA_LOG_HEX_LENGTH hex chars of `src` starting at `start` into 80
+     *      bytes. The emitter (eco-routes-svm prove.rs) always produces lowercase, per the
+     *      spec's "160 lowercase hex chars"; uppercase is accepted defensively. Reverts
+     *      InvalidSolanaLog on a non-hex char.
      */
     function _hexDecode(
         bytes memory src,
@@ -320,6 +391,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
     /**
      * @notice Processes a single intent proof
+     * @dev Shared sink for `validate` and `validateSolana`. Both callers already skip
+     *      claimants that are not 160-bit EVM addresses; a zero claimant is skipped here.
      * @param intentHash Hash of the intent being proven
      * @param claimant Address that fulfilled the intent and should receive rewards
      * @param destination Destination chain ID for the intent
@@ -329,6 +402,12 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         address claimant,
         uint64 destination
     ) internal {
+        // Parity with BaseProver._processIntentProofs: a zero claimant is the
+        // "unproven" sentinel for this slot, so recording one would emit a phantom
+        // IntentProven over a slot that still reads as empty, and one that
+        // challengeIntentProof (which also gates on a non-zero claimant) cannot clear.
+        if (claimant == address(0)) return;
+
         ProofData storage proof = _provenIntents[intentHash];
         if (proof.claimant != address(0)) {
             emit IntentAlreadyProven(intentHash);

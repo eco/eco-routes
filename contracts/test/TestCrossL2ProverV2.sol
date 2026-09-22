@@ -52,14 +52,16 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
         data.push(abi.encode(_data));
     }
 
+    /// @return proofIndex Index of the entry just pushed; encode it as the proof handle
     function setSolLogs(
         uint32 _chainId,
         bytes32 _programID,
         string[] memory _logs
-    ) public {
+    ) public returns (uint256 proofIndex) {
         solChainId.push(_chainId);
         solProgramID.push(_programID);
         solLogs.push(_logs);
+        return solLogs.length - 1;
     }
 
     function validateEvent(
