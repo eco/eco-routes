@@ -48,6 +48,9 @@ contract Deploy is Script {
         address layerZeroEndpoint;
         address layerZeroDelegate;
         address polymerCrossL2ProverV2;
+        uint256 polymerMaxLogDataSize;
+        uint32 polymerSolanaChainId;
+        uint64 solanaChainId;
         string deployFilePath;
         bytes32[] hyperCrossVmProvers;
         bytes32[] metaCrossVmProvers;
@@ -90,6 +93,16 @@ contract Deploy is Script {
         ctx.polymerCrossL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_V2",
             address(0)
+        );
+        ctx.polymerMaxLogDataSize = vm.envOr(
+            "POLYMER_MAX_LOG_DATA_SIZE",
+            uint256(2048)
+        );
+        ctx.polymerSolanaChainId = uint32(
+            vm.envOr("POLYMER_SOLANA_CHAIN_ID", uint256(2))
+        );
+        ctx.solanaChainId = uint64(
+            vm.envOr("SOLANA_CHAIN_ID", uint256(1399811149))
         );
 
         // Load cross-VM provers from environment variables (optional)
@@ -487,6 +500,9 @@ contract Deploy is Script {
         ctx.polymerProverConstructorArgs = abi.encode(
             ctx.portal,
             ctx.polymerCrossL2ProverV2,
+            ctx.polymerMaxLogDataSize,
+            ctx.polymerSolanaChainId,
+            ctx.solanaChainId,
             provers
         );
 

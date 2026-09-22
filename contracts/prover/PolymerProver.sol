@@ -23,6 +23,12 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     uint256 public constant EXPECTED_TOPIC_LENGTH = 64; // 2 topics * 32 bytes each
     uint256 public constant MAX_LOG_DATA_SIZE_GUARD = 32 * 1024;
 
+    // Solana log proof constants
+    /// @notice Length of the hex payload in a Solana `Prove:` log: 80 bytes = 160 chars
+    uint256 public constant SOLANA_LOG_HEX_LENGTH = 160;
+    bytes internal constant SOLANA_LOG_PROGRAM_PREFIX = "program: ";
+    bytes internal constant SOLANA_LOG_PROVE_PREFIX = "Prove: ";
+
     // Events
     event IntentFulfilledFromSource(uint64 indexed source, bytes encodedProofs);
 
@@ -38,6 +44,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     error InvalidMaxLogDataSize();
     error EmptyProofData();
     error OnlyPortal();
+    error InvalidSolanaProgram(bytes32 programID);
+    error InvalidSolanaLog();
+    error SolanaLogProgramMismatch();
+    error InvalidSolanaChainConfig();
     // Refund of forwarded ETH to the caller failed. PolymerProver does not
     // extend MessageBridgeProver, so this error is declared locally to mirror
     // IMessageBridgeProver.RefundFailed. recipient is always the tx caller.
@@ -46,26 +56,40 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     // State variables
     ICrossL2ProverV2 public immutable CROSS_L2_PROVER_V2;
     uint256 public MAX_LOG_DATA_SIZE;
+    /// @notice Polymer's identifier for the Solana chain this prover pairs with
+    uint32 public immutable SOLANA_POLYMER_CHAIN_ID;
+    /// @notice Eco's chain ID for that Solana chain, as recorded in ProofData.destination
+    uint64 public immutable SOLANA_CHAIN_ID;
 
     /**
      * @notice Initializes the PolymerProver contract
      * @param _portal Address of the Portal contract
      * @param _crossL2ProverV2 Address of the CrossL2ProverV2 contract
      * @param _maxLogDataSize Maximum allowed size for encodedProofs in IntentFulfilledFromSource event data
+     * @param _solanaPolymerChainId Polymer's chain identifier for Solana (documented as 2)
+     * @param _solanaChainId Eco's chain ID for Solana (1399811149 mainnet, 1399811150 devnet)
      * @param _proverAddresses Array of whitelisted prover addresses as bytes32
+     *        (EVM prover addresses and the raw 32-byte Solana program ID)
      */
     constructor(
         address _portal,
         address _crossL2ProverV2,
         uint256 _maxLogDataSize,
+        uint32 _solanaPolymerChainId,
+        uint64 _solanaChainId,
         bytes32[] memory _proverAddresses
     ) BaseProver(_portal) Whitelist(_proverAddresses) {
         if (_crossL2ProverV2 == address(0)) revert ZeroAddress();
         if (_maxLogDataSize == 0 || _maxLogDataSize > MAX_LOG_DATA_SIZE_GUARD) {
             revert InvalidMaxLogDataSize();
         }
+        if (_solanaPolymerChainId == 0 || _solanaChainId == 0) {
+            revert InvalidSolanaChainConfig();
+        }
         MAX_LOG_DATA_SIZE = _maxLogDataSize;
         CROSS_L2_PROVER_V2 = ICrossL2ProverV2(_crossL2ProverV2);
+        SOLANA_POLYMER_CHAIN_ID = _solanaPolymerChainId;
+        SOLANA_CHAIN_ID = _solanaChainId;
     }
 
     // ------------- LOG EVENT PROOF VALIDATION -------------

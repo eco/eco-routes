@@ -7,6 +7,7 @@ import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Base58} from "../../contracts/libs/Base58.sol";
 
 contract PolymerProverTest is BaseTest {
     PolymerProver internal polymerProver;
@@ -15,6 +16,13 @@ contract PolymerProverTest is BaseTest {
 
     uint32 constant OPTIMISM_CHAIN_ID = 10;
     uint32 constant ARBITRUM_CHAIN_ID = 42161;
+
+    uint32 internal constant SOLANA_POLYMER_CHAIN_ID = 2;
+    uint64 internal constant SOLANA_CHAIN_ID = 1399811149;
+    /// Raw key of the whitelisted Solana polymer-prover program.
+    bytes32 internal constant SOLANA_PROGRAM_ID =
+        0xec0000000000000000000000000000000000000000000000000000000000ec00;
+    uint256 internal constant SOLANA_LOG_HEX_LENGTH = 160;
 
     bytes32 constant PROOF_SELECTOR =
         keccak256("IntentFulfilledFromSource(uint64,bytes)");
@@ -82,6 +90,41 @@ contract PolymerProverTest is BaseTest {
         }
     }
 
+    /// @notice Hex-encodes `data` without the `0x` prefix that vm.toString adds
+    function _hexNoPrefix(
+        bytes memory data
+    ) internal pure returns (string memory) {
+        bytes memory hexWithPrefix = bytes(vm.toString(data));
+        bytes memory out = new bytes(hexWithPrefix.length - 2);
+        for (uint256 i = 0; i < out.length; i++) {
+            out[i] = hexWithPrefix[i + 2];
+        }
+        return string(out);
+    }
+
+    /// @notice The line Polymer returns for one Solana `Prove:` log (prefix already stripped)
+    function _solanaLog(
+        bytes32 programId,
+        uint64 source,
+        uint64 destination,
+        bytes32 intentHash,
+        bytes32 claimantBytes
+    ) internal pure returns (string memory) {
+        bytes memory payload = abi.encodePacked(
+            source,
+            destination,
+            intentHash,
+            claimantBytes
+        );
+        return
+            string.concat(
+                "program: ",
+                Base58.encode(abi.encodePacked(programId)),
+                ", ",
+                _hexNoPrefix(payload)
+            );
+    }
+
     function setUp() public override {
         super.setUp();
 
@@ -95,15 +138,20 @@ contract PolymerProverTest is BaseTest {
         // Create mock destination prover address
         destinationProver = makeAddr("destinationProver");
 
-        // Create whitelist array for constructor (address only)
-        bytes32[] memory provers = new bytes32[](1);
+        // Create whitelist array for constructor: the EVM destination prover
+        // plus the raw key of the Solana polymer-prover program
+        bytes32[] memory provers = new bytes32[](2);
         provers[0] = bytes32(uint256(uint160(destinationProver)));
+        provers[1] = SOLANA_PROGRAM_ID;
 
-        // Deploy PolymerProver with portal, crossL2ProverV2, maxLogDataSize, and whitelist
+        // Deploy PolymerProver with portal, crossL2ProverV2, maxLogDataSize,
+        // Solana chain configuration, and whitelist
         polymerProver = new PolymerProver(
             address(portal),
             address(crossL2ProverV2),
             32 * 1024, // maxLogDataSize
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_CHAIN_ID,
             provers
         );
 
@@ -126,7 +174,30 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint160(destinationProver)))
             )
         );
-        assertEq(polymerProver.getWhitelistSize(), 1);
+        assertEq(polymerProver.getWhitelistSize(), 2);
+    }
+
+    function testInitializesSolanaConfig() public view {
+        assertEq(
+            polymerProver.SOLANA_POLYMER_CHAIN_ID(),
+            SOLANA_POLYMER_CHAIN_ID
+        );
+        assertEq(polymerProver.SOLANA_CHAIN_ID(), SOLANA_CHAIN_ID);
+        assertTrue(polymerProver.isWhitelisted(SOLANA_PROGRAM_ID));
+        assertEq(polymerProver.getWhitelistSize(), 2);
+    }
+
+    function testConstructorRejectsZeroSolanaChainId() public {
+        bytes32[] memory provers = new bytes32[](0);
+        vm.expectRevert(PolymerProver.InvalidSolanaChainConfig.selector);
+        new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            32 * 1024,
+            SOLANA_POLYMER_CHAIN_ID,
+            0,
+            provers
+        );
     }
 
     function testImplementsIProverInterface() public view {
@@ -824,6 +895,8 @@ contract PolymerProverTest is BaseTest {
             address(portal),
             address(crossL2ProverV2),
             32 * 1024, // maxLogDataSize
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_CHAIN_ID,
             emptyProvers
         );
 
