@@ -846,6 +846,60 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validate(proof);
     }
 
+    function testValidateRevertsOnTruncatedProofData() public {
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        // 7 bytes: shorter than the 8-byte destination header. Must revert with the
+        // declared error, not underflow to Panic(0x11) in the `% 64` shape check.
+        bytes memory truncated = hex"00000000000000";
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            truncated
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+        polymerProver.validate(proof);
+    }
+
+    function testValidateRevertsOnZeroPairProofData() public {
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        // Exactly the 8-byte big-endian destination and no (hash, claimant) pairs.
+        // Passes the shape check but is a malformed proof, not a successful no-op,
+        // mirroring validateSolana's empty-logs check and the SVM validate.
+        bytes32[] memory noHashes = new bytes32[](0);
+        bytes32[] memory noClaimants = new bytes32[](0);
+        bytes memory destinationOnly = encodeProofsWithChainId(
+            noHashes,
+            noClaimants,
+            OPTIMISM_CHAIN_ID
+        );
+        assertEq(destinationOnly.length, 8);
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            destinationOnly
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.EmptyProofData.selector);
+        polymerProver.validate(proof);
+    }
+
     function testValidateRevertsOnInvalidEventSignature() public {
         bytes32 wrongSignature = keccak256("WrongSignature(uint64,bytes)");
         bytes32[] memory intentHashes = new bytes32[](1);

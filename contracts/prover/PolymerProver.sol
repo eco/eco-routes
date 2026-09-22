@@ -104,6 +104,9 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
     /**
      * @notice Validates multiple proofs in a batch
+     * @dev Atomic: any proof that reverts discards the whole batch; there is no
+     *      per-element isolation. A destination-only (zero-pair) element reverts
+     *      EmptyProofData and so aborts the batch. An empty array is a no-op.
      * @param proofs Array of proof data to validate
      */
     function validateBatch(bytes[] calldata proofs) external {
@@ -139,7 +142,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         // The data parameter contains ABI-encoded bytes from the event
         bytes memory decodedData = abi.decode(data, (bytes));
 
-        if ((decodedData.length - 8) % 64 != 0) {
+        // Fold the length floor into the existing shape check: a payload shorter than the
+        // 8-byte destination header would otherwise underflow to Panic(0x11) instead of the
+        // declared error. Mirrors ProofData::from_bytes in eco-svm-std, which maps both
+        // shape violations to one error.
+        if (decodedData.length < 8 || (decodedData.length - 8) % 64 != 0) {
             revert ArrayLengthMismatch();
         }
 
@@ -164,6 +171,9 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             revert InvalidDestinationChain();
 
         uint256 numPairs = (decodedData.length - 8) / 64;
+        // Parity with validateSolana and the SVM validate: a destination-only payload is a
+        // malformed proof, not a successful no-op.
+        if (numPairs == 0) revert EmptyProofData();
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = 8 + i * 64;
 
