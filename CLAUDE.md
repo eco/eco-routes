@@ -28,6 +28,7 @@ Instead: stop, tell the human in plain language that this is a security fix and 
 - `yarn format` - Format all code (ESLint + Prettier + Solhint)
 - `yarn lint` - Same as format
 - `yarn format:solhint` - Solidity linting specifically
+- `yarn format` / `yarn lint` / `yarn format:solhint` run `solhint --fix` over all of `contracts/**` and will silently rename contracts in `contracts/deposit/` (e.g. `DepositAddress_CCTPMint_Arc` -> `DepositAddressCCTPMintArc`) without touching filenames or call sites. Use check-only: `npx solhint contracts/prover/PolymerProver.sol` and `npx prettier --check <files>` (or `npx prettier --write <touched files only>`).
 
 ### Development
 
@@ -187,6 +188,9 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `LAYERZERO_ENDPOINT` - LayerZero endpoint address
 - `LAYERZERO_DELEGATE` - LayerZero delegate (optional; defaults to deployer)
 - `POLYMER_CROSS_L2_PROVER_V2` - Polymer CrossL2ProverV2 address
+- `POLYMER_MAX_LOG_DATA_SIZE` - max `encodedProofs` size in bytes accepted by `PolymerProver.prove` (optional; defaults to `2048`). Immutable at deploy time; the constructor rejects `0` and anything above `MAX_LOG_DATA_SIZE_GUARD` (32 KiB).
+- `POLYMER_SOLANA_CHAIN_ID` - Polymer's own chain identifier for Solana, stored as `SOLANA_POLYMER_CHAIN_ID` and used to gate which emitting chain's logs are treated as Solana (documented as `2`; confirm with Polymer per environment). **Required when deploying PolymerProver**, no default. Distinct from `SOLANA_CHAIN_ID`. Immutable, and the PolymerProver CREATE3 salt does not mix it in, so a wrong value is permanent at that address.
+- `SOLANA_CHAIN_ID` - Eco's chain ID for Solana, checked against each Solana proof's `destination` and recorded in `ProofData.destination` (`1399811149` mainnet, `1399811150` devnet). **Required when deploying PolymerProver**, no default. Immutable; a wrong value can only be corrected by redeploying `PolymerProver` at a new salt.
 - `CCIP_ROUTER` - Chainlink CCIP router address
 - Per-bridge cross-VM prover lists (comma-separated `bytes32` addresses): `HYPER_CROSS_VM_PROVERS`, `META_CROSS_VM_PROVERS`, `LAYERZERO_CROSS_VM_PROVERS`, `POLYMER_CROSS_VM_PROVERS`, `CCIP_CROSS_VM_PROVERS`
 - Per-bridge origin domain config (comma-separated `domain:chainId` pairs, e.g. `100:10,200:8453`; unset/empty parses to an empty array): `HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`, `CCIP_DOMAIN_CONFIG`. `HyperProver`/`MetaProver` resolvers fall back to `domain == chainId`, so `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG` are exceptions-only and may be left empty. `LayerZeroProver`/`CCIPProver` use a strict domain->chainId map with no fallback, so `LAYERZERO_DOMAIN_CONFIG`/`CCIP_DOMAIN_CONFIG` must enumerate every origin chain accepted.
