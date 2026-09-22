@@ -46,6 +46,24 @@ interface ICrossL2ProverV2 {
         );
 
     /**
+     * @notice Validates a proof of Solana program logs from Polymer's prove api.
+     * @param proof The proof bytes returned by the prove api for a Solana transaction.
+     * @return chainId Polymer's identifier for the Solana chain the logs came from
+     * @return programID The Solana program (raw 32-byte key) that emitted the logs
+     * @return logMessages The proven `Prove:`-prefixed log lines, prefix removed
+     */
+    function validateSolLogs(
+        bytes calldata proof
+    )
+        external
+        view
+        returns (
+            uint32 chainId,
+            bytes32 programID,
+            string[] memory logMessages
+        );
+
+    /**
      * Return srcChain, Block Number, Receipt Index, and Local Index for a requested proof
      */
     function inspectLogIdentifier(

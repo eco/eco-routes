@@ -8,6 +8,10 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
     bytes[] public topics;
     bytes[] public data;
 
+    uint32[] public solChainId;
+    bytes32[] public solProgramID;
+    string[][] internal solLogs;
+
     constructor(
         uint32 _chainId,
         address _emittingContract,
@@ -48,6 +52,16 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
         data.push(abi.encode(_data));
     }
 
+    function setSolLogs(
+        uint32 _chainId,
+        bytes32 _programID,
+        string[] memory _logs
+    ) public {
+        solChainId.push(_chainId);
+        solProgramID.push(_programID);
+        solLogs.push(_logs);
+    }
+
     function validateEvent(
         bytes calldata proof
     ) public view returns (uint32, address, bytes memory, bytes memory) {
@@ -57,6 +71,17 @@ contract TestCrossL2ProverV2 is ICrossL2ProverV2 {
             emittingContract[proofIndex],
             topics[proofIndex],
             data[proofIndex]
+        );
+    }
+
+    function validateSolLogs(
+        bytes calldata proof
+    ) public view returns (uint32, bytes32, string[] memory) {
+        uint256 proofIndex = uint256(bytes32(proof));
+        return (
+            solChainId[proofIndex],
+            solProgramID[proofIndex],
+            solLogs[proofIndex]
         );
     }
 
