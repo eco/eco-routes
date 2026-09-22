@@ -105,8 +105,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /**
      * @notice Validates multiple proofs in a batch
      * @dev Atomic: any proof that reverts discards the whole batch; there is no
-     *      per-element isolation. A destination-only (zero-pair) element reverts
-     *      EmptyProofData and so aborts the batch. An empty array is a no-op.
+     *      per-element isolation, so one malformed element (bad emitter, topics,
+     *      selector, chain ids or payload shape) discards every other proof in the
+     *      array. A destination-only (zero-pair) element is a well-formed no-op and
+     *      cannot poison a batch: Inbox.prove emits one for an empty intentHashes
+     *      array, permissionlessly. An empty array is a no-op.
      * @param proofs Array of proof data to validate
      */
     function validateBatch(bytes[] calldata proofs) external {
@@ -151,7 +154,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         }
 
         bytes32 eventSignature;
-        uint64 eventSourceChainId;
+        bytes32 eventSourceChainWord; // full word: an indexed uint64 must be zero-padded
         uint64 proofDataChainId;
 
         assembly {
@@ -159,21 +162,29 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             let dataPtr := add(decodedData, 32)
 
             eventSignature := mload(topicsPtr)
-            eventSourceChainId := mload(add(topicsPtr, 32))
+            eventSourceChainWord := mload(add(topicsPtr, 32))
             proofDataChainId := shr(192, mload(dataPtr)) // Extract first 8 bytes (64 bits) from the 32-byte word
         }
 
         if (eventSignature != PROOF_SELECTOR) revert InvalidEventSignature();
-        if (eventSourceChainId != block.chainid) revert InvalidSourceChain();
+        // Compare the whole topic word: solc does not clean the high bits of a uint64
+        // assigned from `mload` in assembly, so narrowing first would silently accept
+        // `0xffff…ffff_<chainid>`. block.chainid < 2^64, so the wide compare is exactly
+        // uint64_word + `source == CHAIN_ID` in eco-svm-std's event::parse_source, and
+        // reports the same InvalidSourceChain for both the wide word and the wrong chain.
+        if (uint256(eventSourceChainWord) != block.chainid)
+            revert InvalidSourceChain();
 
         // Verify the chain ID from proof data matches the destination chain from validateEvent
         if (proofDataChainId != uint64(destinationChainId))
             revert InvalidDestinationChain();
 
+        // A destination-only payload (numPairs == 0) is a no-op, as in BaseProver.
+        // Inbox.prove emits one for an empty intentHashes array and anyone can call
+        // it, so rejecting it here would let a free destination-chain transaction
+        // poison an atomic validateBatch. The SVM validate rejects the same payload
+        // (EmptyProofData) because its emitter, portal::prove_intent, never produces it.
         uint256 numPairs = (decodedData.length - 8) / 64;
-        // Parity with validateSolana and the SVM validate: a destination-only payload is a
-        // malformed proof, not a successful no-op.
-        if (numPairs == 0) revert EmptyProofData();
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = 8 + i * 64;
 
@@ -414,7 +425,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /**
      * @notice Processes a single intent proof
      * @dev Shared sink for `validate` and `validateSolana`. Both callers already skip
-     *      claimants that are not 160-bit EVM addresses; a zero claimant is skipped here.
+     *      claimants that are not 160-bit EVM addresses, because AddressConverter.toAddress
+     *      reverts InvalidAddress on non-zero high bits and one such pair would otherwise
+     *      strand every co-batched intent; a zero claimant is skipped here for a different
+     *      reason (see below).
      * @param intentHash Hash of the intent being proven
      * @param claimant Address that fulfilled the intent and should receive rewards
      * @param destination Destination chain ID for the intent
@@ -470,6 +484,11 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         bytes calldata /* unused */
     ) external payable {
         if (msg.sender != PORTAL) revert OnlyPortal();
+        // Emit-side sanity bound only: encodedProofs is 8 + 64*n bytes for an n-intent
+        // Inbox.prove batch (the shipped default of 2048 admits 31). It is not the
+        // operational ceiling: a Solana source chain drains at most MAX_INTENTS_PER_PROVE
+        // (24, eco-routes-svm programs/polymer-prover/src/instructions/prove.rs) pairs
+        // per event in one transaction, with no resume mode.
         if (encodedProofs.length > MAX_LOG_DATA_SIZE) {
             revert MaxDataSizeExceeded();
         }

@@ -39,6 +39,11 @@ contract PolymerProverTest is BaseTest {
     /// Do not regenerate locally: this pins the cross-repo wire format (the `Prove: `
     /// prefix, `program: `, the `, ` separator, and the 8/8/32/32 field widths and order).
     /// If the SVM golden changes, this literal and its counterpart must change together.
+    /// Nothing mechanically enforces that pair yet (no CI job on either side reads the
+    /// other repo): regenerating the SVM golden without updating this literal leaves both
+    /// suites green. Tracked as a follow-up; until then this comment and the SVM spec's
+    /// release checklist are the whole contract. Same exposure for SVM_PROGRAM_KEY and
+    /// SVM_GOLDEN_DEST_CHAIN_ID below.
     string internal constant SVM_GOLDEN_LOG =
         "Prove: program: EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo, 000000000000210500000000536f6c4e11111111111111111111111111111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222";
     /// Raw key of `EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo` (lib.rs `declare_id!`),
@@ -314,6 +319,39 @@ contract PolymerProverTest is BaseTest {
         polymerProver.prove(creator, uint64(block.chainid), hex"", hex"");
     }
 
+    /// @dev Pins the MaxDataSizeExceeded guard at the boundary, derived rather than
+    ///      hard-coded: encodedProofs is 8 + 64*n bytes for an n-intent Inbox.prove
+    ///      batch, so a prover with maxLogDataSize = 8 + 64*2 takes a two-pair payload
+    ///      and rejects three. Stays correct if the deploy default (2048, 31 pairs) moves.
+    function testProveRevertsAboveMaxLogDataSize() public {
+        uint256 maxLogDataSize = 8 + 64 * 2;
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = bytes32(uint256(uint160(destinationProver)));
+        PolymerProver smallProver = new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            maxLogDataSize,
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_CHAIN_ID,
+            provers
+        );
+        assertEq(smallProver.MAX_LOG_DATA_SIZE(), maxLogDataSize);
+
+        bytes memory twoPairs = new bytes(8 + 64 * 2);
+        _expectEmit();
+        emit PolymerProver.IntentFulfilledFromSource(
+            uint64(block.chainid),
+            twoPairs
+        );
+        vm.prank(address(portal));
+        smallProver.prove(creator, uint64(block.chainid), twoPairs, hex"");
+
+        bytes memory threePairs = new bytes(8 + 64 * 3);
+        vm.prank(address(portal));
+        vm.expectRevert(PolymerProver.MaxDataSizeExceeded.selector);
+        smallProver.prove(creator, uint64(block.chainid), threePairs, hex"");
+    }
+
     function testProveEmitsMultipleIntents() public {
         bytes32[] memory intentHashes = new bytes32[](3);
         bytes32[] memory claimants = new bytes32[](3);
@@ -563,6 +601,54 @@ contract PolymerProverTest is BaseTest {
         assertEq(zero.claimant, address(0));
         assertEq(zero.destination, 0); // slot untouched
         assertEq(polymerProver.provenIntents(hashKept).claimant, claimant);
+    }
+
+    /// @dev Mirror of testValidateSolanaSkipsNonEvmClaimantAndContinues on the EVM path.
+    ///      A non-EVM (32-byte) claimant must be skipped before AddressConverter.toAddress,
+    ///      which reverts InvalidAddress on non-zero high bits — without the skip one such
+    ///      pair would revert the whole proof and strand every co-batched intent.
+    function testValidateSkipsNonEvmClaimantAndContinues() public {
+        bytes32 hashSkipped = keccak256("non-evm-claimant");
+        bytes32 hashKept = keccak256("kept-claimant");
+        bytes32[] memory intentHashes = new bytes32[](2);
+        bytes32[] memory claimants = new bytes32[](2);
+        intentHashes[0] = hashSkipped;
+        claimants[0] = bytes32(uint256(1) << 200);
+        intentHashes[1] = hashKept;
+        claimants[1] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        vm.recordLogs();
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1); // only the kept pair emits IntentProven
+        assertEq(logs[0].topics[1], hashKept);
+
+        IProver.ProofData memory skipped = polymerProver.provenIntents(
+            hashSkipped
+        );
+        assertEq(skipped.claimant, address(0));
+        assertEq(skipped.destination, 0); // slot untouched
+        assertEq(polymerProver.provenIntents(hashKept).claimant, claimant);
+        assertEq(
+            polymerProver.provenIntents(hashKept).destination,
+            OPTIMISM_CHAIN_ID
+        );
     }
 
     function testValidateEmitsAlreadyProvenForDuplicate() public {
@@ -869,15 +955,45 @@ contract PolymerProverTest is BaseTest {
         polymerProver.validate(proof);
     }
 
-    function testValidateRevertsOnZeroPairProofData() public {
+    /// @dev Sibling of testValidateRevertsOnTruncatedProofData: pins the other half of the
+    ///      length guard. A trailing partial (hash, claimant) pair is the realistic encoder
+    ///      or relayer corruption, and must hit the declared error, not decode garbage.
+    function testValidateRevertsOnPartialPairProofData() public {
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        // All >= 8 (so the floor passes) and not 8 + 64k: one stray byte, half a pair,
+        // one byte short of a pair, one byte long.
+        uint256[4] memory lengths = [uint256(9), 8 + 32, 8 + 63, 8 + 65];
+
+        for (uint256 i = 0; i < lengths.length; i++) {
+            // setAll pushes; the constructor used index 0, so this entry is i + 1
+            crossL2ProverV2.setAll(
+                OPTIMISM_CHAIN_ID,
+                destinationProver,
+                topics,
+                new bytes(lengths[i])
+            );
+
+            bytes memory proof = abi.encodePacked(uint256(i + 1));
+
+            vm.expectRevert(IProver.ArrayLengthMismatch.selector);
+            polymerProver.validate(proof);
+        }
+    }
+
+    function testValidateIsNoOpOnZeroPairProofData() public {
         bytes memory topics = abi.encodePacked(
             PROOF_SELECTOR,
             bytes32(uint256(uint64(block.chainid)))
         );
 
         // Exactly the 8-byte big-endian destination and no (hash, claimant) pairs.
-        // Passes the shape check but is a malformed proof, not a successful no-op,
-        // mirroring validateSolana's empty-logs check and the SVM validate.
+        // Passes the shape check and is a well-formed no-op, as on BaseProver: it
+        // records nothing and emits nothing, and must not revert (see the batch test
+        // below for why).
         bytes32[] memory noHashes = new bytes32[](0);
         bytes32[] memory noClaimants = new bytes32[](0);
         bytes memory destinationOnly = encodeProofsWithChainId(
@@ -896,8 +1012,82 @@ contract PolymerProverTest is BaseTest {
 
         bytes memory proof = abi.encodePacked(uint256(1));
 
-        vm.expectRevert(PolymerProver.EmptyProofData.selector);
+        vm.recordLogs();
         polymerProver.validate(proof);
+        assertEq(vm.getRecordedLogs().length, 0); // no IntentProven
+        assertEq(
+            polymerProver.provenIntents(_hashIntent(intent)).claimant,
+            address(0)
+        );
+    }
+
+    /// @dev Anyone can mint the destination-only event for one destination-chain
+    ///      transaction: Inbox.prove has no access control and no empty-array guard,
+    ///      so `intentHashes.length == 0` never reaches IntentNotFulfilled and emits
+    ///      IntentFulfilledFromSource with exactly the 8-byte chain-id header. Pinned
+    ///      so the "free, permissionless" property is stated, not rediscovered.
+    function testInboxProveEmitsDestinationOnlyEventForEmptyBatch() public {
+        address griefer = makeAddr("griefer");
+        bytes memory destinationOnly = abi.encodePacked(uint64(block.chainid));
+        assertEq(destinationOnly.length, 8);
+
+        _expectEmit();
+        emit PolymerProver.IntentFulfilledFromSource(
+            uint64(block.chainid),
+            destinationOnly
+        );
+        vm.prank(griefer);
+        portal.prove(
+            address(polymerProver),
+            uint64(block.chainid),
+            new bytes32[](0),
+            ""
+        );
+    }
+
+    /// @dev Regression for the attack shape that a zero-pair revert would enable: a
+    ///      whitelisted emitter's destination-only event (see the Inbox test above)
+    ///      co-batched with a genuine proof must not discard the genuine one. validateBatch
+    ///      is atomic, so the only defence is that the poison element does not revert.
+    function testValidateBatchSurvivesDestinationOnlyElement() public {
+        bytes32 intentHash = _hashIntent(intent);
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        // proof index 1: destination-only; index 2: a well-formed one-pair payload
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            abi.encodePacked(uint64(OPTIMISM_CHAIN_ID))
+        );
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID)
+        );
+
+        bytes[] memory proofs = new bytes[](2);
+        proofs[0] = abi.encodePacked(uint256(1));
+        proofs[1] = abi.encodePacked(uint256(2));
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, claimant, OPTIMISM_CHAIN_ID);
+        polymerProver.validateBatch(proofs);
+
+        IProver.ProofData memory proofData = polymerProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofData.claimant, claimant);
+        assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
     }
 
     function testValidateRevertsOnInvalidEventSignature() public {
@@ -928,6 +1118,111 @@ contract PolymerProverTest is BaseTest {
         bytes memory proof = abi.encodePacked(uint256(1));
 
         vm.expectRevert(PolymerProver.InvalidEventSignature.selector);
+        polymerProver.validate(proof);
+    }
+
+    /// @dev EVM twin of testValidateSolanaRevertsOnWrongSourceChain: a genuine, whitelisted
+    ///      event proven from another chain must not replay here. Payload header still
+    ///      matches setAll's chain id so the source gate is the only thing that can fire.
+    function testValidateRevertsOnWrongSourceChain() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid) + 1)) // event emitted for another chain
+        );
+
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.InvalidSourceChain.selector);
+        polymerProver.validate(proof);
+    }
+
+    /// @dev Mirrors eco-routes-svm's parse_rejects_source_wider_than_u64: an indexed
+    ///      uint64 is zero-padded by solc, so a topic word with dirty high bits is not a
+    ///      well-formed source. Narrowing to uint64 before comparing would accept
+    ///      `0xffff…ffff_<chainid>` as this chain; the full-word compare rejects it.
+    function testValidateRevertsOnSourceChainWiderThanUint64() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32((type(uint256).max << 64) | uint256(uint64(block.chainid)))
+        );
+
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            OPTIMISM_CHAIN_ID
+        );
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.InvalidSourceChain.selector);
+        polymerProver.validate(proof);
+        assertEq(
+            polymerProver.provenIntents(intentHashes[0]).claimant,
+            address(0)
+        );
+    }
+
+    /// @dev EVM twin of testValidateSolanaRevertsOnWrongDestinationChain: the 8-byte
+    ///      destination header must equal the chain Polymer authenticated, so a payload
+    ///      header cannot be swapped away from the attested destination.
+    function testValidateRevertsOnWrongDestinationChain() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = bytes32(uint256(uint160(claimant)));
+
+        bytes memory topics = abi.encodePacked(
+            PROOF_SELECTOR,
+            bytes32(uint256(uint64(block.chainid)))
+        );
+
+        // Header says Arbitrum; Polymer attributes the event to Optimism.
+        bytes memory data = encodeProofsWithChainId(
+            intentHashes,
+            claimants,
+            ARBITRUM_CHAIN_ID
+        );
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            topics,
+            data
+        );
+
+        bytes memory proof = abi.encodePacked(uint256(1));
+
+        vm.expectRevert(PolymerProver.InvalidDestinationChain.selector);
         polymerProver.validate(proof);
     }
 
@@ -1388,7 +1683,9 @@ contract PolymerProverTest is BaseTest {
 
     /// @dev Differential mutation test over the hand-rolled parser: flip one byte of a
     ///      valid line and assert the exact outcome a model of the wire format predicts.
-    ///      A flip in the head (`program: `, the canonical base58 id, `, `) must revert;
+    ///      A flip in the head reverts SolanaLogProgramMismatch when it only perturbs the
+    ///      base58 id, and InvalidSolanaLog when it breaks the `program: ` prefix or
+    ///      moves the `, ` anchor (a `,` written into the id, or the real `,`/` ` flipped);
     ///      a non-hex byte in the payload must revert InvalidSolanaLog; a hex byte is
     ///      patched into a model payload and the contract must then revert on the
     ///      mutated destination, skip a foreign source or a non-EVM/zero claimant, or
@@ -1406,15 +1703,29 @@ contract PolymerProverTest is BaseTest {
         idx = bound(idx, 0, line.length - 1);
         vm.assume(uint8(line[idx]) != b);
         uint256 hexStart = line.length - SOLANA_LOG_HEX_LENGTH;
+        uint256 commaIdx = hexStart - 2; // index of the ',' that anchors the head
+        uint256 prefixLen = bytes("program: ").length;
         line[idx] = bytes1(b);
         string[] memory logs = new string[](1);
         logs[0] = string(line);
         bytes memory proof = _setSolanaProof(logs);
 
         if (idx < hexStart) {
-            // `program: `, the base58 id or `, `: InvalidSolanaLog or
-            // SolanaLogProgramMismatch depending on which byte moved.
-            vm.expectRevert();
+            // Head model, in the contract's own check order:
+            //  - idx < prefixLen: the `program: ` prefix check fails first, whatever b is.
+            //  - program segment flipped to ',': the comma anchor moves left, so the
+            //    `comma + 2 + HEX != length` check fails.
+            //  - the real ',' or the ' ' after it: the anchor breaks the same way.
+            //  - any other program-segment flip: length/anchor still hold, the
+            //    base58 string no longer hashes to the authenticated program id.
+            bool expectMismatch = idx >= prefixLen &&
+                idx < commaIdx &&
+                b != uint8(bytes1(","));
+            vm.expectRevert(
+                expectMismatch
+                    ? PolymerProver.SolanaLogProgramMismatch.selector
+                    : PolymerProver.InvalidSolanaLog.selector
+            );
             polymerProver.validateSolana(proof);
         } else if (!_isHexChar(b)) {
             vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
