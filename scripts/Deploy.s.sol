@@ -44,6 +44,22 @@ contract Deploy is Script {
     ICreate3Deployer constant create3Deployer =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
+    /// @dev Default for POLYMER_MAX_LOG_DATA_SIZE. encodedProofs is 8 + 64*n bytes
+    ///      for an n-intent Inbox.prove batch, so 2048 admits 31 intents per batch
+    ///      (8 + 64*31 = 1992 passes, 8 + 64*32 = 2056 reverts MaxDataSizeExceeded)
+    ///      and stays under Polymer's ~3000-byte unindexed_data cap. The paired Solana
+    ///      prover drains at most MAX_INTENTS_PER_PROVE (24) pairs per event in one
+    ///      transaction, so Solana-bound batches should stay at 24 (1544 bytes)
+    ///      regardless of this value. Pinned by test/scripts/DeployPolymerProverArgs.t.sol.
+    uint256 internal constant DEFAULT_POLYMER_MAX_LOG_DATA_SIZE = 2048;
+
+    /// @dev Whitelist.sol's MAX_WHITELIST_SIZE, which is private there. Mirrored so
+    ///      polymerProverWhitelist can fail with a named message before broadcast:
+    ///      past the cap the CREATE3 child proxy swallows WhitelistSizeExceeded and the
+    ///      operator sees a bare revert mid-broadcast, after Portal and the other
+    ///      provers have already been deployed.
+    uint256 internal constant MAX_WHITELIST_SIZE = 20;
+
     // Define a struct to consolidate deployment data and avoid stack too deep errors
     struct DeploymentContext {
         bytes32 salt;
@@ -100,9 +116,11 @@ contract Deploy is Script {
             "POLYMER_CROSS_L2_PROVER_V2",
             address(0)
         );
+        // See DEFAULT_POLYMER_MAX_LOG_DATA_SIZE for what the byte budget means in
+        // intents per batch (2048 = 31) and the 24-pair Solana ceiling.
         ctx.polymerMaxLogDataSize = vm.envOr(
             "POLYMER_MAX_LOG_DATA_SIZE",
-            uint256(2048)
+            DEFAULT_POLYMER_MAX_LOG_DATA_SIZE
         );
         // Per-environment, and immutable in the deployed prover: no default.
         // 1399811149 is Solana mainnet, 1399811150 devnet, and Polymer's own
@@ -263,6 +281,8 @@ contract Deploy is Script {
 
         if (hasPolymer) {
             ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
+            // Fail on an oversized whitelist before anything is broadcast.
+            polymerProverWhitelist(ctx);
         }
 
         bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
@@ -575,9 +595,12 @@ contract Deploy is Script {
     }
 
     /// @dev PolymerProver's immutable whitelist: the configured cross-VM
-    ///      provers plus the Solana program ID, deduped. Whitelist caps at 20
-    ///      slots, so an operator who also listed the program ID in
-    ///      POLYMER_CROSS_VM_PROVERS does not burn a slot on a duplicate.
+    ///      provers plus the Solana program ID, deduped. Whitelist caps at
+    ///      MAX_WHITELIST_SIZE slots, so an operator who also listed the program
+    ///      ID in POLYMER_CROSS_VM_PROVERS does not burn a slot on a duplicate,
+    ///      and both branches bound the result so the cap fails here by name
+    ///      (run() evaluates this before vm.startBroadcast) instead of as an
+    ///      opaque CREATE3 revert mid-broadcast.
     function polymerProverWhitelist(
         DeploymentContext memory ctx
     ) internal pure returns (bytes32[] memory) {
@@ -590,8 +613,18 @@ contract Deploy is Script {
         );
         bytes32[] memory configured = ctx.polymerCrossVmProvers;
         for (uint256 i = 0; i < configured.length; i++) {
-            if (configured[i] == ctx.polymerSolanaProver) return configured;
+            if (configured[i] == ctx.polymerSolanaProver) {
+                require(
+                    configured.length <= MAX_WHITELIST_SIZE,
+                    "POLYMER_CROSS_VM_PROVERS exceeds the 20-slot whitelist"
+                );
+                return configured;
+            }
         }
+        require(
+            configured.length < MAX_WHITELIST_SIZE,
+            "POLYMER_CROSS_VM_PROVERS + POLYMER_SOLANA_PROVER exceed the 20-slot whitelist"
+        );
 
         bytes32[] memory provers = new bytes32[](configured.length + 1);
         for (uint256 i = 0; i < configured.length; i++) {

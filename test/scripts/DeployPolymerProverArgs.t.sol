@@ -56,6 +56,38 @@ contract DeployPolymerProverArgsHarness is Deploy {
     ) external pure returns (bytes32[] memory) {
         return _parseBytes32List(csv, varName);
     }
+
+    function defaultPolymerMaxLogDataSize() external pure returns (uint256) {
+        return DEFAULT_POLYMER_MAX_LOG_DATA_SIZE;
+    }
+
+    function maxWhitelistSize() external pure returns (uint256) {
+        return MAX_WHITELIST_SIZE;
+    }
+
+    function create3DeployerBytecode() external pure returns (bytes memory) {
+        return CREATE3_DEPLOYER_BYTECODE;
+    }
+
+    function create3DeployerAddress() external pure returns (address) {
+        return address(create3Deployer);
+    }
+
+    function exposedGetContractSalt(
+        bytes32 rootSalt,
+        string memory contractName
+    ) external pure returns (bytes32) {
+        return getContractSalt(rootSalt, contractName);
+    }
+
+    /// @dev deployPolymerProver stamps ctx.polymerProver rather than returning
+    ///      it, so hand the stamped address back to the test.
+    function exposedDeployPolymerProver(
+        DeploymentContext memory ctx
+    ) external returns (address) {
+        deployPolymerProver(ctx);
+        return ctx.polymerProver;
+    }
 }
 
 /// @dev Deploy.s.sol hand-encodes PolymerProver's constructor args, so the
@@ -141,6 +173,43 @@ contract DeployPolymerProverArgsTest is Test {
         }
     }
 
+    /// @dev `create3Deployer` is a hard-coded constant with no code in a bare forge
+    ///      test. Deploy the real Create3Deployer bytecode once and etch its runtime
+    ///      code at that address: the runtime derives CREATE3 addresses from
+    ///      address(this) at call time, so the etched copy behaves like the real one.
+    function _installCreate3Deployer() internal {
+        address tmp = _create(harness.create3DeployerBytecode());
+        assertTrue(tmp != address(0), "Create3Deployer create failed");
+        vm.etch(harness.create3DeployerAddress(), tmp.code);
+    }
+
+    /// @dev The context deployPolymerProver needs on top of _ctx(): the CREATE3
+    ///      sender must be the harness (Create3Deployer.deploy salts on msg.sender
+    ///      while deployedAddress takes it explicitly, and deployWithCreate3
+    ///      requires the two to agree) and the salt run() would derive.
+    function _deployCtx()
+        internal
+        view
+        returns (Deploy.DeploymentContext memory ctx)
+    {
+        ctx = _ctx();
+        ctx.deployer = address(harness);
+        ctx.salt = keccak256("PAR670 deploy test salt");
+        ctx.polymerProverSalt = harness.exposedGetContractSalt(
+            ctx.salt,
+            "POLYMER_PROVER"
+        );
+    }
+
+    function _distinctProvers(
+        uint256 n
+    ) internal pure returns (bytes32[] memory provers) {
+        provers = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) {
+            provers[i] = keccak256(abi.encode("evm prover", i));
+        }
+    }
+
     function test_polymerProverBytecodeDeploysWithScriptArgs() public {
         bytes32[] memory provers = _provers();
         bytes memory bytecode = harness.exposedPolymerProverBytecode(
@@ -211,6 +280,54 @@ contract DeployPolymerProverArgsTest is Test {
         assertEq(occurrences, 1);
     }
 
+    // Whitelist's constructor caps at 20 slots; polymerProverWhitelist mirrors the
+    // cap so it fails by name before broadcast instead of as a bare CREATE3 revert.
+
+    function test_polymerProverWhitelistRevertsWhenAppendWouldExceedCap()
+        public
+    {
+        Deploy.DeploymentContext memory ctx = _ctx();
+        ctx.polymerCrossVmProvers = _distinctProvers(
+            harness.maxWhitelistSize()
+        );
+        vm.expectRevert(
+            bytes(
+                "POLYMER_CROSS_VM_PROVERS + POLYMER_SOLANA_PROVER exceed the 20-slot whitelist"
+            )
+        );
+        harness.exposedPolymerProverWhitelist(ctx);
+    }
+
+    function test_polymerProverWhitelistRevertsWhenConfiguredAloneExceedsCap()
+        public
+    {
+        // The dedupe path: the program ID is already in the list, so nothing is
+        // appended, yet 21 configured entries still overflow the constructor.
+        Deploy.DeploymentContext memory ctx = _ctx();
+        ctx.polymerCrossVmProvers = _distinctProvers(
+            harness.maxWhitelistSize() + 1
+        );
+        ctx.polymerCrossVmProvers[3] = SOLANA_PROGRAM_ID;
+        vm.expectRevert(
+            bytes("POLYMER_CROSS_VM_PROVERS exceeds the 20-slot whitelist")
+        );
+        harness.exposedPolymerProverWhitelist(ctx);
+    }
+
+    function test_polymerProverWhitelistAcceptsExactlyTwenty() public view {
+        uint256 cap = harness.maxWhitelistSize();
+
+        // 19 distinct plus the appended program ID
+        Deploy.DeploymentContext memory ctx = _ctx();
+        ctx.polymerCrossVmProvers = _distinctProvers(cap - 1);
+        assertEq(harness.exposedPolymerProverWhitelist(ctx).length, cap);
+
+        // 20 configured, one of which IS the program ID (nothing appended)
+        ctx.polymerCrossVmProvers = _distinctProvers(cap);
+        ctx.polymerCrossVmProvers[cap - 1] = SOLANA_PROGRAM_ID;
+        assertEq(harness.exposedPolymerProverWhitelist(ctx).length, cap);
+    }
+
     function test_polymerProverWhitelistRevertsWithoutSolanaProgramId() public {
         Deploy.DeploymentContext memory ctx = _ctx();
         ctx.polymerSolanaProver = bytes32(0);
@@ -264,7 +381,69 @@ contract DeployPolymerProverArgsTest is Test {
         assertEq(parsed[1], SOLANA_PROGRAM_ID);
     }
 
+    // ------------- MAX LOG DATA SIZE DEFAULT -------------
+
+    /// @dev Pins the shipped default and states it in the unit operators reason
+    ///      about: encodedProofs is 8 + 64*n bytes for an n-intent Inbox.prove batch,
+    ///      so 2048 admits 31 intents and rejects 32.
+    function test_defaultMaxLogDataSizeIs2048ForThirtyOneIntents() public {
+        uint256 defaultSize = harness.defaultPolymerMaxLogDataSize();
+        assertEq(defaultSize, 2048);
+        assertTrue(8 + 64 * 31 <= defaultSize, "31 intents must fit");
+        assertTrue(8 + 64 * 32 > defaultSize, "32 intents must not fit");
+
+        Deploy.DeploymentContext memory ctx = _ctx();
+        ctx.polymerMaxLogDataSize = defaultSize;
+        PolymerProver prover = PolymerProver(
+            payable(
+                _create(
+                    harness.exposedPolymerProverBytecode(
+                        ctx,
+                        harness.exposedPolymerProverWhitelist(ctx)
+                    )
+                )
+            )
+        );
+        assertEq(prover.MAX_LOG_DATA_SIZE(), 2048);
+    }
+
     // ------------- RERUN GUARD -------------
+
+    /// @dev The guard's call site, not the validator: `deployed` is
+    ///      deployWithCreate3's pre-existence flag, so the guard must run on the
+    ///      rerun that lands on an occupied address. With the polarity inverted
+    ///      (`if (!deployed)`) this rerun would return the stale address silently.
+    function test_deployPolymerProverRerunWithChangedContextReverts() public {
+        _installCreate3Deployer();
+        Deploy.DeploymentContext memory ctx = _deployCtx();
+
+        address first = harness.exposedDeployPolymerProver(ctx);
+        assertTrue(first.code.length > 0, "first deploy did not land");
+        assertEq(
+            PolymerProver(payable(first)).SOLANA_CHAIN_ID(),
+            SOLANA_CHAIN_ID
+        );
+
+        ctx.solanaChainId = SOLANA_CHAIN_ID + 1;
+        vm.expectRevert(
+            bytes(
+                "PolymerProver already deployed at this salt with a different SOLANA_CHAIN_ID"
+            )
+        );
+        harness.exposedDeployPolymerProver(ctx);
+    }
+
+    /// @dev The idempotent rerun the guard must allow: same context twice lands on
+    ///      the same address and neither call reverts.
+    function test_deployPolymerProverRerunWithSameContextSucceeds() public {
+        _installCreate3Deployer();
+        Deploy.DeploymentContext memory ctx = _deployCtx();
+
+        address first = harness.exposedDeployPolymerProver(ctx);
+        address second = harness.exposedDeployPolymerProver(ctx);
+        assertEq(first, second);
+        assertTrue(first.code.length > 0);
+    }
 
     function test_rerunGuardAcceptsMatchingContext() public {
         harness.exposedValidatePolymerProverMatchesContext(_deployedCtx());
