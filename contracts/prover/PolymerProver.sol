@@ -198,7 +198,9 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /**
      * @notice Validates multiple Solana log proofs in a batch
      * @dev Atomic: any proof that reverts discards the whole batch; there is no
-     *      per-element isolation. An empty array is a no-op.
+     *      per-element isolation. An empty array is a no-op. Cost is the sum of the
+     *      per-proof cost described on `validateSolana` — total log lines across all
+     *      proofs, not proof count.
      * @param proofs Array of Solana log proofs to validate
      */
     function validateSolanaBatch(bytes[] calldata proofs) external {
@@ -226,6 +228,14 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      *      At least one line must be for this chain, else InvalidSourceChain, so a proof
      *      submitted to the wrong chain's prover still fails loudly instead of succeeding as
      *      a no-op. Claimants that are not 160-bit EVM addresses, or are zero, are skipped.
+     *
+     *      Cost scales with the number of log lines in the proven Solana transaction, not with
+     *      the number of intents recorded: every line is parsed, its program substring copied
+     *      and hashed, and its 160 hex chars decoded in Solidity before the `source` filter can
+     *      skip it, so lines for other EVM source chains are paid for in full. The base58
+     *      encoding of `programID` is done once per proof, outside the loop. The EVM `validate`
+     *      path carries no equivalent note because it `abi.decode`s a fixed 64-byte stride
+     *      instead of parsing strings.
      *
      *      Pinned against eco-routes-svm
      *      programs/polymer-prover/src/instructions/prove/testdata/prove_log_line_format.golden
