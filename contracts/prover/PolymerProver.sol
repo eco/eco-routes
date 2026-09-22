@@ -11,7 +11,11 @@ import {Base58} from "../libs/Base58.sol";
 /**
  * @title PolymerProver
  * @notice Prover implementation using Polymer's cross-chain messaging system
- * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
+ * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents.
+ *      Two proof shapes are accepted: EVM `IntentFulfilledFromSource` events from whitelisted
+ *      EVM PolymerProvers (`validate`), and Solana `Prove:` logs from the whitelisted
+ *      eco-routes-svm polymer-prover program (`validateSolana`). The Solana log layout is a
+ *      shared ABI with that program's `prove` instruction.
  */
 contract PolymerProver is BaseProver, Whitelist, Semver {
     using AddressConverter for bytes32;
