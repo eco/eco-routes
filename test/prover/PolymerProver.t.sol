@@ -907,6 +907,164 @@ contract PolymerProverTest is BaseTest {
             )
         );
     }
+
+    // ------------- SOLANA LOG PROOF VALIDATION -------------
+
+    function _setSolanaProof(
+        string[] memory logs
+    ) internal returns (bytes memory proof) {
+        crossL2ProverV2.setSolLogs(
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_PROGRAM_ID,
+            logs
+        );
+        // Sol entries index independently of the EVM ones; this is the first.
+        return abi.encodePacked(uint256(0));
+    }
+
+    function testValidateSolanaSingleLog() public {
+        bytes32 intentHash = _hashIntent(intent);
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, claimant, SOLANA_CHAIN_ID);
+        polymerProver.validateSolana(proof);
+
+        IProver.ProofData memory proofData = polymerProver.provenIntents(
+            intentHash
+        );
+        assertEq(proofData.claimant, claimant);
+        assertEq(proofData.destination, SOLANA_CHAIN_ID);
+    }
+
+    function testValidateSolanaMultipleLogs() public {
+        string[] memory logs = new string[](3);
+        bytes32[] memory hashes = new bytes32[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            hashes[i] = keccak256(abi.encode("solana-intent", i));
+            logs[i] = _solanaLog(
+                SOLANA_PROGRAM_ID,
+                uint64(block.chainid),
+                SOLANA_CHAIN_ID,
+                hashes[i],
+                bytes32(uint256(uint160(claimant)))
+            );
+        }
+        bytes memory proof = _setSolanaProof(logs);
+
+        polymerProver.validateSolana(proof);
+
+        for (uint256 i = 0; i < 3; i++) {
+            assertEq(polymerProver.provenIntents(hashes[i]).claimant, claimant);
+            assertEq(
+                polymerProver.provenIntents(hashes[i]).destination,
+                SOLANA_CHAIN_ID
+            );
+        }
+    }
+
+    function testValidateSolanaToleratesUnstrippedPrefix() public {
+        bytes32 intentHash = _hashIntent(intent);
+        string[] memory logs = new string[](1);
+        logs[0] = string.concat(
+            "Prove: ",
+            _solanaLog(
+                SOLANA_PROGRAM_ID,
+                uint64(block.chainid),
+                SOLANA_CHAIN_ID,
+                intentHash,
+                bytes32(uint256(uint160(claimant)))
+            )
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        polymerProver.validateSolana(proof);
+        assertEq(polymerProver.provenIntents(intentHash).claimant, claimant);
+    }
+
+    function testValidateSolanaEmitsAlreadyProvenForDuplicate() public {
+        bytes32 intentHash = _hashIntent(intent);
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+        bytes memory proof = _setSolanaProof(logs);
+        polymerProver.validateSolana(proof);
+
+        _expectEmit();
+        emit IProver.IntentAlreadyProven(intentHash);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaSkipsNonEvmClaimant() public {
+        bytes32 intentHash = _hashIntent(intent);
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(1) << 200) // not a 160-bit address
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        polymerProver.validateSolana(proof);
+        assertEq(
+            polymerProver.provenIntents(intentHash).claimant,
+            address(0)
+        );
+    }
+
+    function testValidateSolanaBatch() public {
+        bytes32 hashA = keccak256("a");
+        bytes32 hashB = keccak256("b");
+        string[] memory logsA = new string[](1);
+        logsA[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            hashA,
+            bytes32(uint256(uint160(claimant)))
+        );
+        string[] memory logsB = new string[](1);
+        logsB[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            hashB,
+            bytes32(uint256(uint160(claimant)))
+        );
+        crossL2ProverV2.setSolLogs(
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_PROGRAM_ID,
+            logsA
+        );
+        crossL2ProverV2.setSolLogs(
+            SOLANA_POLYMER_CHAIN_ID,
+            SOLANA_PROGRAM_ID,
+            logsB
+        );
+
+        bytes[] memory proofs = new bytes[](2);
+        proofs[0] = abi.encodePacked(uint256(0));
+        proofs[1] = abi.encodePacked(uint256(1));
+        polymerProver.validateSolanaBatch(proofs);
+
+        assertEq(polymerProver.provenIntents(hashA).claimant, claimant);
+        assertEq(polymerProver.provenIntents(hashB).claimant, claimant);
+    }
 }
 
 /// @notice Minimal view of Inbox.prove used by the reentrancy attacker.

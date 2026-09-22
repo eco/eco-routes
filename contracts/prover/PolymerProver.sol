@@ -6,6 +6,7 @@ import {Semver} from "../libs/Semver.sol";
 import {ICrossL2ProverV2} from "../interfaces/ICrossL2ProverV2.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
 import {Whitelist} from "../libs/Whitelist.sol";
+import {Base58} from "../libs/Base58.sol";
 
 /**
  * @title PolymerProver
@@ -173,6 +174,142 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
             address claimant = claimantBytes.toAddress();
             processIntent(intentHash, claimant, destinationChainId);
         }
+    }
+
+    // ------------- SOLANA LOG PROOF VALIDATION -------------
+
+    /**
+     * @notice Validates multiple Solana log proofs in a batch
+     * @param proofs Array of Solana log proofs to validate
+     */
+    function validateSolanaBatch(bytes[] calldata proofs) external {
+        for (uint256 i = 0; i < proofs.length; i++) {
+            validateSolana(proofs[i]);
+        }
+    }
+
+    /**
+     * @notice Validates a Polymer proof of Solana `Prove:` logs emitted by a whitelisted
+     *         eco-routes-svm polymer-prover program and records the contained intents
+     * @dev Each log line is `program: <base58 program id>, <160 hex chars>` where the hex is
+     *      source chain ID (8) ‖ destination chain ID (8) ‖ intent hash (32) ‖ claimant (32).
+     *      Polymer authenticates `programID` and `chainId`; the base58 id inside the line is
+     *      re-checked against `programID` as defense in depth against log misattribution.
+     * @param proof Proof of a Solana transaction's logs from Polymer's prove api
+     */
+    function validateSolana(bytes calldata proof) public {
+        (
+            uint32 chainId,
+            bytes32 programID,
+            string[] memory logMessages
+        ) = CROSS_L2_PROVER_V2.validateSolLogs(proof);
+
+        if (chainId != SOLANA_POLYMER_CHAIN_ID) revert InvalidDestinationChain();
+        if (!isWhitelisted(programID)) revert InvalidSolanaProgram(programID);
+        if (logMessages.length == 0) revert EmptyProofData();
+
+        for (uint256 i = 0; i < logMessages.length; i++) {
+            _processSolanaLog(bytes(logMessages[i]), programID);
+        }
+    }
+
+    /**
+     * @notice Parses one proven Solana log line and records its intent
+     * @param log The log line, with or without Polymer's `Prove: ` prefix
+     * @param programID The authenticated emitting program from the proof
+     */
+    function _processSolanaLog(bytes memory log, bytes32 programID) internal {
+        uint256 cursor = 0;
+        if (_startsWithAt(log, SOLANA_LOG_PROVE_PREFIX, cursor)) {
+            cursor += SOLANA_LOG_PROVE_PREFIX.length;
+        }
+        if (!_startsWithAt(log, SOLANA_LOG_PROGRAM_PREFIX, cursor)) {
+            revert InvalidSolanaLog();
+        }
+        cursor += SOLANA_LOG_PROGRAM_PREFIX.length;
+
+        // program id runs up to ", "
+        uint256 comma = cursor;
+        while (comma < log.length && log[comma] != ",") {
+            comma++;
+        }
+        // need ", " plus exactly the hex payload, and nothing after it
+        if (
+            comma + 2 + SOLANA_LOG_HEX_LENGTH != log.length ||
+            log[comma + 1] != " "
+        ) {
+            revert InvalidSolanaLog();
+        }
+
+        bytes memory programStr = new bytes(comma - cursor);
+        for (uint256 i = 0; i < programStr.length; i++) {
+            programStr[i] = log[cursor + i];
+        }
+        if (Base58.decodeWord(string(programStr)) != programID) {
+            revert SolanaLogProgramMismatch();
+        }
+
+        bytes memory payload = _hexDecode(log, comma + 2);
+
+        uint64 source = uint64(bytes8(_slice32(payload, 0)));
+        uint64 destination = uint64(bytes8(_slice32(payload, 8)));
+        bytes32 intentHash = _slice32(payload, 16);
+        bytes32 claimantBytes = _slice32(payload, 48);
+
+        if (source != uint64(block.chainid)) revert InvalidSourceChain();
+        if (destination != SOLANA_CHAIN_ID) revert InvalidDestinationChain();
+        if (claimantBytes >> 160 != 0) return;
+
+        processIntent(intentHash, claimantBytes.toAddress(), destination);
+    }
+
+    /// @dev True when `haystack[at..]` begins with `needle`
+    function _startsWithAt(
+        bytes memory haystack,
+        bytes memory needle,
+        uint256 at
+    ) internal pure returns (bool) {
+        if (haystack.length < at + needle.length) return false;
+        for (uint256 i = 0; i < needle.length; i++) {
+            if (haystack[at + i] != needle[i]) return false;
+        }
+        return true;
+    }
+
+    /// @dev Reads 32 bytes of `data` starting at `offset` (caller guarantees bounds)
+    function _slice32(
+        bytes memory data,
+        uint256 offset
+    ) internal pure returns (bytes32 out) {
+        assembly {
+            out := mload(add(add(data, 0x20), offset))
+        }
+    }
+
+    /**
+     * @dev Decodes SOLANA_LOG_HEX_LENGTH lowercase or uppercase hex chars of `src` starting
+     *      at `start` into 80 bytes. Reverts InvalidSolanaLog on a non-hex char.
+     */
+    function _hexDecode(
+        bytes memory src,
+        uint256 start
+    ) internal pure returns (bytes memory out) {
+        out = new bytes(SOLANA_LOG_HEX_LENGTH / 2);
+        for (uint256 i = 0; i < out.length; i++) {
+            out[i] = bytes1(
+                (_nibble(src[start + 2 * i]) << 4) |
+                    _nibble(src[start + 2 * i + 1])
+            );
+        }
+    }
+
+    /// @dev Value of one hex digit; reverts InvalidSolanaLog on anything else
+    function _nibble(bytes1 c) internal pure returns (uint8) {
+        uint8 v = uint8(c);
+        if (v >= 0x30 && v <= 0x39) return v - 0x30; // 0-9
+        if (v >= 0x61 && v <= 0x66) return v - 0x61 + 10; // a-f
+        if (v >= 0x41 && v <= 0x46) return v - 0x41 + 10; // A-F
+        revert InvalidSolanaLog();
     }
 
     // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
