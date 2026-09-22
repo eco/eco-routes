@@ -56,6 +56,7 @@ contract Deploy is Script {
         uint256 polymerMaxLogDataSize;
         uint32 polymerSolanaChainId;
         uint64 solanaChainId;
+        bytes32 polymerSolanaProver;
         string deployFilePath;
         bytes32[] hyperCrossVmProvers;
         bytes32[] metaCrossVmProvers;
@@ -121,6 +122,20 @@ contract Deploy is Script {
                 "SOLANA_CHAIN_ID",
                 type(uint64).max
             ).toUint64();
+            // Same reasoning as the two chain IDs above: the constructor rejects
+            // a zero Solana chain ID, so every PolymerProver deployable from this
+            // branch is Solana-capable — one whose immutable whitelist omits the
+            // Solana program can only ever revert InvalidSolanaProgram. The raw
+            // 32-byte program key is appended to the whitelist by
+            // polymerProverWhitelist, not listed in POLYMER_CROSS_VM_PROVERS.
+            ctx.polymerSolanaProver = vm.envOr(
+                "POLYMER_SOLANA_PROVER",
+                bytes32(0)
+            );
+            require(
+                ctx.polymerSolanaProver != bytes32(0),
+                "POLYMER_SOLANA_PROVER is required when POLYMER_CROSS_L2_PROVER_V2 is set"
+            );
         }
 
         // Load cross-VM provers from environment variables (optional)
@@ -507,13 +522,8 @@ contract Deploy is Script {
     function deployPolymerProver(
         DeploymentContext memory ctx
     ) internal returns (address polymerProver) {
-        // Create provers array for PolymerProver whitelist
-        bytes32[] memory provers = new bytes32[](
-            ctx.polymerCrossVmProvers.length
-        );
-        for (uint256 i = 0; i < ctx.polymerCrossVmProvers.length; i++) {
-            provers[i] = ctx.polymerCrossVmProvers[i];
-        }
+        // Immutable whitelist: cross-VM provers plus the Solana program ID
+        bytes32[] memory provers = polymerProverWhitelist(ctx);
 
         // Etherscan verification payload; the deploy blob below is built from the
         // same expression so verified bytes and deployed bytes cannot drift.
@@ -531,27 +541,114 @@ contract Deploy is Script {
 
         // The PolymerProver salt is name-only (see getContractSalt), so a rerun
         // with corrected env vars lands on the occupied address and
-        // deployWithCreate3 short-circuits. These three values are immutable
-        // with no setter, so silently keeping the old ones is the worst
-        // outcome: fail loudly instead. Same probe-then-fail shape as
-        // validateAggregatorProverMembers.
-        if (deployed) {
-            PolymerProver live = PolymerProver(payable(ctx.polymerProver));
-            require(
-                live.SOLANA_CHAIN_ID() == ctx.solanaChainId &&
-                    live.SOLANA_POLYMER_CHAIN_ID() ==
-                    ctx.polymerSolanaChainId &&
-                    live.MAX_LOG_DATA_SIZE() == ctx.polymerMaxLogDataSize,
-                "PolymerProver already deployed at this salt with different Solana config"
-            );
-        }
+        // deployWithCreate3 short-circuits. Every constructor argument is
+        // immutable with no setter — the whitelist included, and that is the
+        // one argument the Solana feature actually changes — so silently
+        // keeping the old ones is the worst outcome: fail loudly instead. Same
+        // probe-then-fail shape as validateAggregatorProverMembers.
+        if (deployed) _validatePolymerProverMatchesContext(ctx);
 
         console.log("PolymerProver :", ctx.polymerProver);
         // Echo the immutables so a set-but-wrong value is visible in the deploy
-        // output, which the required-read above cannot catch.
+        // output on a fresh deploy, which the rerun guard above cannot catch.
         console.log("  solanaPolymerChainId :", ctx.polymerSolanaChainId);
         console.log("  solanaChainId        :", ctx.solanaChainId);
         console.log("  maxLogDataSize       :", ctx.polymerMaxLogDataSize);
+        console.log(
+            "  solanaProver         :",
+            vm.toString(ctx.polymerSolanaProver)
+        );
+    }
+
+    /// @dev PolymerProver's immutable whitelist: the configured cross-VM
+    ///      provers plus the Solana program ID, deduped. Whitelist caps at 20
+    ///      slots, so an operator who also listed the program ID in
+    ///      POLYMER_CROSS_VM_PROVERS does not burn a slot on a duplicate.
+    function polymerProverWhitelist(
+        DeploymentContext memory ctx
+    ) internal pure returns (bytes32[] memory) {
+        // run() already requires this; repeated here so the seam is loud on its
+        // own (isWhitelisted(bytes32(0)) is always false, so a zero entry would
+        // silently produce a prover that rejects every Solana proof).
+        require(
+            ctx.polymerSolanaProver != bytes32(0),
+            "POLYMER_SOLANA_PROVER is required when POLYMER_CROSS_L2_PROVER_V2 is set"
+        );
+        bytes32[] memory configured = ctx.polymerCrossVmProvers;
+        for (uint256 i = 0; i < configured.length; i++) {
+            if (configured[i] == ctx.polymerSolanaProver) return configured;
+        }
+
+        bytes32[] memory provers = new bytes32[](configured.length + 1);
+        for (uint256 i = 0; i < configured.length; i++) {
+            provers[i] = configured[i];
+        }
+        provers[configured.length] = ctx.polymerSolanaProver;
+        return provers;
+    }
+
+    /// @dev Every argument in polymerProverConstructorArgs is immutable (or
+    ///      setter-less) on the live contract, and the PolymerProver salt is
+    ///      name-only, so a rerun with corrected env vars short-circuits in
+    ///      deployWithCreate3 and silently keeps the old values. Compare all of
+    ///      them, one require each so the operator learns WHICH field diverged.
+    ///      Keep this list in sync with polymerProverConstructorArgs.
+    function _validatePolymerProverMatchesContext(
+        DeploymentContext memory ctx
+    ) internal view {
+        PolymerProver live = PolymerProver(payable(ctx.polymerProver));
+        _requireLivePolymerProverIsSolanaCapable(address(live));
+        require(
+            live.PORTAL() == ctx.portal,
+            "PolymerProver already deployed at this salt with a different PORTAL"
+        );
+        require(
+            address(live.CROSS_L2_PROVER_V2()) == ctx.polymerCrossL2ProverV2,
+            "PolymerProver already deployed at this salt with a different POLYMER_CROSS_L2_PROVER_V2"
+        );
+        require(
+            live.MAX_LOG_DATA_SIZE() == ctx.polymerMaxLogDataSize,
+            "PolymerProver already deployed at this salt with a different POLYMER_MAX_LOG_DATA_SIZE"
+        );
+        require(
+            live.SOLANA_POLYMER_CHAIN_ID() == ctx.polymerSolanaChainId,
+            "PolymerProver already deployed at this salt with a different POLYMER_SOLANA_CHAIN_ID"
+        );
+        require(
+            live.SOLANA_CHAIN_ID() == ctx.solanaChainId,
+            "PolymerProver already deployed at this salt with a different SOLANA_CHAIN_ID"
+        );
+        // Whitelist is equally constructor-only (Whitelist.sol has no setter)
+        // and is what gates validateSolana's programID check. The membership
+        // probe first, for the message; then the ordered hash, which is
+        // airtight: isWhitelisted is order-agnostic and blind to duplicates,
+        // so a pure reorder fails here too — the conservative direction, and
+        // it keeps the check a single exact comparison.
+        require(
+            live.isWhitelisted(ctx.polymerSolanaProver),
+            "PolymerProver already deployed at this salt without POLYMER_SOLANA_PROVER in its whitelist; redeploy at a new SALT"
+        );
+        require(
+            keccak256(abi.encode(live.getWhitelist())) ==
+                keccak256(abi.encode(polymerProverWhitelist(ctx))),
+            "PolymerProver already deployed at this salt with a different POLYMER_CROSS_VM_PROVERS whitelist; redeploy at a new SALT"
+        );
+    }
+
+    /// @dev A PolymerProver deployed before the Solana upgrade has no
+    ///      SOLANA_CHAIN_ID getter, so the interface call in the validator
+    ///      above would revert with empty returndata. Probe it with a
+    ///      staticcall first to turn that opaque revert into an actionable one.
+    function _requireLivePolymerProverIsSolanaCapable(
+        address live
+    ) internal view {
+        (bool ok, bytes memory data) = live.staticcall(
+            abi.encodeWithSelector(PolymerProver(live).SOLANA_CHAIN_ID.selector)
+        );
+        require(
+            ok && data.length == 32,
+            "live PolymerProver predates the Solana upgrade; deploy at a new SALT"
+        );
     }
 
     /// @dev ABI-encoded PolymerProver constructor args, in constructor order.
@@ -601,7 +698,7 @@ contract Deploy is Script {
             raw != 0,
             string.concat(
                 name,
-                " is required when POLYMER_CROSS_L2_PROVER_V2 is set"
+                " is required and must be non-zero when POLYMER_CROSS_L2_PROVER_V2 is set"
             )
         );
         require(raw <= max, string.concat(name, " out of range"));
