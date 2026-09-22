@@ -1065,6 +1065,192 @@ contract PolymerProverTest is BaseTest {
         assertEq(polymerProver.provenIntents(hashA).claimant, claimant);
         assertEq(polymerProver.provenIntents(hashB).claimant, claimant);
     }
+
+    // ------------- SOLANA LOG PROOF REJECTION -------------
+
+    /// @notice A well-formed line for this chain, SOLANA_CHAIN_ID and `claimant`
+    function _validLog(
+        bytes32 intentHash
+    ) internal view returns (string memory) {
+        return
+            _solanaLog(
+                SOLANA_PROGRAM_ID,
+                uint64(block.chainid),
+                SOLANA_CHAIN_ID,
+                intentHash,
+                bytes32(uint256(uint160(claimant)))
+            );
+    }
+
+    function testValidateSolanaRevertsOnWrongPolymerChainId() public {
+        string[] memory logs = new string[](1);
+        logs[0] = _validLog(keccak256("x"));
+        crossL2ProverV2.setSolLogs(
+            SOLANA_POLYMER_CHAIN_ID + 1,
+            SOLANA_PROGRAM_ID,
+            logs
+        );
+
+        vm.expectRevert(PolymerProver.InvalidDestinationChain.selector);
+        polymerProver.validateSolana(abi.encodePacked(uint256(0)));
+    }
+
+    function testValidateSolanaRevertsOnNonWhitelistedProgram() public {
+        bytes32 other = keccak256("other program");
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            other,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            keccak256("x"),
+            bytes32(uint256(uint160(claimant)))
+        );
+        crossL2ProverV2.setSolLogs(SOLANA_POLYMER_CHAIN_ID, other, logs);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                PolymerProver.InvalidSolanaProgram.selector,
+                other
+            )
+        );
+        polymerProver.validateSolana(abi.encodePacked(uint256(0)));
+    }
+
+    function testValidateSolanaRevertsOnNoLogs() public {
+        string[] memory logs = new string[](0);
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.EmptyProofData.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnProgramMismatchInLog() public {
+        // Proof says SOLANA_PROGRAM_ID, the line names another program.
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            keccak256("impostor"),
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            keccak256("x"),
+            bytes32(uint256(uint160(claimant)))
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.SolanaLogProgramMismatch.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnMissingProgramPrefix() public {
+        string[] memory logs = new string[](1);
+        logs[0] = "hello world";
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnShortPayload() public {
+        string[] memory logs = new string[](1);
+        bytes memory line = bytes(_validLog(keccak256("x")));
+        bytes memory truncated = new bytes(line.length - 2);
+        for (uint256 i = 0; i < truncated.length; i++) {
+            truncated[i] = line[i];
+        }
+        logs[0] = string(truncated);
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnTrailingGarbage() public {
+        string[] memory logs = new string[](1);
+        logs[0] = string.concat(_validLog(keccak256("x")), ", extra");
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnNonHexPayload() public {
+        string[] memory logs = new string[](1);
+        bytes memory line = bytes(_validLog(keccak256("x")));
+        line[line.length - 1] = "z";
+        logs[0] = string(line);
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnWrongSourceChain() public {
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid) + 1,
+            SOLANA_CHAIN_ID,
+            keccak256("x"),
+            bytes32(uint256(uint160(claimant)))
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidSourceChain.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnWrongDestinationChain() public {
+        string[] memory logs = new string[](1);
+        logs[0] = _solanaLog(
+            SOLANA_PROGRAM_ID,
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID + 1,
+            keccak256("x"),
+            bytes32(uint256(uint160(claimant)))
+        );
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidDestinationChain.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaOneBadLogRevertsWholeProof() public {
+        string[] memory logs = new string[](2);
+        logs[0] = _validLog(keccak256("good"));
+        logs[1] = "program: garbage";
+        bytes memory proof = _setSolanaProof(logs);
+
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+        assertEq(
+            polymerProver.provenIntents(keccak256("good")).claimant,
+            address(0)
+        );
+    }
+
+    function testValidateSolanaProofIsChallengeable() public {
+        // A Solana-recorded proof carries destination SOLANA_CHAIN_ID; challenging
+        // with a different destination deletes it, same as EVM-recorded proofs.
+        bytes32 routeHash = keccak256("route");
+        bytes32 rewardHash = keccak256("reward");
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(SOLANA_CHAIN_ID, routeHash, rewardHash)
+        );
+        string[] memory logs = new string[](1);
+        logs[0] = _validLog(intentHash);
+        polymerProver.validateSolana(_setSolanaProof(logs));
+        assertEq(
+            polymerProver.provenIntents(intentHash).destination,
+            SOLANA_CHAIN_ID
+        );
+
+        polymerProver.challengeIntentProof(
+            SOLANA_CHAIN_ID,
+            routeHash,
+            rewardHash
+        );
+        // matching destination: kept
+        assertEq(polymerProver.provenIntents(intentHash).claimant, claimant);
+    }
 }
 
 /// @notice Minimal view of Inbox.prove used by the reentrancy attacker.
