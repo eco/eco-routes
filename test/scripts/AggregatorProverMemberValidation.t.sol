@@ -31,7 +31,7 @@ contract DeployHarness is Deploy {
     function exposedParseAggregatorProverMembers(
         string memory csv
     ) external pure returns (bytes32[] memory) {
-        return _parseAggregatorProverMembers(csv);
+        return _parseBytes32List(csv, "AGGREGATOR_PROVER_MEMBERS");
     }
 
     function exposedAggregatorProverSalt(

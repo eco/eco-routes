@@ -163,13 +163,24 @@ contract Deploy is Script {
             ctx.layerZeroCrossVmProvers = new bytes32[](0);
         }
 
-        try vm.envBytes32("POLYMER_CROSS_VM_PROVERS", ",") returns (
-            bytes32[] memory provers
-        ) {
-            ctx.polymerCrossVmProvers = provers;
-        } catch {
-            ctx.polymerCrossVmProvers = new bytes32[](0);
-        }
+        // Raw-string parse, not the try/catch the three lists above still
+        // use: this list feeds PolymerProver's immutable whitelist, and
+        // Foundry's strict FixedBytes(32) coercion rejects the 20-byte
+        // address form and a trailing comma, so the try/catch turned
+        // "configured wrong" into an empty whitelist with no symptom. A
+        // base58 Solana key pasted here (the likeliest mistake) now reverts
+        // by name. HYPER/META/LAYERZERO are left as they were; converting
+        // them is an unrelated cleanup.
+        string memory polymerCrossVmProversRaw = vm.envOr(
+            "POLYMER_CROSS_VM_PROVERS",
+            string("")
+        );
+        ctx.polymerCrossVmProvers = bytes(polymerCrossVmProversRaw).length == 0
+            ? new bytes32[](0)
+            : _parseBytes32List(
+                polymerCrossVmProversRaw,
+                "POLYMER_CROSS_VM_PROVERS"
+            );
 
         // Ordered, comma-separated member provers for AggregatorProver.
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
@@ -192,7 +203,10 @@ contract Deploy is Script {
         ctx.aggregatorProverMembers = bytes(aggregatorProverMembersRaw)
             .length == 0
             ? new bytes32[](0)
-            : _parseAggregatorProverMembers(aggregatorProverMembersRaw);
+            : _parseBytes32List(
+                aggregatorProverMembersRaw,
+                "AGGREGATOR_PROVER_MEMBERS"
+            );
 
         // Read here, with every other deploy input, rather than inside the
         // validator. Reading it deep in a validator is what forced the tests
@@ -990,16 +1004,18 @@ contract Deploy is Script {
             block.chainid == TRON_NILE_CHAIN_ID;
     }
 
-    // Parses a comma-separated AGGREGATOR_PROVER_MEMBERS list. Accepts, per element,
-    // either a 20-byte address ("0x" + 40 hex chars, the form operators will
-    // actually write) or a full 32-byte bytes32 ("0x" + 64 hex chars),
-    // left-padding the former to bytes32. Any other shape — including an
-    // empty element from a trailing comma — reverts, naming the offending
-    // element and its index, rather than silently discarding the whole list.
-    // Not called for an empty AGGREGATOR_PROVER_MEMBERS string; that case is
-    // handled by the caller as "not requested".
-    function _parseAggregatorProverMembers(
-        string memory csv
+    // Parses a comma-separated bytes32 list env var (`varName`, used only in
+    // the revert message). Accepts, per element, either a 20-byte address
+    // ("0x" + 40 hex chars, the form operators will actually write) or a full
+    // 32-byte bytes32 ("0x" + 64 hex chars), left-padding the former to
+    // bytes32. Any other shape — including an empty element from a trailing
+    // comma, or a base58 Solana key — reverts, naming the variable, the
+    // offending element and its index, rather than silently discarding the
+    // whole list. Not called for an empty string; that case is handled by the
+    // caller as "not requested".
+    function _parseBytes32List(
+        string memory csv,
+        string memory varName
     ) internal pure returns (bytes32[] memory) {
         string[] memory parts = vm.split(csv, ",");
         bytes32[] memory members = new bytes32[](parts.length);
@@ -1018,7 +1034,8 @@ contract Deploy is Script {
                 revert(
                     string(
                         abi.encodePacked(
-                            "AGGREGATOR_PROVER_MEMBERS: malformed element at index ",
+                            varName,
+                            ": malformed element at index ",
                             vm.toString(i),
                             ": '",
                             parts[i],

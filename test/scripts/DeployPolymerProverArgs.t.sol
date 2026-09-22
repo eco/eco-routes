@@ -49,6 +49,13 @@ contract DeployPolymerProverArgsHarness is Deploy {
     ) external view {
         _validatePolymerProverMatchesContext(ctx);
     }
+
+    function exposedParseBytes32List(
+        string memory csv,
+        string memory varName
+    ) external pure returns (bytes32[] memory) {
+        return _parseBytes32List(csv, varName);
+    }
 }
 
 /// @dev Deploy.s.sol hand-encodes PolymerProver's constructor args, so the
@@ -222,6 +229,39 @@ contract DeployPolymerProverArgsTest is Test {
         assertTrue(prover.isWhitelisted(SOLANA_PROGRAM_ID));
         assertTrue(prover.isWhitelisted(EVM_PROVER));
         assertFalse(prover.isWhitelisted(keccak256("not whitelisted")));
+    }
+
+    /// @dev POLYMER_CROSS_VM_PROVERS is parsed by the same explicit parser as
+    ///      AGGREGATOR_PROVER_MEMBERS (not vm.envBytes32 behind a try/catch), so
+    ///      the likeliest paste mistake — a base58 Solana key — reverts naming
+    ///      the variable instead of silently yielding an empty whitelist.
+    function test_parseBytes32ListRejectsBase58KeyByVariableName() public {
+        vm.expectRevert(
+            bytes(
+                "POLYMER_CROSS_VM_PROVERS: malformed element at index 1: 'EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo' (expected a 20-byte address or 32-byte bytes32)"
+            )
+        );
+        harness.exposedParseBytes32List(
+            string.concat(
+                vm.toString(address(0xA11CE)),
+                ",EcotL2wbUqtRAjnf1p6aa842dM4fc8ZX6JhygibtBreo"
+            ),
+            "POLYMER_CROSS_VM_PROVERS"
+        );
+    }
+
+    function test_parseBytes32ListAcceptsAddressAndBytes32Forms() public view {
+        bytes32[] memory parsed = harness.exposedParseBytes32List(
+            string.concat(
+                vm.toString(address(0xA11CE)),
+                ",",
+                vm.toString(SOLANA_PROGRAM_ID)
+            ),
+            "POLYMER_CROSS_VM_PROVERS"
+        );
+        assertEq(parsed.length, 2);
+        assertEq(parsed[0], EVM_PROVER);
+        assertEq(parsed[1], SOLANA_PROGRAM_ID);
     }
 
     // ------------- RERUN GUARD -------------
