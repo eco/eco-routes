@@ -162,7 +162,8 @@ contract IntentChainer is ReentrancyGuard {
     ///
     ///      That reasoning is load-bearing on atomicity, so do not port the check by analogy. Where the
     ///      measured balance is already at rest in order-scoped custody with this call as its only exit,
-    ///      refusing strands exactly what it looks like it protects.
+    ///      the verdict inverts: pushing forward is what puts the balance somewhere a refund can reach,
+    ///      and refusing strands exactly what it looks like it protects.
     error IntentAlreadySettled(bytes32 intentHash, IIntentSource.Status status);
 
     // ============ External Functions ============
