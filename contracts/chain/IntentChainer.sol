@@ -146,8 +146,23 @@ contract IntentChainer is ReentrancyGuard {
     /// @notice The transfer moved less into the vault than was declared, e.g. a fee-on-transfer token.
     error PushShortfall(address vault, uint256 expected, uint256 delivered);
 
-    /// @notice Intent2's hash has already settled, so a push into its vault could not be paid out.
-    /// @dev Checked explicitly rather than inherited from `publish` reverting, because publish is optional.
+    /// @notice Intent2's hash has already withdrawn or refunded, so no claimant can be paid from it.
+    /// @dev FAIL-FAST, not fund protection. The distinction is easy to get backwards and worth stating.
+    ///
+    ///      A push into a settled vault is NOT stranded. `refund()` is permissionless; while a proof
+    ///      stands `_validateRefund` reverts only on `Initial` and `Funded`, so `Withdrawn` and `Refunded`
+    ///      fall through; and `Vault.refund` pays the vault's LIVE balance -- not a recorded amount -- to
+    ///      `reward.creator`. The money comes back. It comes back to the creator rather than a claimant,
+    ///      and only once someone calls refund.
+    ///
+    ///      Refusing is still right here, because refusing costs nothing: `chain` runs as intent1's last
+    ///      route call, so this revert unwinds the swap along with it. No balance is ever left at rest and
+    ///      nothing is bound to the order. Cheaper to refuse outright than to complete and leave the
+    ///      creator chasing a refund for an intent that can never pay a claimant.
+    ///
+    ///      That reasoning is load-bearing on atomicity, so do not port the check by analogy. Where the
+    ///      measured balance is already at rest in order-scoped custody with this call as its only exit,
+    ///      refusing strands exactly what it looks like it protects.
     error IntentAlreadySettled(bytes32 intentHash, IIntentSource.Status status);
 
     // ============ External Functions ============
@@ -226,11 +241,13 @@ contract IntentChainer is ReentrancyGuard {
     // ============ Internal Functions ============
 
     /**
-     * @notice Reject a hash that has already paid out or refunded.
+     * @notice Reject a hash that has already withdrawn or refunded.
      * @dev `IntentSource._validatePublish` refuses `Withdrawn` and `Refunded`, and inheriting that side
-     *      effect would leave the terminal case unguarded whenever `order.publish` is false. Asserted
-     *      directly instead, so the protection holds either way. Initial and Funded children may receive
-     *      additional pushes; builders are responsible for distinct child identities when required.
+     *      effect would leave the terminal case unchecked whenever `order.publish` is false. Asserted
+     *      directly instead, so the behaviour does not depend on the flag. What that buys is a fail-fast
+     *      revert, not fund protection -- see {IntentAlreadySettled} for why the difference matters.
+     *      Initial and Funded children may receive additional pushes; builders are responsible for
+     *      distinct child identities when required.
      * @param portal The Portal to ask.
      * @param intentHash Intent2's hash.
      */
