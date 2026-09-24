@@ -40,6 +40,8 @@ questions, not decided here).
 | D6 | SVM `close_fulfill_marker` leaves a **tombstone** instead of deleting the marker | Otherwise a closed marker is indistinguishable from "never fulfilled" and `cancel` could succeed on a fulfilled intent. |
 | D7 | Conflicting outcomes: **first recorded wins**, per prover; `AggregatorProver` resolves by member priority | Deliberate deviation from the Notion spec's "explicit conflict policy" wording, decided 2026-09-24. Conflicts require a compromised prover/bridge (the destination makes the outcomes mutually exclusive). |
 | D8 | Release as a **minor** version (`feat:` commits, no `BREAKING CHANGE`) | Decided 2026-09-24. Justified by D4 being ABI-additive. |
+| D9 | **Accepted risk:** the new EVM `IntentSource` reads proofs with the typed three-word call; an intent whose `reward.prover` is a pre-change (two-word) prover can neither withdraw nor refund | Decided 2026-09-24. Creators must name new-generation provers. Rejected: a length-tolerant low-level read (costs Portal bytecode, which is 926 B under EIP-170). |
+| D10 | EIP-170: if `Portal`/`PortalTron` exceed 24,576 B, stop and decide the cut with measured sizes | Decided 2026-09-24. Candidates: drop `cancelAndProve`, lower Portal optimizer runs, move logic to a library. |
 
 ## 3. Protocol
 
@@ -80,6 +82,8 @@ bytes32 public constant CANCELLED = keccak256("eco.portal.intent.cancelled");
 event IntentCancelled(bytes32 indexed intentHash);   // IInbox
 error RouteNotExpired(uint64 deadline);              // IInbox
 error ReservedClaimant();                            // IInbox
+// IIntentSource: error CancelledIntent(bytes32 intentHash) — withdraw on a Cancelled proof. Not `IntentCancelled`:
+// Solidity forbids an error sharing the IInbox event's name in Portal.
 
 function cancel(bytes32 intentHash, Route calldata route, bytes32 rewardHash) external;
 function cancelAndProve(

@@ -22,7 +22,7 @@
 - Every commit message ends with the line `Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP` (pass it as a second `-m`). No co-author lines.
 - Stage files by name (`git -C <wt> add <path> ...`), never `git add -A` / `.`.
 - Format only the files you touched: `npx --prefix <wt> prettier --write <files>`; lint contracts you touched: `npx --prefix <wt> solhint <files>`. Never blanket-format.
-- **EIP-170 size gate:** at baseline `Portal` runtime is **23,650 B** and `PortalTron` **23,650 B** against the 24,576 B limit (**926 B margin**). After every task that touches `Inbox.sol` or `IntentSource.sol`, run the size gate (see Task 1 Step 7). If either exceeds 24,576 B, **STOP and report** — do not change optimizer settings, split contracts, or delete features on your own.
+- **EIP-170 size gate:** at baseline `Portal` runtime is **23,650 B** and `PortalTron` **23,650 B** against the 24,576 B limit (**926 B margin**). After every task that touches `Inbox.sol` or `IntentSource.sol`, run the size gate (see Task 1 Step 7). If either exceeds 24,576 B, **STOP and report** — do not change optimizer settings, split contracts, or delete features on your own. The user decides the cut only after seeing measured sizes.
 - Repo security gate (`CLAUDE.md`): this is a feature, not a fix for deployed code, but do **not** push or open a PR as part of this plan; the human decides.
 - Tests extend `BaseTest` (`test/BaseTest.sol`) where they need a Portal + `TestProver`; match the repo's comment density (short intent comments, NatSpec on public/external contract functions).
 
@@ -39,14 +39,13 @@
 | `contracts/prover/LocalProver.sol` | modify | outcome in every return; `CANCELLED_CLAIMANT` → Cancelled |
 | `contracts/prover/AggregatorProver.sol` | modify | 96-byte tuple decode, outcome-aware selection, offset-head guard |
 | `contracts/interfaces/IIntentSource.sol` | modify | `CancelledIntent(bytes32)` error |
-| `contracts/IntentSource.sol` | modify | fast-path refund, withdraw guard, legacy-shape tolerant `_readProof` (Task 8) |
+| `contracts/IntentSource.sol` | modify | fast-path refund, withdraw guard |
 | `scripts/Deploy.s.sol` | modify | aggregator member probe expects the 96-byte shape |
 | `contracts/test/TestProver.sol`, `TestMessageBridgeProver.sol` | modify | helpers set `outcome`; `addCancelledIntent` |
 | `contracts/test/MockDomainProver.sol`, `MockDomainProverDirtyChainId.sol` | modify | 3-field literals |
 | `contracts/test/DirtyBitsProver.sol` | modify | dirty payload widened to 96 bytes |
 | `contracts/test/ShortDynamicProver.sol` | create | 96-byte dynamic-return fabrication case |
 | `contracts/test/MockDomainProverLegacyShape.sol` | create | legacy 64-byte member for the deploy probe |
-| `contracts/test/LegacyShapeProver.sol` | create | legacy 2-field prover for `IntentSource` compatibility (Task 8) |
 | `test/core/InboxCancel.t.sol` | create | destination cancel semantics + sentinel golden |
 | `test/prover/ProofOutcome.t.sol` | create | `BaseProver` outcome recording, conflicts, challenge |
 | `test/source/IntentSourceCancellation.t.sol` | create | refund fast path, withdraw guard, fallback, legacy shape |
@@ -1905,178 +1904,12 @@ git -C $W commit -m "feat(portal): refund proven cancellations before the reward
 
 ---
 
-### Task 8: Read legacy two-word provers without freezing escrow — ⚠ DECISION REQUIRED BEFORE EXECUTING
+### Task 8: (removed) Legacy two-word provers
 
-**Why:** after Task 3, `IntentSource` decodes `provenIntents` as a three-word tuple. `reward.prover` is chosen by the creator, so an intent on the new Portal can name a prover built before this change (any currently deployed prover, or a third-party one). Its 64-byte return makes the decoder revert in `IntentSource`'s own frame, so **both `withdraw` and `refund` revert forever** for that intent — stuck funds with no recovery. The spec's D4 argues ABI-additivity only in the other direction (old readers of new provers). The recommended fix below accepts both shapes. Confirm with the human (it adds Portal bytecode against the 926 B margin) before executing; if rejected, record the accepted risk in `CLAUDE.md` instead.
-
-**Files:**
-- Modify: `contracts/IntentSource.sol` (new `_readProof`; call it from `withdraw` and `_validateRefund`)
-- Create: `contracts/test/LegacyShapeProver.sol`
-- Modify: `test/source/IntentSourceCancellation.t.sol`
-
-**Interfaces:**
-- Produces: `IntentSource._readProof(address prover, bytes32 intentHash) internal view returns (IProver.ProofData memory)`; `LegacyShapeProver.addProvenIntent(bytes32, address, uint64)`.
-
-- [ ] **Step 1: Write the failing tests**
-
-Create `contracts/test/LegacyShapeProver.sol`:
-
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
-
-/**
- * @title LegacyShapeProver
- * @notice Prover built before proven cancellation: provenIntents returns the
- *         two-word (address claimant, uint64 destination) tuple
- */
-contract LegacyShapeProver {
-    struct LegacyProofData {
-        address claimant;
-        uint64 destination;
-    }
-
-    mapping(bytes32 => LegacyProofData) internal _proofs;
-
-    function addProvenIntent(
-        bytes32 intentHash,
-        address claimant,
-        uint64 destination
-    ) external {
-        _proofs[intentHash] = LegacyProofData(claimant, destination);
-    }
-
-    function provenIntents(
-        bytes32 intentHash
-    ) external view returns (LegacyProofData memory) {
-        return _proofs[intentHash];
-    }
-
-    function challengeIntentProof(uint64, bytes32, bytes32) external pure {}
-}
-```
-
-Append to `IntentSourceCancellationTest` (add `import {LegacyShapeProver} from "../../contracts/test/LegacyShapeProver.sol";`):
-
-```solidity
-    function _useLegacyProver() internal returns (LegacyShapeProver legacy) {
-        legacy = new LegacyShapeProver();
-        reward.prover = address(legacy);
-        intent.reward = reward;
-    }
-
-    function testLegacyProverUnprovenIntentRefundsAfterDeadline() public {
-        _useLegacyProver();
-        _publishAndFund(intent, false);
-
-        vm.warp(intent.reward.deadline);
-        intentSource.refund(intent.destination, _routeHash(), intent.reward);
-
-        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
-    }
-
-    function testLegacyProverFulfilledProofPaysClaimant() public {
-        LegacyShapeProver legacy = _useLegacyProver();
-        _publishAndFund(intent, false);
-        legacy.addProvenIntent(_hashIntent(intent), claimant, CHAIN_ID);
-
-        intentSource.withdraw(intent.destination, _routeHash(), intent.reward);
-
-        assertEq(tokenA.balanceOf(claimant), MINT_AMOUNT);
-    }
-
-    function testLegacyProverFulfilledProofBlocksEarlyRefund() public {
-        LegacyShapeProver legacy = _useLegacyProver();
-        _publishAndFund(intent, false);
-        bytes32 intentHash = _hashIntent(intent);
-        legacy.addProvenIntent(intentHash, claimant, CHAIN_ID);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IIntentSource.IntentNotClaimed.selector,
-                intentHash
-            )
-        );
-        intentSource.refund(intent.destination, _routeHash(), intent.reward);
-    }
-```
-
-- [ ] **Step 2: Run to verify they fail**
-
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-test 'testLegacyProver'`
-Expected: all three FAIL with an ABI-decoding revert (`EvmError: Revert` with empty data).
-
-- [ ] **Step 3: Implement**
-
-Add to `IntentSource.sol` (next to `_validateRefund`):
-
-```solidity
-    /**
-     * @notice Reads a prover's proof, accepting the current and the legacy ProofData shape
-     * @dev Current provers return (claimant, destination, outcome). Provers built before
-     *      proven cancellation return (claimant, destination); decoding that as the
-     *      three-field struct would revert in this frame and freeze withdraw AND refund
-     *      for every intent naming such a prover, so it reads as Fulfilled when a
-     *      claimant is set. A codeless prover reads as unproven. A reverting prover
-     *      still reverts, as before.
-     * @param prover The intent's prover
-     * @param intentHash Hash of the intent
-     * @return proof The proof, or an unproven ProofData
-     */
-    function _readProof(
-        address prover,
-        bytes32 intentHash
-    ) internal view returns (IProver.ProofData memory proof) {
-        if (prover.code.length == 0) {
-            return proof;
-        }
-
-        (bool success, bytes memory ret) = prover.staticcall(
-            abi.encodeCall(IProver.provenIntents, (intentHash))
-        );
-        if (!success) {
-            assembly {
-                revert(add(ret, 0x20), mload(ret))
-            }
-        }
-
-        if (ret.length == 64) {
-            (address claimant, uint64 destination) = abi.decode(
-                ret,
-                (address, uint64)
-            );
-            proof.claimant = claimant;
-            proof.destination = destination;
-            proof.outcome = claimant == address(0)
-                ? IProver.Outcome.None
-                : IProver.Outcome.Fulfilled;
-            return proof;
-        }
-
-        return abi.decode(ret, (IProver.ProofData));
-    }
-```
-
-In `withdraw` replace the `IProver(reward.prover).provenIntents(intentHash)` read with `_readProof(reward.prover, intentHash)`. In `_validateRefund` replace the codeless-guarded read block (and keep its explanatory comment, now pointing at `_readProof`) with `IProver.ProofData memory proof = _readProof(reward.prover, intentHash);`.
-
-- [ ] **Step 4: Run to verify they pass**
-
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-path 'test/source/*'`
-Expected: all PASS, including `testRefundSucceedsWithCodelessProverAfterDeadline` and `testRefundSucceedsWithZeroAddressProverAfterDeadline`.
-
-- [ ] **Step 5: Full suite + size gate** — `forge test --root ...` all PASS, then Task 1 Step 7.
-
-- [ ] **Step 6: Format, lint, commit**
-
-```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
-npx --prefix $W prettier --write $W/contracts/IntentSource.sol $W/contracts/test/LegacyShapeProver.sol $W/test/source/IntentSourceCancellation.t.sol
-npx --prefix $W solhint $W/contracts/IntentSource.sol
-git -C $W add contracts/IntentSource.sol contracts/test/LegacyShapeProver.sol test/source/IntentSourceCancellation.t.sol
-git -C $W commit -m "fix(portal): read legacy two-word proofs without freezing escrow" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
-```
-
----
+Decided 2026-09-24 (spec D9): the new `IntentSource` reads provers with the plain typed
+`IProver(reward.prover).provenIntents` call. A `reward.prover` that returns the pre-change two-word
+`ProofData` makes withdraw and refund revert for that intent; this freeze risk is accepted. Do not add a
+tolerant reader. Task numbering is kept so cross-references stay stable.
 
 ### Task 9: Per-prover cancellation coverage
 
@@ -2566,7 +2399,7 @@ Expected: `git status --short` shows nothing tracked as modified (the `node_modu
 | §8 generation isolation / deploy probe | 3 (probe); rollout itself is out of scope for code |
 | §9 invariants 1–7 | 1 (1, 5, 7), 7/9/10 (2, 3, 4), 10 (6) |
 | §10 EVM column | 1, 2, 4–10 |
-| Not in spec, found in code: legacy two-word provers freeze escrow | 8 (decision required) |
+| Not in spec, found in code: legacy two-word provers freeze escrow | accepted risk (spec D9), no task |
 | Not in spec, found in code: Polymer zero-claimant would become a permanent Fulfilled record | 3 |
 | Not in spec, found in code: 96-byte dynamic-return fabrication in AggregatorProver | 3 |
-| Not in spec, found in code: Portal is 926 B under EIP-170 | size gate in 1, 2, 3, 7, 8, 11 |
+| Not in spec, found in code: Portal is 926 B under EIP-170 | size gate in 1, 2, 3, 7, 11 |
