@@ -9,7 +9,7 @@ import {Semver} from "../libs/Semver.sol";
 import {ILocalProver} from "../interfaces/ILocalProver.sol";
 import {IPortal} from "../interfaces/IPortal.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
-import {Intent, Route, Reward, TokenAmount} from "../types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, CANCELLED_CLAIMANT} from "../types/Intent.sol";
 
 /**
  * @title LocalProver
@@ -65,6 +65,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      *      calls Portal.fulfill with LocalProver as the claimant outside of flashFulfill.
      *      The second is when Portal.claimants contains a non-EVM bytes32 value that fails
      *      AddressConverter.isValidAddress.
+     *      Returns a Cancelled proof when the Portal recorded the CANCELLED sentinel.
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
@@ -74,6 +75,11 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Check Portal's claimants mapping first
         // Note: Must cast to Inbox to access public claimants mapping
         bytes32 portalClaimant = Inbox(address(_PORTAL)).claimants(intentHash);
+
+        // Cancelled on this chain after the route deadline: a proven cancellation
+        if (portalClaimant == CANCELLED_CLAIMANT) {
+            return ProofData(address(0), _CHAIN_ID, Outcome.Cancelled);
+        }
 
         // Case 1: Griefing protection - LocalProver set as claimant without using flashFulfill
         // In normal flashFulfill flow, actual solver is set as Portal claimant (not LocalProver)

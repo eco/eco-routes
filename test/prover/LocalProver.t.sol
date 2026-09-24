@@ -161,6 +161,27 @@ contract LocalProverTest is Test {
         assertEq(proof.destination, 0);
     }
 
+    function test_provenIntents_ReportsCancelledIntent() public {
+        Intent memory _intent = _createIntent(
+            address(localProver),
+            REWARD_AMOUNT,
+            0
+        );
+        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+
+        vm.warp(uint256(_intent.route.deadline) + 1);
+        portal.cancel(
+            intentHash,
+            _intent.route,
+            keccak256(abi.encode(_intent.reward))
+        );
+
+        IProver.ProofData memory proof = localProver.provenIntents(intentHash);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, CHAIN_ID);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
     // A2. prove()
     function test_prove_ZeroValueZeroSenderDoesNotRevert() public {
         // Zero value and zero sender both hit the early returns; prove() must
