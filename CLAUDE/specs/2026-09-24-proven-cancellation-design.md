@@ -41,7 +41,7 @@ questions, not decided here).
 | D7 | Conflicting outcomes: **first recorded wins**, per prover; `AggregatorProver` resolves by member priority | Deliberate deviation from the Notion spec's "explicit conflict policy" wording, decided 2026-09-24. Conflicts require a compromised prover/bridge (the destination makes the outcomes mutually exclusive). |
 | D8 | Release as a **minor** version (`feat:` commits, no `BREAKING CHANGE`) | Decided 2026-09-24. Justified by D4 being ABI-additive. |
 | D9 | **Accepted risk:** the new EVM `IntentSource` reads proofs with the typed three-word call; an intent whose `reward.prover` is a pre-change (two-word) prover can neither withdraw nor refund | Decided 2026-09-24. Creators must name new-generation provers. Rejected: a length-tolerant low-level read (costs Portal bytecode, which is 926 B under EIP-170). |
-| D10 | EIP-170: if `Portal`/`PortalTron` exceed 24,576 B, stop and decide the cut with measured sizes | Decided 2026-09-24. Candidates: drop `cancelAndProve`, lower Portal optimizer runs, move logic to a library. |
+| D10 | EIP-170: if `Portal`/`PortalTron` exceed 24,576 B, stop and decide the cut with measured sizes | Decided 2026-09-24. Tripped at Task 2 (`cancelAndProve`): Portal 24,727 B at runs=1,000,000. **Resolution (user, 2026-09-24): `foundry.toml` `optimizer_runs` 1,000,000 → 10,000** → 22,067 B (2,509 B margin). Measured: runs 100,000 = 24,727 B; 1,000 = 21,038 B; 200 = 19,902 B. |
 
 ## 3. Protocol
 
