@@ -154,11 +154,11 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     }
 
     /**
-     * @notice Returns the first member proof with a non-zero claimant
+     * @notice Returns the first member proof, in priority order
      * @dev Iterates members in immutable priority order. Members that are
-     *      codeless, revert, or return a zero claimant are skipped and never
-     *      propagated: a zero-claimant success must fall through to the next
-     *      member, not terminate the search.
+     *      codeless, revert, or return anything but a well-formed Fulfilled
+     *      proof are skipped and never propagated: an unproven success must
+     *      fall through to the next member, not terminate the search.
      *
      *      The `code.length` guard closes the CODELESS case: a staticcall to a
      *      codeless address SUCCEEDS with empty returndata, and ABI-decoding
@@ -168,24 +168,26 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      Mirrors the same defense at IntentSource.sol:872-880.
      *
      *      The call below is a low-level staticcall, not an interface call,
-     *      and the read path is revert-free for ANY 64-byte payload, honest or
-     *      not. A non-dynamic ProofData{address; uint64;} ABI-encodes to
-     *      exactly 64 bytes, so `ret.length == 64` closes the WRONG-SHAPE case
+     *      and the read path is revert-free for ANY 96-byte payload, honest or
+     *      not. A static ProofData{address; uint64; Outcome;} ABI-encodes to
+     *      exactly 96 bytes, so ret.length == 96 closes the WRONG-SHAPE case
      *      first: a code-bearing member returning SUCCESS with insufficient
      *      returndata would otherwise make solc's generated decoder revert in
      *      THIS frame, outside any try/catch. That length check alone is not
-     *      enough, though: decoding a full 64-byte payload directly to
-     *      (address, uint64) is ALSO strict — solc reverts, still in this
-     *      frame, if the upper 96 bits of the address word or the upper 192
-     *      bits of the uint64 word are non-zero. So the 64 bytes are decoded
-     *      first as (uint256, uint256), which cannot revert for any bit
-     *      pattern, and only then range-checked (`>> 160`/`>> 64` non-zero)
-     *      before narrowing; a dirty payload is treated exactly like a
-     *      wrong-length one, i.e. skipped via `continue`. Either failure
-     *      mode — wrong length or dirty high bits — would otherwise be a
-     *      permanent freeze of both withdraw and refund for every intent
-     *      naming this aggregator, since provenIntents is read by both.
-     *
+     *      enough, though: decoding a full 96-byte payload directly to
+     *      (address, uint64, Outcome) is ALSO strict — solc reverts, still in
+     *      this frame, if the upper 96 bits of the address word or the upper
+     *      192 bits of the uint64 word are non-zero, or if the outcome word is
+     *      outside the enum. So the 96 bytes are decoded first as
+     *      (bytes32, uint256, uint256), which cannot revert for any bit
+     *      pattern, and only then range-checked (`>> 160`/`>> 64` non-zero,
+     *      outcome compared against Fulfilled) before narrowing; a dirty
+     *      payload is treated exactly like a wrong-length one, i.e. skipped
+     *      via `continue`. Either failure mode — wrong length or dirty high
+     *      bits — would otherwise be a permanent freeze of both withdraw and
+     *      refund for every intent naming this aggregator, since provenIntents
+     *      is read by both.
+
      *      An uncatchable out-of-gas (oversized returndata, or an unbounded
      *      gas burn by a hostile member) is still possible and is ACCEPTED:
      *      solc copies the full returndata into memory in our frame before
@@ -201,7 +203,7 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      non-bridge-attested or unrelated address), not against a
      *      deliberately malicious member contract. That validator also
      *      assumes NON-PROXY member bytecode: a proxy whose fallback returned
-     *      a plausible 64-byte payload could defeat the shape checks above;
+     *      a plausible 96-byte payload could defeat the shape checks above;
      *      it does not defend against a malicious proxy member.
      *
      *      No per-member gas cap by design: a cap would silently skip an honest
@@ -210,29 +212,16 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      proof through the front door, so a returndata bomb grants it nothing
      *      new. Fan-out is bounded by MAX_MEMBERS.
      *
-     *      The size check plus the bit-range check are NOT sufficient on their
-     *      own: a member function returning a single EMPTY DYNAMIC value
-     *      (bytes, string, any array, or a struct with a dynamic field)
-     *      ABI-encodes to exactly 64 bytes too — an offset head `0x20`
-     *      followed by a length word `0x00` — which passes `ret.length == 64`
-     *      and passes both range checks (`32 >> 160 == 0`, `0 >> 64 == 0`).
-     *      Decoded naively, the ABI OFFSET WORD itself would surface as a
-     *      fabricated non-zero claimant (`address(0x20)`) with `destination`
-     *      0, for every intentHash — the only known payload class that
-     *      FABRICATES a claimant rather than being skipped. The
-     *      `rawDestination == 0` guard below closes this: no eligible member
-     *      can legitimately hold destination 0, since `MessageBridgeProver`
-     *      rejects chainId 0 at construction and `_resolveChainId` reverts
-     *      `UnregisteredDomain(0)`. A static two-word `ProofData` tuple is
-     *      what an honest member actually returns; together the size check,
-     *      the bit-range check, and this zero-destination check mean any
-     *      wrong-shaped payload is skipped (falls through to the next
-     *      member) rather than surfaced.
-     *
+     *      A single dynamic return value (bytes/string/array) of length 32
+     *      ABI-encodes to exactly 96 bytes and always begins with the offset
+     *      head 0x20; the zero-destination and 0x20-claimant guards skip every
+     *      such payload, and a member built before proven cancellation
+     *      (64 bytes) is skipped by the length check.
+
      *      KNOWN LIMITATION (shadowing): a member holding an entry whose
      *      `destination` is wrong shadows a valid proof held by a
      *      lower-priority member, since this function returns the first
-     *      non-zero claimant. `IntentSource.withdraw` recovers by forwarding a
+     *      Fulfilled proof. `IntentSource.withdraw` recovers by forwarding a
      *      challenge on its wrong-destination branch, so a second `withdraw`
      *      pays, but `_validateRefund` reads the same shadowed value, never
      *      forwards a challenge, and past `reward.deadline` refunds the
@@ -258,7 +247,7 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      entirely and are audited out-of-band. The withdraw/refund asymmetry
      *      itself remains in `IntentSource`.
      * @param intentHash The intent hash to query
-     * @return First non-zero member proof, or a zero ProofData if none
+     * @return First Fulfilled member proof, or an unproven ProofData (outcome None) if none
      */
     function provenIntents(
         bytes32 intentHash
@@ -271,8 +260,7 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
 
             // No code.length guard: the constructor already rejects codeless
             // members, and a staticcall to a codeless address returns success
-            // with EMPTY returndata anyway, which the ret.length != 64 check
-            // below rejects. Dropping it saves an EXTCODESIZE per member.
+            // with EMPTY returndata anyway, which the length check rejects.
             (bool success, bytes memory ret) = member.staticcall(
                 abi.encodeWithSelector(
                     IProver.provenIntents.selector,
@@ -280,45 +268,52 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
                 )
             );
 
-            if (!success || ret.length != 64) continue;
+            if (!success || ret.length != 96) continue;
 
-            // Decode to (bytes32, uint256) first: unlike decoding directly to
-            // (address, uint64), this cannot revert for any 64-byte payload.
-            // Dirty high-order bits are then rejected by the checks below,
-            // exactly like a wrong-length payload, rather than left to solc's
-            // strict (address, uint64) decoder, which WOULD revert in this frame.
-            (bytes32 rawClaimant, uint256 rawDestination) = abi.decode(
-                ret,
-                (bytes32, uint256)
-            );
+            // Decode wide first: unlike decoding directly to ProofData, this
+            // cannot revert for any 96-byte payload. Dirty high-order bits and
+            // out-of-range outcomes are then skipped like a wrong length.
+            (
+                bytes32 rawClaimant,
+                uint256 rawDestination,
+                uint256 rawOutcome
+            ) = abi.decode(ret, (bytes32, uint256, uint256));
 
-            // isValidAddress is the same >> 160 test AddressConverter applies
-            // everywhere else; using it keeps one canonical notion of "this
-            // word is an address" and makes the toAddress() below provably
-            // revert-free.
             if (!rawClaimant.isValidAddress() || rawDestination >> 64 != 0) {
                 continue;
             }
 
-            // A single empty dynamic return value (bytes/string/array) encodes
-            // to exactly 64 bytes — offset head 0x20, then length 0x00 — which
-            // passes the size and range checks above and would otherwise surface
-            // the ABI OFFSET WORD as a fabricated claimant with destination 0.
             // No eligible member can legitimately hold destination 0:
             // MessageBridgeProver rejects chainId 0 at construction and
             // _resolveChainId reverts UnregisteredDomain(0).
             if (rawDestination == 0) continue;
 
-            address claimant = rawClaimant.toAddress();
-            uint64 destination = uint64(rawDestination);
+            if (rawOutcome == uint256(Outcome.Fulfilled)) {
+                // A single dynamic return value always starts with the ABI
+                // offset head 0x20; decoded naively that word would surface as
+                // a fabricated claimant address(0x20)
+                if (
+                    rawClaimant == bytes32(0) ||
+                    rawClaimant == bytes32(uint256(0x20))
+                ) {
+                    continue;
+                }
 
-            if (claimant != address(0)) {
                 return
-                    ProofData({claimant: claimant, destination: destination});
+                    ProofData({
+                        claimant: rawClaimant.toAddress(),
+                        destination: uint64(rawDestination),
+                        outcome: Outcome.Fulfilled
+                    });
             }
         }
 
-        return ProofData({claimant: address(0), destination: 0});
+        return
+            ProofData({
+                claimant: address(0),
+                destination: 0,
+                outcome: Outcome.None
+            });
     }
 
     /**

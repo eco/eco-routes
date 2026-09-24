@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
  * @title MockDomainProverMalformedProvenIntents
  * @notice Minimal stand-in exposing `chainIdByDomain` (so it passes the
  *         bridge-attestation probe) but a malformed `provenIntents` that
- *         returns the wrong shape (32 bytes instead of the 64-byte ProofData
+ *         returns the wrong shape (32 bytes instead of the 96-byte ProofData
  *         encoding)
  * @dev Used to test Deploy.validateAggregatorProverMembers' provenIntents shape
  *      probe in isolation from the chainIdByDomain probe it sits behind.

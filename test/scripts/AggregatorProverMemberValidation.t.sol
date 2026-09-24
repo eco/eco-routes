@@ -8,6 +8,7 @@ import {MockDomainProver} from "../../contracts/test/MockDomainProver.sol";
 import {MockDomainProverMalformedProvenIntents} from "../../contracts/test/MockDomainProverMalformedProvenIntents.sol";
 import {MockDomainProverDirtyChainId} from "../../contracts/test/MockDomainProverDirtyChainId.sol";
 import {MockDomainProverEmptyDynamic} from "../../contracts/test/MockDomainProverEmptyDynamic.sol";
+import {MockDomainProverLegacyShape} from "../../contracts/test/MockDomainProverLegacyShape.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
@@ -191,13 +192,11 @@ contract AggregatorProverMemberValidationTest is Test {
 
     /// @dev Regression pin for the empty-dynamic gap in _tryProvenIntentsShape.
     ///      An empty `bytes` return encodes to exactly 64 bytes (offset 0x20,
-    ///      length 0x00), so it passes both the length check and the old range
-    ///      check (0x20 >> 160 == 0). AggregatorProver.provenIntents rejects
-    ///      that same payload at runtime via its zero-destination guard, so the
-    ///      member would be skipped for EVERY intentHash forever — and
-    ///      membership is immutable. The probe now requires both words to be
-    ///      exactly zero, which an honest member satisfies because bytes32(0)
-    ///      is an unproven hash.
+    ///      length 0x00). AggregatorProver.provenIntents skips that payload at
+    ///      runtime, so the member would be skipped for EVERY intentHash
+    ///      forever — and membership is immutable. The probe requires exactly
+    ///      96 bytes of zero words, which an honest member satisfies because
+    ///      bytes32(0) is an unproven hash.
     function test_rejectsMemberWithEmptyDynamicProvenIntents() public {
         MockDomainProverEmptyDynamic bad = new MockDomainProverEmptyDynamic();
         Deploy.DeploymentContext memory ctx = _ctxWith(
@@ -215,7 +214,7 @@ contract AggregatorProverMemberValidationTest is Test {
 
     /// @dev Pins the Fix-2 hardening: a member exposing chainIdByDomain (so
     ///      it clears the bridge-attestation probe) but whose provenIntents
-    ///      returns the wrong shape (32 bytes instead of the 64-byte
+    ///      returns the wrong shape (32 bytes instead of the 96-byte
     ///      ProofData encoding) must be rejected at DEPLOY time, since
     ///      AggregatorProver.provenIntents would otherwise silently skip it forever
     ///      at runtime — and membership is immutable, so this is the last
@@ -227,6 +226,24 @@ contract AggregatorProverMemberValidationTest is Test {
         );
         // Matched branch, empty domain config: reaches the provenIntents
         // shape probe without needing per-lane domain setup.
+        ctx.hyperProver = address(bad);
+
+        vm.expectRevert(
+            bytes(
+                "member provenIntents does not return a well-formed ProofData"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev A member built before proven cancellation returns the two-word
+    ///      ProofData. The aggregator only reads the three-word shape, so such a
+    ///      member would be skipped for every intent forever; reject it at deploy.
+    function test_rejectsMemberWithLegacyTwoWordProvenIntents() public {
+        MockDomainProverLegacyShape bad = new MockDomainProverLegacyShape();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(bad)))
+        );
         ctx.hyperProver = address(bad);
 
         vm.expectRevert(

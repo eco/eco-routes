@@ -834,6 +834,55 @@ contract PolymerProverTest is BaseTest {
             )
         );
     }
+
+    /// @dev Stages one (intentHash, claimant) proof emitted by the whitelisted
+    ///      destination prover on Optimism, ready for validate(proof 1)
+    function _setSingleProof(
+        bytes32 intentHash,
+        bytes32 claimantBytes
+    ) internal {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = claimantBytes;
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            abi.encodePacked(
+                PROOF_SELECTOR,
+                bytes32(uint256(uint64(block.chainid)))
+            ),
+            encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID)
+        );
+    }
+
+    function testValidateRecordsFulfilledOutcome() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _setSingleProof(intentHash, bytes32(uint256(uint160(claimant))));
+
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        assertEq(
+            uint8(polymerProver.provenIntents(intentHash).outcome),
+            uint8(IProver.Outcome.Fulfilled)
+        );
+    }
+
+    // A zero claimant used to be written as an empty record; with outcome as the
+    // existence signal it would become a permanent Fulfilled proof that blocks
+    // refund, so it must be skipped like BaseProver does
+    function testValidateSkipsZeroClaimant() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _setSingleProof(intentHash, bytes32(0));
+
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        assertEq(
+            uint8(polymerProver.provenIntents(intentHash).outcome),
+            uint8(IProver.Outcome.None)
+        );
+    }
 }
 
 /// @notice Minimal view of Inbox.prove used by the reentrancy attacker.

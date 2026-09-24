@@ -22,7 +22,7 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Mapping from intent hash to proof data
-     * @dev Empty struct (zero claimant) indicates intent hasn't been proven
+     * @dev Empty struct (outcome None) indicates intent hasn't been proven
      */
     mapping(bytes32 => ProofData) internal _provenIntents;
 
@@ -71,34 +71,44 @@ abstract contract BaseProver is IProver, ERC165 {
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = i * 64;
 
-            // Extract intentHash and claimant using slice
-            bytes32 intentHash = bytes32(data[offset:offset + 32]);
-            bytes32 claimantBytes = bytes32(data[offset + 32:offset + 64]);
-
-            // Check if the claimant bytes32 represents a valid Ethereum address
-            if (!claimantBytes.isValidAddress()) {
-                // Skip non-EVM addresses that can't be converted
-                continue;
-            }
-
-            address claimant = claimantBytes.toAddress();
-
-            // Validate claimant is not zero address
-            if (claimant == address(0)) {
-                continue; // Skip invalid claimants
-            }
-
-            // Skip rather than revert for already proven intents
-            if (_provenIntents[intentHash].claimant != address(0)) {
-                emit IntentAlreadyProven(intentHash);
-            } else {
-                _provenIntents[intentHash] = ProofData({
-                    claimant: claimant,
-                    destination: destination
-                });
-                emit IntentProven(intentHash, claimant, destination);
-            }
+            _recordProof(
+                bytes32(data[offset:offset + 32]),
+                bytes32(data[offset + 32:offset + 64]),
+                destination
+            );
         }
+    }
+
+    /**
+     * @notice Records one (intentHash, claimant) pair as a proof
+     * @dev Non-EVM and zero claimants are skipped: neither can be paid on this chain.
+     *      The first recorded proof wins; a replay or a conflicting redelivery is
+     *      skipped with IntentAlreadyProven so batches keep processing.
+     * @param intentHash Hash of the proven intent
+     * @param claimantBytes Claimant as recorded on the destination
+     * @param destination Chain ID where the intent is being proven
+     */
+    function _recordProof(
+        bytes32 intentHash,
+        bytes32 claimantBytes,
+        uint64 destination
+    ) internal {
+        if (!claimantBytes.isValidAddress()) return;
+
+        address claimant = claimantBytes.toAddress();
+        if (claimant == address(0)) return;
+
+        if (_provenIntents[intentHash].outcome != Outcome.None) {
+            emit IntentAlreadyProven(intentHash);
+            return;
+        }
+
+        _provenIntents[intentHash] = ProofData({
+            claimant: claimant,
+            destination: destination,
+            outcome: Outcome.Fulfilled
+        });
+        emit IntentProven(intentHash, claimant, destination);
     }
 
     /**
@@ -121,7 +131,7 @@ abstract contract BaseProver is IProver, ERC165 {
         ProofData memory proof = _provenIntents[intentHash];
 
         // Only challenge if proof exists and destination chain ID doesn't match
-        if (proof.claimant != address(0) && proof.destination != destination) {
+        if (proof.outcome != Outcome.None && proof.destination != destination) {
             delete _provenIntents[intentHash];
 
             emit IntentProofInvalidated(intentHash);

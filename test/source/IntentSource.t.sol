@@ -1375,7 +1375,13 @@ contract IntentSourceTest is BaseTest {
         vm.mockCall(
             address(prover),
             abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
-            abi.encode(IProver.ProofData(address(0), CHAIN_ID))
+            abi.encode(
+                IProver.ProofData(
+                    address(0),
+                    CHAIN_ID,
+                    IProver.Outcome.Fulfilled
+                )
+            )
         );
 
         vm.expectRevert(
@@ -1417,7 +1423,9 @@ contract IntentSourceTest is BaseTest {
         vm.mockCall(
             address(prover),
             abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
-            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+            abi.encode(
+                IProver.ProofData(claimant, CHAIN_ID, IProver.Outcome.Fulfilled)
+            )
         );
 
         // Try to refund an intent that has proof but hasn't been withdrawn - should fail
@@ -1640,7 +1648,9 @@ contract IntentSourceTest is BaseTest {
         vm.mockCall(
             address(prover),
             abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
-            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+            abi.encode(
+                IProver.ProofData(claimant, CHAIN_ID, IProver.Outcome.Fulfilled)
+            )
         );
 
         vm.prank(creator);
@@ -1886,7 +1896,9 @@ contract IntentSourceTest is BaseTest {
         vm.mockCall(
             address(prover),
             abi.encodeWithSelector(IProver.provenIntents.selector, _intentHash),
-            abi.encode(IProver.ProofData(claimant, CHAIN_ID))
+            abi.encode(
+                IProver.ProofData(claimant, CHAIN_ID, IProver.Outcome.Fulfilled)
+            )
         );
 
         // Withdraw the intent
