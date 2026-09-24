@@ -32,7 +32,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /// @notice Length of the hex payload in a Solana `Prove:` log: 80 bytes = 160 chars
     uint256 public constant SOLANA_LOG_HEX_LENGTH = 160;
     bytes internal constant SOLANA_LOG_PROGRAM_PREFIX = "program: ";
-    /// @dev Polymer documents that it strips this from the lines it returns; tolerated if not
+    /// @dev Polymer strips this (and the `program: <id>, ` head) from the lines it returns;
+    ///      tolerated if present
     bytes internal constant SOLANA_LOG_PROVE_PREFIX = "Prove:";
     /// @dev What the Solana runtime prepends to every `msg!` line in a transaction log
     bytes internal constant SOLANA_LOG_RUNTIME_PREFIX = "Program log: ";
@@ -223,14 +224,17 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
     /**
      * @notice Validates a Polymer proof of Solana `Prove:` logs emitted by a whitelisted
      *         eco-routes-svm polymer-prover program and records the contained intents
-     * @dev Each log line is `program: <base58 program id>, <160 hex chars>` where the hex is
-     *      source chain ID (8) ‖ destination chain ID (8) ‖ intent hash (32) ‖ claimant (32).
-     *      Polymer authenticates `programID` and `chainId`; the base58 id inside the line is
-     *      compared byte-for-byte against the canonical base58 encoding of `programID` as
-     *      defense in depth against log misattribution. A program field that is not that
-     *      exact string (wrong id, non-base58 chars, over-long, non-canonical leading `1`s)
-     *      reverts SolanaLogProgramMismatch; every other malformed line reverts
-     *      InvalidSolanaLog. Both fail closed and abort the whole proof.
+     * @dev Each log line carries 160 hex chars: source chain ID (8) ‖ destination chain ID (8)
+     *      ‖ intent hash (32) ‖ claimant (32). Polymer's Prove API returns that payload bare,
+     *      having stripped the `Prove: program: <base58 program id>, ` head polymer-prover
+     *      emits; the emitted `program: <id>, <hex>` form is accepted too. Polymer
+     *      authenticates `programID` and `chainId`, and `programID` must be whitelisted, which
+     *      is what binds a bare line to our program. When a line does carry the base58 id, it
+     *      is also compared byte-for-byte against the canonical base58 encoding of `programID`
+     *      as defense in depth: a program field that is not that exact string (wrong id,
+     *      non-base58 chars, over-long, non-canonical leading `1`s) reverts
+     *      SolanaLogProgramMismatch. Every other malformed line reverts InvalidSolanaLog. Both
+     *      fail closed and abort the whole proof.
      *
      *      A Polymer Solana proof is scoped to a whole transaction while `source` is set per
      *      `portal::prove` instruction, so one transaction can legitimately carry `Prove:`
@@ -241,7 +245,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      *      a no-op. Claimants that are not 160-bit EVM addresses, or are zero, are skipped.
      *
      *      Cost scales with the number of log lines in the proven Solana transaction, not with
-     *      the number of intents recorded: every line is parsed, its program substring copied
+     *      the number of intents recorded: every line is parsed, any program substring copied
      *      and hashed, and its 160 hex chars decoded in Solidity before the `source` filter can
      *      skip it, so lines for other EVM source chains are paid for in full. The base58
      *      encoding of `programID` is done once per proof, outside the loop. The EVM `validate`
@@ -283,14 +287,18 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
     /**
      * @notice Parses one proven Solana log line and records its intent
-     * @dev The head tolerates, in this order, the Solana runtime `Program log: ` prefix and
-     *      Polymer's `Prove:` prefix, each optional and each followed by any number of
-     *      spaces, before the required `program: `. Polymer documents that it strips
-     *      `Prove: ` from the lines it returns; that is unverified against the deployed
-     *      indexer, and the tolerance is confined to the head. The `, <hex>` tail is
-     *      byte-exact: exactly SOLANA_LOG_HEX_LENGTH hex chars and nothing after them.
-     * @param log The log line, with or without the Solana runtime `Program log: ` and/or
-     *        Polymer's `Prove:` prefix
+     * @dev Two shapes are accepted, both byte-exact in the payload: exactly
+     *      SOLANA_LOG_HEX_LENGTH hex chars and nothing after them.
+     *      - Bare `<hex>`: what Polymer's Prove API actually returns. It strips the whole
+     *        `Prove: program: <id>, ` head, observed on devnet for a log polymer-prover emitted
+     *        inside Portal's CPI. The emitting program is then bound only by the `programID`
+     *        that `validateSolLogs` authenticated and `validateSolana` checked against the
+     *        whitelist, which is the binding Polymer's design relies on.
+     *      - `program: <id>, <hex>`: the line as emitted, where `<id>` must be the canonical
+     *        base58 of that same authenticated program.
+     *      Either may follow the Solana runtime `Program log: ` prefix and Polymer's `Prove:`
+     *      prefix, each optional and each followed by any number of spaces.
+     * @param log The log line in either shape, with or without the optional prefixes
      * @param expectedProgramStrHash keccak256 of the canonical base58 encoding of the
      *        authenticated emitting program
      * @return ours True when the line is for this chain (recorded, or skipped only because
@@ -310,33 +318,21 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         if (_startsWithAt(log, SOLANA_LOG_PROVE_PREFIX, cursor)) {
             cursor = _skipSpaces(log, cursor + SOLANA_LOG_PROVE_PREFIX.length);
         }
-        if (!_startsWithAt(log, SOLANA_LOG_PROGRAM_PREFIX, cursor)) {
-            revert InvalidSolanaLog();
-        }
-        cursor += SOLANA_LOG_PROGRAM_PREFIX.length;
-
-        // program id runs up to ", "
-        uint256 comma = cursor;
-        while (comma < log.length && log[comma] != ",") {
-            comma++;
-        }
-        // need ", " plus exactly the hex payload, and nothing after it
-        if (
-            comma + 2 + SOLANA_LOG_HEX_LENGTH != log.length ||
-            log[comma + 1] != " "
-        ) {
+        uint256 payloadStart;
+        if (_startsWithAt(log, SOLANA_LOG_PROGRAM_PREFIX, cursor)) {
+            payloadStart = _programHeadEnd(
+                log,
+                cursor + SOLANA_LOG_PROGRAM_PREFIX.length,
+                expectedProgramStrHash
+            );
+        } else if (log.length - cursor == SOLANA_LOG_HEX_LENGTH) {
+            // Polymer's stripped form: the payload alone.
+            payloadStart = cursor;
+        } else {
             revert InvalidSolanaLog();
         }
 
-        bytes memory programStr = new bytes(comma - cursor);
-        for (uint256 i = 0; i < programStr.length; i++) {
-            programStr[i] = log[cursor + i];
-        }
-        if (keccak256(programStr) != expectedProgramStrHash) {
-            revert SolanaLogProgramMismatch();
-        }
-
-        bytes memory payload = _hexDecode(log, comma + 2);
+        bytes memory payload = _hexDecode(log, payloadStart);
 
         uint64 source = uint64(bytes8(_slice32(payload, 0)));
         uint64 destination = uint64(bytes8(_slice32(payload, 8)));
@@ -356,6 +352,38 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
 
         processIntent(intentHash, claimantBytes.toAddress(), destination);
         return true;
+    }
+
+    /**
+     * @dev Validates `<id>, ` starting at `cursor` (just past `program: `) and returns where the
+     *      payload starts. `<id>` runs up to the first comma and must hash to
+     *      `expectedProgramStrHash`; exactly SOLANA_LOG_HEX_LENGTH bytes must follow `, `.
+     */
+    function _programHeadEnd(
+        bytes memory log,
+        uint256 cursor,
+        bytes32 expectedProgramStrHash
+    ) internal pure returns (uint256) {
+        uint256 comma = cursor;
+        while (comma < log.length && log[comma] != ",") {
+            comma++;
+        }
+        // need ", " plus exactly the hex payload, and nothing after it
+        if (
+            comma + 2 + SOLANA_LOG_HEX_LENGTH != log.length ||
+            log[comma + 1] != " "
+        ) {
+            revert InvalidSolanaLog();
+        }
+
+        bytes memory programStr = new bytes(comma - cursor);
+        for (uint256 i = 0; i < programStr.length; i++) {
+            programStr[i] = log[cursor + i];
+        }
+        if (keccak256(programStr) != expectedProgramStrHash) {
+            revert SolanaLogProgramMismatch();
+        }
+        return comma + 2;
     }
 
     /// @dev Index of the first non-space byte at or after `at`, or `log.length`

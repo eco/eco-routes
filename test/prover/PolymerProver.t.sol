@@ -138,7 +138,9 @@ contract PolymerProverTest is BaseTest {
         return string(out);
     }
 
-    /// @notice The line Polymer returns for one Solana `Prove:` log (prefix already stripped)
+    /// @notice One Solana `Prove:` log in its emitted `program: <id>, <hex>` form, minus the
+    ///         `Prove: ` prefix. Polymer itself returns only the hex payload; see
+    ///         LIVE_DEVNET_POLYMER_LINE.
     function _solanaLog(
         bytes32 programId,
         uint64 source,
@@ -1499,6 +1501,104 @@ contract PolymerProverTest is BaseTest {
                 claimant
             );
         }
+    }
+
+    /// @dev The exact line Polymer's devnet Prove API returned for a real `Prove:` log that
+    ///      polymer-prover emitted inside Portal's CPI (probe, 2026-09-24): Polymer strips the
+    ///      whole `Prove: program: <id>, ` head and returns only the 160-hex payload. Program
+    ///      APwQiAKtuaWrKzP2e9nXPd93NHU4ekHJEWkXihFfL6Kn, source Base Sepolia (84532),
+    ///      destination Solana devnet (1399811150).
+    string internal constant LIVE_DEVNET_POLYMER_LINE =
+        "0000000000014a3400000000536f6c4e6cf05f7ed1a5b987b8066359a1db42dd997c6d3a710c36f256644fbafbffda9d000000000000000000000000256b70644f5d77bc8e2bb82c731ddf747ecb1471";
+
+    function testValidateSolanaAcceptsLiveDevnetPolymerLine() public {
+        bytes32 programKey = 0x8b997af82487204a693e481b8423996d0172d4a88e4c69e1d7d56258a947068d;
+        bytes32 intentHash = 0x6cf05f7ed1a5b987b8066359a1db42dd997c6d3a710c36f256644fbafbffda9d;
+        address liveClaimant = 0x256B70644f5D77bc8e2bb82C731Ddf747ecb1471;
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = programKey;
+        vm.chainId(84532);
+        PolymerProver devnetProver = new PolymerProver(
+            address(portal),
+            address(crossL2ProverV2),
+            32 * 1024,
+            SOLANA_POLYMER_CHAIN_ID,
+            1399811150,
+            provers
+        );
+        string[] memory logs = new string[](1);
+        logs[0] = LIVE_DEVNET_POLYMER_LINE;
+        bytes memory proof = _setSolanaProofFor(
+            SOLANA_POLYMER_CHAIN_ID,
+            programKey,
+            logs
+        );
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, liveClaimant, 1399811150);
+        devnetProver.validateSolana(proof);
+        assertEq(devnetProver.provenIntents(intentHash).claimant, liveClaimant);
+    }
+
+    function testValidateSolanaAcceptsBarePayload() public {
+        bytes32 intentHash = keccak256("bare");
+        bytes memory payload = abi.encodePacked(
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            intentHash,
+            bytes32(uint256(uint160(claimant)))
+        );
+        string[] memory logs = new string[](1);
+        logs[0] = _hexNoPrefix(payload);
+        bytes memory proof = _setSolanaProof(logs);
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, claimant, SOLANA_CHAIN_ID);
+        polymerProver.validateSolana(proof);
+        assertEq(polymerProver.provenIntents(intentHash).claimant, claimant);
+    }
+
+    function testValidateSolanaRevertsOnBarePayloadOfWrongLength() public {
+        bytes memory payload = abi.encodePacked(
+            uint64(block.chainid),
+            SOLANA_CHAIN_ID,
+            keccak256("bare"),
+            bytes32(uint256(uint160(claimant)))
+        );
+        string memory full = _hexNoPrefix(payload);
+        string[] memory logs = new string[](1);
+
+        logs[0] = string.concat(full, "00");
+        bytes memory proof = _setSolanaProof(logs);
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+
+        bytes memory shortLine = new bytes(158);
+        for (uint256 i = 0; i < shortLine.length; i++)
+            shortLine[i] = bytes(full)[i];
+        logs[0] = string(shortLine);
+        proof = _setSolanaProof(logs);
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
+    }
+
+    function testValidateSolanaRevertsOnBarePayloadWithNonHex() public {
+        bytes memory line = bytes(
+            _hexNoPrefix(
+                abi.encodePacked(
+                    uint64(block.chainid),
+                    SOLANA_CHAIN_ID,
+                    keccak256("bare"),
+                    bytes32(uint256(uint160(claimant)))
+                )
+            )
+        );
+        line[40] = "g";
+        string[] memory logs = new string[](1);
+        logs[0] = string(line);
+        bytes memory proof = _setSolanaProof(logs);
+        vm.expectRevert(PolymerProver.InvalidSolanaLog.selector);
+        polymerProver.validateSolana(proof);
     }
 
     function testValidateSolanaRevertsOnNearMissPrefix() public {
