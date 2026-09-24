@@ -176,4 +176,23 @@ interface IInbox {
         Route memory route,
         bytes32 rewardHash
     ) external;
+
+    /**
+     * @notice Cancels an unfulfilled intent and initiates proving in one transaction
+     * @dev See prove for the sourceChainDomainID warning
+     * @param intentHash The hash of the intent to cancel
+     * @param route Route information for the intent
+     * @param rewardHash Hash of the reward details
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
+     * @param data Additional data for message formatting
+     */
+    function cancelAndProve(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes memory data
+    ) external payable;
 }

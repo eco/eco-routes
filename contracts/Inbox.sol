@@ -155,6 +155,33 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     }
 
     /**
+     * @notice Cancels an unfulfilled intent and initiates proving in one transaction
+     * @dev Mirrors fulfillAndProve: prove forwards this contract's balance to the
+     *      prover, which refunds any excess to the caller
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
+     * @param data Additional data for message formatting
+     */
+    function cancelAndProve(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes memory data
+    ) external payable {
+        _cancel(intentHash, route, rewardHash);
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        prove(prover, sourceChainDomainID, intentHashes, data);
+    }
+
+    /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
      * @param prover Address of prover on the destination chain

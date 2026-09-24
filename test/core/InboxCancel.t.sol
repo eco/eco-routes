@@ -233,4 +233,59 @@ contract InboxCancelTest is BaseTest {
         assertEq(prover.argIntentHashes(0), intentHash);
         assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT);
     }
+
+    function testCancelAndProveCancelsAndDispatchesSentinel() public {
+        (
+            Intent memory i,
+            bytes32 intentHash,
+            bytes32 rewardHash
+        ) = _destinationIntent();
+        vm.warp(uint256(i.route.deadline) + 1);
+        vm.deal(otherPerson, 1 ether);
+
+        vm.prank(otherPerson);
+        portal.cancelAndProve{value: 0.1 ether}(
+            intentHash,
+            i.route,
+            rewardHash,
+            address(prover),
+            uint64(block.chainid),
+            "data"
+        );
+
+        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT);
+        assertEq(prover.proveCallCount(), 1);
+        assertEq(prover.argIntentHashes(0), intentHash);
+        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT);
+        (address sender, uint64 sourceChainId, , uint256 value) = prover.args();
+        assertEq(sender, otherPerson);
+        assertEq(sourceChainId, uint64(block.chainid));
+        assertEq(value, 0.1 ether);
+        assertEq(address(portal).balance, 0);
+    }
+
+    function testCancelAndProveRevertsBeforeDeadline() public {
+        (
+            Intent memory i,
+            bytes32 intentHash,
+            bytes32 rewardHash
+        ) = _destinationIntent();
+        vm.warp(i.route.deadline);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IInbox.RouteNotExpired.selector,
+                i.route.deadline
+            )
+        );
+        portal.cancelAndProve(
+            intentHash,
+            i.route,
+            rewardHash,
+            address(prover),
+            uint64(block.chainid),
+            ""
+        );
+        assertEq(prover.proveCallCount(), 0);
+    }
 }
