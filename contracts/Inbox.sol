@@ -228,17 +228,17 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     }
 
     /**
-     * @notice Internal function to cancel an intent
-     * @dev Uses the same claimants slot as fulfill, so the two are mutually exclusive
-     * @param intentHash The hash of the intent to cancel
+     * @notice Validates that route.portal is this contract and route+rewardHash hash to intentHash
+     * @dev Shared by _fulfill and _cancel so the portal/hash checks and their errors live in one place
+     * @param intentHash The hash the route and rewardHash are expected to produce
      * @param route The route of the intent
      * @param rewardHash The hash of the reward
      */
-    function _cancel(
+    function _validateRoute(
         bytes32 intentHash,
         Route memory route,
         bytes32 rewardHash
-    ) internal {
+    ) internal view {
         if (route.portal != address(this)) {
             revert InvalidPortal(route.portal);
         }
@@ -250,6 +250,21 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         if (computedIntentHash != intentHash) {
             revert InvalidHash(intentHash);
         }
+    }
+
+    /**
+     * @notice Internal function to cancel an intent
+     * @dev Uses the same claimants slot as fulfill, so the two are mutually exclusive
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     */
+    function _cancel(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) internal {
+        _validateRoute(intentHash, route, rewardHash);
 
         // Strictly after the deadline: fulfill is still allowed at route.deadline
         if (block.timestamp <= route.deadline) {
@@ -284,17 +299,8 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
             revert IntentExpired();
         }
 
-        bytes32 routeHash = keccak256(abi.encode(route));
-        bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
-        );
+        _validateRoute(intentHash, route, rewardHash);
 
-        if (route.portal != address(this)) {
-            revert InvalidPortal(route.portal);
-        }
-        if (computedIntentHash != intentHash) {
-            revert InvalidHash(intentHash);
-        }
         if (claimants[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
