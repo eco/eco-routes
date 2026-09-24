@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {IProver} from "../interfaces/IProver.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
+import {CANCELLED_CLAIMANT} from "../types/Intent.sol";
 
 /**
  * @title BaseProver
@@ -81,9 +82,10 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Records one (intentHash, claimant) pair as a proof
-     * @dev Non-EVM and zero claimants are skipped: neither can be paid on this chain.
-     *      The first recorded proof wins; a replay or a conflicting redelivery is
-     *      skipped with IntentAlreadyProven so batches keep processing.
+     * @dev The CANCELLED sentinel records a Cancelled proof with no claimant.
+     *      Other non-EVM and zero claimants are skipped: neither can be paid on
+     *      this chain. The first recorded proof wins; a replay or a conflicting
+     *      redelivery is skipped with IntentAlreadyProven so batches keep going.
      * @param intentHash Hash of the proven intent
      * @param claimantBytes Claimant as recorded on the destination
      * @param destination Chain ID where the intent is being proven
@@ -93,10 +95,19 @@ abstract contract BaseProver is IProver, ERC165 {
         bytes32 claimantBytes,
         uint64 destination
     ) internal {
-        if (!claimantBytes.isValidAddress()) return;
+        address claimant;
+        Outcome outcome;
 
-        address claimant = claimantBytes.toAddress();
-        if (claimant == address(0)) return;
+        if (claimantBytes == CANCELLED_CLAIMANT) {
+            outcome = Outcome.Cancelled;
+        } else {
+            if (!claimantBytes.isValidAddress()) return;
+
+            claimant = claimantBytes.toAddress();
+            if (claimant == address(0)) return;
+
+            outcome = Outcome.Fulfilled;
+        }
 
         if (_provenIntents[intentHash].outcome != Outcome.None) {
             emit IntentAlreadyProven(intentHash);
@@ -106,9 +117,14 @@ abstract contract BaseProver is IProver, ERC165 {
         _provenIntents[intentHash] = ProofData({
             claimant: claimant,
             destination: destination,
-            outcome: Outcome.Fulfilled
+            outcome: outcome
         });
-        emit IntentProven(intentHash, claimant, destination);
+
+        if (outcome == Outcome.Cancelled) {
+            emit IntentCancellationProven(intentHash, destination);
+        } else {
+            emit IntentProven(intentHash, claimant, destination);
+        }
     }
 
     /**

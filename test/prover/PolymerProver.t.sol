@@ -5,7 +5,7 @@ import "../BaseTest.sol";
 import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract PolymerProverTest is BaseTest {
@@ -882,6 +882,22 @@ contract PolymerProverTest is BaseTest {
             uint8(polymerProver.provenIntents(intentHash).outcome),
             uint8(IProver.Outcome.None)
         );
+    }
+
+    function testValidateRecordsCancelledOutcome() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+
+        _expectEmit();
+        emit IProver.IntentCancellationProven(intentHash, OPTIMISM_CHAIN_ID);
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        IProver.ProofData memory proof = polymerProver.provenIntents(
+            intentHash
+        );
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, OPTIMISM_CHAIN_ID);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 }
 
