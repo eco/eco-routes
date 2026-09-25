@@ -874,7 +874,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         // A codeless prover (typo, address(0), or a prover deployed only on
         // another chain) can never hold a proof, and calling into it would
         // revert — permanently bricking refunds and locking the escrow. Treat
-        // it deterministically as "no proof" (a zero-claimant ProofData) so the
+        // it deterministically as "no proof" (an outcome-None ProofData) so the
         // deadline/status branches below behave as they would for any
         // unproven intent, without dispatching an external call.
         IProver.ProofData memory proof;

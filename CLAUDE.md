@@ -198,8 +198,8 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   for `AggregatorProver` (max 8). Each element may be either a 20-byte address
   (`0x` + 40 hex chars, the form operators will normally write) or a full
   32-byte `bytes32` (`0x` + 64 hex chars); the 20-byte form is left-padded
-  automatically. **Order is priority** — the first member (priority order)
-  holding a well-formed Fulfilled or Cancelled proof wins. Unset or empty (the empty string) skips aggregator
+  automatically. **Order is priority**: the first member holding a
+  well-formed Fulfilled or Cancelled proof wins. Unset or empty (the empty string) skips aggregator
   deployment; any other malformed value (wrong element length, a trailing
   comma, etc.) now **fails the deploy loudly** rather than silently
   skipping deployment the way an unparseable value once did.

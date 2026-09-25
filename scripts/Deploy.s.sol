@@ -126,7 +126,8 @@ contract Deploy is Script {
         }
 
         // Ordered, comma-separated member provers for AggregatorProver.
-        // ORDER IS PRIORITY: the first member holding a Fulfilled proof wins.
+        // ORDER IS PRIORITY: the first member (priority order) holding a
+        // well-formed Fulfilled or Cancelled proof wins.
         // Set explicitly rather than derived from what was deployed this run —
         // silently-varying membership across chains is a security risk.
         //
@@ -589,7 +590,8 @@ contract Deploy is Script {
      * @notice Validates every aggregator member before deploying the aggregator
      * @dev A member holding an entry whose `destination` is wrong SHADOWS a
      *      valid proof held by a lower-priority member, because
-     *      AggregatorProver.provenIntents returns the first Fulfilled proof.
+     *      AggregatorProver.provenIntents returns the first member's
+     *      (priority order) well-formed Fulfilled or Cancelled proof.
      *      This bug class does not exist for a single prover, which stores
      *      exactly one ProofData per intentHash. IntentSource.withdraw
      *      recovers — it forwards a challenge on its wrong-destination

@@ -339,7 +339,7 @@ Parameters:
 - `routeHash` (bytes32) The hash of the intent's route component
 - `reward` (Reward) Reward structure containing distribution details
 
-<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven. Reverts `CancelledIntent` if the intent's prover holds a proven cancellation for its destination — a cancellation is terminal and can never pay out.
 
 <h4><ins>batchWithdraw</ins></h4>
 <h5>Claims rewards for multiple fulfilled and proven intents</h5>
@@ -349,7 +349,7 @@ Parameters:
 - `routeHashes` (bytes32[]) Array of route component hashes
 - `reward` (Reward[]) Array of corresponding reward specifications
 
-<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven. Reverts the entire batch atomically if any entry's prover holds a proven cancellation for its destination — a single `CancelledIntent` bubbles up and undoes the other entries' withdrawals too.
 
 <h4><ins>refund</ins></h4>
 <h5>Returns rewards to the intent creator</h5>
