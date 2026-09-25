@@ -899,6 +899,28 @@ contract PolymerProverTest is BaseTest {
         assertEq(proof.destination, OPTIMISM_CHAIN_ID);
         assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
+
+    function testRefundsBeforeDeadlineOnPolymerProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(polymerProver),
+            OPTIMISM_CHAIN_ID
+        );
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        _assertRefundsBeforeRewardDeadline(_intent);
+    }
+
+    function testWithdrawRevertsOnPolymerProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(polymerProver),
+            OPTIMISM_CHAIN_ID
+        );
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        _assertWithdrawRevertsCancelled(_intent);
+    }
 }
 
 /// @notice Minimal view of Inbox.prove used by the reentrancy attacker.

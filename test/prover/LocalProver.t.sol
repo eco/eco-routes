@@ -161,13 +161,14 @@ contract LocalProverTest is Test {
         assertEq(proof.destination, 0);
     }
 
-    function test_provenIntents_ReportsCancelledIntent() public {
-        Intent memory _intent = _createIntent(
-            address(localProver),
-            REWARD_AMOUNT,
-            0
-        );
-        (bytes32 intentHash, ) = _publishAndFundIntent(_intent);
+    /// @dev Publishes a native-reward intent on the LocalProver and cancels it
+    ///      just after the route deadline, before the reward deadline
+    function _publishAndCancelIntent()
+        internal
+        returns (Intent memory _intent, bytes32 intentHash)
+    {
+        _intent = _createIntent(address(localProver), REWARD_AMOUNT, 0);
+        (intentHash, ) = _publishAndFundIntent(_intent);
 
         vm.warp(uint256(_intent.route.deadline) + 1);
         portal.cancel(
@@ -175,11 +176,53 @@ contract LocalProverTest is Test {
             _intent.route,
             keccak256(abi.encode(_intent.reward))
         );
+    }
+
+    function test_provenIntents_ReportsCancelledIntent() public {
+        (, bytes32 intentHash) = _publishAndCancelIntent();
 
         IProver.ProofData memory proof = localProver.provenIntents(intentHash);
         assertEq(proof.claimant, address(0));
         assertEq(proof.destination, CHAIN_ID);
         assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function test_cancelledIntent_RefundsBeforeRewardDeadline() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishAndCancelIntent();
+        assertLt(block.timestamp, _intent.reward.deadline);
+
+        uint256 creatorBefore = creator.balance;
+        vm.prank(user);
+        portal.refund(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        assertEq(creator.balance, creatorBefore + REWARD_AMOUNT);
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    function test_cancelledIntent_WithdrawReverts() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishAndCancelIntent();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.CancelledIntent.selector,
+                intentHash
+            )
+        );
+        vm.prank(solver);
+        portal.withdraw(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        assertTrue(portal.isIntentFunded(_intent));
     }
 
     // A2. prove()

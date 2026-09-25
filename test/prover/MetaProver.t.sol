@@ -8,6 +8,7 @@ import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgePro
 import {TestMetaRouter} from "../../contracts/test/TestMetaRouter.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
+import {CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 
 contract MetaProverTest is BaseTest {
     MetaProver internal metaProver;
@@ -1013,6 +1014,58 @@ contract MetaProverTest is BaseTest {
             routeHash,
             rewardHash
         );
+    }
+
+    /// @dev Delivers one (intentHash, claimant) pair from the whitelisted
+    ///      prover on `chainId` through the router
+    function _handleSingle(
+        uint256 chainId,
+        bytes32 intentHash,
+        bytes32 claimantBytes
+    ) internal {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = claimantBytes;
+
+        vm.prank(address(metaRouter));
+        metaProver.handle(
+            uint32(chainId),
+            bytes32(uint256(uint160(address(prover)))),
+            _formatMessageWithChainId(chainId, intentHashes, claimants),
+            new ReadOperation[](0),
+            new bytes[](0)
+        );
+    }
+
+    function testHandleRecordsCancelledOutcome() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _handleSingle(block.chainid, intentHash, CANCELLED_CLAIMANT);
+
+        IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, uint64(block.chainid));
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function testRefundsBeforeDeadlineOnMetaProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(metaProver),
+            CHAIN_ID
+        );
+        _handleSingle(CHAIN_ID, intentHash, CANCELLED_CLAIMANT);
+
+        _assertRefundsBeforeRewardDeadline(_intent);
+    }
+
+    function testWithdrawRevertsOnMetaProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(metaProver),
+            CHAIN_ID
+        );
+        _handleSingle(CHAIN_ID, intentHash, CANCELLED_CLAIMANT);
+
+        _assertWithdrawRevertsCancelled(_intent);
     }
 
     function _packClaimantHashPairs(

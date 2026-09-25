@@ -6,14 +6,24 @@ import {AggregatorProver} from "../../contracts/prover/AggregatorProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {HyperProver} from "../../contracts/prover/HyperProver.sol";
+import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
+import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract AggregatorProverIntegrationTest is Test {
     Portal internal portal;
     TestProver internal proverA;
     TestProver internal proverB;
     AggregatorProver internal aggregator;
+
+    // Aggregator whose second member is a real HyperProver, so proofs reach it
+    // through the bridge receive path instead of TestProver storage helpers
+    TestMailbox internal mailbox;
+    HyperProver internal hyperMember;
+    AggregatorProver internal hyperAggregator;
+    address internal hyperSourceProver;
 
     address internal creator;
     address internal solver;
@@ -37,7 +47,31 @@ contract AggregatorProverIntegrationTest is Test {
         members[1] = bytes32(uint256(uint160(address(proverB))));
         aggregator = new AggregatorProver(members);
 
+        hyperSourceProver = makeAddr("hyperSourceProver");
+        mailbox = new TestMailbox(address(0));
+        bytes32[] memory hyperProvers = new bytes32[](1);
+        hyperProvers[0] = bytes32(uint256(uint160(hyperSourceProver)));
+        hyperMember = new HyperProver(
+            address(mailbox),
+            address(portal),
+            hyperProvers,
+            new IMessageBridgeProver.Domain[](0)
+        );
+        members[1] = bytes32(uint256(uint160(address(hyperMember))));
+        hyperAggregator = new AggregatorProver(members);
+
         vm.deal(creator, 100 ether);
+    }
+
+    /// @dev Delivers a CANCELLED proof for `intentHash` from DESTINATION to the
+    ///      HyperProver member through the mailbox
+    function _handleHyperCancellation(bytes32 intentHash) internal {
+        vm.prank(address(mailbox));
+        hyperMember.handle(
+            uint32(DESTINATION),
+            bytes32(uint256(uint160(hyperSourceProver))),
+            abi.encodePacked(DESTINATION, intentHash, CANCELLED_CLAIMANT)
+        );
     }
 
     function _intent(
@@ -175,6 +209,48 @@ contract AggregatorProverIntegrationTest is Test {
         uint256 before = creator.balance;
         portal.refund(DESTINATION, routeHash, intent.reward);
         assertEq(creator.balance - before, REWARD);
+    }
+
+    function test_refund_beforeDeadlineOnMemberProvenCancellation() public {
+        Intent memory intent = _intent(
+            address(hyperAggregator),
+            bytes32(uint256(6))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        // Only the lower-priority member holds the cancellation
+        _handleHyperCancellation(intentHash);
+        assertLt(block.timestamp, intent.reward.deadline);
+
+        uint256 before = creator.balance;
+        vm.prank(attacker);
+        portal.refund(DESTINATION, routeHash, intent.reward);
+
+        assertEq(creator.balance - before, REWARD);
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    function test_withdraw_revertsOnMemberProvenCancellation() public {
+        Intent memory intent = _intent(
+            address(hyperAggregator),
+            bytes32(uint256(7))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+        _handleHyperCancellation(intentHash);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.CancelledIntent.selector,
+                intentHash
+            )
+        );
+        vm.prank(solver);
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+
+        assertTrue(portal.isIntentFunded(intent));
     }
 
     function test_refund_blockedBeforeDeadlineWhenMemberHasProof() public {

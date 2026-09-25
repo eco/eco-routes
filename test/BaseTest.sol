@@ -201,6 +201,79 @@ contract BaseTest is Test {
         intentSource.publishAndFund{value: value}(_intent, allowPartial);
     }
 
+    /**
+     * @notice Publishes and funds a copy of the default intent that settles
+     * through `_prover` on `destination`
+     */
+    function _publishForProver(
+        address _prover,
+        uint64 destination
+    ) internal returns (Intent memory _intent, bytes32 intentHash) {
+        _intent = intent;
+        _intent.destination = destination;
+        _intent.reward.prover = _prover;
+        _mintAndApprove(creator, MINT_AMOUNT);
+        _publishAndFund(_intent, false);
+        intentHash = _hashIntent(_intent);
+    }
+
+    /**
+     * @notice Asserts that a proven cancellation refunds every reward token to
+     * the creator before the reward deadline
+     */
+    function _assertRefundsBeforeRewardDeadline(
+        Intent memory _intent
+    ) internal {
+        bytes32 intentHash = _hashIntent(_intent);
+        uint256[] memory before = new uint256[](_intent.reward.tokens.length);
+        for (uint256 i = 0; i < before.length; i++) {
+            before[i] = TestERC20(_intent.reward.tokens[i].token).balanceOf(
+                creator
+            );
+        }
+        assertLt(block.timestamp, _intent.reward.deadline);
+
+        vm.prank(otherPerson);
+        intentSource.refund(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        for (uint256 i = 0; i < before.length; i++) {
+            assertEq(
+                TestERC20(_intent.reward.tokens[i].token).balanceOf(creator),
+                before[i] + _intent.reward.tokens[i].amount
+            );
+        }
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    /**
+     * @notice Asserts that withdraw reverts on a proven cancellation and the
+     * reward stays escrowed
+     */
+    function _assertWithdrawRevertsCancelled(Intent memory _intent) internal {
+        bytes32 intentHash = _hashIntent(_intent);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.CancelledIntent.selector,
+                intentHash
+            )
+        );
+        intentSource.withdraw(
+            _intent.destination,
+            keccak256(abi.encode(_intent.route)),
+            _intent.reward
+        );
+
+        assertTrue(intentSource.isIntentFunded(_intent));
+    }
+
     function _timeTravel(uint256 timestamp) internal {
         vm.warp(timestamp);
     }
