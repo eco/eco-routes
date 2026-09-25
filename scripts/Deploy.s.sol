@@ -17,7 +17,12 @@ import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
 import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
 
+// OpenZeppelin
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
 contract Deploy is Script {
+    using SafeCast for uint256;
+
     bytes constant CREATE3_DEPLOYER_BYTECODE =
         hex"60a060405234801561001057600080fd5b5060405161002060208201610044565b601f1982820381018352601f90910116604052805160209190910120608052610051565b6101a080610ccf83390190565b608051610c5c610073600039600081816103d701526105410152610c5c6000f3fe6080604052600436106100345760003560e01c80634af63f0214610039578063c2b1041c14610075578063cf4d643214610095575b600080fd5b61004c6100473660046108b7565b6100a8565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b34801561008157600080fd5b5061004c6100903660046108fc565b61018c565b61004c6100a336600461096f565b6101e5565b6040805133602082015290810182905260009081906060016040516020818303038152906040528051906020012090506100e28482610372565b9150341561010a5761010a73ffffffffffffffffffffffffffffffffffffffff83163461048b565b61011484826104d5565b9150823373ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff167fd579261046780ec80c4dae1bc57abdb62c58df8af1531e63b4e8bcc08bcf46ec878051906020012060405161017d91815260200190565b60405180910390a45092915050565b6040805173ffffffffffffffffffffffffffffffffffffffff8416602082015290810182905260009081906060016040516020818303038152906040528051906020012090506101dc8582610372565b95945050505050565b60408051336020820152908101849052600090819060600160405160208183030381529060405280519060200120905061021f8682610372565b915034156102475761024773ffffffffffffffffffffffffffffffffffffffff83163461048b565b61025186826104d5565b9150843373ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff167fd579261046780ec80c4dae1bc57abdb62c58df8af1531e63b4e8bcc08bcf46ec89805190602001206040516102ba91815260200190565b60405180910390a460008273ffffffffffffffffffffffffffffffffffffffff1685856040516102eb929190610a0a565b6000604051808303816000865af19150503d8060008114610328576040519150601f19603f3d011682016040523d82523d6000602084013e61032d565b606091505b5050905080610368576040517f139c636700000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5050949350505050565b604080517fff000000000000000000000000000000000000000000000000000000000000006020808301919091527fffffffffffffffffffffffffffffffffffffffff00000000000000000000000030606090811b82166021850152603584018690527f0000000000000000000000000000000000000000000000000000000000000000605580860191909152855180860390910181526075850186528051908401207fd6940000000000000000000000000000000000000000000000000000000000006095860152901b1660978301527f010000000000000000000000000000000000000000000000000000000000000060ab8301528251808303608c01815260ac90920190925280519101206000905b9392505050565b600080600080600085875af19050806104d0576040517ff4b3b1bc00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b505050565b60006104848383604080517fff000000000000000000000000000000000000000000000000000000000000006020808301919091527fffffffffffffffffffffffffffffffffffffffff00000000000000000000000030606090811b82166021850152603584018690527f0000000000000000000000000000000000000000000000000000000000000000605580860191909152855180860390910181526075850186528051908401207fd6940000000000000000000000000000000000000000000000000000000000006095860152901b1660978301527f010000000000000000000000000000000000000000000000000000000000000060ab8301528251808303608c01815260ac90920190925280519101208251600003610625576040517f21744a5900000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6106448173ffffffffffffffffffffffffffffffffffffffff16610783565b1561067b576040517fa6ef0ba100000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b60008260405161068a906107d0565b8190604051809103906000f59050801580156106aa573d6000803e3d6000fd5b50905073ffffffffffffffffffffffffffffffffffffffff81166106fa576040517fb4f5411100000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6040517e77436000000000000000000000000000000000000000000000000000000000815273ffffffffffffffffffffffffffffffffffffffff821690627743609061074a908790600401610a1a565b600060405180830381600087803b15801561076457600080fd5b505af1158015610778573d6000803e3d6000fd5b505050505092915050565b600073ffffffffffffffffffffffffffffffffffffffff82163f801580159061048457507fc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470141592915050565b6101a080610a8783390190565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b600082601f83011261081d57600080fd5b813567ffffffffffffffff80821115610838576108386107dd565b604051601f83017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0908116603f0116810190828211818310171561087e5761087e6107dd565b8160405283815286602085880101111561089757600080fd5b836020870160208301376000602085830101528094505050505092915050565b600080604083850312156108ca57600080fd5b823567ffffffffffffffff8111156108e157600080fd5b6108ed8582860161080c565b95602094909401359450505050565b60008060006060848603121561091157600080fd5b833567ffffffffffffffff81111561092857600080fd5b6109348682870161080c565b935050602084013573ffffffffffffffffffffffffffffffffffffffff8116811461095e57600080fd5b929592945050506040919091013590565b6000806000806060858703121561098557600080fd5b843567ffffffffffffffff8082111561099d57600080fd5b6109a98883890161080c565b95506020870135945060408701359150808211156109c657600080fd5b818701915087601f8301126109da57600080fd5b8135818111156109e957600080fd5b8860208285010111156109fb57600080fd5b95989497505060200194505050565b8183823760009101908152919050565b600060208083528351808285015260005b81811015610a4757858101830151858201604001528201610a2b565b5060006040828601015260407fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0601f830116850101925050509291505056fe608060405234801561001057600080fd5b50610180806100206000396000f3fe60806040526004361061001d5760003560e01c806277436014610022575b600080fd5b61003561003036600461007b565b610037565b005b8051602082016000f061004957600080fd5b50565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b60006020828403121561008d57600080fd5b813567ffffffffffffffff808211156100a557600080fd5b818401915084601f8301126100b957600080fd5b8135818111156100cb576100cb61004c565b604051601f82017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0908116603f011681019083821181831017156101115761011161004c565b8160405282815287602084870101111561012a57600080fd5b82602086016020830137600092810160200192909252509594505050505056fea2646970667358221220a30aa0b079a504f6336b7e339659f909f468dcfe513766d3086e1efce2657d5164736f6c63430008130033a26469706673582212203a8a2818751a76f13bac296ad23080c23254ec57b82f46e2953af00c5cc5ecb464736f6c63430008130033608060405234801561001057600080fd5b50610180806100206000396000f3fe60806040526004361061001d5760003560e01c806277436014610022575b600080fd5b61003561003036600461007b565b610037565b005b8051602082016000f061004957600080fd5b50565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052604160045260246000fd5b60006020828403121561008d57600080fd5b813567ffffffffffffffff808211156100a557600080fd5b818401915084601f8301126100b957600080fd5b8135818111156100cb576100cb61004c565b604051601f82017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0908116603f011681019083821181831017156101115761011161004c565b8160405282815287602084870101111561012a57600080fd5b82602086016020830137600092810160200192909252509594505050505056fea2646970667358221220a30aa0b079a504f6336b7e339659f909f468dcfe513766d3086e1efce2657d5164736f6c63430008130033";
 
@@ -39,6 +44,22 @@ contract Deploy is Script {
     ICreate3Deployer constant create3Deployer =
         ICreate3Deployer(0xC6BAd1EbAF366288dA6FB5689119eDd695a66814);
 
+    /// @dev Default for POLYMER_MAX_LOG_DATA_SIZE. encodedProofs is 8 + 64*n bytes
+    ///      for an n-intent Inbox.prove batch, so 2048 admits 31 intents per batch
+    ///      (8 + 64*31 = 1992 passes, 8 + 64*32 = 2056 reverts MaxDataSizeExceeded)
+    ///      and stays under Polymer's ~3000-byte unindexed_data cap. The paired Solana
+    ///      prover drains at most MAX_INTENTS_PER_PROVE (24) pairs per event in one
+    ///      transaction, so Solana-bound batches should stay at 24 (1544 bytes)
+    ///      regardless of this value. Pinned by test/scripts/DeployPolymerProverArgs.t.sol.
+    uint256 internal constant DEFAULT_POLYMER_MAX_LOG_DATA_SIZE = 2048;
+
+    /// @dev Whitelist.sol's MAX_WHITELIST_SIZE, which is private there. Mirrored so
+    ///      polymerProverWhitelist can fail with a named message before broadcast:
+    ///      past the cap the CREATE3 child proxy swallows WhitelistSizeExceeded and the
+    ///      operator sees a bare revert mid-broadcast, after Portal and the other
+    ///      provers have already been deployed.
+    uint256 internal constant MAX_WHITELIST_SIZE = 20;
+
     // Define a struct to consolidate deployment data and avoid stack too deep errors
     struct DeploymentContext {
         bytes32 salt;
@@ -48,6 +69,10 @@ contract Deploy is Script {
         address layerZeroEndpoint;
         address layerZeroDelegate;
         address polymerCrossL2ProverV2;
+        uint256 polymerMaxLogDataSize;
+        uint32 polymerSolanaChainId;
+        uint64 solanaChainId;
+        bytes32 polymerSolanaProver;
         string deployFilePath;
         bytes32[] hyperCrossVmProvers;
         bytes32[] metaCrossVmProvers;
@@ -91,6 +116,45 @@ contract Deploy is Script {
             "POLYMER_CROSS_L2_PROVER_V2",
             address(0)
         );
+        // See DEFAULT_POLYMER_MAX_LOG_DATA_SIZE for what the byte budget means in
+        // intents per batch (2048 = 31) and the 24-pair Solana ceiling.
+        ctx.polymerMaxLogDataSize = vm.envOr(
+            "POLYMER_MAX_LOG_DATA_SIZE",
+            DEFAULT_POLYMER_MAX_LOG_DATA_SIZE
+        );
+        // Per-environment, and immutable in the deployed prover: no default.
+        // 1399811149 is Solana mainnet, 1399811150 devnet, and Polymer's own
+        // id for Solana is confirmed with Polymer per environment (spec S5).
+        // A silent fallback bakes one environment's ids into the other's
+        // prover with no deploy-time symptom, and the only recovery is a
+        // redeploy at a new CREATE3 salt plus re-whitelisting the new address
+        // on the Solana side. Same reasoning as AGGREGATOR_PROVER_MEMBERS
+        // below: configured-wrong must fail loudly, not degrade to a default.
+        // Gated on the Polymer address so a deploy without Polymer is unaffected.
+        if (ctx.polymerCrossL2ProverV2 != address(0)) {
+            ctx.polymerSolanaChainId = _requiredChainIdEnv(
+                "POLYMER_SOLANA_CHAIN_ID",
+                type(uint32).max
+            ).toUint32();
+            ctx.solanaChainId = _requiredChainIdEnv(
+                "SOLANA_CHAIN_ID",
+                type(uint64).max
+            ).toUint64();
+            // Same reasoning as the two chain IDs above: the constructor rejects
+            // a zero Solana chain ID, so every PolymerProver deployable from this
+            // branch is Solana-capable — one whose immutable whitelist omits the
+            // Solana program can only ever revert InvalidSolanaProgram. The raw
+            // 32-byte program key is appended to the whitelist by
+            // polymerProverWhitelist, not listed in POLYMER_CROSS_VM_PROVERS.
+            ctx.polymerSolanaProver = vm.envOr(
+                "POLYMER_SOLANA_PROVER",
+                bytes32(0)
+            );
+            require(
+                ctx.polymerSolanaProver != bytes32(0),
+                "POLYMER_SOLANA_PROVER is required when POLYMER_CROSS_L2_PROVER_V2 is set"
+            );
+        }
 
         // Load cross-VM provers from environment variables (optional)
         try vm.envBytes32("HYPER_CROSS_VM_PROVERS", ",") returns (
@@ -117,13 +181,24 @@ contract Deploy is Script {
             ctx.layerZeroCrossVmProvers = new bytes32[](0);
         }
 
-        try vm.envBytes32("POLYMER_CROSS_VM_PROVERS", ",") returns (
-            bytes32[] memory provers
-        ) {
-            ctx.polymerCrossVmProvers = provers;
-        } catch {
-            ctx.polymerCrossVmProvers = new bytes32[](0);
-        }
+        // Raw-string parse, not the try/catch the three lists above still
+        // use: this list feeds PolymerProver's immutable whitelist, and
+        // Foundry's strict FixedBytes(32) coercion rejects the 20-byte
+        // address form and a trailing comma, so the try/catch turned
+        // "configured wrong" into an empty whitelist with no symptom. A
+        // base58 Solana key pasted here (the likeliest mistake) now reverts
+        // by name. HYPER/META/LAYERZERO are left as they were; converting
+        // them is an unrelated cleanup.
+        string memory polymerCrossVmProversRaw = vm.envOr(
+            "POLYMER_CROSS_VM_PROVERS",
+            string("")
+        );
+        ctx.polymerCrossVmProvers = bytes(polymerCrossVmProversRaw).length == 0
+            ? new bytes32[](0)
+            : _parseBytes32List(
+                polymerCrossVmProversRaw,
+                "POLYMER_CROSS_VM_PROVERS"
+            );
 
         // Ordered, comma-separated member provers for AggregatorProver.
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
@@ -146,7 +221,10 @@ contract Deploy is Script {
         ctx.aggregatorProverMembers = bytes(aggregatorProverMembersRaw)
             .length == 0
             ? new bytes32[](0)
-            : _parseAggregatorProverMembers(aggregatorProverMembersRaw);
+            : _parseBytes32List(
+                aggregatorProverMembersRaw,
+                "AGGREGATOR_PROVER_MEMBERS"
+            );
 
         // Read here, with every other deploy input, rather than inside the
         // validator. Reading it deep in a validator is what forced the tests
@@ -203,6 +281,8 @@ contract Deploy is Script {
 
         if (hasPolymer) {
             ctx.polymerProverSalt = getContractSalt(ctx.salt, "POLYMER_PROVER");
+            // Fail on an oversized whitelist before anything is broadcast.
+            polymerProverWhitelist(ctx);
         }
 
         bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
@@ -476,33 +556,199 @@ contract Deploy is Script {
     function deployPolymerProver(
         DeploymentContext memory ctx
     ) internal returns (address polymerProver) {
-        // Create provers array for PolymerProver whitelist
-        bytes32[] memory provers = new bytes32[](
-            ctx.polymerCrossVmProvers.length
-        );
-        for (uint256 i = 0; i < ctx.polymerCrossVmProvers.length; i++) {
-            provers[i] = ctx.polymerCrossVmProvers[i];
-        }
+        // Immutable whitelist: cross-VM provers plus the Solana program ID
+        bytes32[] memory provers = polymerProverWhitelist(ctx);
 
-        ctx.polymerProverConstructorArgs = abi.encode(
-            ctx.portal,
-            ctx.polymerCrossL2ProverV2,
+        // Etherscan verification payload; the deploy blob below is built from the
+        // same expression so verified bytes and deployed bytes cannot drift.
+        ctx.polymerProverConstructorArgs = polymerProverConstructorArgs(
+            ctx,
             provers
-        );
-
-        bytes memory polymerProverBytecode = abi.encodePacked(
-            type(PolymerProver).creationCode,
-            ctx.polymerProverConstructorArgs
         );
 
         bool deployed;
         (ctx.polymerProver, deployed) = deployWithCreate3(
-            polymerProverBytecode,
+            polymerProverBytecode(ctx, provers),
             ctx.deployer,
             ctx.polymerProverSalt
         );
 
+        // The PolymerProver salt is name-only (see getContractSalt), so a rerun
+        // with corrected env vars lands on the occupied address and
+        // deployWithCreate3 short-circuits. Every constructor argument is
+        // immutable with no setter — the whitelist included, and that is the
+        // one argument the Solana feature actually changes — so silently
+        // keeping the old ones is the worst outcome: fail loudly instead. Same
+        // probe-then-fail shape as validateAggregatorProverMembers.
+        if (deployed) _validatePolymerProverMatchesContext(ctx);
+
         console.log("PolymerProver :", ctx.polymerProver);
+        // Echo the immutables so a set-but-wrong value is visible in the deploy
+        // output on a fresh deploy, which the rerun guard above cannot catch.
+        console.log("  solanaPolymerChainId :", ctx.polymerSolanaChainId);
+        console.log("  solanaChainId        :", ctx.solanaChainId);
+        console.log("  maxLogDataSize       :", ctx.polymerMaxLogDataSize);
+        console.log(
+            "  solanaProver         :",
+            vm.toString(ctx.polymerSolanaProver)
+        );
+    }
+
+    /// @dev PolymerProver's immutable whitelist: the configured cross-VM
+    ///      provers plus the Solana program ID, deduped. Whitelist caps at
+    ///      MAX_WHITELIST_SIZE slots, so an operator who also listed the program
+    ///      ID in POLYMER_CROSS_VM_PROVERS does not burn a slot on a duplicate,
+    ///      and both branches bound the result so the cap fails here by name
+    ///      (run() evaluates this before vm.startBroadcast) instead of as an
+    ///      opaque CREATE3 revert mid-broadcast.
+    function polymerProverWhitelist(
+        DeploymentContext memory ctx
+    ) internal pure returns (bytes32[] memory) {
+        // run() already requires this; repeated here so the seam is loud on its
+        // own (isWhitelisted(bytes32(0)) is always false, so a zero entry would
+        // silently produce a prover that rejects every Solana proof).
+        require(
+            ctx.polymerSolanaProver != bytes32(0),
+            "POLYMER_SOLANA_PROVER is required when POLYMER_CROSS_L2_PROVER_V2 is set"
+        );
+        bytes32[] memory configured = ctx.polymerCrossVmProvers;
+        for (uint256 i = 0; i < configured.length; i++) {
+            if (configured[i] == ctx.polymerSolanaProver) {
+                require(
+                    configured.length <= MAX_WHITELIST_SIZE,
+                    "POLYMER_CROSS_VM_PROVERS exceeds the 20-slot whitelist"
+                );
+                return configured;
+            }
+        }
+        require(
+            configured.length < MAX_WHITELIST_SIZE,
+            "POLYMER_CROSS_VM_PROVERS + POLYMER_SOLANA_PROVER exceed the 20-slot whitelist"
+        );
+
+        bytes32[] memory provers = new bytes32[](configured.length + 1);
+        for (uint256 i = 0; i < configured.length; i++) {
+            provers[i] = configured[i];
+        }
+        provers[configured.length] = ctx.polymerSolanaProver;
+        return provers;
+    }
+
+    /// @dev Every argument in polymerProverConstructorArgs is immutable (or
+    ///      setter-less) on the live contract, and the PolymerProver salt is
+    ///      name-only, so a rerun with corrected env vars short-circuits in
+    ///      deployWithCreate3 and silently keeps the old values. Compare all of
+    ///      them, one require each so the operator learns WHICH field diverged.
+    ///      Keep this list in sync with polymerProverConstructorArgs.
+    function _validatePolymerProverMatchesContext(
+        DeploymentContext memory ctx
+    ) internal view {
+        PolymerProver live = PolymerProver(payable(ctx.polymerProver));
+        _requireLivePolymerProverIsSolanaCapable(address(live));
+        require(
+            live.PORTAL() == ctx.portal,
+            "PolymerProver already deployed at this salt with a different PORTAL"
+        );
+        require(
+            address(live.CROSS_L2_PROVER_V2()) == ctx.polymerCrossL2ProverV2,
+            "PolymerProver already deployed at this salt with a different POLYMER_CROSS_L2_PROVER_V2"
+        );
+        require(
+            live.MAX_LOG_DATA_SIZE() == ctx.polymerMaxLogDataSize,
+            "PolymerProver already deployed at this salt with a different POLYMER_MAX_LOG_DATA_SIZE"
+        );
+        require(
+            live.SOLANA_POLYMER_CHAIN_ID() == ctx.polymerSolanaChainId,
+            "PolymerProver already deployed at this salt with a different POLYMER_SOLANA_CHAIN_ID"
+        );
+        require(
+            live.SOLANA_CHAIN_ID() == ctx.solanaChainId,
+            "PolymerProver already deployed at this salt with a different SOLANA_CHAIN_ID"
+        );
+        // Whitelist is equally constructor-only (Whitelist.sol has no setter)
+        // and is what gates validateSolana's programID check. The membership
+        // probe first, for the message; then the ordered hash, which is
+        // airtight: isWhitelisted is order-agnostic and blind to duplicates,
+        // so a pure reorder fails here too — the conservative direction, and
+        // it keeps the check a single exact comparison.
+        require(
+            live.isWhitelisted(ctx.polymerSolanaProver),
+            "PolymerProver already deployed at this salt without POLYMER_SOLANA_PROVER in its whitelist; redeploy at a new SALT"
+        );
+        require(
+            keccak256(abi.encode(live.getWhitelist())) ==
+                keccak256(abi.encode(polymerProverWhitelist(ctx))),
+            "PolymerProver already deployed at this salt with a different POLYMER_CROSS_VM_PROVERS whitelist; redeploy at a new SALT"
+        );
+    }
+
+    /// @dev A PolymerProver deployed before the Solana upgrade has no
+    ///      SOLANA_CHAIN_ID getter, so the interface call in the validator
+    ///      above would revert with empty returndata. Probe it with a
+    ///      staticcall first to turn that opaque revert into an actionable one.
+    function _requireLivePolymerProverIsSolanaCapable(
+        address live
+    ) internal view {
+        (bool ok, bytes memory data) = live.staticcall(
+            abi.encodeWithSelector(PolymerProver(live).SOLANA_CHAIN_ID.selector)
+        );
+        require(
+            ok && data.length == 32,
+            "live PolymerProver predates the Solana upgrade; deploy at a new SALT"
+        );
+    }
+
+    /// @dev ABI-encoded PolymerProver constructor args, in constructor order.
+    ///      The compiler never checks arity or order of a hand-rolled
+    ///      abi.encode against the constructor, so this is the one expression
+    ///      the deploy blob, the verification payload and the test in
+    ///      test/scripts/DeployPolymerProverArgs.t.sol all go through.
+    function polymerProverConstructorArgs(
+        DeploymentContext memory ctx,
+        bytes32[] memory provers
+    ) internal pure returns (bytes memory) {
+        return
+            abi.encode(
+                ctx.portal,
+                ctx.polymerCrossL2ProverV2,
+                ctx.polymerMaxLogDataSize,
+                ctx.polymerSolanaChainId,
+                ctx.solanaChainId,
+                provers
+            );
+    }
+
+    /// @dev PolymerProver creation code plus constructor args: the CREATE3 blob
+    function polymerProverBytecode(
+        DeploymentContext memory ctx,
+        bytes32[] memory provers
+    ) internal pure returns (bytes memory) {
+        return
+            abi.encodePacked(
+                type(PolymerProver).creationCode,
+                polymerProverConstructorArgs(ctx, provers)
+            );
+    }
+
+    /// @dev Reads a chain-ID env var that must be set and in range. No default:
+    ///      both values land in PolymerProver immutables with no setter, and the
+    ///      CREATE3 salt does not mix them in, so a wrong value is permanent at
+    ///      that address. Fail before broadcast, not after Portal is deployed.
+    ///      The range check also replaces a silent uint32/uint64 truncation, which
+    ///      could wrap an out-of-range value to a nonzero id the constructor accepts.
+    function _requiredChainIdEnv(
+        string memory name,
+        uint256 max
+    ) internal view returns (uint256 raw) {
+        raw = vm.envOr(name, uint256(0));
+        require(
+            raw != 0,
+            string.concat(
+                name,
+                " is required and must be non-zero when POLYMER_CROSS_L2_PROVER_V2 is set"
+            )
+        );
+        require(raw <= max, string.concat(name, " out of range"));
     }
 
     /**
@@ -791,16 +1037,18 @@ contract Deploy is Script {
             block.chainid == TRON_NILE_CHAIN_ID;
     }
 
-    // Parses a comma-separated AGGREGATOR_PROVER_MEMBERS list. Accepts, per element,
-    // either a 20-byte address ("0x" + 40 hex chars, the form operators will
-    // actually write) or a full 32-byte bytes32 ("0x" + 64 hex chars),
-    // left-padding the former to bytes32. Any other shape — including an
-    // empty element from a trailing comma — reverts, naming the offending
-    // element and its index, rather than silently discarding the whole list.
-    // Not called for an empty AGGREGATOR_PROVER_MEMBERS string; that case is
-    // handled by the caller as "not requested".
-    function _parseAggregatorProverMembers(
-        string memory csv
+    // Parses a comma-separated bytes32 list env var (`varName`, used only in
+    // the revert message). Accepts, per element, either a 20-byte address
+    // ("0x" + 40 hex chars, the form operators will actually write) or a full
+    // 32-byte bytes32 ("0x" + 64 hex chars), left-padding the former to
+    // bytes32. Any other shape — including an empty element from a trailing
+    // comma, or a base58 Solana key — reverts, naming the variable, the
+    // offending element and its index, rather than silently discarding the
+    // whole list. Not called for an empty string; that case is handled by the
+    // caller as "not requested".
+    function _parseBytes32List(
+        string memory csv,
+        string memory varName
     ) internal pure returns (bytes32[] memory) {
         string[] memory parts = vm.split(csv, ",");
         bytes32[] memory members = new bytes32[](parts.length);
@@ -819,7 +1067,8 @@ contract Deploy is Script {
                 revert(
                     string(
                         abi.encodePacked(
-                            "AGGREGATOR_PROVER_MEMBERS: malformed element at index ",
+                            varName,
+                            ": malformed element at index ",
                             vm.toString(i),
                             ": '",
                             parts[i],

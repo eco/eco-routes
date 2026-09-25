@@ -45,6 +45,33 @@ interface ICrossL2ProverV2 {
             bytes calldata unindexedData
         );
 
+    // NOT part of Polymer's published ICrossL2ProverV2 as vendored above. Authored for
+    // PAR-670 (2026-09) from Polymer's documented Solana log proof interface, targeting the
+    // CrossL2ProverV2 on Base mainnet (0x95ccEAE7...) that eco-routes already uses.
+    // Selector 0xd73a8ad6 (`cast sig "validateSolLogs(bytes)"`); the selector covers the
+    // argument only, so the (uint32,bytes32,string[]) return tuple must be re-verified
+    // against the deployed ABI when bumping the Polymer dependency. See .env.example for
+    // the pre-deploy probe.
+    /**
+     * @notice Validates a proof of Solana program logs from Polymer's prove api.
+     * @param proof The proof bytes returned by the prove api for a Solana transaction.
+     * @return chainId Polymer's identifier for the Solana chain the logs came from
+     * @return programID The Solana program (raw 32-byte key) that emitted the logs
+     * @return logMessages The proven `Prove:` log lines. Polymer documents that it removes
+     *         the `Prove: ` prefix; PolymerProver does not rely on that and parses the line
+     *         with or without it.
+     */
+    function validateSolLogs(
+        bytes calldata proof
+    )
+        external
+        view
+        returns (
+            uint32 chainId,
+            bytes32 programID,
+            string[] memory logMessages
+        );
+
     /**
      * Return srcChain, Block Number, Receipt Index, and Local Index for a requested proof
      */
