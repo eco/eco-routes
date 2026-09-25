@@ -601,4 +601,27 @@ contract AggregatorProverTest is Test {
 
         assertEq(aggregator.provenIntents(HASH).claimant, address(0xBEEF));
     }
+
+    /// @dev A single dynamic `bytes` value of length 32 ABI-encodes to exactly
+    ///      96 bytes: offset head 0x20, length 0x20, then the data word. With
+    ///      data = 2 it would decode as claimant address(0x20), destination 32,
+    ///      outcome Cancelled — a fabricated Cancelled proof. The Cancelled
+    ///      branch's claimant-must-be-zero requirement rejects it (the offset
+    ///      head collides with the claimant slot), so the honest proverB still
+    ///      wins.
+    function test_provenIntents_skipsFabricatedDynamicCancelledReturndataMember()
+        public
+    {
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(uint256(0x20), uint256(32), uint256(2))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Fulfilled));
+    }
 }
