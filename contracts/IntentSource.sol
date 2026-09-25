@@ -460,10 +460,12 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
             intentHash
         );
-        address claimant = proof.claimant;
 
         // If the intent has been proven on a different chain, challenge the proof
-        if (proof.destination != destination && claimant != address(0)) {
+        if (
+            proof.outcome != IProver.Outcome.None &&
+            proof.destination != destination
+        ) {
             // Challenge the proof and emit event
             IProver(reward.prover).challengeIntentProof(
                 destination,
@@ -474,13 +476,13 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             return;
         }
 
-        _validateWithdraw(intentHash, claimant);
+        _validateWithdraw(intentHash, proof);
         rewardStatuses[intentHash] = Status.Withdrawn;
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.withdraw(reward, claimant);
+        vault.withdraw(reward, proof.claimant);
 
-        emit IntentWithdrawn(intentHash, claimant);
+        emit IntentWithdrawn(intentHash, proof.claimant);
     }
 
     /**
@@ -880,8 +882,21 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             proof = IProver(reward.prover).provenIntents(intentHash);
         }
 
-        // If proof is incorrect or no proof
-        if (proof.destination != destination || proof.claimant == address(0)) {
+        // A proven cancellation on the intended destination refunds immediately
+        if (
+            proof.outcome == IProver.Outcome.Cancelled &&
+            proof.destination == destination
+        ) {
+            return;
+        }
+
+        // Anything short of a fulfillment proven on this destination falls back
+        // to the reward deadline
+        if (
+            proof.outcome != IProver.Outcome.Fulfilled ||
+            proof.claimant == address(0) ||
+            proof.destination != destination
+        ) {
             if (block.timestamp < reward.deadline) {
                 revert InvalidStatusForRefund(
                     status,
@@ -899,14 +914,15 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
     }
 
     /**
-     * @notice Validates that vault can be withdrawn from and claimant is valid
-     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant
+     * @notice Validates that vault can be withdrawn from and the proof pays a claimant
+     * @dev Allows withdrawal from Initial or Funded status; a cancelled or claimant-less
+     *      proof never pays out
      * @param intentHash Hash of the intent
-     * @param claimant Address that will receive the withdrawn rewards
+     * @param proof Proof read from the intent's prover
      */
     function _validateWithdraw(
         bytes32 intentHash,
-        address claimant
+        IProver.ProofData memory proof
     ) internal view {
         Status status = rewardStatuses[intentHash];
 
@@ -914,7 +930,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             revert InvalidStatusForWithdrawal(status);
         }
 
-        if (claimant == address(0)) {
+        if (proof.outcome == IProver.Outcome.Cancelled) {
+            revert CancelledIntent(intentHash);
+        }
+
+        if (
+            proof.outcome != IProver.Outcome.Fulfilled ||
+            proof.claimant == address(0)
+        ) {
             revert InvalidClaimant();
         }
     }
