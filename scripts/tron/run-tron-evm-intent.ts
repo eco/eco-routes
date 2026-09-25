@@ -396,7 +396,7 @@ async function pollForProof(
       tw.defaultAddress.hex as string,
     )
     const raw = result?.constant_result?.[0] ?? ''
-    // provenIntents returns ProofData{address claimant, uint64 destination} = 128 hex chars
+    // provenIntents returns ProofData{address claimant, uint64 destination, Outcome outcome} = 192 hex chars
     // claimant is in the first 64 chars (right-aligned address); non-zero means proof arrived
     const claimantWord = raw.slice(0, 64)
     if (claimantWord && claimantWord !== '0'.repeat(64)) {
