@@ -8,6 +8,7 @@ import {ILayerZeroReceiver} from "../../contracts/interfaces/layerzero/ILayerZer
 import {Portal} from "../../contracts/Portal.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
+import {Intent, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(address => address) public delegates;
@@ -674,6 +675,63 @@ contract LayerZeroProverTest is BaseTest {
         // Original delegate can no longer call it
         vm.expectRevert(LayerZeroProver.NotDelegate.selector);
         lzProver.revokeDelegation();
+    }
+
+    /// @dev Delivers one (intentHash, claimant) pair from SOURCE_PROVER on
+    ///      SOURCE_CHAIN_ID through the endpoint
+    function _lzReceiveSingle(
+        bytes32 intentHash,
+        bytes32 claimantBytes
+    ) internal {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = claimantBytes;
+
+        ILayerZeroReceiver.Origin memory origin = ILayerZeroReceiver.Origin({
+            srcEid: uint32(SOURCE_CHAIN_ID),
+            sender: SOURCE_PROVER,
+            nonce: 1
+        });
+
+        vm.prank(address(endpoint));
+        lzProver.lzReceive(
+            origin,
+            bytes32(0),
+            _formatMessageWithChainId(SOURCE_CHAIN_ID, intentHashes, claimants),
+            address(0),
+            ""
+        );
+    }
+
+    function test_lzReceive_recordsCancelledOutcome() public {
+        bytes32 intentHash = keccak256("intent");
+        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        IProver.ProofData memory proof = lzProver.provenIntents(intentHash);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, uint64(SOURCE_CHAIN_ID));
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function test_refund_beforeDeadlineOnLayerZeroProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(lzProver),
+            uint64(SOURCE_CHAIN_ID)
+        );
+        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        _assertRefundsBeforeRewardDeadline(_intent);
+    }
+
+    function test_withdraw_revertsOnLayerZeroProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(lzProver),
+            uint64(SOURCE_CHAIN_ID)
+        );
+        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        _assertWithdrawRevertsCancelled(_intent);
     }
 
     function _formatMessageWithChainId(

@@ -10,6 +10,7 @@ import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {MalformedProver} from "../../contracts/test/MalformedProver.sol";
 import {DirtyBitsProver} from "../../contracts/test/DirtyBitsProver.sol";
 import {EmptyDynamicProver} from "../../contracts/test/EmptyDynamicProver.sol";
+import {ShortDynamicProver} from "../../contracts/test/ShortDynamicProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
 
 contract AggregatorProverTest is Test {
@@ -272,7 +273,7 @@ contract AggregatorProverTest is Test {
     }
 
     /// @dev Pins the Fix-2 hardening: a code-bearing member that returns
-    ///      SUCCESS with the wrong returndata shape (not the 64-byte ProofData
+    ///      SUCCESS with the wrong returndata shape (not the 96-byte ProofData
     ///      encoding) must be treated as "no proof" and skipped, not revert
     ///      the whole call. A plain interface call would ABI-decode-revert in
     ///      THIS frame, outside any try/catch, permanently freezing both
@@ -289,10 +290,10 @@ contract AggregatorProverTest is Test {
     }
 
     /// @dev Pins the dirty-bits hardening: a code-bearing member that returns
-    ///      exactly 64 bytes (the correct ProofData shape) but with non-zero
+    ///      exactly 96 bytes (the correct ProofData shape) but with non-zero
     ///      padding bits in the address/uint64 words must be treated as "no
     ///      proof" and skipped, not revert the whole call. Decoding this exact
-    ///      payload directly to (address, uint64) would ABI-decode-revert in
+    ///      payload directly to ProofData would ABI-decode-revert in
     ///      THIS frame, outside any try/catch, permanently freezing both
     ///      withdraw and refund for every intent naming this aggregator.
     function test_provenIntents_skipsDirtyBitsReturndataMember() public {
@@ -310,12 +311,11 @@ contract AggregatorProverTest is Test {
     /// @dev Pins the Fix-1 hardening: a code-bearing member that returns
     ///      SUCCESS with a single EMPTY DYNAMIC value (bytes/string/array)
     ///      ABI-encodes to exactly 64 bytes — an offset head 0x20 followed by
-    ///      a length word 0x00 — which passes both the size check and the
-    ///      bit-range check. Without the destination-zero guard, the ABI
-    ///      OFFSET WORD itself would surface as a fabricated non-zero
-    ///      claimant (address(0x20)) with destination 0, for every
-    ///      intentHash. This member sits at priority 0 and must be skipped,
-    ///      with the honest proverB at priority 1 still winning.
+    ///      a length word 0x00 — which the 96-byte length check now rejects.
+    ///      Decoded naively, the ABI OFFSET WORD itself would surface as a
+    ///      fabricated non-zero claimant (address(0x20)). This member sits at
+    ///      priority 0 and must be skipped, with the honest proverB at
+    ///      priority 1 still winning.
     function test_provenIntents_skipsEmptyDynamicReturndataMember() public {
         EmptyDynamicProver bad = new EmptyDynamicProver();
         AggregatorProver agg = new AggregatorProver(
@@ -324,6 +324,46 @@ contract AggregatorProverTest is Test {
         proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
 
         IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
+    }
+
+    function test_provenIntents_returnsFulfilledOutcome() public {
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Fulfilled));
+    }
+
+    /// @dev A single dynamic `bytes` value of length 32 ABI-encodes to exactly
+    ///      96 bytes: offset head 0x20, length 0x20, then the data word. With
+    ///      data = 1 it would decode as claimant address(0x20), destination 32,
+    ///      outcome Fulfilled — a fabricated proof. The offset-head guard must
+    ///      skip it so the honest proverB still wins.
+    function test_provenIntents_skipsShortDynamicReturndataMember() public {
+        ShortDynamicProver bad = new ShortDynamicProver();
+        AggregatorProver agg = new AggregatorProver(
+            _pair(address(bad), address(proverB))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = agg.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
+    }
+
+    /// @dev A well-formed Fulfilled tuple with destination 0 is skipped: no
+    ///      eligible member can hold destination 0, so the zero-destination
+    ///      guard alone must reject it and let proverB win.
+    function test_provenIntents_skipsZeroDestinationMember() public {
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(address(0xBAD), uint256(0), uint256(1))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
         assertEq(proof.claimant, address(0xBEEF));
         assertEq(proof.destination, DESTINATION);
     }
@@ -509,5 +549,79 @@ contract AggregatorProverTest is Test {
         );
         assertLt(coldGas, 60_000, "cold fan-out gas regressed past tripwire");
         assertLt(warmGas, 30_000, "warm fan-out gas regressed past tripwire");
+    }
+
+    function test_provenIntents_returnsCancelledMemberProof() public {
+        proverB.addCancelledIntent(HASH, DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, DESTINATION);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function test_provenIntents_firstMemberWinsCancelledOverFulfilled() public {
+        proverA.addCancelledIntent(HASH, DESTINATION);
+        proverB.addProvenIntent(HASH, address(0xB0B), DESTINATION);
+
+        assertEq(
+            uint8(aggregator.provenIntents(HASH).outcome),
+            uint8(IProver.Outcome.Cancelled)
+        );
+    }
+
+    function test_provenIntents_firstMemberWinsFulfilledOverCancelled() public {
+        proverA.addProvenIntent(HASH, address(0xA11CE), DESTINATION);
+        proverB.addCancelledIntent(HASH, DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xA11CE));
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Fulfilled));
+    }
+
+    function test_provenIntents_skipsCancelledTupleWithClaimant() public {
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(address(0xBAD), DESTINATION, uint256(2))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        assertEq(aggregator.provenIntents(HASH).claimant, address(0xBEEF));
+    }
+
+    function test_provenIntents_skipsOutOfRangeOutcome() public {
+        // Zero claimant, so only the outcome range check can skip this member
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(address(0), DESTINATION, uint256(3))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        assertEq(aggregator.provenIntents(HASH).claimant, address(0xBEEF));
+    }
+
+    /// @dev A single dynamic `bytes` value of length 32 ABI-encodes to exactly
+    ///      96 bytes: offset head 0x20, length 0x20, then the data word. With
+    ///      data = 2 it would decode as claimant address(0x20), destination 32,
+    ///      outcome Cancelled — a fabricated Cancelled proof. The Cancelled
+    ///      branch's claimant-must-be-zero requirement rejects it (the offset
+    ///      head collides with the claimant slot), so the honest proverB still
+    ///      wins.
+    function test_provenIntents_skipsFabricatedDynamicCancelledReturndataMember()
+        public
+    {
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(uint256(0x20), uint256(32), uint256(2))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xBEEF));
+        assertEq(proof.destination, DESTINATION);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Fulfilled));
     }
 }

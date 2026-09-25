@@ -13,7 +13,6 @@ import {Whitelist} from "../libs/Whitelist.sol";
  * @dev Processes proof messages from Polymer's CrossL2ProverV2 and records proven intents
  */
 contract PolymerProver is BaseProver, Whitelist, Semver {
-    using AddressConverter for bytes32;
     using AddressConverter for address;
 
     // Constants
@@ -144,36 +143,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
 
-            if (claimantBytes >> 160 != 0) continue;
-
-            address claimant = claimantBytes.toAddress();
-            processIntent(intentHash, claimant, destinationChainId);
+            _recordProof(intentHash, claimantBytes, destinationChainId);
         }
-    }
-
-    // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
-
-    /**
-     * @notice Processes a single intent proof
-     * @param intentHash Hash of the intent being proven
-     * @param claimant Address that fulfilled the intent and should receive rewards
-     * @param destination Destination chain ID for the intent
-     */
-    function processIntent(
-        bytes32 intentHash,
-        address claimant,
-        uint64 destination
-    ) internal {
-        ProofData storage proof = _provenIntents[intentHash];
-        if (proof.claimant != address(0)) {
-            emit IntentAlreadyProven(intentHash);
-
-            return;
-        }
-        proof.claimant = claimant;
-        proof.destination = destination;
-
-        emit IntentProven(intentHash, claimant, destination);
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------

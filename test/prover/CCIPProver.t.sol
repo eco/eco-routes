@@ -6,7 +6,7 @@ import {CCIPProver} from "../../contracts/prover/CCIPProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestCCIPRouter} from "../../contracts/test/TestCCIPRouter.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {IAny2EVMMessageReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
@@ -682,6 +682,51 @@ contract CCIPProverTest is BaseTest {
     }
 
     // ============ Helper Functions ============
+
+    // ============ Proven Cancellation Tests ============
+
+    /// @dev Delivers one (intentHash, claimant) pair from the whitelisted prover on chain 1 through the router
+    function _ccipReceiveSingle(bytes32 intentHash, bytes32 claimantBytes) internal {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = claimantBytes;
+
+        Client.Any2EVMMessage memory message = Client.Any2EVMMessage({
+            messageId: bytes32(uint256(1)),
+            sourceChainSelector: uint64(1),
+            sender: abi.encode(whitelistedProver),
+            data: _formatMessageWithChainId(1, intentHashes, claimants),
+            destTokenAmounts: new Client.EVMTokenAmount[](0)
+        });
+
+        vm.prank(address(router));
+        ccipProver.ccipReceive(message);
+    }
+
+    function testCcipReceiveRecordsCancelledOutcome() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        IProver.ProofData memory proof = ccipProver.provenIntents(intentHash);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, CHAIN_ID);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function testRefundsBeforeDeadlineOnCcipProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(address(ccipProver), CHAIN_ID);
+        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        _assertRefundsBeforeRewardDeadline(_intent);
+    }
+
+    function testWithdrawRevertsOnCcipProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(address(ccipProver), CHAIN_ID);
+        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        _assertWithdrawRevertsCancelled(_intent);
+    }
 
     function _formatMessageWithChainId(uint256 chainId, bytes32[] memory intentHashes, bytes32[] memory claimants)
         internal

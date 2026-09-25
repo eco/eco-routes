@@ -5,7 +5,7 @@ import "../BaseTest.sol";
 import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract PolymerProverTest is BaseTest {
@@ -833,6 +833,93 @@ contract PolymerProverTest is BaseTest {
                 bytes32(uint256(uint160(destinationProver)))
             )
         );
+    }
+
+    /// @dev Stages one (intentHash, claimant) proof emitted by the whitelisted
+    ///      destination prover on Optimism, ready for validate(proof 1)
+    function _setSingleProof(
+        bytes32 intentHash,
+        bytes32 claimantBytes
+    ) internal {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = claimantBytes;
+
+        crossL2ProverV2.setAll(
+            OPTIMISM_CHAIN_ID,
+            destinationProver,
+            abi.encodePacked(
+                PROOF_SELECTOR,
+                bytes32(uint256(uint64(block.chainid)))
+            ),
+            encodeProofsWithChainId(intentHashes, claimants, OPTIMISM_CHAIN_ID)
+        );
+    }
+
+    function testValidateRecordsFulfilledOutcome() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _setSingleProof(intentHash, bytes32(uint256(uint160(claimant))));
+
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        assertEq(
+            uint8(polymerProver.provenIntents(intentHash).outcome),
+            uint8(IProver.Outcome.Fulfilled)
+        );
+    }
+
+    // A zero claimant used to be written as an empty record; with outcome as the
+    // existence signal it would become a permanent Fulfilled proof that blocks
+    // refund, so it must be skipped like BaseProver does
+    function testValidateSkipsZeroClaimant() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _setSingleProof(intentHash, bytes32(0));
+
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        assertEq(
+            uint8(polymerProver.provenIntents(intentHash).outcome),
+            uint8(IProver.Outcome.None)
+        );
+    }
+
+    function testValidateRecordsCancelledOutcome() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+
+        _expectEmit();
+        emit IProver.IntentCancellationProven(intentHash, OPTIMISM_CHAIN_ID);
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        IProver.ProofData memory proof = polymerProver.provenIntents(
+            intentHash
+        );
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, OPTIMISM_CHAIN_ID);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function testRefundsBeforeDeadlineOnPolymerProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(polymerProver),
+            OPTIMISM_CHAIN_ID
+        );
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        _assertRefundsBeforeRewardDeadline(_intent);
+    }
+
+    function testWithdrawRevertsOnPolymerProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(polymerProver),
+            OPTIMISM_CHAIN_ID
+        );
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        polymerProver.validate(abi.encodePacked(uint256(1)));
+
+        _assertWithdrawRevertsCancelled(_intent);
     }
 }
 

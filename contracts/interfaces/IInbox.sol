@@ -27,6 +27,12 @@ interface IInbox {
     event IntentProven(bytes32 indexed intentHash, bytes32 indexed claimant);
 
     /**
+     * @notice Emitted when an unfulfilled intent is cancelled after its route deadline
+     * @param intentHash Hash of the cancelled intent
+     */
+    event IntentCancelled(bytes32 indexed intentHash);
+
+    /**
      * @notice Intent has already been fulfilled
      * @param intentHash Hash of the fulfilled intent
      */
@@ -72,6 +78,17 @@ interface IInbox {
      * @param required Minimum amount of native tokens required by the route
      */
     error InsufficientNativeAmount(uint256 sent, uint256 required);
+
+    /**
+     * @notice The route deadline has not passed yet, so the intent cannot be cancelled
+     * @param deadline The route deadline
+     */
+    error RouteNotExpired(uint64 deadline);
+
+    /**
+     * @notice The claimant is reserved for cancelled intents
+     */
+    error ReservedClaimant();
 
     /**
      * @notice Fulfills an intent using storage proofs
@@ -143,6 +160,39 @@ interface IInbox {
         address prover,
         uint64 sourceChainDomainID,
         bytes32[] memory intentHashes,
+        bytes memory data
+    ) external payable;
+
+    /**
+     * @notice Cancels an unfulfilled intent once its route deadline has passed
+     * @dev Permissionless. Records the CANCELLED sentinel as the intent's claimant, which
+     *      blocks any later fulfill and is proven to the source like a claimant.
+     * @param intentHash The hash of the intent to cancel
+     * @param route Route information for the intent
+     * @param rewardHash Hash of the reward details
+     */
+    function cancel(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) external;
+
+    /**
+     * @notice Cancels an unfulfilled intent and initiates proving in one transaction
+     * @dev See prove for the sourceChainDomainID warning
+     * @param intentHash The hash of the intent to cancel
+     * @param route Route information for the intent
+     * @param rewardHash Hash of the reward details
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
+     * @param data Additional data for message formatting
+     */
+    function cancelAndProve(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        address prover,
+        uint64 sourceChainDomainID,
         bytes memory data
     ) external payable;
 }

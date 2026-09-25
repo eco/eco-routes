@@ -9,7 +9,7 @@ import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {IExecutor} from "./interfaces/IExecutor.sol";
 
-import {Route, Call, TokenAmount} from "./types/Intent.sol";
+import {Route, Call, TokenAmount, CANCELLED_CLAIMANT} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 import {Refund} from "./libs/Refund.sol";
 
@@ -38,6 +38,11 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
      * @dev Used to prepend to proof messages for cross-chain identification
      */
     uint64 private immutable CHAIN_ID;
+
+    /**
+     * @notice Claimant value recorded for cancelled intents
+     */
+    bytes32 public constant CANCELLED = CANCELLED_CLAIMANT;
 
     /**
      * @notice Initializes the Inbox contract
@@ -135,6 +140,48 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     }
 
     /**
+     * @notice Cancels an unfulfilled intent once its route deadline has passed
+     * @dev Permissionless: the caller only chooses when, never the outcome
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     */
+    function cancel(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) external {
+        _cancel(intentHash, route, rewardHash);
+    }
+
+    /**
+     * @notice Cancels an unfulfilled intent and initiates proving in one transaction
+     * @dev Mirrors fulfillAndProve: prove forwards this contract's balance to the
+     *      prover, which refunds any excess to the caller
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
+     * @param data Additional data for message formatting
+     */
+    function cancelAndProve(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes memory data
+    ) external payable {
+        _cancel(intentHash, route, rewardHash);
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        prove(prover, sourceChainDomainID, intentHashes, data);
+    }
+
+    /**
      * @notice Initiates proving process for fulfilled intents
      * @dev Sends message to source chain to verify intent execution
      * @param prover Address of prover on the destination chain
@@ -208,6 +255,58 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     }
 
     /**
+     * @notice Validates that route.portal is this contract and route+rewardHash hash to intentHash
+     * @dev Shared by _fulfill and _cancel so the portal/hash checks and their errors live in one place
+     * @param intentHash The hash the route and rewardHash are expected to produce
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     */
+    function _validateRoute(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) internal view {
+        if (route.portal != address(this)) {
+            revert InvalidPortal(route.portal);
+        }
+
+        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 computedIntentHash = keccak256(
+            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
+        );
+        if (computedIntentHash != intentHash) {
+            revert InvalidHash(intentHash);
+        }
+    }
+
+    /**
+     * @notice Internal function to cancel an intent
+     * @dev Uses the same claimants slot as fulfill, so the two are mutually exclusive
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     */
+    function _cancel(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) internal {
+        _validateRoute(intentHash, route, rewardHash);
+
+        // Strictly after the deadline: fulfill is still allowed at route.deadline
+        if (block.timestamp <= route.deadline) {
+            revert RouteNotExpired(route.deadline);
+        }
+        if (claimants[intentHash] != bytes32(0)) {
+            revert IntentAlreadyFulfilled(intentHash);
+        }
+
+        claimants[intentHash] = CANCELLED_CLAIMANT;
+
+        emit IntentCancelled(intentHash);
+    }
+
+    /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls
      * @param intentHash The hash of the intent to fulfill
@@ -227,22 +326,16 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
             revert IntentExpired();
         }
 
-        bytes32 routeHash = keccak256(abi.encode(route));
-        bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
-        );
+        _validateRoute(intentHash, route, rewardHash);
 
-        if (route.portal != address(this)) {
-            revert InvalidPortal(route.portal);
-        }
-        if (computedIntentHash != intentHash) {
-            revert InvalidHash(intentHash);
-        }
         if (claimants[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
         if (claimant == bytes32(0)) {
             revert ZeroClaimant();
+        }
+        if (claimant == CANCELLED_CLAIMANT) {
+            revert ReservedClaimant();
         }
 
         claimants[intentHash] = claimant;

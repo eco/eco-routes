@@ -9,7 +9,7 @@ import {Semver} from "../libs/Semver.sol";
 import {ILocalProver} from "../interfaces/ILocalProver.sol";
 import {IPortal} from "../interfaces/IPortal.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
-import {Intent, Route, Reward, TokenAmount} from "../types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, CANCELLED_CLAIMANT} from "../types/Intent.sol";
 
 /**
  * @title LocalProver
@@ -58,12 +58,14 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
      *      During an active flashFulfill call, returns LocalProver as claimant for the duration of
      *      that call only (gated by _flashFulfillInProgress == intentHash) to allow vault withdrawal.
      *
-     *      Griefing protection: two cases cause provenIntents to return ProofData(address(0), 0)
-     *      so the intent is treated as unfulfilled and refunds remain reachable after the deadline.
+     *      Griefing protection: two cases cause provenIntents to return an unproven ProofData
+     *      (outcome None) so the intent is treated as unfulfilled and refunds remain reachable
+     *      after the deadline.
      *      The first is when Portal.claimants is set to LocalProver itself, which happens if someone
      *      calls Portal.fulfill with LocalProver as the claimant outside of flashFulfill.
      *      The second is when Portal.claimants contains a non-EVM bytes32 value that fails
      *      AddressConverter.isValidAddress.
+     *      Returns a Cancelled proof when the Portal recorded the CANCELLED sentinel.
      * @param intentHash the hash of the intent whose proof data is being queried
      * @return ProofData struct containing the destination chain ID and claimant address
      */
@@ -74,6 +76,11 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         // Note: Must cast to Inbox to access public claimants mapping
         bytes32 portalClaimant = Inbox(address(_PORTAL)).claimants(intentHash);
 
+        // Cancelled on this chain after the route deadline: a proven cancellation
+        if (portalClaimant == CANCELLED_CLAIMANT) {
+            return ProofData(address(0), _CHAIN_ID, Outcome.Cancelled);
+        }
+
         // Case 1: Griefing protection - LocalProver set as claimant without using flashFulfill
         // In normal flashFulfill flow, actual solver is set as Portal claimant (not LocalProver)
         // This case only triggers if someone maliciously calls Portal.fulfill with LocalProver as claimant
@@ -81,7 +88,7 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         if (portalClaimant == localProverAsBytes32) {
             // Someone called Portal.fulfill with LocalProver as claimant without going through flashFulfill
             // This is griefing - treat intent as unfulfilled to allow refunds
-            return ProofData(address(0), 0);
+            return ProofData(address(0), 0, Outcome.None);
         }
 
         // Case 2: Intent fulfilled (via flashFulfill or normal Portal.fulfill)
@@ -90,20 +97,25 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
             // Validate before converting - protects against non-EVM bytes32 griefing
             if (!AddressConverter.isValidAddress(portalClaimant)) {
                 // Invalid EVM address - treat as unfulfilled to allow refunds
-                return ProofData(address(0), 0);
+                return ProofData(address(0), 0, Outcome.None);
             }
-            return ProofData(portalClaimant.toAddress(), _CHAIN_ID);
+            return
+                ProofData(
+                    portalClaimant.toAddress(),
+                    _CHAIN_ID,
+                    Outcome.Fulfilled
+                );
         }
 
         // Case 3: flashFulfill currently executing for this intent
         // During flashFulfill, Portal.withdraw calls this before Portal.fulfill completes
         if (_flashFulfillInProgress == intentHash) {
             // Return LocalProver so withdrawal succeeds (funds come to LocalProver)
-            return ProofData(address(this), _CHAIN_ID);
+            return ProofData(address(this), _CHAIN_ID, Outcome.Fulfilled);
         }
 
         // Case 4: Intent not fulfilled at all
-        return ProofData(address(0), 0);
+        return ProofData(address(0), 0, Outcome.None);
     }
 
     function getProofType() external pure returns (string memory) {

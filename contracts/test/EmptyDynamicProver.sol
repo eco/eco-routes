@@ -5,8 +5,8 @@ pragma solidity ^0.8.26;
  * @title EmptyDynamicProver
  * @notice Test prover whose provenIntents() SUCCEEDS and returns a single
  *         empty dynamic value, which ABI-encodes to exactly 64 bytes: an
- *         offset head 0x20 followed by a length word 0x00 — the same size as
- *         the correct ProofData shape
+ *         offset head 0x20 followed by a length word 0x00 — the size of the
+ *         pre-cancellation two-word ProofData shape
  * @dev Verifies AggregatorProver.provenIntents treats this payload as "no proof from
  *      this member" (skip, fall through) rather than surfacing the ABI OFFSET
  *      WORD as a fabricated claimant. Unlike DirtyBitsProver/MalformedProver,

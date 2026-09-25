@@ -339,7 +339,7 @@ Parameters:
 - `routeHash` (bytes32) The hash of the intent's route component
 - `reward` (Reward) Reward structure containing distribution details
 
-<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven. Reverts `CancelledIntent` if the intent's prover holds a proven cancellation for its destination — a cancellation is terminal and can never pay out.
 
 <h4><ins>batchWithdraw</ins></h4>
 <h5>Claims rewards for multiple fulfilled and proven intents</h5>
@@ -349,7 +349,7 @@ Parameters:
 - `routeHashes` (bytes32[]) Array of route component hashes
 - `reward` (Reward[]) Array of corresponding reward specifications
 
-<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven.
+<ins>Security:</ins> Can withdraw anyone's intent, but only to the claimant predetermined by its solver. Withdraws to solver only if intent is proven. Reverts the entire batch atomically if any entry's prover holds a proven cancellation for its destination — a single `CancelledIntent` bubbles up and undoes the other entries' withdrawals too.
 
 <h4><ins>refund</ins></h4>
 <h5>Returns rewards to the intent creator</h5>
@@ -359,7 +359,7 @@ Parameters:
 - `routeHashes` (bytes32[]) Array of route component hashes
 - `reward` (Reward[]) Array of corresponding reward specifications
 
-<ins>Security:</ins> Will fail if intent not expired.
+<ins>Security:</ins> Will fail before the reward deadline unless the intent's prover holds a proven cancellation for its destination.
 
 <h4><ins>recoverToken</ins></h4>
 <h5>Recover tokens that were sent to the intent vault by mistake</h5>
@@ -530,6 +530,33 @@ Parameters:
 - `_prover` (address) the address of the hyperprover on the source chain
 
 <ins>Security:</ins> This method inherits all of the security features in fulfillstorage. This method is also payable, as funds are required to use the hyperlane bridge.
+
+<h4><ins>cancel</ins></h4>
+
+<h5>Cancels an unfulfilled intent once its route deadline has passed, recording the CANCELLED sentinel as its claimant so it can never be fulfilled afterward.</h5>
+
+Parameters:
+
+- `intentHash` (bytes32) the hash of the intent to cancel
+- `route` (Route) the route of the intent
+- `rewardHash` (bytes32) the hash of the reward details
+
+<ins>Security:</ins> Callable by anyone, but only strictly after `route.deadline` — it reverts if called at or before the deadline. Reverts if the intent was already fulfilled or already cancelled.
+
+<h4><ins>cancelAndProve</ins></h4>
+
+<h5>Cancels an unfulfilled intent and initiates proving in one transaction.</h5>
+
+Parameters:
+
+- `intentHash` (bytes32) the hash of the intent to cancel
+- `route` (Route) the route of the intent
+- `rewardHash` (bytes32) the hash of the reward details
+- `prover` (address) the address of the prover on the destination chain
+- `sourceChainDomainID` (uint64) the domain ID of the source chain where the intent was created
+- `data` (bytes) additional data for message formatting
+
+<ins>Security:</ins> Inherits all of the security features of `cancel`. This method forwards `msg.value` to the prover the same way `fulfillAndProve` does.
 
 <h4><ins>makeSolvingPublic</ins></h4>
 

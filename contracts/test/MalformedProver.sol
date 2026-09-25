@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 /**
  * @title MalformedProver
  * @notice Test prover whose provenIntents() SUCCEEDS but returns the wrong
- *         returndata shape (32 bytes instead of the 64-byte ProofData ABI
+ *         returndata shape (32 bytes instead of the 96-byte ProofData ABI
  *         encoding)
  * @dev Verifies AggregatorProver.provenIntents treats a code-bearing member
  *      returning success with insufficient returndata as "no proof from this

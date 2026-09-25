@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import {IProver} from "../interfaces/IProver.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {AddressConverter} from "../libs/AddressConverter.sol";
+import {CANCELLED_CLAIMANT} from "../types/Intent.sol";
 
 /**
  * @title BaseProver
@@ -22,7 +23,7 @@ abstract contract BaseProver is IProver, ERC165 {
 
     /**
      * @notice Mapping from intent hash to proof data
-     * @dev Empty struct (zero claimant) indicates intent hasn't been proven
+     * @dev Empty struct (outcome None) indicates intent hasn't been proven
      */
     mapping(bytes32 => ProofData) internal _provenIntents;
 
@@ -71,33 +72,58 @@ abstract contract BaseProver is IProver, ERC165 {
         for (uint256 i = 0; i < numPairs; i++) {
             uint256 offset = i * 64;
 
-            // Extract intentHash and claimant using slice
-            bytes32 intentHash = bytes32(data[offset:offset + 32]);
-            bytes32 claimantBytes = bytes32(data[offset + 32:offset + 64]);
+            _recordProof(
+                bytes32(data[offset:offset + 32]),
+                bytes32(data[offset + 32:offset + 64]),
+                destination
+            );
+        }
+    }
 
-            // Check if the claimant bytes32 represents a valid Ethereum address
-            if (!claimantBytes.isValidAddress()) {
-                // Skip non-EVM addresses that can't be converted
-                continue;
-            }
+    /**
+     * @notice Records one (intentHash, claimant) pair as a proof
+     * @dev The CANCELLED sentinel records a Cancelled proof with no claimant.
+     *      Other non-EVM and zero claimants are skipped: neither can be paid on
+     *      this chain. The first recorded proof wins; a replay or a conflicting
+     *      redelivery is skipped with IntentAlreadyProven so batches keep going.
+     * @param intentHash Hash of the proven intent
+     * @param claimantBytes Claimant as recorded on the destination
+     * @param destination Chain ID where the intent is being proven
+     */
+    function _recordProof(
+        bytes32 intentHash,
+        bytes32 claimantBytes,
+        uint64 destination
+    ) internal {
+        address claimant;
+        Outcome outcome;
 
-            address claimant = claimantBytes.toAddress();
+        if (claimantBytes == CANCELLED_CLAIMANT) {
+            outcome = Outcome.Cancelled;
+        } else {
+            if (!claimantBytes.isValidAddress()) return;
 
-            // Validate claimant is not zero address
-            if (claimant == address(0)) {
-                continue; // Skip invalid claimants
-            }
+            claimant = claimantBytes.toAddress();
+            if (claimant == address(0)) return;
 
-            // Skip rather than revert for already proven intents
-            if (_provenIntents[intentHash].claimant != address(0)) {
-                emit IntentAlreadyProven(intentHash);
-            } else {
-                _provenIntents[intentHash] = ProofData({
-                    claimant: claimant,
-                    destination: destination
-                });
-                emit IntentProven(intentHash, claimant, destination);
-            }
+            outcome = Outcome.Fulfilled;
+        }
+
+        if (_provenIntents[intentHash].outcome != Outcome.None) {
+            emit IntentAlreadyProven(intentHash);
+            return;
+        }
+
+        _provenIntents[intentHash] = ProofData({
+            claimant: claimant,
+            destination: destination,
+            outcome: outcome
+        });
+
+        if (outcome == Outcome.Cancelled) {
+            emit IntentCancellationProven(intentHash, destination);
+        } else {
+            emit IntentProven(intentHash, claimant, destination);
         }
     }
 
@@ -121,7 +147,7 @@ abstract contract BaseProver is IProver, ERC165 {
         ProofData memory proof = _provenIntents[intentHash];
 
         // Only challenge if proof exists and destination chain ID doesn't match
-        if (proof.claimant != address(0) && proof.destination != destination) {
+        if (proof.outcome != Outcome.None && proof.destination != destination) {
             delete _provenIntents[intentHash];
 
             emit IntentProofInvalidated(intentHash);
