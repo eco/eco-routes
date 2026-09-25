@@ -550,4 +550,55 @@ contract AggregatorProverTest is Test {
         assertLt(coldGas, 60_000, "cold fan-out gas regressed past tripwire");
         assertLt(warmGas, 30_000, "warm fan-out gas regressed past tripwire");
     }
+
+    function test_provenIntents_returnsCancelledMemberProof() public {
+        proverB.addCancelledIntent(HASH, DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0));
+        assertEq(proof.destination, DESTINATION);
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+    }
+
+    function test_provenIntents_firstMemberWinsCancelledOverFulfilled() public {
+        proverA.addCancelledIntent(HASH, DESTINATION);
+        proverB.addProvenIntent(HASH, address(0xB0B), DESTINATION);
+
+        assertEq(
+            uint8(aggregator.provenIntents(HASH).outcome),
+            uint8(IProver.Outcome.Cancelled)
+        );
+    }
+
+    function test_provenIntents_firstMemberWinsFulfilledOverCancelled() public {
+        proverA.addProvenIntent(HASH, address(0xA11CE), DESTINATION);
+        proverB.addCancelledIntent(HASH, DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, address(0xA11CE));
+        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Fulfilled));
+    }
+
+    function test_provenIntents_skipsCancelledTupleWithClaimant() public {
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(address(0xBAD), DESTINATION, uint256(2))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        assertEq(aggregator.provenIntents(HASH).claimant, address(0xBEEF));
+    }
+
+    function test_provenIntents_skipsOutOfRangeOutcome() public {
+        // Zero claimant, so only the outcome range check can skip this member
+        vm.mockCall(
+            address(proverA),
+            abi.encodeWithSelector(IProver.provenIntents.selector, HASH),
+            abi.encode(address(0), DESTINATION, uint256(3))
+        );
+        proverB.addProvenIntent(HASH, address(0xBEEF), DESTINATION);
+
+        assertEq(aggregator.provenIntents(HASH).claimant, address(0xBEEF));
+    }
 }

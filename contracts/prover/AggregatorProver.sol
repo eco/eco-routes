@@ -157,15 +157,17 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      * @notice Returns the first member proof, in priority order
      * @dev Iterates members in immutable priority order. Members that are
      *      codeless, revert, or return anything but a well-formed Fulfilled
-     *      proof are skipped and never propagated: an unproven success must
-     *      fall through to the next member, not terminate the search.
+     *      or Cancelled proof are skipped and never propagated: an unproven
+     *      success must fall through to the next member, not terminate the
+     *      search. A Cancelled proof is well-formed only with claimant 0.
      *
-     *      The `code.length` guard closes the CODELESS case: a staticcall to a
-     *      codeless address SUCCEEDS with empty returndata, and ABI-decoding
-     *      empty data would revert in THIS frame where try/catch cannot catch
-     *      it. Without it, a member deployed only on other chains would brick
-     *      withdraw AND refund for every intent naming this aggregator.
-     *      Mirrors the same defense at IntentSource.sol:872-880.
+     *      The CODELESS case needs no `code.length` guard: the constructor
+     *      rejects codeless members, and a staticcall to a codeless address
+     *      SUCCEEDS with empty returndata, which the length check below skips.
+     *      Decoding that empty data instead would revert in THIS frame where
+     *      try/catch cannot catch it, so a member deployed only on other chains
+     *      would brick withdraw AND refund for every intent naming this
+     *      aggregator.
      *
      *      The call below is a low-level staticcall, not an interface call,
      *      and the read path is revert-free for ANY 96-byte payload, honest or
@@ -181,13 +183,13 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      outside the enum. So the 96 bytes are decoded first as
      *      (bytes32, uint256, uint256), which cannot revert for any bit
      *      pattern, and only then range-checked (`>> 160`/`>> 64` non-zero,
-     *      outcome compared against Fulfilled) before narrowing; a dirty
-     *      payload is treated exactly like a wrong-length one, i.e. skipped
-     *      via `continue`. Either failure mode — wrong length or dirty high
-     *      bits — would otherwise be a permanent freeze of both withdraw and
-     *      refund for every intent naming this aggregator, since provenIntents
-     *      is read by both.
-
+     *      outcome compared against Fulfilled/Cancelled) before narrowing;
+     *      a dirty payload is treated exactly like a wrong-length one, i.e.
+     *      skipped via `continue`. Either failure mode — wrong length or
+     *      dirty high bits — would otherwise be a permanent freeze of both
+     *      withdraw and refund for every intent naming this aggregator, since
+     *      provenIntents is read by both.
+     *
      *      An uncatchable out-of-gas (oversized returndata, or an unbounded
      *      gas burn by a hostile member) is still possible and is ACCEPTED:
      *      solc copies the full returndata into memory in our frame before
@@ -214,14 +216,18 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *
      *      A single dynamic return value (bytes/string/array) of length 32
      *      ABI-encodes to exactly 96 bytes and always begins with the offset
-     *      head 0x20; the zero-destination and 0x20-claimant guards skip every
-     *      such payload, and a member built before proven cancellation
-     *      (64 bytes) is skipped by the length check.
-
+     *      head 0x20. A data word other than Fulfilled or Cancelled fails the
+     *      outcome check; a Fulfilled one is skipped by the 0x20-claimant
+     *      guard and a Cancelled one by the zero-claimant requirement. A
+     *      member built before proven cancellation (64 bytes) is skipped by
+     *      the length check.
+     *
      *      KNOWN LIMITATION (shadowing): a member holding an entry whose
      *      `destination` is wrong shadows a valid proof held by a
      *      lower-priority member, since this function returns the first
-     *      Fulfilled proof. `IntentSource.withdraw` recovers by forwarding a
+     *      Fulfilled or Cancelled proof. A wrong-destination Cancelled entry
+     *      shadows exactly like a wrong-destination Fulfilled one.
+     *      `IntentSource.withdraw` recovers from either by forwarding a
      *      challenge on its wrong-destination branch, so a second `withdraw`
      *      pays, but `_validateRefund` reads the same shadowed value, never
      *      forwards a challenge, and past `reward.deadline` refunds the
@@ -247,7 +253,7 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      entirely and are audited out-of-band. The withdraw/refund asymmetry
      *      itself remains in `IntentSource`.
      * @param intentHash The intent hash to query
-     * @return First Fulfilled member proof, or an unproven ProofData (outcome None) if none
+     * @return First Fulfilled or Cancelled member proof, or outcome None if none
      */
     function provenIntents(
         bytes32 intentHash
@@ -304,6 +310,20 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
                         claimant: rawClaimant.toAddress(),
                         destination: uint64(rawDestination),
                         outcome: Outcome.Fulfilled
+                    });
+            }
+
+            // A cancellation carries no claimant; any claimant bits mean a
+            // malformed member, which is skipped like any other bad shape
+            if (
+                rawOutcome == uint256(Outcome.Cancelled) &&
+                rawClaimant == bytes32(0)
+            ) {
+                return
+                    ProofData({
+                        claimant: address(0),
+                        destination: uint64(rawDestination),
+                        outcome: Outcome.Cancelled
                     });
             }
         }
