@@ -241,9 +241,10 @@ contract LocalProver is ILocalProver, Semver, ReentrancyGuard {
         }
 
         // Call fulfill with actual claimant
-        // Use entire contract balance for fulfill (includes msg.value + any existing balance)
+        // Forward only the native route budget. On native/ERC20 alias chains,
+        // forwarding the whole balance would also consume route token principal.
         // LocalProver acts as intermediary for funds but Portal records actual solver as claimant
-        results = _PORTAL.fulfill{value: address(this).balance}(
+        results = _PORTAL.fulfill{value: route.nativeAmount}(
             intentHash,
             route,
             rewardHash,
