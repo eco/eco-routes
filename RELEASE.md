@@ -7,6 +7,7 @@ release is a normal PR a human approves and squash-merges.
 ## How a release happens
 
 1. On every push to `main`, `.github/workflows/release-pr.yaml`:
+
    - computes the next version from the conventional commits since the last
      tag (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major),
    - rewrites `version()` in the contracts and bumps `package.json`
