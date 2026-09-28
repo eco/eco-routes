@@ -463,8 +463,8 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         // If the intent has been proven on a different chain, challenge the proof
         if (
-            proof.outcome != IProver.Outcome.None &&
-            proof.destination != destination
+            proof.destination != destination &&
+            proof.outcome != IProver.Outcome.None
         ) {
             // Challenge the proof and emit event
             IProver(reward.prover).challengeIntentProof(
@@ -882,34 +882,32 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             proof = IProver(reward.prover).provenIntents(intentHash);
         }
 
-        // A proven cancellation on the intended destination refunds immediately
-        if (
-            proof.outcome == IProver.Outcome.Cancelled &&
-            proof.destination == destination
-        ) {
-            return;
+        if (proof.destination == destination) {
+            // A proven cancellation on the intended destination refunds immediately
+            if (proof.outcome == IProver.Outcome.Cancelled) {
+                return;
+            }
+
+            if (
+                proof.outcome == IProver.Outcome.Fulfilled &&
+                proof.claimant != address(0)
+            ) {
+                if (status == Status.Initial || status == Status.Funded) {
+                    revert IntentNotClaimed(intentHash);
+                }
+
+                return;
+            }
         }
 
         // Anything short of a fulfillment proven on this destination falls back
         // to the reward deadline
-        if (
-            proof.outcome != IProver.Outcome.Fulfilled ||
-            proof.claimant == address(0) ||
-            proof.destination != destination
-        ) {
-            if (block.timestamp < reward.deadline) {
-                revert InvalidStatusForRefund(
-                    status,
-                    block.timestamp,
-                    reward.deadline
-                );
-            }
-
-            return;
-        }
-
-        if (status == Status.Initial || status == Status.Funded) {
-            revert IntentNotClaimed(intentHash);
+        if (block.timestamp < reward.deadline) {
+            revert InvalidStatusForRefund(
+                status,
+                block.timestamp,
+                reward.deadline
+            );
         }
     }
 
@@ -930,14 +928,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             revert InvalidStatusForWithdrawal(status);
         }
 
-        if (proof.outcome == IProver.Outcome.Cancelled) {
-            revert CancelledIntent(intentHash);
-        }
-
         if (
             proof.outcome != IProver.Outcome.Fulfilled ||
             proof.claimant == address(0)
         ) {
+            if (proof.outcome == IProver.Outcome.Cancelled) {
+                revert CancelledIntent(intentHash);
+            }
+
             revert InvalidClaimant();
         }
     }
