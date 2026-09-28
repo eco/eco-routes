@@ -316,4 +316,138 @@ contract AggregatorProverIntegrationTest is Test {
             "solver never paid despite valid proof"
         );
     }
+
+    /// @dev Before `reward.deadline` a wrong-destination Cancelled entry does not open
+    ///      the fast refund path, even though it shadows the valid member proof
+    function test_refund_wrongDestinationCancellationBlockedBeforeDeadline()
+        public
+    {
+        Intent memory intent = _intent(
+            address(aggregator),
+            bytes32(uint256(20))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        proverA.addCancelledIntent(intentHash, WRONG_DESTINATION);
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                intent.reward.deadline
+            )
+        );
+        portal.refund(DESTINATION, routeHash, intent.reward);
+
+        assertTrue(portal.isIntentFunded(intent));
+    }
+
+    /// @notice CHARACTERIZATION TEST — pins a KNOWN LIMITATION, not desired behaviour.
+    /// @dev The Cancelled variant of
+    ///      test_refund_shadowedProofRefundsCreator_knownLimitation: a wrong-destination
+    ///      Cancelled entry shadows exactly like a wrong-destination Fulfilled one. Past
+    ///      `reward.deadline` the refund pays the creator once, and the valid proof that
+    ///      surfaces after the challenge cannot release the escrow a second time.
+    function test_refund_shadowedByWrongDestinationCancellation_knownLimitation()
+        public
+    {
+        Intent memory intent = _intent(
+            address(aggregator),
+            bytes32(uint256(21))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        proverA.addCancelledIntent(intentHash, WRONG_DESTINATION);
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        vm.warp(intent.reward.deadline);
+
+        uint256 creatorBefore = creator.balance;
+        uint256 solverBefore = solver.balance;
+
+        portal.refund(DESTINATION, routeHash, intent.reward);
+
+        assertEq(creator.balance - creatorBefore, REWARD, "creator refunded");
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+
+        // First withdraw challenges the wrong-destination entry and pays nothing
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(
+            uint8(proverA.provenIntents(intentHash).outcome),
+            0,
+            "wrong-destination cancellation must be deleted"
+        );
+
+        // The valid proof now surfaces, but the escrow was already released
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+
+        assertEq(solver.balance, solverBefore, "solver unpaid");
+        assertEq(address(portal.intentVaultAddress(intent)).balance, 0);
+    }
+
+    /// @dev Withdraw recovers from a wrong-destination Cancelled shadow the same way it
+    ///      does from a Fulfilled one, before and after `reward.deadline`, and the paid
+    ///      intent can no longer be refunded
+    function test_withdraw_selfHealsPastWrongDestinationCancellation() public {
+        _assertWithdrawSelfHealsPastCancellation(bytes32(uint256(22)), false);
+        _assertWithdrawSelfHealsPastCancellation(bytes32(uint256(23)), true);
+    }
+
+    function _assertWithdrawSelfHealsPastCancellation(
+        bytes32 salt,
+        bool afterDeadline
+    ) internal {
+        Intent memory intent = _intent(address(aggregator), salt);
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        proverA.addCancelledIntent(intentHash, WRONG_DESTINATION);
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        if (afterDeadline) vm.warp(intent.reward.deadline);
+
+        uint256 solverBefore = solver.balance;
+        uint256 creatorBefore = creator.balance;
+
+        // First withdraw: pays nothing, deletes the wrong-destination cancellation
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance, solverBefore, "must not pay on first call");
+        assertTrue(portal.isIntentFunded(intent));
+
+        // Second withdraw: the valid proof sorts first and pays the solver once
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance - solverBefore, REWARD);
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Withdrawn)
+        );
+
+        // Replayed withdraw and a later refund release nothing more
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Withdrawn
+            )
+        );
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+
+        vm.warp(intent.reward.deadline);
+        portal.refund(DESTINATION, routeHash, intent.reward);
+        assertEq(
+            creator.balance,
+            creatorBefore,
+            "creator must not be refunded"
+        );
+        assertEq(solver.balance - solverBefore, REWARD);
+    }
 }
