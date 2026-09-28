@@ -84,14 +84,14 @@ The system supports multiple bridge protocols through specialized prover contrac
 - **LocalProver**: Same-chain proof handling (with a `LocalProverTron` variant for TRON)
 - **AggregatorProver**: Read-only 1-of-N union over other provers on the same
   chain. Records no proofs and dispatches no messages — `prove()` reverts;
-  solvers prove through a concrete member. Reports an intent as proven when
-  the first member (priority order) holding a well-formed Fulfilled or
-  Cancelled proof wins, so a creator can name a set of bridges at publish time
-  and the solver picks a live one at fulfillment time. Members must return the
+  solvers prove through a concrete member. Returns the proof of the first
+  member (priority order) holding a well-formed Fulfilled or Cancelled proof,
+  so a creator can name a set of bridges at publish time and the solver picks
+  a live one at fulfillment time. Members must return the
   three-word `ProofData` (the deploy probe rejects the pre-cancellation
   two-word shape). Security floor is the
   weakest member, and membership is immutable. Emits no `IntentProven` /
-  `IntentProofInvalidated`: **indexers must watch the member provers, not this
+  `IntentCancellationProven` / `IntentProofInvalidated`: **indexers must watch the member provers, not this
   address.** Membership requires a **bridge-attested** `destination`: only
   `MessageBridgeProver` descendants qualify, because their destination is
   cross-checked against the bridge origin domain in `_handleCrossChainMessage`.

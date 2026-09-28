@@ -108,7 +108,7 @@ The secondary intent **MUST** have `reward.creator = originalVault` (the vault a
 
 ## Technical Implementation: provenIntents() State Machine
 
-The `provenIntents()` function handles four distinct cases to enable the LocalProver intermediary pattern, with built-in griefing attack protection:
+The `provenIntents()` function handles five distinct cases to enable the LocalProver intermediary pattern, with built-in griefing attack protection. The cancellation case (Case 5) is checked first:
 
 ### Case 1: Griefing protection - LocalProver set as claimant maliciously
 
@@ -137,6 +137,13 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 - **Trigger**: Portal.claimants empty and \_flashFulfillInProgress != intentHash
 - **Return**: address(0)
 - **Purpose**: Standard unfulfilled intent response
+
+### Case 5: Intent cancelled
+
+- **Trigger**: Portal.claimants[intentHash] == CANCELLED_CLAIMANT (set by `Inbox.cancel` after `route.deadline`)
+- **Return**: `ProofData(address(0), chainId, Outcome.Cancelled)`
+- **Purpose**: Lets the creator refund before `reward.deadline`; `withdraw` reverts `CancelledIntent`
+- **Checked first**: before the griefing and fulfilled cases, since the sentinel is never a valid EVM address
 
 ### Griefing Attack Protection
 

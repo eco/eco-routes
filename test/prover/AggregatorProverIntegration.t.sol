@@ -274,7 +274,7 @@ contract AggregatorProverIntegrationTest is Test {
     /// @notice CHARACTERIZATION TEST — pins a KNOWN LIMITATION, not desired behaviour.
     /// @dev A member holding an entry whose `destination` is wrong shadows a valid proof
     ///      held by a lower-priority member, because `provenIntents` returns the first
-    ///      non-zero claimant. This bug class does not exist for a single prover, which
+    ///      member proof with outcome Fulfilled or Cancelled. This bug class does not exist for a single prover, which
     ///      stores exactly one `ProofData` per `intentHash`. `IntentSource.withdraw`
     ///      recovers — it forwards a challenge on its wrong-destination branch, so a second
     ///      `withdraw` pays — but `_validateRefund` reads the same shadowed value, never

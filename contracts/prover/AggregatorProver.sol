@@ -339,14 +339,14 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
     /**
      * @notice Forwards a challenge to every member prover
      * @dev Forwarding is required, not cosmetic: IntentSource.withdraw calls
-     *      this itself on its wrong-destination branch (IntentSource.sol:468).
+     *      this itself on its wrong-destination branch (IntentSource.withdraw).
      *      Reverting here would revert withdraw, and would revert an entire
-     *      batchWithdraw (IntentSource.sol:492) over one planted bad proof.
+     *      IntentSource.batchWithdraw over one planted bad proof.
      *
      *      Blanket-forwarding is precise even though this contract cannot tell
      *      which member is wrong: each member re-derives the intent hash and
      *      deletes ONLY its own entry, and ONLY on its own destination mismatch
-     *      (BaseProver.sol:112-129). Honest proofs take the false branch and
+     *      (BaseProver.challengeIntentProof). Honest proofs take the false branch and
      *      are untouched.
      * @param destination The intended destination chain ID
      * @param routeHash The hash of the intent's route

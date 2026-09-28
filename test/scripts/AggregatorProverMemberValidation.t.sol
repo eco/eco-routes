@@ -538,9 +538,10 @@ contract AggregatorProverMemberValidationTest is Test {
         );
     }
 
-    /// @dev Order is priority (provenIntents returns the first non-zero
-    ///      claimant), so [A, B] and [B, A] are genuinely different deployments
-    ///      and must not collide at one address.
+    /// @dev Order is priority (provenIntents returns the first member proof
+    ///      with outcome Fulfilled or Cancelled), so [A, B] and [B, A] are
+    ///      genuinely different deployments and must not collide at one
+    ///      address.
     function test_salt_changesWithMemberOrder() public view {
         bytes32 root = keccak256("root");
 
