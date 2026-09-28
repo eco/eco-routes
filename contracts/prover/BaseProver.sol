@@ -109,16 +109,15 @@ abstract contract BaseProver is IProver, ERC165 {
             outcome = Outcome.Fulfilled;
         }
 
-        if (_provenIntents[intentHash].outcome != Outcome.None) {
+        ProofData storage p = _provenIntents[intentHash];
+        if (p.outcome != Outcome.None) {
             emit IntentAlreadyProven(intentHash);
             return;
         }
 
-        _provenIntents[intentHash] = ProofData({
-            claimant: claimant,
-            destination: destination,
-            outcome: outcome
-        });
+        p.claimant = claimant;
+        p.destination = destination;
+        p.outcome = outcome;
 
         if (outcome == Outcome.Cancelled) {
             emit IntentCancellationProven(intentHash, destination);
