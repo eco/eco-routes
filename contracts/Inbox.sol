@@ -40,11 +40,6 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     uint64 private immutable CHAIN_ID;
 
     /**
-     * @notice Claimant value recorded for cancelled intents
-     */
-    bytes32 public constant CANCELLED = CANCELLED_CLAIMANT;
-
-    /**
      * @notice Initializes the Inbox contract
      * @dev Sets up the base contract for handling intent fulfillment on destination chains
      */
@@ -137,6 +132,18 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         prove(prover, sourceChainDomainID, intentHashes, data);
 
         return result;
+    }
+
+    /**
+     * @notice Claimant value recorded for cancelled intents
+     * @dev A function rather than a public constant: OpenZeppelin's upgrades
+     *      plugin stubs every function's return type while keeping constants,
+     *      so a constant implementing IInbox.CANCELLED fails its compile
+     * @return The CANCELLED sentinel
+     */
+    // solhint-disable-next-line func-name-mixedcase
+    function CANCELLED() external pure returns (bytes32) {
+        return CANCELLED_CLAIMANT;
     }
 
     /**
