@@ -218,21 +218,25 @@ contract BaseTest is Test {
     }
 
     /**
-     * @notice Asserts that a proven cancellation refunds every reward token to
-     * the creator before the reward deadline
+     * @notice Asserts that a proven cancellation refunds every reward token and
+     * the native reward to the creator before the reward deadline
      */
     function _assertRefundsBeforeRewardDeadline(
         Intent memory _intent
     ) internal {
         bytes32 intentHash = _hashIntent(_intent);
+        address refundee = _intent.reward.creator;
         uint256[] memory before = new uint256[](_intent.reward.tokens.length);
         for (uint256 i = 0; i < before.length; i++) {
             before[i] = TestERC20(_intent.reward.tokens[i].token).balanceOf(
-                creator
+                refundee
             );
         }
+        uint256 nativeBefore = refundee.balance;
         assertLt(block.timestamp, _intent.reward.deadline);
 
+        vm.expectEmit(true, true, true, true, address(intentSource));
+        emit IIntentSource.IntentRefunded(intentHash, refundee);
         vm.prank(otherPerson);
         intentSource.refund(
             _intent.destination,
@@ -242,10 +246,11 @@ contract BaseTest is Test {
 
         for (uint256 i = 0; i < before.length; i++) {
             assertEq(
-                TestERC20(_intent.reward.tokens[i].token).balanceOf(creator),
+                TestERC20(_intent.reward.tokens[i].token).balanceOf(refundee),
                 before[i] + _intent.reward.tokens[i].amount
             );
         }
+        assertEq(refundee.balance, nativeBefore + _intent.reward.nativeAmount);
         assertEq(
             uint256(intentSource.getRewardStatus(intentHash)),
             uint256(IIntentSource.Status.Refunded)

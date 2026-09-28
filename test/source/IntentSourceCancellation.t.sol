@@ -18,23 +18,9 @@ contract IntentSourceCancellationTest is BaseTest {
 
     function testRefundBeforeRewardDeadlineWithProvenCancellation() public {
         _publishAndFund(intent, false);
-        bytes32 intentHash = _hashIntent(intent);
-        prover.addCancelledIntent(intentHash, CHAIN_ID);
-        uint256 creatorA = tokenA.balanceOf(creator);
-        uint256 creatorB = tokenB.balanceOf(creator);
-        assertLt(block.timestamp, intent.reward.deadline);
+        prover.addCancelledIntent(_hashIntent(intent), CHAIN_ID);
 
-        vm.expectEmit(true, true, true, true, address(portal));
-        emit IIntentSource.IntentRefunded(intentHash, creator);
-        vm.prank(otherPerson);
-        intentSource.refund(intent.destination, _routeHash(), intent.reward);
-
-        assertEq(tokenA.balanceOf(creator), creatorA + MINT_AMOUNT);
-        assertEq(tokenB.balanceOf(creator), creatorB + MINT_AMOUNT * 2);
-        assertEq(
-            uint256(intentSource.getRewardStatus(intentHash)),
-            uint256(IIntentSource.Status.Refunded)
-        );
+        _assertRefundsBeforeRewardDeadline(intent);
     }
 
     function testRefundToBeforeRewardDeadlineWithProvenCancellation() public {
@@ -145,16 +131,9 @@ contract IntentSourceCancellationTest is BaseTest {
 
     function testWithdrawRevertsOnProvenCancellation() public {
         _publishAndFund(intent, false);
-        bytes32 intentHash = _hashIntent(intent);
-        prover.addCancelledIntent(intentHash, CHAIN_ID);
+        prover.addCancelledIntent(_hashIntent(intent), CHAIN_ID);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IIntentSource.CancelledIntent.selector,
-                intentHash
-            )
-        );
-        intentSource.withdraw(intent.destination, _routeHash(), intent.reward);
+        _assertWithdrawRevertsCancelled(intent);
     }
 
     function testWithdrawChallengesWrongDestinationCancellation() public {

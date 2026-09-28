@@ -76,10 +76,7 @@ contract ProvenCancellationFlowTest is BaseTest {
         assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
         assertEq(proof.destination, uint64(block.chainid));
 
-        assertLt(block.timestamp, i.reward.deadline);
-        vm.prank(otherPerson);
-        intentSource.refund(i.destination, routeHash, i.reward);
-        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        _assertRefundsBeforeRewardDeadline(i);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -88,6 +85,31 @@ contract ProvenCancellationFlowTest is BaseTest {
             )
         );
         intentSource.withdraw(i.destination, routeHash, i.reward);
+    }
+
+    function testFrontRunCancelDoesNotBlockCancelAndProveRefund() public {
+        (
+            Intent memory i,
+            ,
+            bytes32 rewardHash,
+            bytes32 intentHash
+        ) = _sameChainIntent();
+        _publishAndFund(i, false);
+
+        vm.warp(uint256(i.route.deadline) + 1);
+        vm.prank(otherPerson);
+        portal.cancel(intentHash, i.route, rewardHash);
+
+        portal.cancelAndProve(
+            intentHash,
+            i.route,
+            rewardHash,
+            address(prover),
+            uint64(block.chainid),
+            ""
+        );
+
+        _assertRefundsBeforeRewardDeadline(i);
     }
 
     function testFulfilledIntentCannotBeCancelledOrRefundedEarly() public {
