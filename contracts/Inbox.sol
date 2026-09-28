@@ -9,7 +9,7 @@ import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {IExecutor} from "./interfaces/IExecutor.sol";
 
-import {Route, Call, TokenAmount, CANCELLED_CLAIMANT} from "./types/Intent.sol";
+import {Route, Call, TokenAmount, CANCELLED_CLAIMANT_BYTES32} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 import {Refund} from "./libs/Refund.sol";
 
@@ -139,11 +139,11 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
      * @dev A function rather than a public constant: OpenZeppelin's upgrades
      *      plugin stubs every function's return type while keeping constants,
      *      so a constant implementing IInbox.CANCELLED fails its compile
-     * @return The CANCELLED sentinel
+     * @return CANCELLED_CLAIMANT left-padded to bytes32
      */
     // solhint-disable-next-line func-name-mixedcase
     function CANCELLED() external pure returns (bytes32) {
-        return CANCELLED_CLAIMANT;
+        return CANCELLED_CLAIMANT_BYTES32;
     }
 
     /**
@@ -183,7 +183,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         uint64 sourceChainDomainID,
         bytes memory data
     ) external payable {
-        if (claimants[intentHash] != CANCELLED_CLAIMANT) {
+        if (claimants[intentHash] != CANCELLED_CLAIMANT_BYTES32) {
             _cancel(intentHash, route, rewardHash);
         }
 
@@ -310,14 +310,14 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
             revert RouteNotExpired(route.deadline);
         }
         bytes32 recorded = claimants[intentHash];
-        if (recorded == CANCELLED_CLAIMANT) {
+        if (recorded == CANCELLED_CLAIMANT_BYTES32) {
             revert IntentAlreadyCancelled(intentHash);
         }
         if (recorded != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
 
-        claimants[intentHash] = CANCELLED_CLAIMANT;
+        claimants[intentHash] = CANCELLED_CLAIMANT_BYTES32;
 
         emit IntentCancelled(intentHash);
     }
@@ -350,7 +350,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         if (claimant == bytes32(0)) {
             revert ZeroClaimant();
         }
-        if (claimant == CANCELLED_CLAIMANT) {
+        if (claimant == CANCELLED_CLAIMANT_BYTES32) {
             revert ReservedClaimant();
         }
 

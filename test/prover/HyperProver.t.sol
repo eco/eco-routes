@@ -6,7 +6,7 @@ import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
-import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
@@ -982,17 +982,16 @@ contract HyperProverTest is BaseTest {
         );
     }
 
-    function testHandleRecordsCancelledOutcome() public {
+    function testHandleRecordsCancellationProof() public {
         bytes32 intentHash = _hashIntent(intent);
 
         _expectEmit();
-        emit IProver.IntentCancellationProven(intentHash, CHAIN_ID);
-        _handleSingle(intentHash, CANCELLED_CLAIMANT);
+        emit IProver.IntentProven(intentHash, CANCELLED_CLAIMANT, CHAIN_ID);
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, CHAIN_ID);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function testHandleCancelledRedeliveryKeepsFulfilledProof() public {
@@ -1001,18 +1000,17 @@ contract HyperProverTest is BaseTest {
 
         _expectEmit();
         emit IProver.IntentAlreadyProven(intentHash);
-        _handleSingle(intentHash, CANCELLED_CLAIMANT);
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
         assertEq(proof.claimant, claimant);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Fulfilled));
     }
 
     function testHandleCancelledRejectsMismatchedHeaderChainId() public {
         bytes32[] memory intentHashes = new bytes32[](1);
         bytes32[] memory claimants = new bytes32[](1);
         intentHashes[0] = _hashIntent(intent);
-        claimants[0] = CANCELLED_CLAIMANT;
+        claimants[0] = CANCELLED_CLAIMANT_BYTES32;
 
         // origin = 1 but header claims chain 999
         vm.prank(address(mailbox));
@@ -1031,8 +1029,8 @@ contract HyperProverTest is BaseTest {
         );
 
         assertEq(
-            uint8(hyperProver.provenIntents(intentHashes[0]).outcome),
-            uint8(IProver.Outcome.None)
+            hyperProver.provenIntents(intentHashes[0]).claimant,
+            address(0)
         );
     }
 
@@ -1040,7 +1038,7 @@ contract HyperProverTest is BaseTest {
         bytes32[] memory intentHashes = new bytes32[](4);
         bytes32[] memory claimants = new bytes32[](4);
         intentHashes[0] = keccak256("cancelled");
-        claimants[0] = CANCELLED_CLAIMANT;
+        claimants[0] = CANCELLED_CLAIMANT_BYTES32;
         intentHashes[1] = keccak256("fulfilled");
         claimants[1] = bytes32(uint256(uint160(claimant)));
         intentHashes[2] = keccak256("zero claimant");
@@ -1058,16 +1056,14 @@ contract HyperProverTest is BaseTest {
         IProver.ProofData memory cancelled = hyperProver.provenIntents(
             intentHashes[0]
         );
-        assertEq(cancelled.claimant, address(0));
+        assertEq(cancelled.claimant, CANCELLED_CLAIMANT);
         assertEq(cancelled.destination, CHAIN_ID);
-        assertEq(uint8(cancelled.outcome), uint8(IProver.Outcome.Cancelled));
 
         IProver.ProofData memory fulfilled = hyperProver.provenIntents(
             intentHashes[1]
         );
         assertEq(fulfilled.claimant, claimant);
         assertEq(fulfilled.destination, CHAIN_ID);
-        assertEq(uint8(fulfilled.outcome), uint8(IProver.Outcome.Fulfilled));
 
         for (uint256 i = 2; i < 4; i++) {
             IProver.ProofData memory skipped = hyperProver.provenIntents(
@@ -1075,7 +1071,6 @@ contract HyperProverTest is BaseTest {
             );
             assertEq(skipped.claimant, address(0));
             assertEq(skipped.destination, 0);
-            assertEq(uint8(skipped.outcome), uint8(IProver.Outcome.None));
         }
     }
 
@@ -1084,7 +1079,7 @@ contract HyperProverTest is BaseTest {
             address(hyperProver),
             CHAIN_ID
         );
-        _handleSingle(intentHash, CANCELLED_CLAIMANT);
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertRefundsBeforeRewardDeadline(_intent);
     }
@@ -1094,7 +1089,7 @@ contract HyperProverTest is BaseTest {
             address(hyperProver),
             CHAIN_ID
         );
-        _handleSingle(intentHash, CANCELLED_CLAIMANT);
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertWithdrawRevertsCancelled(_intent);
     }

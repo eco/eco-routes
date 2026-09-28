@@ -130,9 +130,7 @@ contract TestMessageBridgeProver is MessageBridgeProver {
     ) public {
         _provenIntents[_hash] = ProofData({
             claimant: _claimant,
-            destination: _destination,
-            // Keep the pre-outcome meaning: a zero claimant is "not proven"
-            outcome: _claimant == address(0) ? Outcome.None : Outcome.Fulfilled
+            destination: _destination
         });
     }
 

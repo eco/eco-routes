@@ -43,9 +43,7 @@ contract TestProver is BaseProver {
     ) public {
         _provenIntents[_hash] = ProofData({
             claimant: _claimant,
-            destination: _destination,
-            // Keep the pre-outcome meaning: a zero claimant is "not proven"
-            outcome: _claimant == address(0) ? Outcome.None : Outcome.Fulfilled
+            destination: _destination
         });
     }
 
@@ -56,20 +54,7 @@ contract TestProver is BaseProver {
     ) public {
         _provenIntents[_hash] = ProofData({
             claimant: _claimant,
-            destination: _destination,
-            // Keep the pre-outcome meaning: a zero claimant is "not proven"
-            outcome: _claimant == address(0) ? Outcome.None : Outcome.Fulfilled
-        });
-    }
-
-    /**
-     * @notice Helper to manually add a proven cancellation for testing
-     */
-    function addCancelledIntent(bytes32 _hash, uint64 _destination) public {
-        _provenIntents[_hash] = ProofData({
-            claimant: address(0),
-            destination: _destination,
-            outcome: Outcome.Cancelled
+            destination: _destination
         });
     }
 

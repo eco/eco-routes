@@ -11,25 +11,14 @@ import {ISemver} from "./ISemver.sol";
  */
 interface IProver is ISemver {
     /**
-     * @notice What a proof says happened to an intent on its destination
-     * @dev None means not proven. Existence of a proof is outcome != None.
-     */
-    enum Outcome {
-        None,
-        Fulfilled,
-        Cancelled
-    }
-
-    /**
      * @notice Proof data stored for each proven intent
-     * @param claimant Address eligible to claim the intent rewards (zero when Cancelled)
+     * @param claimant Address eligible to claim the intent rewards; CANCELLED_CLAIMANT
+     *        (types/Intent.sol) marks a proven cancellation, which is refundable only
      * @param destination Chain ID where the intent was proven
-     * @param outcome Whether the intent was fulfilled or cancelled on its destination
      */
     struct ProofData {
         address claimant;
         uint64 destination;
-        Outcome outcome;
     }
 
     /**
@@ -52,23 +41,13 @@ interface IProver is ISemver {
      * @notice Emitted when an intent is successfully proven
      * @dev Emitted by the Prover on the source chain.
      * @param intentHash Hash of the proven intent
-     * @param claimant Address eligible to claim the intent rewards
+     * @param claimant Address eligible to claim the intent rewards; CANCELLED_CLAIMANT
+     *        (types/Intent.sol) marks a proven cancellation, which is refundable only
      * @param destination Destination chain ID where the intent was proven
      */
     event IntentProven(
         bytes32 indexed intentHash,
         address indexed claimant,
-        uint64 destination
-    );
-
-    /**
-     * @notice Emitted when an intent's cancellation is proven
-     * @dev Emitted by the Prover on the source chain.
-     * @param intentHash Hash of the cancelled intent
-     * @param destination Destination chain ID where the intent was cancelled
-     */
-    event IntentCancellationProven(
-        bytes32 indexed intentHash,
         uint64 destination
     );
 

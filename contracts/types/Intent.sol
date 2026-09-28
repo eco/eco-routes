@@ -75,9 +75,17 @@ struct Intent {
     Reward reward;
 }
 
-// Reserved claimant value that marks an intent as cancelled on its destination.
-// Written into the destination Portal's claimants mapping by cancel() and carried to
-// the source by the existing (intentHash, claimant) proof payload. Its upper 12 bytes
-// are non-zero, so it is never a valid EVM address, and as a hash preimage no key
-// controls it on any VM. Must match eco-svm-std's CANCELLED byte for byte.
-bytes32 constant CANCELLED_CLAIMANT = keccak256("eco.portal.intent.cancelled");
+// Reserved claimant value that marks an intent as cancelled on its destination:
+// the low 20 bytes of keccak256("eco.portal.intent.cancelled"). It is deliberately a
+// valid EVM address, so a cancellation fits ProofData.claimant and every prover
+// records it like any claimant. As a hash-derived value no key controls it on any VM,
+// and IntentSource.withdraw rejects it. Must match eco-svm-std's CANCELLED byte for byte.
+address constant CANCELLED_CLAIMANT = address(
+    uint160(uint256(keccak256("eco.portal.intent.cancelled")))
+);
+
+// CANCELLED_CLAIMANT left-padded to bytes32: the value the destination Portal stores in
+// its claimants mapping and carries in the (intentHash, claimant) proof payload
+bytes32 constant CANCELLED_CLAIMANT_BYTES32 = bytes32(
+    uint256(uint160(CANCELLED_CLAIMANT))
+);

@@ -5,7 +5,7 @@ import "../BaseTest.sol";
 import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
-import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Base58} from "../../contracts/libs/Base58.sol";
 import {Vm} from "forge-std/Vm.sol";
@@ -565,7 +565,7 @@ contract PolymerProverTest is BaseTest {
         assertEq(proofData.destination, OPTIMISM_CHAIN_ID);
     }
 
-    /// @dev _recordProof is shared with validateSolana; a zero claimant is the
+    /// @dev processIntent is shared with validateSolana; a zero claimant is the
     ///      "unproven" sentinel and must never be recorded or announced (BaseProver parity)
     function testValidateSkipsZeroClaimant() public {
         bytes32 hashZero = keccak256("zero-claimant");
@@ -1379,32 +1379,23 @@ contract PolymerProverTest is BaseTest {
         );
     }
 
-    function testValidateRecordsFulfilledOutcome() public {
+    function testValidateRecordsCancellationProof() public {
         bytes32 intentHash = _hashIntent(intent);
-        _setSingleProof(intentHash, bytes32(uint256(uint160(claimant))));
-
-        polymerProver.validate(abi.encodePacked(uint256(1)));
-
-        assertEq(
-            uint8(polymerProver.provenIntents(intentHash).outcome),
-            uint8(IProver.Outcome.Fulfilled)
-        );
-    }
-
-    function testValidateRecordsCancelledOutcome() public {
-        bytes32 intentHash = _hashIntent(intent);
-        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _expectEmit();
-        emit IProver.IntentCancellationProven(intentHash, OPTIMISM_CHAIN_ID);
+        emit IProver.IntentProven(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            OPTIMISM_CHAIN_ID
+        );
         polymerProver.validate(abi.encodePacked(uint256(1)));
 
         IProver.ProofData memory proof = polymerProver.provenIntents(
             intentHash
         );
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, OPTIMISM_CHAIN_ID);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function testRefundsBeforeDeadlineOnPolymerProvenCancellation() public {
@@ -1412,7 +1403,7 @@ contract PolymerProverTest is BaseTest {
             address(polymerProver),
             OPTIMISM_CHAIN_ID
         );
-        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT_BYTES32);
         polymerProver.validate(abi.encodePacked(uint256(1)));
 
         _assertRefundsBeforeRewardDeadline(_intent);
@@ -1423,7 +1414,7 @@ contract PolymerProverTest is BaseTest {
             address(polymerProver),
             OPTIMISM_CHAIN_ID
         );
-        _setSingleProof(intentHash, CANCELLED_CLAIMANT);
+        _setSingleProof(intentHash, CANCELLED_CLAIMANT_BYTES32);
         polymerProver.validate(abi.encodePacked(uint256(1)));
 
         _assertWithdrawRevertsCancelled(_intent);
@@ -1748,7 +1739,7 @@ contract PolymerProverTest is BaseTest {
         emit IProver.IntentProven(hashKept, claimant, SOLANA_CHAIN_ID);
         polymerProver.validateSolana(proof);
 
-        // skipped: no partial write (and therefore no IntentProven — _recordProof
+        // skipped: no partial write (and therefore no IntentProven — processIntent
         // writes and emits together)
         assertEq(polymerProver.provenIntents(hashSkipped).claimant, address(0));
         assertEq(polymerProver.provenIntents(hashSkipped).destination, 0);
@@ -1781,7 +1772,7 @@ contract PolymerProverTest is BaseTest {
         assertEq(pd.destination, 0); // slot untouched — fails without the guard
     }
 
-    function testValidateSolanaRecordsCancelledOutcome() public {
+    function testValidateSolanaRecordsCancellationProof() public {
         bytes32 intentHash = keccak256("cancelled");
         string[] memory logs = new string[](1);
         logs[0] = _solanaLog(
@@ -1789,18 +1780,21 @@ contract PolymerProverTest is BaseTest {
             uint64(block.chainid),
             SOLANA_CHAIN_ID,
             intentHash,
-            CANCELLED_CLAIMANT
+            CANCELLED_CLAIMANT_BYTES32
         );
         bytes memory proof = _setSolanaProof(logs);
 
         _expectEmit();
-        emit IProver.IntentCancellationProven(intentHash, SOLANA_CHAIN_ID);
+        emit IProver.IntentProven(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            SOLANA_CHAIN_ID
+        );
         polymerProver.validateSolana(proof);
 
         IProver.ProofData memory pd = polymerProver.provenIntents(intentHash);
-        assertEq(pd.claimant, address(0));
+        assertEq(pd.claimant, CANCELLED_CLAIMANT);
         assertEq(pd.destination, SOLANA_CHAIN_ID);
-        assertEq(uint8(pd.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function testRefundsBeforeDeadlineOnSolanaProvenCancellation() public {
@@ -1814,7 +1808,7 @@ contract PolymerProverTest is BaseTest {
             uint64(block.chainid),
             SOLANA_CHAIN_ID,
             intentHash,
-            CANCELLED_CLAIMANT
+            CANCELLED_CLAIMANT_BYTES32
         );
         polymerProver.validateSolana(_setSolanaProof(logs));
 

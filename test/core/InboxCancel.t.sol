@@ -4,7 +4,7 @@ pragma solidity ^0.8.27;
 import {Vm} from "forge-std/Test.sol";
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
-import {Intent, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {Intent, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 
 contract InboxCancelTest is BaseTest {
     address internal solver;
@@ -43,14 +43,32 @@ contract InboxCancelTest is BaseTest {
     }
 
     function testCancelledSentinelGolden() public view {
+        // Cross-VM pin: must equal eco-svm-std's CANCELLED byte for byte
+        bytes32 golden = 0x000000000000000000000000e685056aec77686a83e2a6bdf37c6f71dd2fdb5f;
+        assertEq(portal.CANCELLED(), golden);
+        assertEq(
+            portal.CANCELLED(),
+            bytes32(
+                uint256(
+                    uint160(
+                        address(
+                            uint160(
+                                uint256(
+                                    keccak256("eco.portal.intent.cancelled")
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        );
+        assertEq(CANCELLED_CLAIMANT_BYTES32, golden);
         assertEq(
             CANCELLED_CLAIMANT,
-            0xa8aa898126679f5f179cb3a4e685056aec77686a83e2a6bdf37c6f71dd2fdb5f
+            0xe685056aEc77686A83E2a6bDf37c6f71dD2fdB5f
         );
-        assertEq(CANCELLED_CLAIMANT, keccak256("eco.portal.intent.cancelled"));
-        // Never a valid EVM address, so pre-cancellation provers skip it
-        assertTrue(uint256(CANCELLED_CLAIMANT) >> 160 != 0);
-        assertEq(portal.CANCELLED(), CANCELLED_CLAIMANT);
+        // A valid EVM address, so every prover records it like any claimant
+        assertEq(uint256(portal.CANCELLED()) >> 160, 0);
     }
 
     function testCancelRevertsAtRouteDeadline() public {
@@ -83,7 +101,7 @@ contract InboxCancelTest is BaseTest {
         vm.prank(otherPerson);
         portal.cancel(intentHash, i.route, rewardHash);
 
-        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT);
+        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT_BYTES32);
     }
 
     function testFulfillStillSucceedsAtRouteDeadline() public {
@@ -194,9 +212,9 @@ contract InboxCancelTest is BaseTest {
             ""
         );
 
-        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT);
+        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT_BYTES32);
         assertEq(prover.proveCallCount(), 1);
-        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT);
+        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT_BYTES32);
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 j = 0; j < logs.length; j++) {
             assertTrue(logs[j].topics[0] != IInbox.IntentCancelled.selector);
@@ -268,7 +286,12 @@ contract InboxCancelTest is BaseTest {
 
         vm.expectRevert(IInbox.ReservedClaimant.selector);
         vm.prank(solver);
-        portal.fulfill(intentHash, i.route, rewardHash, CANCELLED_CLAIMANT);
+        portal.fulfill(
+            intentHash,
+            i.route,
+            rewardHash,
+            CANCELLED_CLAIMANT_BYTES32
+        );
     }
 
     function testProveCarriesCancelledSentinel() public {
@@ -284,11 +307,11 @@ contract InboxCancelTest is BaseTest {
         hashes[0] = intentHash;
 
         vm.expectEmit(true, true, true, true, address(portal));
-        emit IInbox.IntentProven(intentHash, CANCELLED_CLAIMANT);
+        emit IInbox.IntentProven(intentHash, CANCELLED_CLAIMANT_BYTES32);
         portal.prove(address(prover), uint64(block.chainid), hashes, "");
 
         assertEq(prover.argIntentHashes(0), intentHash);
-        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT);
+        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT_BYTES32);
     }
 
     function testCancelAndProveCancelsAndDispatchesSentinel() public {
@@ -310,10 +333,10 @@ contract InboxCancelTest is BaseTest {
             "data"
         );
 
-        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT);
+        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT_BYTES32);
         assertEq(prover.proveCallCount(), 1);
         assertEq(prover.argIntentHashes(0), intentHash);
-        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT);
+        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT_BYTES32);
         (address sender, uint64 sourceChainId, , uint256 value) = prover.args();
         assertEq(sender, otherPerson);
         assertEq(sourceChainId, uint64(block.chainid));

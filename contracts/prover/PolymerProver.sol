@@ -18,6 +18,7 @@ import {Base58} from "../libs/Base58.sol";
  *      shared ABI with that program's `prove` instruction.
  */
 contract PolymerProver is BaseProver, Whitelist, Semver {
+    using AddressConverter for bytes32;
     using AddressConverter for address;
 
     // Constants
@@ -197,7 +198,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
                 claimantBytes := mload(add(dataPtr, add(offset, 32)))
             }
 
-            _recordProof(intentHash, claimantBytes, destinationChainId);
+            if (claimantBytes >> 160 != 0) continue;
+
+            address claimant = claimantBytes.toAddress();
+            processIntent(intentHash, claimant, destinationChainId);
         }
     }
 
@@ -238,9 +242,7 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      *      skipped rather than reverted, or the proof would be unusable on every chain in it.
      *      At least one line must be for this chain, else InvalidSourceChain, so a proof
      *      submitted to the wrong chain's prover still fails loudly instead of succeeding as
-     *      a no-op. Each line goes through `_recordProof`: the CANCELLED sentinel records a
-     *      Cancelled proof, and claimants that are not 160-bit EVM addresses, or are zero,
-     *      are skipped.
+     *      a no-op. Claimants that are not 160-bit EVM addresses, or are zero, are skipped.
      *
      *      Cost scales with the number of log lines in the proven Solana transaction, not with
      *      the number of intents recorded: every line is parsed, any program substring copied
@@ -299,8 +301,8 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
      * @param log The log line in either shape, with or without the optional prefixes
      * @param expectedProgramStrHash keccak256 of the canonical base58 encoding of the
      *        authenticated emitting program
-     * @return ours True when the line is for this chain (passed to `_recordProof`, which
-     *         may skip it); false when its source is another chain
+     * @return ours True when the line is for this chain (recorded, or skipped only because
+     *         its claimant is not an EVM address); false when its source is another chain
      */
     function _processSolanaLog(
         bytes memory log,
@@ -345,8 +347,10 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         // chain whose id exceeds 2^64-1 (which the 8-byte field cannot encode) fails
         // closed instead of matching mod 2^64.
         if (source != block.chainid) return false;
+        // Ours, but the claimant is not an EVM address. Must run before toAddress.
+        if (claimantBytes >> 160 != 0) return true;
 
-        _recordProof(intentHash, claimantBytes, destination);
+        processIntent(intentHash, claimantBytes.toAddress(), destination);
         return true;
     }
 
@@ -442,6 +446,42 @@ contract PolymerProver is BaseProver, Whitelist, Semver {
         if (v >= 0x61 && v <= 0x66) return v - 0x61 + 10; // a-f
         if (v >= 0x41 && v <= 0x46) return v - 0x41 + 10; // A-F
         revert InvalidSolanaLog();
+    }
+
+    // ------------- INTERNAL FUNCTIONS - INTENT PROCESSING -------------
+
+    /**
+     * @notice Processes a single intent proof
+     * @dev Shared sink for `validate` and `validateSolana`. Both callers already skip
+     *      claimants that are not 160-bit EVM addresses, because AddressConverter.toAddress
+     *      reverts InvalidAddress on non-zero high bits and one such pair would otherwise
+     *      strand every co-batched intent; a zero claimant is skipped here for a different
+     *      reason (see below).
+     * @param intentHash Hash of the intent being proven
+     * @param claimant Address that fulfilled the intent and should receive rewards
+     * @param destination Destination chain ID for the intent
+     */
+    function processIntent(
+        bytes32 intentHash,
+        address claimant,
+        uint64 destination
+    ) internal {
+        // Parity with BaseProver._processIntentProofs: a zero claimant is the
+        // "unproven" sentinel for this slot, so recording one would emit a phantom
+        // IntentProven over a slot that still reads as empty, and one that
+        // challengeIntentProof (which also gates on a non-zero claimant) cannot clear.
+        if (claimant == address(0)) return;
+
+        ProofData storage proof = _provenIntents[intentHash];
+        if (proof.claimant != address(0)) {
+            emit IntentAlreadyProven(intentHash);
+
+            return;
+        }
+        proof.claimant = claimant;
+        proof.destination = destination;
+
+        emit IntentProven(intentHash, claimant, destination);
     }
 
     // ------------- INTERFACE IMPLEMENTATION -------------

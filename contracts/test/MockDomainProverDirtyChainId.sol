@@ -28,11 +28,6 @@ contract MockDomainProverDirtyChainId {
     function provenIntents(
         bytes32
     ) external pure returns (IProver.ProofData memory) {
-        return
-            IProver.ProofData({
-                claimant: address(0),
-                destination: 0,
-                outcome: IProver.Outcome.None
-            });
+        return IProver.ProofData({claimant: address(0), destination: 0});
     }
 }

@@ -11,7 +11,7 @@ import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IPermit} from "./interfaces/IPermit.sol";
 
-import {Intent, Route, Reward} from "./types/Intent.sol";
+import {Intent, Route, Reward, CANCELLED_CLAIMANT} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
@@ -460,12 +460,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         IProver.ProofData memory proof = IProver(reward.prover).provenIntents(
             intentHash
         );
+        address claimant = proof.claimant;
 
         // If the intent has been proven on a different chain, challenge the proof
-        if (
-            proof.destination != destination &&
-            proof.outcome != IProver.Outcome.None
-        ) {
+        if (proof.destination != destination && claimant != address(0)) {
             // Challenge the proof and emit event
             IProver(reward.prover).challengeIntentProof(
                 destination,
@@ -476,13 +474,13 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             return;
         }
 
-        _validateWithdraw(intentHash, proof);
+        _validateWithdraw(intentHash, claimant);
         rewardStatuses[intentHash] = Status.Withdrawn;
 
         IVault vault = IVault(_getOrDeployVault(intentHash));
-        vault.withdraw(reward, proof.claimant);
+        vault.withdraw(reward, claimant);
 
-        emit IntentWithdrawn(intentHash, proof.claimant);
+        emit IntentWithdrawn(intentHash, claimant);
     }
 
     /**
@@ -874,7 +872,7 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
         // A codeless prover (typo, address(0), or a prover deployed only on
         // another chain) can never hold a proof, and calling into it would
         // revert — permanently bricking refunds and locking the escrow. Treat
-        // it deterministically as "no proof" (an outcome-None ProofData) so the
+        // it deterministically as "no proof" (a zero-claimant ProofData) so the
         // deadline/status branches below behave as they would for any
         // unproven intent, without dispatching an external call.
         IProver.ProofData memory proof;
@@ -882,45 +880,43 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             proof = IProver(reward.prover).provenIntents(intentHash);
         }
 
-        if (proof.destination == destination) {
-            // A proven cancellation on the intended destination refunds immediately
-            if (proof.outcome == IProver.Outcome.Cancelled) {
-                return;
-            }
-
-            if (
-                proof.outcome == IProver.Outcome.Fulfilled &&
-                proof.claimant != address(0)
-            ) {
-                if (status == Status.Initial || status == Status.Funded) {
-                    revert IntentNotClaimed(intentHash);
-                }
-
-                return;
-            }
+        // A cancellation proven on the intended destination refunds immediately
+        if (
+            proof.destination == destination &&
+            proof.claimant == CANCELLED_CLAIMANT
+        ) {
+            return;
         }
 
-        // Anything short of a fulfillment proven on this destination falls back
-        // to the reward deadline
-        if (block.timestamp < reward.deadline) {
-            revert InvalidStatusForRefund(
-                status,
-                block.timestamp,
-                reward.deadline
-            );
+        // If proof is incorrect or no proof
+        if (proof.destination != destination || proof.claimant == address(0)) {
+            if (block.timestamp < reward.deadline) {
+                revert InvalidStatusForRefund(
+                    status,
+                    block.timestamp,
+                    reward.deadline
+                );
+            }
+
+            return;
+        }
+
+        if (status == Status.Initial || status == Status.Funded) {
+            revert IntentNotClaimed(intentHash);
         }
     }
 
     /**
-     * @notice Validates that vault can be withdrawn from and the proof pays a claimant
-     * @dev Allows withdrawal from Initial or Funded status; a cancelled or claimant-less
-     *      proof never pays out
+     * @notice Validates that vault can be withdrawn from and claimant is valid
+     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant.
+     *      A proven cancellation (CANCELLED_CLAIMANT) is refundable only: paying it would
+     *      burn the reward, since no key controls the sentinel address
      * @param intentHash Hash of the intent
-     * @param proof Proof read from the intent's prover
+     * @param claimant Address that will receive the withdrawn rewards
      */
     function _validateWithdraw(
         bytes32 intentHash,
-        IProver.ProofData memory proof
+        address claimant
     ) internal view {
         Status status = rewardStatuses[intentHash];
 
@@ -928,14 +924,11 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             revert InvalidStatusForWithdrawal(status);
         }
 
-        if (
-            proof.outcome != IProver.Outcome.Fulfilled ||
-            proof.claimant == address(0)
-        ) {
-            if (proof.outcome == IProver.Outcome.Cancelled) {
-                revert CancelledIntent(intentHash);
-            }
+        if (claimant == CANCELLED_CLAIMANT) {
+            revert CancelledIntent(intentHash);
+        }
 
+        if (claimant == address(0)) {
             revert InvalidClaimant();
         }
     }

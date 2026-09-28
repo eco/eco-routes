@@ -8,7 +8,7 @@ import {ILayerZeroReceiver} from "../../contracts/interfaces/layerzero/ILayerZer
 import {Portal} from "../../contracts/Portal.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
-import {Intent, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {Intent, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 
 contract MockLayerZeroEndpoint {
     mapping(address => address) public delegates;
@@ -704,14 +704,20 @@ contract LayerZeroProverTest is BaseTest {
         );
     }
 
-    function test_lzReceive_recordsCancelledOutcome() public {
+    function test_lzReceive_recordsCancellationProof() public {
         bytes32 intentHash = keccak256("intent");
-        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        vm.expectEmit(true, true, true, true, address(lzProver));
+        emit IProver.IntentProven(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            uint64(SOURCE_CHAIN_ID)
+        );
+        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         IProver.ProofData memory proof = lzProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, uint64(SOURCE_CHAIN_ID));
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function test_refund_beforeDeadlineOnLayerZeroProvenCancellation() public {
@@ -719,7 +725,7 @@ contract LayerZeroProverTest is BaseTest {
             address(lzProver),
             uint64(SOURCE_CHAIN_ID)
         );
-        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertRefundsBeforeRewardDeadline(_intent);
     }
@@ -729,7 +735,7 @@ contract LayerZeroProverTest is BaseTest {
             address(lzProver),
             uint64(SOURCE_CHAIN_ID)
         );
-        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+        _lzReceiveSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertWithdrawRevertsCancelled(_intent);
     }

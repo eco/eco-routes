@@ -59,31 +59,31 @@ contract DeployProverReuseHarness is Deploy {
 }
 
 /// @dev Stands in for a prover a previous release left at the CREATE3 address:
-///      bound to `portal`, and returning either the current three-word
-///      ProofData or the pre-cancellation two-word one
+///      bound to `portal`, and returning either the two-word ProofData or a
+///      malformed 96-byte payload
 contract StaleProver {
     address public immutable PORTAL;
-    bool internal immutable LEGACY_SHAPE;
+    bool internal immutable MALFORMED_SHAPE;
 
-    constructor(address portal, bool legacyShape) {
+    constructor(address portal, bool malformedShape) {
         PORTAL = portal;
-        LEGACY_SHAPE = legacyShape;
+        MALFORMED_SHAPE = malformedShape;
     }
 
     function provenIntents(bytes32) external view returns (bytes32) {
-        bool legacy = LEGACY_SHAPE;
+        bool malformed = MALFORMED_SHAPE;
         assembly {
             mstore(0x00, 0)
             mstore(0x20, 0)
             mstore(0x40, 0)
-            return(0x00, add(64, mul(iszero(legacy), 32)))
+            return(0x00, add(64, mul(malformed, 32)))
         }
     }
 }
 
 /// @dev A run with an unchanged SALT lands every prover on the previous
 ///      release's CREATE3 address; the script must refuse to reuse one that
-///      is bound to another Portal or returns the old ProofData, while a
+///      is bound to another Portal or returns a malformed ProofData, while a
 ///      same-release re-run still passes
 contract DeployProverReuseTest is Test {
     DeployProverReuseHarness internal harness;
@@ -118,8 +118,12 @@ contract DeployProverReuseTest is Test {
         ctx.polymerProverSalt = keccak256("polymer");
     }
 
-    function _plant(bytes32 salt, address boundPortal, bool legacy) internal {
-        StaleProver stale = new StaleProver(boundPortal, legacy);
+    function _plant(
+        bytes32 salt,
+        address boundPortal,
+        bool malformed
+    ) internal {
+        StaleProver stale = new StaleProver(boundPortal, malformed);
         vm.etch(harness.predictedAddress(salt), address(stale).code);
     }
 
@@ -142,7 +146,7 @@ contract DeployProverReuseTest is Test {
         harness.exposedDeployHyperProver(ctx);
     }
 
-    function test_hyperProverWithOldProofShapeReverts() public {
+    function test_hyperProverWithMalformedProofShapeReverts() public {
         Deploy.DeploymentContext memory ctx = _ctx();
         _plant(ctx.hyperProverSalt, address(portal), true);
 

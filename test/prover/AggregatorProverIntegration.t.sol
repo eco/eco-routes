@@ -8,7 +8,7 @@ import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
-import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 
@@ -70,7 +70,11 @@ contract AggregatorProverIntegrationTest is Test {
         hyperMember.handle(
             uint32(DESTINATION),
             bytes32(uint256(uint160(hyperSourceProver))),
-            abi.encodePacked(DESTINATION, intentHash, CANCELLED_CLAIMANT)
+            abi.encodePacked(
+                DESTINATION,
+                intentHash,
+                CANCELLED_CLAIMANT_BYTES32
+            )
         );
     }
 
@@ -274,7 +278,7 @@ contract AggregatorProverIntegrationTest is Test {
     /// @notice CHARACTERIZATION TEST — pins a KNOWN LIMITATION, not desired behaviour.
     /// @dev A member holding an entry whose `destination` is wrong shadows a valid proof
     ///      held by a lower-priority member, because `provenIntents` returns the first
-    ///      member proof with outcome Fulfilled or Cancelled. This bug class does not exist for a single prover, which
+    ///      non-zero claimant. This bug class does not exist for a single prover, which
     ///      stores exactly one `ProofData` per `intentHash`. `IntentSource.withdraw`
     ///      recovers — it forwards a challenge on its wrong-destination branch, so a second
     ///      `withdraw` pays — but `_validateRefund` reads the same shadowed value, never
@@ -328,7 +332,11 @@ contract AggregatorProverIntegrationTest is Test {
         );
         (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
 
-        proverA.addCancelledIntent(intentHash, WRONG_DESTINATION);
+        proverA.addProvenIntent(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            WRONG_DESTINATION
+        );
         proverB.addProvenIntent(intentHash, solver, DESTINATION);
 
         vm.expectRevert(
@@ -359,7 +367,11 @@ contract AggregatorProverIntegrationTest is Test {
         );
         (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
 
-        proverA.addCancelledIntent(intentHash, WRONG_DESTINATION);
+        proverA.addProvenIntent(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            WRONG_DESTINATION
+        );
         proverB.addProvenIntent(intentHash, solver, DESTINATION);
 
         vm.warp(intent.reward.deadline);
@@ -378,8 +390,8 @@ contract AggregatorProverIntegrationTest is Test {
         // First withdraw challenges the wrong-destination entry and pays nothing
         portal.withdraw(DESTINATION, routeHash, intent.reward);
         assertEq(
-            uint8(proverA.provenIntents(intentHash).outcome),
-            0,
+            proverA.provenIntents(intentHash).claimant,
+            address(0),
             "wrong-destination cancellation must be deleted"
         );
 
@@ -411,7 +423,11 @@ contract AggregatorProverIntegrationTest is Test {
         Intent memory intent = _intent(address(aggregator), salt);
         (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
 
-        proverA.addCancelledIntent(intentHash, WRONG_DESTINATION);
+        proverA.addProvenIntent(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            WRONG_DESTINATION
+        );
         proverB.addProvenIntent(intentHash, solver, DESTINATION);
 
         if (afterDeadline) vm.warp(intent.reward.deadline);

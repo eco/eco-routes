@@ -10,18 +10,6 @@ import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Intent, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 
-/// @dev Reader compiled against the pre-cancellation two-word ProofData
-interface ILegacyProofReader {
-    struct LegacyProofData {
-        address claimant;
-        uint64 destination;
-    }
-
-    function provenIntents(
-        bytes32 intentHash
-    ) external view returns (LegacyProofData memory);
-}
-
 /// @notice Cancel on the destination, prove to the source, refund before reward.deadline
 contract ProvenCancellationFlowTest is BaseTest {
     address internal solver;
@@ -65,6 +53,12 @@ contract ProvenCancellationFlowTest is BaseTest {
         _publishAndFund(i, false);
 
         vm.warp(uint256(i.route.deadline) + 1);
+        vm.expectEmit(true, true, true, true, address(prover));
+        emit IProver.IntentProven(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            uint64(block.chainid)
+        );
         vm.prank(otherPerson);
         portal.cancelAndProve(
             intentHash,
@@ -76,7 +70,7 @@ contract ProvenCancellationFlowTest is BaseTest {
         );
 
         IProver.ProofData memory proof = prover.provenIntents(intentHash);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, uint64(block.chainid));
 
         _assertRefundsBeforeRewardDeadline(i);
@@ -159,6 +153,12 @@ contract ProvenCancellationFlowTest is BaseTest {
 
         vm.warp(uint256(i.route.deadline) + 1);
         vm.deal(otherPerson, 1 ether);
+        vm.expectEmit(true, true, true, true, address(hyperProver));
+        emit IProver.IntentProven(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            uint64(block.chainid)
+        );
         vm.prank(otherPerson);
         portal.cancelAndProve{value: mailbox.FEE()}(
             intentHash,
@@ -177,7 +177,7 @@ contract ProvenCancellationFlowTest is BaseTest {
 
         assertEq(mailbox.destinationDomain(), sourceDomain);
         IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, uint64(block.chainid));
 
         _assertRefundsBeforeRewardDeadline(i);
@@ -223,26 +223,5 @@ contract ProvenCancellationFlowTest is BaseTest {
 
         intentSource.withdraw(i.destination, routeHash, i.reward);
         assertEq(tokenA.balanceOf(claimant), MINT_AMOUNT);
-    }
-
-    // Spec invariant 6: a reader unaware of cancellation sees "unproven".
-    // Seeded through the real prove()/_recordProof() path (not the
-    // addCancelledIntent test helper) so the assertion pins what that path
-    // actually writes, not just ABI extra-word tolerance.
-    function testLegacyTwoWordReaderSeesCancelledProofAsUnproven() public {
-        bytes32 intentHash = keccak256("cancelled");
-        prover.prove(
-            address(this),
-            CHAIN_ID,
-            abi.encodePacked(CHAIN_ID, intentHash, CANCELLED_CLAIMANT),
-            ""
-        );
-
-        ILegacyProofReader.LegacyProofData memory legacy = ILegacyProofReader(
-            address(prover)
-        ).provenIntents(intentHash);
-
-        assertEq(legacy.claimant, address(0));
-        assertEq(legacy.destination, CHAIN_ID);
     }
 }

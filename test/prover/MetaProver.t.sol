@@ -8,7 +8,7 @@ import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgePro
 import {TestMetaRouter} from "../../contracts/test/TestMetaRouter.sol";
 import {ReadOperation} from "@metalayer/contracts/src/interfaces/IMetalayerRecipient.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
-import {CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 
 contract MetaProverTest is BaseTest {
     MetaProver internal metaProver;
@@ -1038,14 +1038,20 @@ contract MetaProverTest is BaseTest {
         );
     }
 
-    function testHandleRecordsCancelledOutcome() public {
+    function testHandleRecordsCancellationProof() public {
         bytes32 intentHash = _hashIntent(intent);
-        _handleSingle(block.chainid, intentHash, CANCELLED_CLAIMANT);
+
+        _expectEmit();
+        emit IProver.IntentProven(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            uint64(block.chainid)
+        );
+        _handleSingle(block.chainid, intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         IProver.ProofData memory proof = metaProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, uint64(block.chainid));
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function testRefundsBeforeDeadlineOnMetaProvenCancellation() public {
@@ -1053,7 +1059,7 @@ contract MetaProverTest is BaseTest {
             address(metaProver),
             CHAIN_ID
         );
-        _handleSingle(CHAIN_ID, intentHash, CANCELLED_CLAIMANT);
+        _handleSingle(CHAIN_ID, intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertRefundsBeforeRewardDeadline(_intent);
     }
@@ -1063,7 +1069,7 @@ contract MetaProverTest is BaseTest {
             address(metaProver),
             CHAIN_ID
         );
-        _handleSingle(CHAIN_ID, intentHash, CANCELLED_CLAIMANT);
+        _handleSingle(CHAIN_ID, intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertWithdrawRevertsCancelled(_intent);
     }

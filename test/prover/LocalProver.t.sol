@@ -10,7 +10,7 @@ import {TestERC20} from "../../contracts/test/TestERC20.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {ILocalProver} from "../../contracts/interfaces/ILocalProver.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 
 contract LocalProverTest is Test {
     LocalProver internal localProver;
@@ -182,9 +182,8 @@ contract LocalProverTest is Test {
         (, bytes32 intentHash) = _publishAndCancelIntent();
 
         IProver.ProofData memory proof = localProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, CHAIN_ID);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function test_cancelledIntent_RefundsBeforeRewardDeadline() public {

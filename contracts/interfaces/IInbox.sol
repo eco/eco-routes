@@ -98,7 +98,7 @@ interface IInbox {
 
     /**
      * @notice Claimant value recorded for cancelled intents
-     * @return The CANCELLED sentinel
+     * @return CANCELLED_CLAIMANT left-padded to bytes32
      */
     // solhint-disable-next-line func-name-mixedcase
     function CANCELLED() external view returns (bytes32);

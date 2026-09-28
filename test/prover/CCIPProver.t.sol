@@ -6,7 +6,7 @@ import {CCIPProver} from "../../contracts/prover/CCIPProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestCCIPRouter} from "../../contracts/test/TestCCIPRouter.sol";
-import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 import {Client} from "@chainlink/contracts-ccip/src/v0.8/ccip/libraries/Client.sol";
 import {IAny2EVMMessageReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/IAny2EVMMessageReceiver.sol";
@@ -704,26 +704,28 @@ contract CCIPProverTest is BaseTest {
         ccipProver.ccipReceive(message);
     }
 
-    function testCcipReceiveRecordsCancelledOutcome() public {
+    function testCcipReceiveRecordsCancellationProof() public {
         bytes32 intentHash = _hashIntent(intent);
-        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, CANCELLED_CLAIMANT, CHAIN_ID);
+        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         IProver.ProofData memory proof = ccipProver.provenIntents(intentHash);
-        assertEq(proof.claimant, address(0));
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
         assertEq(proof.destination, CHAIN_ID);
-        assertEq(uint8(proof.outcome), uint8(IProver.Outcome.Cancelled));
     }
 
     function testRefundsBeforeDeadlineOnCcipProvenCancellation() public {
         (Intent memory _intent, bytes32 intentHash) = _publishForProver(address(ccipProver), CHAIN_ID);
-        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertRefundsBeforeRewardDeadline(_intent);
     }
 
     function testWithdrawRevertsOnCcipProvenCancellation() public {
         (Intent memory _intent, bytes32 intentHash) = _publishForProver(address(ccipProver), CHAIN_ID);
-        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT);
+        _ccipReceiveSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
 
         _assertWithdrawRevertsCancelled(_intent);
     }

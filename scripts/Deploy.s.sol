@@ -201,8 +201,7 @@ contract Deploy is Script {
             );
 
         // Ordered, comma-separated member provers for AggregatorProver.
-        // ORDER IS PRIORITY: the first member (priority order) holding a
-        // well-formed Fulfilled or Cancelled proof wins.
+        // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
         // Set explicitly rather than derived from what was deployed this run —
         // silently-varying membership across chains is a security risk.
         //
@@ -660,10 +659,9 @@ contract Deploy is Script {
     ///      unchanged SALT therefore lands every prover on the previous
     ///      release's address and deployWithCreate3 short-circuits, keeping a
     ///      prover bound to the old Portal (so nothing on the new Portal can be
-    ///      proven) or one that returns the pre-cancellation ProofData (which
-    ///      IntentSource cannot decode, so nothing can be withdrawn or refunded).
-    ///      Both are permanent, so fail before broadcast; a same-release re-run
-    ///      still passes.
+    ///      proven) or one whose provenIntents IntentSource cannot decode (so
+    ///      nothing can be withdrawn or refunded). Both are permanent, so fail
+    ///      before broadcast; a same-release re-run still passes.
     function _requireReusableProver(
         address prover,
         address portal,
@@ -855,21 +853,21 @@ contract Deploy is Script {
 
     /**
      * @notice Probes whether `member.provenIntents(bytes32)` returns a
-     *         well-formed 96-byte ProofData tuple
+     *         well-formed 64-byte ProofData tuple
      * @dev Mirrors _tryChainIdByDomain's low-level-staticcall style, for the
      *      same reason: an interface call would ABI-decode-revert in THIS
      *      frame on a wrong-shaped payload, outside any try/catch. A member
      *      whose read function reverts under staticcall, or returns a
-     *      wrong-shaped payload (including the pre-cancellation 64-byte
-     *      tuple), is silently skipped forever at runtime by
-     *      AggregatorProver's own guards — and membership is immutable, so
-     *      this is the last point such a member can be caught.
+     *      wrong-shaped payload, is silently skipped forever at runtime by
+     *      AggregatorProver's own guards — and membership is immutable, so this is
+     *      the last point such a member can be caught.
      *
      *      bytes32(0) is an unproven intent hash, so an honest member returns
-     *      (0, 0, None) — three zero words, 96 bytes. This checks SHAPE only;
-     *      it never requires a proof.
+     *      (0, 0) — both words in range, 64 bytes. This checks SHAPE only; it
+     *      never requires a non-zero claimant.
      * @param member Candidate aggregator member address
-     * @return ok True if `member` returned three zero words
+     * @return ok True if `member` returned a well-formed 64-byte tuple with
+     *         both words in range
      */
     function _tryProvenIntentsShape(
         address member
@@ -877,22 +875,29 @@ contract Deploy is Script {
         (bool success, bytes memory ret) = member.staticcall(
             abi.encodeWithSignature("provenIntents(bytes32)", bytes32(0))
         );
-        if (!success || ret.length != 96) {
+        if (!success || ret.length != 64) {
             return false;
         }
-        (uint256 rawClaimant, uint256 rawDestination, uint256 rawOutcome) = abi
-            .decode(ret, (uint256, uint256, uint256));
-        // Strict zero-equality, not a range check: it also rejects any single
-        // dynamic return value, whose first word is the offset head 0x20.
-        return rawClaimant == 0 && rawDestination == 0 && rawOutcome == 0;
+        (uint256 rawClaimant, uint256 rawDestination) = abi.decode(
+            ret,
+            (uint256, uint256)
+        );
+        // Strict zero-equality, not a range check. bytes32(0) is an unproven
+        // hash, so an honest member returns exactly (0, 0). A range check
+        // (rawClaimant >> 160 == 0) waves through a single empty dynamic
+        // return value (bytes/string/array), which encodes to 64 bytes as
+        // offset 0x20 then length 0x00 — AggregatorProver.provenIntents
+        // rejects that identical payload at runtime via its zero-destination
+        // guard, skipping the member for EVERY intentHash, forever. This also
+        // subsumes the dirty-bits class.
+        return rawClaimant == 0 && rawDestination == 0;
     }
 
     /**
      * @notice Validates every aggregator member before deploying the aggregator
      * @dev A member holding an entry whose `destination` is wrong SHADOWS a
      *      valid proof held by a lower-priority member, because
-     *      AggregatorProver.provenIntents returns the first member's
-     *      (priority order) well-formed Fulfilled or Cancelled proof.
+     *      AggregatorProver.provenIntents returns the first non-zero claimant.
      *      This bug class does not exist for a single prover, which stores
      *      exactly one ProofData per intentHash. IntentSource.withdraw
      *      recovers — it forwards a challenge on its wrong-destination
@@ -925,7 +930,7 @@ contract Deploy is Script {
             require(member.code.length > 0, "member has no code on this chain");
 
             // Defense-in-depth, not the real gate: PolymerProver writes
-            // _provenIntents through BaseProver._recordProof and never routes
+            // _provenIntents through its own processIntent and never routes
             // through BaseProver._processIntentProofs, so its destination is
             // not bridge-attested. But PolymerProver is BaseProver+Whitelist,
             // not a MessageBridgeProver descendant, so it has no
