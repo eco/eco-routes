@@ -2,8 +2,8 @@
 
 > **Status: pre-implementation plan, superseded by the spec as built**
 > (`CLAUDE/specs/2026-09-24-proven-cancellation-design.md`). Kept for history; where the two differ, the spec wins.
-> Notably D10: the build uses `optimizer_runs = 10,000` (not 1,000,000), and the Portal's EIP-170 margin is now
-> 2,060 B (not 926 B). The unticked steps below were not updated as tasks were executed.
+> Notably D10: the build stays at `optimizer_runs = 1,000,000` (lowered to 10,000 during implementation, then
+> reverted), with a 379 B EIP-170 margin (not 926 B). The unticked steps below were not updated as tasks were executed.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
