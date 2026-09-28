@@ -70,7 +70,7 @@ Portal (Main Contract)
 3. **Fulfillment**: Solver executes intent on destination chain via `Inbox`
 4. **Proving**: Cross-chain proof sent via bridge-specific prover
 5. **Settlement**: Solver withdraws rewards after proof validation
-6. **Cancellation** (optional): after `route.deadline`, anyone may `cancel` an unfulfilled intent on the destination `Inbox` (`cancelAndProve` also sends the proof). The destination records the `CANCELLED_CLAIMANT` sentinel in `claimants`, so it can never be fulfilled; provers carry it like a claimant and record `ProofData.outcome = Cancelled` (claimant zero). The source refunds a proven cancellation immediately and never withdraws one; `reward.deadline` remains the timeout fallback. Existence of a proof is `outcome != None`, not a non-zero claimant.
+6. **Cancellation** (optional): after `route.deadline`, anyone may `cancel` an unfulfilled intent on the destination `Inbox` (`cancelAndProve` also sends the proof). The destination records the `CANCELLED_CLAIMANT` sentinel (the low 20 bytes of `keccak256("eco.portal.intent.cancelled")`, a valid EVM address no key controls) in `claimants`, so it can never be fulfilled; every prover carries and records it like any claimant. The source refunds a proven cancellation immediately and `withdraw` reverts `CancelledIntent` on it; `reward.deadline` remains the timeout fallback. Old-generation provers would treat the sentinel as payable, so prover generations must never be cross-whitelisted (see `RELEASE.md`).
 
 ### Multi-Prover Architecture
 
@@ -84,14 +84,11 @@ The system supports multiple bridge protocols through specialized prover contrac
 - **LocalProver**: Same-chain proof handling (with a `LocalProverTron` variant for TRON)
 - **AggregatorProver**: Read-only 1-of-N union over other provers on the same
   chain. Records no proofs and dispatches no messages — `prove()` reverts;
-  solvers prove through a concrete member. Returns the proof of the first
-  member (priority order) holding a well-formed Fulfilled or Cancelled proof,
-  so a creator can name a set of bridges at publish time and the solver picks
-  a live one at fulfillment time. Members must return the
-  three-word `ProofData` (the deploy probe rejects the pre-cancellation
-  two-word shape). Security floor is the
+  solvers prove through a concrete member. Reports an intent as proven when any
+  member has proven it, so a creator can name a set of bridges at publish time
+  and the solver picks a live one at fulfillment time. Security floor is the
   weakest member, and membership is immutable. Emits no `IntentProven` /
-  `IntentCancellationProven` / `IntentProofInvalidated`: **indexers must watch the member provers, not this
+  `IntentProofInvalidated`: **indexers must watch the member provers, not this
   address.** Membership requires a **bridge-attested** `destination`: only
   `MessageBridgeProver` descendants qualify, because their destination is
   cross-checked against the bridge origin domain in `_handleCrossChainMessage`.
@@ -203,8 +200,8 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   for `AggregatorProver` (max 8). Each element may be either a 20-byte address
   (`0x` + 40 hex chars, the form operators will normally write) or a full
   32-byte `bytes32` (`0x` + 64 hex chars); the 20-byte form is left-padded
-  automatically. **Order is priority**: the first member holding a
-  well-formed Fulfilled or Cancelled proof wins. Unset or empty (the empty string) skips aggregator
+  automatically. **Order is priority** — the first member with a non-zero
+  claimant wins. Unset or empty (the empty string) skips aggregator
   deployment; any other malformed value (wrong element length, a trailing
   comma, etc.) now **fails the deploy loudly** rather than silently
   skipping deployment the way an unparseable value once did.

@@ -62,8 +62,20 @@ it.
   previous release's address, where a prover bound to the old Portal already
   lives. `Deploy.s.sol` now fails before broadcast in that case (the existing
   prover's `PORTAL()` must equal the new Portal and its `provenIntents` must
-  return the current three-word `ProofData`); the fix is a new root `SALT`, not
+  return a well-formed two-word `ProofData`); the fix is a new root `SALT`, not
   an override. A re-run of the same release with the same `SALT` still passes.
+- **Never cross prover generations (burn risk)** — the proven-cancellation
+  sentinel `CANCELLED` (the low 20 bytes of
+  `keccak256("eco.portal.intent.cancelled")`,
+  `0xe685056aEc77686A83E2a6bDf37c6f71dD2fdB5f`) is deliberately a valid EVM
+  address. A source prover from a release before proven cancellation, EVM or
+  SVM, records it as an ordinary claimant, and that release's permissionless
+  `withdraw` would pay the reward to the sentinel address, where no key can
+  reach it. A new-generation destination prover must therefore never be able
+  to message an old-generation source prover: every release uses a new root
+  `SALT` (the reuse guard above cannot catch a stale `SALT` on a chain with no
+  provers yet), and prover whitelists are wired generation to generation,
+  never across.
 - **Out of scope** — contract deployment and npm publishing are deliberately
   NOT part of the release flow; they are separate, explicit steps.
 

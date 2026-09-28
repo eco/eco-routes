@@ -31,7 +31,7 @@ Operational scripts for the Eco-Routes protocol.
   previous release's address, and `deployWithCreate3` finds the old prover
   there instead of deploying. The script then requires that existing prover's
   `PORTAL()` to equal the Portal of this run and its `provenIntents` to return
-  the current three-word `ProofData`, and reverts before broadcast naming the
+  a well-formed two-word `ProofData`, and reverts before broadcast naming the
   prover otherwise. A re-run of the same release with the same `SALT` passes.
 
   Each `*_DOMAIN_CONFIG` value is a comma-separated list of `domain:chainId`
@@ -68,8 +68,7 @@ Operational scripts for the Eco-Routes protocol.
   `Deploy.s.sol` also deploys `AggregatorProver`, a stateless 1-of-N union over other
   provers on the same chain, when `AGGREGATOR_PROVER_MEMBERS` is set: an ordered,
   comma-separated list of member prover addresses (max 8) — **order is
-  priority**, the first member whose proof has outcome Fulfilled or Cancelled
-  wins. Each element may
+  priority**, the first member with a non-zero claimant wins. Each element may
   be a 20-byte address or a full 32-byte `bytes32` (left-padded
   automatically), e.g.:
 
