@@ -54,6 +54,15 @@ it.
 - **Bytecode impact** — the version string is compiled into the contracts, so
   every release changes contract bytecode and therefore the CREATE2
   deterministic deployment addresses of subsequent deployments.
+- **New root `SALT` for every release with a new Portal** — the Portal is
+  CREATE2, so its address follows its bytecode and moves with every release,
+  but each prover's CREATE3 address depends only on the deployer and `SALT`.
+  Deploying a new release with an unchanged `SALT` lands every prover on the
+  previous release's address, where a prover bound to the old Portal already
+  lives. `Deploy.s.sol` now fails before broadcast in that case (the existing
+  prover's `PORTAL()` must equal the new Portal and its `provenIntents` must
+  return the current three-word `ProofData`); the fix is a new root `SALT`, not
+  an override. A re-run of the same release with the same `SALT` still passes.
 - **Out of scope** — contract deployment and npm publishing are deliberately
   NOT part of the release flow; they are separate, explicit steps.
 

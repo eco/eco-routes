@@ -24,6 +24,16 @@ Operational scripts for the Eco-Routes protocol.
   `*_CROSS_VM_PROVERS` lists, and the per-bridge `*_DOMAIN_CONFIG` lists
   (`HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`).
 
+  **Use a new root `SALT` for every release that deploys a new Portal.** The
+  Portal is CREATE2 (its address follows its bytecode, which every release
+  changes), while each prover is CREATE3 (its address depends only on the
+  deployer and `SALT`). With an unchanged `SALT` every prover lands on the
+  previous release's address, and `deployWithCreate3` finds the old prover
+  there instead of deploying. The script then requires that existing prover's
+  `PORTAL()` to equal the Portal of this run and its `provenIntents` to return
+  the current three-word `ProofData`, and reverts before broadcast naming the
+  prover otherwise. A re-run of the same release with the same `SALT` passes.
+
   Each `*_DOMAIN_CONFIG` value is a comma-separated list of `domain:chainId`
   pairs (e.g. `100:10,200:8453`) that seeds that prover's
   `IMessageBridgeProver.Domain[]` constructor arg; an unset/empty value

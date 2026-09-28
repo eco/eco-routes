@@ -461,6 +461,9 @@ contract Deploy is Script {
             ctx.deployer,
             ctx.hyperProverSalt
         );
+        if (deployed) {
+            _requireReusableProver(ctx.hyperProver, ctx.portal, "HyperProver");
+        }
 
         console.log("HyperProver :", ctx.hyperProver);
     }
@@ -505,6 +508,9 @@ contract Deploy is Script {
             ctx.deployer,
             ctx.metaProverSalt
         );
+        if (deployed) {
+            _requireReusableProver(ctx.metaProver, ctx.portal, "MetaProver");
+        }
 
         console.log("MetaProver :", ctx.metaProver);
     }
@@ -550,6 +556,13 @@ contract Deploy is Script {
             ctx.deployer,
             ctx.layerZeroProverSalt
         );
+        if (deployed) {
+            _requireReusableProver(
+                ctx.layerZeroProver,
+                ctx.portal,
+                "LayerZeroProver"
+            );
+        }
 
         console.log("LayerZeroProver :", ctx.layerZeroProver);
     }
@@ -581,7 +594,14 @@ contract Deploy is Script {
         // one argument the Solana feature actually changes — so silently
         // keeping the old ones is the worst outcome: fail loudly instead. Same
         // probe-then-fail shape as validateAggregatorProverMembers.
-        if (deployed) _validatePolymerProverMatchesContext(ctx);
+        if (deployed) {
+            _requireReusableProver(
+                ctx.polymerProver,
+                ctx.portal,
+                "PolymerProver"
+            );
+            _validatePolymerProverMatchesContext(ctx);
+        }
 
         console.log("PolymerProver :", ctx.polymerProver);
         // Echo the immutables so a set-but-wrong value is visible in the deploy
@@ -633,6 +653,41 @@ contract Deploy is Script {
         }
         provers[configured.length] = ctx.polymerSolanaProver;
         return provers;
+    }
+
+    /// @dev A prover's CREATE3 address depends only on deployer and salt, while
+    ///      the Portal is CREATE2 and moves with its bytecode. A run with an
+    ///      unchanged SALT therefore lands every prover on the previous
+    ///      release's address and deployWithCreate3 short-circuits, keeping a
+    ///      prover bound to the old Portal (so nothing on the new Portal can be
+    ///      proven) or one that returns the pre-cancellation ProofData (which
+    ///      IntentSource cannot decode, so nothing can be withdrawn or refunded).
+    ///      Both are permanent, so fail before broadcast; a same-release re-run
+    ///      still passes.
+    function _requireReusableProver(
+        address prover,
+        address portal,
+        string memory name
+    ) internal view {
+        (bool ok, bytes memory ret) = prover.staticcall(
+            abi.encodeWithSignature("PORTAL()")
+        );
+        require(
+            ok &&
+                ret.length == 32 &&
+                abi.decode(ret, (uint256)) == uint160(portal),
+            string.concat(
+                name,
+                " already deployed at this salt is bound to a different Portal; deploy this release at a new SALT"
+            )
+        );
+        require(
+            _tryProvenIntentsShape(prover),
+            string.concat(
+                name,
+                " already deployed at this salt does not return the current ProofData; deploy this release at a new SALT"
+            )
+        );
     }
 
     /// @dev Every argument in polymerProverConstructorArgs is immutable (or
