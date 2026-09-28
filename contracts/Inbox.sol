@@ -9,7 +9,7 @@ import {IProver} from "./interfaces/IProver.sol";
 import {IInbox} from "./interfaces/IInbox.sol";
 import {IExecutor} from "./interfaces/IExecutor.sol";
 
-import {Route, Call, TokenAmount} from "./types/Intent.sol";
+import {Route, Call, TokenAmount, CANCELLED_CLAIMANT_BYTES32} from "./types/Intent.sol";
 import {Semver} from "./libs/Semver.sol";
 import {Refund} from "./libs/Refund.sol";
 
@@ -129,9 +129,54 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
 
         // Call prove with the intent hash array
         // This will also refund any excess ETH
-        prove(prover, sourceChainDomainID, intentHashes, data);
+        _proveNonReentrant(prover, sourceChainDomainID, intentHashes, data);
 
         return result;
+    }
+
+    /**
+     * @notice Cancels an unfulfilled intent once its route deadline has passed
+     * @dev Permissionless: the caller only chooses when, never the outcome
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     */
+    function cancel(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) external {
+        _cancel(intentHash, route, rewardHash);
+    }
+
+    /**
+     * @notice Cancels an unfulfilled intent and initiates proving in one transaction
+     * @dev Mirrors fulfillAndProve: prove forwards this contract's balance to the
+     *      prover, which refunds any excess to the caller. Idempotent after a prior
+     *      cancel, since _cancel is then a no-op. A refund service
+     *      must not use this to prove before the destination is final; see the spec's
+     *      accepted-risk section (cancel, wait for finality, then prove).
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward details
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain where the intent was created
+     * @param data Additional data for message formatting
+     */
+    function cancelAndProve(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash,
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes memory data
+    ) external payable {
+        _cancel(intentHash, route, rewardHash);
+
+        bytes32[] memory intentHashes = new bytes32[](1);
+        intentHashes[0] = intentHash;
+
+        _proveNonReentrant(prover, sourceChainDomainID, intentHashes, data);
     }
 
     /**
@@ -151,17 +196,53 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */
-    // nonReentrant: prove forwards this contract's full balance into the prover,
+    // nonReentrant: _prove forwards this contract's full balance into the prover,
     // which refunds any overpayment with an all-gas call back to msg.sender. The
     // guard keeps that structural (not just documented in the prover) so a refund
-    // recipient cannot reenter prove. fulfillAndProve calls prove without holding
-    // the guard, so the internal call is the first (non-reentrant) entry.
+    // recipient cannot reenter prove.
     function prove(
         address prover,
         uint64 sourceChainDomainID,
         bytes32[] memory intentHashes,
         bytes memory data
-    ) public payable nonReentrant {
+    ) external payable nonReentrant {
+        _prove(prover, sourceChainDomainID, intentHashes, data);
+    }
+
+    /**
+     * @notice Guarded proving entry for fulfillAndProve and cancelAndProve
+     * @dev Takes the same guard as prove around the proving tail only, so a call
+     *      fulfill executes may still reach prove. The guard lives on these thin
+     *      wrappers, not on _prove: via-IR inlines a modifier's body into every
+     *      caller, while _prove, called from two wrappers, stays a single copy.
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
+     */
+    function _proveNonReentrant(
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes,
+        bytes memory data
+    ) private nonReentrant {
+        _prove(prover, sourceChainDomainID, intentHashes, data);
+    }
+
+    /**
+     * @notice Proving tail shared by prove, fulfillAndProve and cancelAndProve
+     * @dev Callers must hold the reentrancy guard (prove, _proveNonReentrant)
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
+     */
+    function _prove(
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes,
+        bytes memory data
+    ) private {
         uint256 size = intentHashes.length;
 
         // Encode chain ID followed by intent hash/claimant pairs as bytes
@@ -208,6 +289,64 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     }
 
     /**
+     * @notice Validates that route.portal is this contract and route+rewardHash hash to intentHash
+     * @dev Shared by _fulfill and _cancel so the portal/hash checks and their errors live in one place
+     * @param intentHash The hash the route and rewardHash are expected to produce
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     */
+    function _validateRoute(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) internal view {
+        if (route.portal != address(this)) {
+            revert InvalidPortal(route.portal);
+        }
+
+        bytes32 routeHash = keccak256(abi.encode(route));
+        bytes32 computedIntentHash = keccak256(
+            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
+        );
+        if (computedIntentHash != intentHash) {
+            revert InvalidHash(intentHash);
+        }
+    }
+
+    /**
+     * @notice Internal function to cancel an intent
+     * @dev Uses the same claimants slot as fulfill, so the two are mutually exclusive.
+     *      A no-op for an already-cancelled intent, so a retried or front-run cancel
+     *      never reverts
+     * @param intentHash The hash of the intent to cancel
+     * @param route The route of the intent
+     * @param rewardHash The hash of the reward
+     */
+    function _cancel(
+        bytes32 intentHash,
+        Route memory route,
+        bytes32 rewardHash
+    ) internal {
+        _validateRoute(intentHash, route, rewardHash);
+
+        // Strictly after the deadline: fulfill is still allowed at route.deadline
+        if (block.timestamp <= route.deadline) {
+            revert RouteNotExpired(route.deadline);
+        }
+        bytes32 recorded = claimants[intentHash];
+        if (recorded == CANCELLED_CLAIMANT_BYTES32) {
+            return;
+        }
+        if (recorded != bytes32(0)) {
+            revert IntentAlreadyFulfilled(intentHash);
+        }
+
+        claimants[intentHash] = CANCELLED_CLAIMANT_BYTES32;
+
+        emit IntentCancelled(intentHash);
+    }
+
+    /**
      * @notice Internal function to fulfill intents
      * @dev Validates intent and executes calls
      * @param intentHash The hash of the intent to fulfill
@@ -227,22 +366,16 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
             revert IntentExpired();
         }
 
-        bytes32 routeHash = keccak256(abi.encode(route));
-        bytes32 computedIntentHash = keccak256(
-            abi.encodePacked(CHAIN_ID, routeHash, rewardHash)
-        );
+        _validateRoute(intentHash, route, rewardHash);
 
-        if (route.portal != address(this)) {
-            revert InvalidPortal(route.portal);
-        }
-        if (computedIntentHash != intentHash) {
-            revert InvalidHash(intentHash);
-        }
         if (claimants[intentHash] != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
         if (claimant == bytes32(0)) {
             revert ZeroClaimant();
+        }
+        if (claimant == CANCELLED_CLAIMANT_BYTES32) {
+            revert ReservedClaimant();
         }
 
         claimants[intentHash] = claimant;

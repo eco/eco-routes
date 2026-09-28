@@ -11,7 +11,7 @@ import {IIntentSource} from "./interfaces/IIntentSource.sol";
 import {IVault} from "./interfaces/IVault.sol";
 import {IPermit} from "./interfaces/IPermit.sol";
 
-import {Intent, Route, Reward} from "./types/Intent.sol";
+import {Intent, Route, Reward, CANCELLED_CLAIMANT} from "./types/Intent.sol";
 import {AddressConverter} from "./libs/AddressConverter.sol";
 import {Refund} from "./libs/Refund.sol";
 
@@ -880,6 +880,14 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
             proof = IProver(reward.prover).provenIntents(intentHash);
         }
 
+        // A cancellation proven on the intended destination refunds immediately
+        if (
+            proof.destination == destination &&
+            proof.claimant == CANCELLED_CLAIMANT
+        ) {
+            return;
+        }
+
         // If proof is incorrect or no proof
         if (proof.destination != destination || proof.claimant == address(0)) {
             if (block.timestamp < reward.deadline) {
@@ -900,7 +908,9 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
     /**
      * @notice Validates that vault can be withdrawn from and claimant is valid
-     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant
+     * @dev Allows withdrawal from Initial or Funded status, prevents zero address claimant.
+     *      A proven cancellation (CANCELLED_CLAIMANT) is refundable only: paying it would
+     *      burn the reward, since no key controls the sentinel address
      * @param intentHash Hash of the intent
      * @param claimant Address that will receive the withdrawn rewards
      */
@@ -912,6 +922,10 @@ abstract contract IntentSource is OriginSettler, IIntentSource {
 
         if (status != Status.Initial && status != Status.Funded) {
             revert InvalidStatusForWithdrawal(status);
+        }
+
+        if (claimant == CANCELLED_CLAIMANT) {
+            revert CancelledIntent(intentHash);
         }
 
         if (claimant == address(0)) {

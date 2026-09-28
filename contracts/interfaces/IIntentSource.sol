@@ -62,6 +62,12 @@ interface IIntentSource {
     /// @notice Thrown when claimant address is address zero
     error InvalidClaimant();
 
+    /**
+     * @notice The intent was proven cancelled, so its reward can only be refunded
+     * @param intentHash Hash of the cancelled intent
+     */
+    error CancelledIntent(bytes32 intentHash);
+
     /// @notice Thrown when caller is not the reward creator
     error NotCreatorCaller(address caller);
 

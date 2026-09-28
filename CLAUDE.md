@@ -70,6 +70,7 @@ Portal (Main Contract)
 3. **Fulfillment**: Solver executes intent on destination chain via `Inbox`
 4. **Proving**: Cross-chain proof sent via bridge-specific prover
 5. **Settlement**: Solver withdraws rewards after proof validation
+6. **Cancellation** (optional): after `route.deadline`, anyone may `cancel` an unfulfilled intent on the destination `Inbox` (`cancelAndProve` also sends the proof). The destination records the `CANCELLED_CLAIMANT` sentinel (the low 20 bytes of `keccak256("eco.portal.intent.cancelled")`, a valid EVM address no key controls) in `claimants`, so it can never be fulfilled; every prover carries and records it like any claimant. The source refunds a proven cancellation immediately and `withdraw` reverts `CancelledIntent` on it; `reward.deadline` remains the timeout fallback. Old-generation provers would treat the sentinel as payable, so prover generations must never be cross-whitelisted (see `RELEASE.md`).
 
 ### Multi-Prover Architecture
 

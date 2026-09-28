@@ -1,0 +1,255 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.27;
+
+import {BaseTest} from "../BaseTest.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
+import {Intent, Reward, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
+
+contract IntentSourceCancellationTest is BaseTest {
+    function setUp() public override {
+        super.setUp();
+        _mintAndApprove(creator, MINT_AMOUNT);
+    }
+
+    function _routeHash() internal view returns (bytes32) {
+        return keccak256(abi.encode(intent.route));
+    }
+
+    function testRefundBeforeRewardDeadlineWithProvenCancellation() public {
+        _publishAndFund(intent, false);
+        prover.addProvenIntent(
+            _hashIntent(intent),
+            CANCELLED_CLAIMANT,
+            CHAIN_ID
+        );
+
+        _assertRefundsBeforeRewardDeadline(intent);
+    }
+
+    function testRefundToBeforeRewardDeadlineWithProvenCancellation() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, CANCELLED_CLAIMANT, CHAIN_ID);
+        address refundee = makeAddr("refundee");
+
+        vm.prank(creator);
+        intentSource.refundTo(
+            intent.destination,
+            _routeHash(),
+            intent.reward,
+            refundee
+        );
+
+        assertEq(tokenA.balanceOf(refundee), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(refundee), MINT_AMOUNT * 2);
+        assertEq(tokenA.balanceOf(creator), 0);
+        assertEq(tokenB.balanceOf(creator), 0);
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    function testSecondFastPathRefundMovesNothingAndKeepsStatusRefunded()
+        public
+    {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, CANCELLED_CLAIMANT, CHAIN_ID);
+
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), MINT_AMOUNT * 2);
+
+        // The vault is already empty, so a second fast-path refund moves zero
+        // balance instead of reverting, and the status stays Refunded.
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+
+        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(creator), MINT_AMOUNT * 2);
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    function testBatchWithdrawRevertsWithOneCancelledEntry() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, claimant, CHAIN_ID);
+
+        Intent memory second = intent;
+        second.route.salt = keccak256("second-cancelled-intent");
+        _mintAndApprove(creator, MINT_AMOUNT);
+        _publishAndFund(second, false);
+        bytes32 secondHash = _hashIntent(second);
+        prover.addProvenIntent(secondHash, CANCELLED_CLAIMANT, CHAIN_ID);
+
+        uint64[] memory destinations = new uint64[](2);
+        bytes32[] memory routeHashes = new bytes32[](2);
+        Reward[] memory rewards = new Reward[](2);
+
+        destinations[0] = intent.destination;
+        routeHashes[0] = _routeHash();
+        rewards[0] = intent.reward;
+
+        destinations[1] = second.destination;
+        routeHashes[1] = keccak256(abi.encode(second.route));
+        rewards[1] = second.reward;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.CancelledIntent.selector,
+                secondHash
+            )
+        );
+        intentSource.batchWithdraw(destinations, routeHashes, rewards);
+
+        // Atomic: the revert on the second (cancelled) entry unwinds the
+        // whole batch, so the first entry's otherwise-valid withdrawal never
+        // lands.
+        assertEq(tokenA.balanceOf(claimant), 0);
+        assertTrue(intentSource.isIntentFunded(intent));
+    }
+
+    function testCancellationOnWrongDestinationFallsBackToDeadline() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, CANCELLED_CLAIMANT, CHAIN_ID + 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                intent.reward.deadline
+            )
+        );
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+
+        vm.warp(intent.reward.deadline);
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+    }
+
+    function testWithdrawRevertsOnProvenCancellation() public {
+        _publishAndFund(intent, false);
+        prover.addProvenIntent(
+            _hashIntent(intent),
+            CANCELLED_CLAIMANT,
+            CHAIN_ID
+        );
+
+        _assertWithdrawRevertsCancelled(intent);
+    }
+
+    function testWithdrawChallengesWrongDestinationCancellation() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, CANCELLED_CLAIMANT, CHAIN_ID + 1);
+
+        vm.expectEmit(true, true, true, true, address(prover));
+        emit IProver.IntentProofInvalidated(intentHash);
+        intentSource.withdraw(intent.destination, _routeHash(), intent.reward);
+
+        assertEq(prover.provenIntents(intentHash).claimant, address(0));
+        assertTrue(intentSource.isIntentFunded(intent));
+    }
+
+    function testFulfilledProofStillBlocksEarlyRefund() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, claimant, CHAIN_ID);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentNotClaimed.selector,
+                intentHash
+            )
+        );
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+    }
+
+    function testNoProofStillRequiresRewardDeadline() public {
+        _publishAndFund(intent, false);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                intent.reward.deadline
+            )
+        );
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+    }
+
+    function testRefundedCancellationCannotBeWithdrawn() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        prover.addProvenIntent(intentHash, CANCELLED_CLAIMANT, CHAIN_ID);
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        intentSource.withdraw(intent.destination, _routeHash(), intent.reward);
+    }
+
+    /// @dev Mocks the prover's provenIntents with main's raw two-word
+    ///      (address claimant, uint64 destination) returndata, as a prover
+    ///      built before proven cancellation returns it
+    function _mockTwoWordProof(
+        bytes32 intentHash,
+        address proofClaimant,
+        uint64 destination
+    ) internal {
+        vm.mockCall(
+            address(prover),
+            abi.encodeWithSelector(IProver.provenIntents.selector, intentHash),
+            abi.encode(proofClaimant, destination)
+        );
+    }
+
+    function testTwoWordProverProofPaysOnWithdraw() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        _mockTwoWordProof(intentHash, claimant, CHAIN_ID);
+
+        intentSource.withdraw(intent.destination, _routeHash(), intent.reward);
+
+        assertEq(tokenA.balanceOf(claimant), MINT_AMOUNT);
+        assertEq(tokenB.balanceOf(claimant), MINT_AMOUNT * 2);
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Withdrawn)
+        );
+    }
+
+    function testTwoWordProverCancellationRefundsBeforeRewardDeadline() public {
+        _publishAndFund(intent, false);
+        _mockTwoWordProof(_hashIntent(intent), CANCELLED_CLAIMANT, CHAIN_ID);
+
+        _assertWithdrawRevertsCancelled(intent);
+        _assertRefundsBeforeRewardDeadline(intent);
+    }
+
+    function testTwoWordProverWithoutProofRefundsAfterRewardDeadline() public {
+        _publishAndFund(intent, false);
+        bytes32 intentHash = _hashIntent(intent);
+        _mockTwoWordProof(intentHash, address(0), 0);
+
+        vm.warp(intent.reward.deadline);
+        intentSource.refund(intent.destination, _routeHash(), intent.reward);
+
+        assertEq(tokenA.balanceOf(creator), MINT_AMOUNT);
+        assertEq(
+            uint256(intentSource.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+}

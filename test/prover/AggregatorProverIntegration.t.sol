@@ -6,14 +6,24 @@ import {AggregatorProver} from "../../contracts/prover/AggregatorProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {HyperProver} from "../../contracts/prover/HyperProver.sol";
+import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
+import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 
 contract AggregatorProverIntegrationTest is Test {
     Portal internal portal;
     TestProver internal proverA;
     TestProver internal proverB;
     AggregatorProver internal aggregator;
+
+    // Aggregator whose second member is a real HyperProver, so proofs reach it
+    // through the bridge receive path instead of TestProver storage helpers
+    TestMailbox internal mailbox;
+    HyperProver internal hyperMember;
+    AggregatorProver internal hyperAggregator;
+    address internal hyperSourceProver;
 
     address internal creator;
     address internal solver;
@@ -37,7 +47,35 @@ contract AggregatorProverIntegrationTest is Test {
         members[1] = bytes32(uint256(uint160(address(proverB))));
         aggregator = new AggregatorProver(members);
 
+        hyperSourceProver = makeAddr("hyperSourceProver");
+        mailbox = new TestMailbox(address(0));
+        bytes32[] memory hyperProvers = new bytes32[](1);
+        hyperProvers[0] = bytes32(uint256(uint160(hyperSourceProver)));
+        hyperMember = new HyperProver(
+            address(mailbox),
+            address(portal),
+            hyperProvers,
+            new IMessageBridgeProver.Domain[](0)
+        );
+        members[1] = bytes32(uint256(uint160(address(hyperMember))));
+        hyperAggregator = new AggregatorProver(members);
+
         vm.deal(creator, 100 ether);
+    }
+
+    /// @dev Delivers a CANCELLED proof for `intentHash` from DESTINATION to the
+    ///      HyperProver member through the mailbox
+    function _handleHyperCancellation(bytes32 intentHash) internal {
+        vm.prank(address(mailbox));
+        hyperMember.handle(
+            uint32(DESTINATION),
+            bytes32(uint256(uint160(hyperSourceProver))),
+            abi.encodePacked(
+                DESTINATION,
+                intentHash,
+                CANCELLED_CLAIMANT_BYTES32
+            )
+        );
     }
 
     function _intent(
@@ -177,6 +215,48 @@ contract AggregatorProverIntegrationTest is Test {
         assertEq(creator.balance - before, REWARD);
     }
 
+    function test_refund_beforeDeadlineOnMemberProvenCancellation() public {
+        Intent memory intent = _intent(
+            address(hyperAggregator),
+            bytes32(uint256(6))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        // Only the lower-priority member holds the cancellation
+        _handleHyperCancellation(intentHash);
+        assertLt(block.timestamp, intent.reward.deadline);
+
+        uint256 before = creator.balance;
+        vm.prank(attacker);
+        portal.refund(DESTINATION, routeHash, intent.reward);
+
+        assertEq(creator.balance - before, REWARD);
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+    }
+
+    function test_withdraw_revertsOnMemberProvenCancellation() public {
+        Intent memory intent = _intent(
+            address(hyperAggregator),
+            bytes32(uint256(7))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+        _handleHyperCancellation(intentHash);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.CancelledIntent.selector,
+                intentHash
+            )
+        );
+        vm.prank(solver);
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+
+        assertTrue(portal.isIntentFunded(intent));
+    }
+
     function test_refund_blockedBeforeDeadlineWhenMemberHasProof() public {
         Intent memory intent = _intent(
             address(aggregator),
@@ -239,5 +319,151 @@ contract AggregatorProverIntegrationTest is Test {
             solverBefore,
             "solver never paid despite valid proof"
         );
+    }
+
+    /// @dev Before `reward.deadline` a wrong-destination Cancelled entry does not open
+    ///      the fast refund path, even though it shadows the valid member proof
+    function test_refund_wrongDestinationCancellationBlockedBeforeDeadline()
+        public
+    {
+        Intent memory intent = _intent(
+            address(aggregator),
+            bytes32(uint256(20))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        proverA.addProvenIntent(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            WRONG_DESTINATION
+        );
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForRefund.selector,
+                IIntentSource.Status.Funded,
+                block.timestamp,
+                intent.reward.deadline
+            )
+        );
+        portal.refund(DESTINATION, routeHash, intent.reward);
+
+        assertTrue(portal.isIntentFunded(intent));
+    }
+
+    /// @notice CHARACTERIZATION TEST — pins a KNOWN LIMITATION, not desired behaviour.
+    /// @dev The Cancelled variant of
+    ///      test_refund_shadowedProofRefundsCreator_knownLimitation: a wrong-destination
+    ///      Cancelled entry shadows exactly like a wrong-destination Fulfilled one. Past
+    ///      `reward.deadline` the refund pays the creator once, and the valid proof that
+    ///      surfaces after the challenge cannot release the escrow a second time.
+    function test_refund_shadowedByWrongDestinationCancellation_knownLimitation()
+        public
+    {
+        Intent memory intent = _intent(
+            address(aggregator),
+            bytes32(uint256(21))
+        );
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        proverA.addProvenIntent(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            WRONG_DESTINATION
+        );
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        vm.warp(intent.reward.deadline);
+
+        uint256 creatorBefore = creator.balance;
+        uint256 solverBefore = solver.balance;
+
+        portal.refund(DESTINATION, routeHash, intent.reward);
+
+        assertEq(creator.balance - creatorBefore, REWARD, "creator refunded");
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Refunded)
+        );
+
+        // First withdraw challenges the wrong-destination entry and pays nothing
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(
+            proverA.provenIntents(intentHash).claimant,
+            address(0),
+            "wrong-destination cancellation must be deleted"
+        );
+
+        // The valid proof now surfaces, but the escrow was already released
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Refunded
+            )
+        );
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+
+        assertEq(solver.balance, solverBefore, "solver unpaid");
+        assertEq(address(portal.intentVaultAddress(intent)).balance, 0);
+    }
+
+    /// @dev Withdraw recovers from a wrong-destination Cancelled shadow the same way it
+    ///      does from a Fulfilled one, before and after `reward.deadline`, and the paid
+    ///      intent can no longer be refunded
+    function test_withdraw_selfHealsPastWrongDestinationCancellation() public {
+        _assertWithdrawSelfHealsPastCancellation(bytes32(uint256(22)), false);
+        _assertWithdrawSelfHealsPastCancellation(bytes32(uint256(23)), true);
+    }
+
+    function _assertWithdrawSelfHealsPastCancellation(
+        bytes32 salt,
+        bool afterDeadline
+    ) internal {
+        Intent memory intent = _intent(address(aggregator), salt);
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        proverA.addProvenIntent(
+            intentHash,
+            CANCELLED_CLAIMANT,
+            WRONG_DESTINATION
+        );
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        if (afterDeadline) vm.warp(intent.reward.deadline);
+
+        uint256 solverBefore = solver.balance;
+        uint256 creatorBefore = creator.balance;
+
+        // First withdraw: pays nothing, deletes the wrong-destination cancellation
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance, solverBefore, "must not pay on first call");
+        assertTrue(portal.isIntentFunded(intent));
+
+        // Second withdraw: the valid proof sorts first and pays the solver once
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance - solverBefore, REWARD);
+        assertEq(
+            uint256(portal.getRewardStatus(intentHash)),
+            uint256(IIntentSource.Status.Withdrawn)
+        );
+
+        // Replayed withdraw and a later refund release nothing more
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.InvalidStatusForWithdrawal.selector,
+                IIntentSource.Status.Withdrawn
+            )
+        );
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+
+        vm.warp(intent.reward.deadline);
+        portal.refund(DESTINATION, routeHash, intent.reward);
+        assertEq(
+            creator.balance,
+            creatorBefore,
+            "creator must not be refunded"
+        );
+        assertEq(solver.balance - solverBefore, REWARD);
     }
 }

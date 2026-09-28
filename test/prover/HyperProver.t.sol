@@ -6,7 +6,7 @@ import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
-import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
+import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
 import {AddressConverter} from "../../contracts/libs/AddressConverter.sol";
 
@@ -964,6 +964,134 @@ contract HyperProverTest is BaseTest {
             intentHashes[0]
         );
         assertEq(proof.claimant, nonEvmClaimant);
+    }
+
+    /// @dev Delivers one (intentHash, claimant) pair from the whitelisted
+    ///      prover on chain 1 through the mailbox
+    function _handleSingle(bytes32 intentHash, bytes32 claimantBytes) internal {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = intentHash;
+        claimants[0] = claimantBytes;
+
+        vm.prank(address(mailbox));
+        hyperProver.handle(
+            1,
+            bytes32(uint256(uint160(whitelistedProver))),
+            _formatMessageWithChainId(1, intentHashes, claimants)
+        );
+    }
+
+    function testHandleRecordsCancellationProof() public {
+        bytes32 intentHash = _hashIntent(intent);
+
+        _expectEmit();
+        emit IProver.IntentProven(intentHash, CANCELLED_CLAIMANT, CHAIN_ID);
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
+
+        IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
+        assertEq(proof.destination, CHAIN_ID);
+    }
+
+    function testHandleCancelledRedeliveryKeepsFulfilledProof() public {
+        bytes32 intentHash = _hashIntent(intent);
+        _handleSingle(intentHash, bytes32(uint256(uint160(claimant))));
+
+        _expectEmit();
+        emit IProver.IntentAlreadyProven(intentHash);
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
+
+        IProver.ProofData memory proof = hyperProver.provenIntents(intentHash);
+        assertEq(proof.claimant, claimant);
+    }
+
+    function testHandleCancelledRejectsMismatchedHeaderChainId() public {
+        bytes32[] memory intentHashes = new bytes32[](1);
+        bytes32[] memory claimants = new bytes32[](1);
+        intentHashes[0] = _hashIntent(intent);
+        claimants[0] = CANCELLED_CLAIMANT_BYTES32;
+
+        // origin = 1 but header claims chain 999
+        vm.prank(address(mailbox));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.ChainIdMismatch.selector,
+                uint64(1),
+                uint64(1),
+                uint64(999)
+            )
+        );
+        hyperProver.handle(
+            1,
+            bytes32(uint256(uint160(whitelistedProver))),
+            _formatMessageWithChainId(999, intentHashes, claimants)
+        );
+
+        assertEq(
+            hyperProver.provenIntents(intentHashes[0]).claimant,
+            address(0)
+        );
+    }
+
+    function testHandleMixedBatchRecordsEachPairIndependently() public {
+        bytes32[] memory intentHashes = new bytes32[](4);
+        bytes32[] memory claimants = new bytes32[](4);
+        intentHashes[0] = keccak256("cancelled");
+        claimants[0] = CANCELLED_CLAIMANT_BYTES32;
+        intentHashes[1] = keccak256("fulfilled");
+        claimants[1] = bytes32(uint256(uint160(claimant)));
+        intentHashes[2] = keccak256("zero claimant");
+        claimants[2] = bytes32(0);
+        intentHashes[3] = keccak256("non-evm claimant");
+        claimants[3] = keccak256("solana claimant");
+
+        vm.prank(address(mailbox));
+        hyperProver.handle(
+            1,
+            bytes32(uint256(uint160(whitelistedProver))),
+            _formatMessageWithChainId(1, intentHashes, claimants)
+        );
+
+        IProver.ProofData memory cancelled = hyperProver.provenIntents(
+            intentHashes[0]
+        );
+        assertEq(cancelled.claimant, CANCELLED_CLAIMANT);
+        assertEq(cancelled.destination, CHAIN_ID);
+
+        IProver.ProofData memory fulfilled = hyperProver.provenIntents(
+            intentHashes[1]
+        );
+        assertEq(fulfilled.claimant, claimant);
+        assertEq(fulfilled.destination, CHAIN_ID);
+
+        for (uint256 i = 2; i < 4; i++) {
+            IProver.ProofData memory skipped = hyperProver.provenIntents(
+                intentHashes[i]
+            );
+            assertEq(skipped.claimant, address(0));
+            assertEq(skipped.destination, 0);
+        }
+    }
+
+    function testRefundsBeforeDeadlineOnHyperProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(hyperProver),
+            CHAIN_ID
+        );
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
+
+        _assertRefundsBeforeRewardDeadline(_intent);
+    }
+
+    function testWithdrawRevertsOnHyperProvenCancellation() public {
+        (Intent memory _intent, bytes32 intentHash) = _publishForProver(
+            address(hyperProver),
+            CHAIN_ID
+        );
+        _handleSingle(intentHash, CANCELLED_CLAIMANT_BYTES32);
+
+        _assertWithdrawRevertsCancelled(_intent);
     }
 
     function _formatMessageWithChainId(

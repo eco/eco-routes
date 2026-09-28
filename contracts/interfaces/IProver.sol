@@ -12,7 +12,8 @@ import {ISemver} from "./ISemver.sol";
 interface IProver is ISemver {
     /**
      * @notice Proof data stored for each proven intent
-     * @param claimant Address eligible to claim the intent rewards
+     * @param claimant Address eligible to claim the intent rewards; CANCELLED_CLAIMANT
+     *        (types/Intent.sol) marks a proven cancellation, which is refundable only
      * @param destination Chain ID where the intent was proven
      */
     struct ProofData {
@@ -40,7 +41,8 @@ interface IProver is ISemver {
      * @notice Emitted when an intent is successfully proven
      * @dev Emitted by the Prover on the source chain.
      * @param intentHash Hash of the proven intent
-     * @param claimant Address eligible to claim the intent rewards
+     * @param claimant Address eligible to claim the intent rewards; CANCELLED_CLAIMANT
+     *        (types/Intent.sol) marks a proven cancellation, which is refundable only
      * @param destination Destination chain ID where the intent was proven
      */
     event IntentProven(

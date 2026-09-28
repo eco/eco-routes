@@ -138,6 +138,8 @@ The `provenIntents()` function handles four distinct cases to enable the LocalPr
 - **Return**: address(0)
 - **Purpose**: Standard unfulfilled intent response
 
+A cancelled intent (`Portal.claimants[intentHash]` holds the `CANCELLED_CLAIMANT` sentinel, written by `Inbox.cancel` after `route.deadline`) takes Case 2: the sentinel is a valid EVM address, so `provenIntents` returns `ProofData(CANCELLED_CLAIMANT, chainId)`. The creator can then refund before `reward.deadline`, and `withdraw` reverts `CancelledIntent`.
+
 ### Griefing Attack Protection
 
 The state machine includes built-in protection against two potential griefing attacks:

@@ -11,6 +11,7 @@ import {MalformedProver} from "../../contracts/test/MalformedProver.sol";
 import {DirtyBitsProver} from "../../contracts/test/DirtyBitsProver.sol";
 import {EmptyDynamicProver} from "../../contracts/test/EmptyDynamicProver.sol";
 import {Whitelist} from "../../contracts/libs/Whitelist.sol";
+import {CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
 
 contract AggregatorProverTest is Test {
     Portal internal portal;
@@ -509,5 +510,27 @@ contract AggregatorProverTest is Test {
         );
         assertLt(coldGas, 60_000, "cold fan-out gas regressed past tripwire");
         assertLt(warmGas, 30_000, "warm fan-out gas regressed past tripwire");
+    }
+
+    function test_provenIntents_returnsCancelledMemberProof() public {
+        proverB.addProvenIntent(HASH, CANCELLED_CLAIMANT, DESTINATION);
+
+        IProver.ProofData memory proof = aggregator.provenIntents(HASH);
+        assertEq(proof.claimant, CANCELLED_CLAIMANT);
+        assertEq(proof.destination, DESTINATION);
+    }
+
+    function test_provenIntents_firstMemberWinsCancelledOverFulfilled() public {
+        proverA.addProvenIntent(HASH, CANCELLED_CLAIMANT, DESTINATION);
+        proverB.addProvenIntent(HASH, address(0xB0B), DESTINATION);
+
+        assertEq(aggregator.provenIntents(HASH).claimant, CANCELLED_CLAIMANT);
+    }
+
+    function test_provenIntents_firstMemberWinsFulfilledOverCancelled() public {
+        proverA.addProvenIntent(HASH, address(0xA11CE), DESTINATION);
+        proverB.addProvenIntent(HASH, CANCELLED_CLAIMANT, DESTINATION);
+
+        assertEq(aggregator.provenIntents(HASH).claimant, address(0xA11CE));
     }
 }

@@ -7,6 +7,7 @@ release is a normal PR a human approves and squash-merges.
 ## How a release happens
 
 1. On every push to `main`, `.github/workflows/release-pr.yaml`:
+
    - computes the next version from the conventional commits since the last
      tag (`fix:` → patch, `feat:` → minor, `BREAKING CHANGE` → major),
    - rewrites `version()` in the contracts and bumps `package.json`
@@ -54,6 +55,27 @@ it.
 - **Bytecode impact** — the version string is compiled into the contracts, so
   every release changes contract bytecode and therefore the CREATE2
   deterministic deployment addresses of subsequent deployments.
+- **New root `SALT` for every release with a new Portal** — the Portal is
+  CREATE2, so its address follows its bytecode and moves with every release,
+  but each prover's CREATE3 address depends only on the deployer and `SALT`.
+  Deploying a new release with an unchanged `SALT` lands every prover on the
+  previous release's address, where a prover bound to the old Portal already
+  lives. `Deploy.s.sol` now fails before broadcast in that case (the existing
+  prover's `PORTAL()` must equal the new Portal and its `provenIntents` must
+  return a well-formed two-word `ProofData`); the fix is a new root `SALT`, not
+  an override. A re-run of the same release with the same `SALT` still passes.
+- **Never cross prover generations (burn risk)** — the proven-cancellation
+  sentinel `CANCELLED` (the low 20 bytes of
+  `keccak256("eco.portal.intent.cancelled")`,
+  `0xe685056aEc77686A83E2a6bDf37c6f71dD2fdB5f`) is deliberately a valid EVM
+  address. A source prover from a release before proven cancellation, EVM or
+  SVM, records it as an ordinary claimant, and that release's permissionless
+  `withdraw` would pay the reward to the sentinel address, where no key can
+  reach it. A new-generation destination prover must therefore never be able
+  to message an old-generation source prover: every release uses a new root
+  `SALT` (the reuse guard above cannot catch a stale `SALT` on a chain with no
+  provers yet), and prover whitelists are wired generation to generation,
+  never across.
 - **Out of scope** — contract deployment and npm publishing are deliberately
   NOT part of the release flow; they are separate, explicit steps.
 
