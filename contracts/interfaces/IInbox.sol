@@ -39,12 +39,6 @@ interface IInbox {
     error IntentAlreadyFulfilled(bytes32 intentHash);
 
     /**
-     * @notice Intent has already been cancelled
-     * @param intentHash Hash of the cancelled intent
-     */
-    error IntentAlreadyCancelled(bytes32 intentHash);
-
-    /**
      * @notice Invalid portal address provided
      * @param portal Address that is not a valid portal
      */
@@ -95,13 +89,6 @@ interface IInbox {
      * @notice The claimant is reserved for cancelled intents
      */
     error ReservedClaimant();
-
-    /**
-     * @notice Claimant value recorded for cancelled intents
-     * @return CANCELLED_CLAIMANT left-padded to bytes32
-     */
-    // solhint-disable-next-line func-name-mixedcase
-    function CANCELLED() external view returns (bytes32);
 
     /**
      * @notice Fulfills an intent using storage proofs

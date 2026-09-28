@@ -85,7 +85,8 @@ whose claimant is `CANCELLED`.
 
 ```solidity
 // types/Intent.sol: address constant CANCELLED_CLAIMANT = address(uint160(uint256(keccak256("eco.portal.intent.cancelled"))));
-function CANCELLED() external pure returns (bytes32);   // bytes32(uint256(uint160(CANCELLED_CLAIMANT))), the value stored in claimants[h]
+// types/Intent.sol: bytes32 constant CANCELLED_CLAIMANT_BYTES32 = bytes32(uint256(uint160(CANCELLED_CLAIMANT)));   // the value stored in claimants[h]
+// No onchain getter: an integrator enables cancellation from its own config, not by probing the Portal
 
 event IntentCancelled(bytes32 indexed intentHash);   // IInbox
 error RouteNotExpired(uint64 deadline);              // IInbox
@@ -105,14 +106,13 @@ function cancelAndProve(
      reuses it verbatim: `route.portal == address(this)` else `InvalidPortal`; `keccak256(abi.encodePacked(CHAIN_ID,
      keccak256(abi.encode(route)), rewardHash)) == intentHash` else `InvalidHash`.
 3. `block.timestamp > route.deadline` else `RouteNotExpired`.
-4. `claimants[intentHash] != CANCELLED` else `IntentAlreadyCancelled`; `claimants[intentHash] == 0` else
+4. `claimants[intentHash] == CANCELLED` → return (no-op, no event); `claimants[intentHash] == 0` else
    `IntentAlreadyFulfilled`.
 5. `claimants[intentHash] = CANCELLED`; emit `IntentCancelled`.
 
 No funds move. `cancelAndProve` mirrors `fulfillAndProve`: cancel, then `prove` for the single hash, so a
-refund service needs one transaction. It is idempotent after a prior `cancel`: when `claimants[intentHash]`
-already holds `CANCELLED` it skips the cancel and only proves, so a third party's front-run `cancel` cannot make
-it revert. `cancel`/`cancelAndProve` take `Route memory` rather than `calldata`
+refund service needs one transaction. Both are idempotent: `cancel` on an already-cancelled intent is a no-op, so
+`cancelAndProve` after a third party's front-run `cancel` only proves and cannot revert. `cancel`/`cancelAndProve` take `Route memory` rather than `calldata`
 (matching `fulfill`'s existing signature) — the external selector is unaffected.
 
 `_fulfill`: add `if (claimant == CANCELLED) revert ReservedClaimant();` next to the existing `ZeroClaimant` check.
@@ -193,7 +193,7 @@ reward to the sentinel address, where it is burned.
 As built (`eco-routes-svm`, user-approved rulings 2026-09-25; full client-visible detail in that repo's
 `docs/proven-cancellation.md`):
 
-- `eco-svm-std` gains `pub const CANCELLED: Bytes32` = 12 zero bytes ‖ `keccak256("eco.portal.intent.cancelled")[12..]` (golden-pinned to the EVM `IInbox.CANCELLED()` bytes). `Proof`,
+- `eco-svm-std` gains `pub const CANCELLED: Bytes32` = 12 zero bytes ‖ `keccak256("eco.portal.intent.cancelled")[12..]` (golden-pinned to the EVM `CANCELLED_CLAIMANT_BYTES32` bytes). `Proof`,
   hyper-prover, local-prover and flash-fulfiller are unchanged in code; they are rebuilt only because they embed
   Portal PDAs (§8).
 - **`withdraw`:** fails with the new error `IntentCancelled` when the proof's claimant is `CANCELLED`.
@@ -275,7 +275,7 @@ As built (`eco-routes-svm`, user-approved rulings 2026-09-25; full client-visibl
 | Fallback | no proof → refund only after `reward.deadline`; Fulfilled blocks refund | same |
 | Conflicts | first recorded wins per prover; Aggregator priority; wrong-destination challenge deletes a Cancelled proof | disagreeing redelivery reverts |
 | Shape | a prover returning `main`'s two-word `ProofData` works as a source prover; `provenIntents(h).claimant == CANCELLED` after a cancellation, with `IntentProven` | n/a |
-| Cross-VM | `IInbox.CANCELLED()` == `0x000…e685056aec77686a83e2a6bdf37c6f71dd2fdb5f` and == low 20 bytes of the hash | golden: the same 32 bytes; upper 12 bytes zero |
+| Cross-VM | `CANCELLED_CLAIMANT_BYTES32` == `0x000…e685056aec77686a83e2a6bdf37c6f71dd2fdb5f` and == low 20 bytes of the hash | golden: the same 32 bytes; upper 12 bytes zero |
 
 ## 11. Follow-ups and known gaps (out of scope)
 
@@ -287,7 +287,7 @@ As built (`eco-routes-svm`, user-approved rulings 2026-09-25; full client-visibl
   reading the claimant. Against the new SVM program this misreads a cancelled intent as fulfilled. Both call sites must read the marker's
   claimant (recognizing `CANCELLED`) before the new program IDs carry solver-v2 traffic.
 - **solver-v2 EVM claimant readers have the same gap.** `EvmExecutorService.readOnChainClaimant` (`src/modules/blockchain/evm/services/evm.executor.service.ts:3001`) treats any non-zero `claimants[intentHash]` as fulfilled, with no awareness of the `CANCELLED` sentinel (D4). It is used by `readClaimantState` (`:2222`), the execution-retry guard (`:3042`), and `assertNotAlreadyFulfilledOnDroppedAttestation` (`:3074`, the dropped-Gateway-attestation refund guard). Against the new Portal, all three misread a cancelled intent as fulfilled: `readClaimantState` reports `'fulfilled'`, the retry guard treats the intent as settled and stops retrying, and the dropped-attestation guard withholds the refund it exists to allow. **Release gate:** all three must recognize `CANCELLED` before solver-v2 serves traffic against the new Portal. `EvmReaderService.classifyProvenClaimant`'s withdrawal preflight (`evm.reader.service.ts:1236`) must also classify a `CANCELLED` claimant as cancelled, not as a withdrawable proof: under D4 as revised the source proof carries the sentinel, not claimant 0.
-- **EVM: a second `cancel` reverts `IntentAlreadyCancelled`, distinct from `IntentAlreadyFulfilled`, and `cancelAndProve` on an already-cancelled intent skips the cancel and proves.** A front-run or retried `cancel` therefore never looks like a fulfillment on EVM. SVM still reports an already-cancelled intent with the same error as a fulfilled one (the marker creation fails, §3.1), so an SVM refund service must read the marker account to distinguish "already cancelled → skip straight to `prove`" from "already fulfilled → do not refund".
+- **A repeat `cancel` is a no-op on both VMs** (no event, no state change), so `cancelAndProve` (EVM) or `cancel` + `prove` (SVM) after a third party's front-run `cancel` still proves instead of reverting. `cancel` on a fulfilled intent still fails: `IntentAlreadyFulfilled` (EVM), `IntentAlreadyFulfilledOrCancelled` (SVM 6013).
 - **Refund service:** drive `cancelAndProve` (EVM) / `cancel` + `prove` in one transaction (SVM) after
   `route.deadline`; record which refund path was used. On SVM, before `reward.deadline` it must pass every reward
   mint's vault-ATA chunk (§7) or the fast-path refund fails `InvalidMint`; it must also forward a close-proof

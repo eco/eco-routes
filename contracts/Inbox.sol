@@ -135,18 +135,6 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     }
 
     /**
-     * @notice Claimant value recorded for cancelled intents
-     * @dev A function rather than a public constant: OpenZeppelin's upgrades
-     *      plugin stubs every function's return type while keeping constants,
-     *      so a constant implementing IInbox.CANCELLED fails its compile
-     * @return CANCELLED_CLAIMANT left-padded to bytes32
-     */
-    // solhint-disable-next-line func-name-mixedcase
-    function CANCELLED() external pure returns (bytes32) {
-        return CANCELLED_CLAIMANT_BYTES32;
-    }
-
-    /**
      * @notice Cancels an unfulfilled intent once its route deadline has passed
      * @dev Permissionless: the caller only chooses when, never the outcome
      * @param intentHash The hash of the intent to cancel
@@ -165,7 +153,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
      * @notice Cancels an unfulfilled intent and initiates proving in one transaction
      * @dev Mirrors fulfillAndProve: prove forwards this contract's balance to the
      *      prover, which refunds any excess to the caller. Idempotent after a prior
-     *      cancel: the intent is proven without cancelling it again. A refund service
+     *      cancel, since _cancel is then a no-op. A refund service
      *      must not use this to prove before the destination is final; see the spec's
      *      accepted-risk section (cancel, wait for finality, then prove).
      * @param intentHash The hash of the intent to cancel
@@ -183,9 +171,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         uint64 sourceChainDomainID,
         bytes memory data
     ) external payable {
-        if (claimants[intentHash] != CANCELLED_CLAIMANT_BYTES32) {
-            _cancel(intentHash, route, rewardHash);
-        }
+        _cancel(intentHash, route, rewardHash);
 
         bytes32[] memory intentHashes = new bytes32[](1);
         intentHashes[0] = intentHash;
@@ -329,7 +315,9 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
 
     /**
      * @notice Internal function to cancel an intent
-     * @dev Uses the same claimants slot as fulfill, so the two are mutually exclusive
+     * @dev Uses the same claimants slot as fulfill, so the two are mutually exclusive.
+     *      A no-op for an already-cancelled intent, so a retried or front-run cancel
+     *      never reverts
      * @param intentHash The hash of the intent to cancel
      * @param route The route of the intent
      * @param rewardHash The hash of the reward
@@ -347,7 +335,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         }
         bytes32 recorded = claimants[intentHash];
         if (recorded == CANCELLED_CLAIMANT_BYTES32) {
-            revert IntentAlreadyCancelled(intentHash);
+            return;
         }
         if (recorded != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);

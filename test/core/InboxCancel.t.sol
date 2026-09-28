@@ -46,9 +46,8 @@ contract InboxCancelTest is BaseTest {
     function testCancelledSentinelGolden() public view {
         // Cross-VM pin: must equal eco-svm-std's CANCELLED byte for byte
         bytes32 golden = 0x000000000000000000000000e685056aec77686a83e2a6bdf37c6f71dd2fdb5f;
-        assertEq(portal.CANCELLED(), golden);
         assertEq(
-            portal.CANCELLED(),
+            CANCELLED_CLAIMANT_BYTES32,
             bytes32(
                 uint256(
                     uint160(
@@ -69,7 +68,7 @@ contract InboxCancelTest is BaseTest {
             0xe685056aEc77686A83E2a6bDf37c6f71dD2fdB5f
         );
         // A valid EVM address, so every prover records it like any claimant
-        assertEq(uint256(portal.CANCELLED()) >> 160, 0);
+        assertEq(uint256(CANCELLED_CLAIMANT_BYTES32) >> 160, 0);
     }
 
     function testCancelRevertsAtRouteDeadline() public {
@@ -175,7 +174,7 @@ contract InboxCancelTest is BaseTest {
         portal.fulfill(intentHash, i.route, rewardHash, solverClaimant);
     }
 
-    function testCancelRevertsWhenAlreadyCancelled() public {
+    function testCancelIsNoOpWhenAlreadyCancelled() public {
         (
             Intent memory i,
             bytes32 intentHash,
@@ -184,13 +183,11 @@ contract InboxCancelTest is BaseTest {
         vm.warp(uint256(i.route.deadline) + 1);
         portal.cancel(intentHash, i.route, rewardHash);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IInbox.IntentAlreadyCancelled.selector,
-                intentHash
-            )
-        );
+        vm.recordLogs();
+        vm.prank(otherPerson);
         portal.cancel(intentHash, i.route, rewardHash);
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT_BYTES32);
     }
 
     function testCancelAndProveForwardsDomainDataAndValueToProver() public {

@@ -535,7 +535,7 @@ Parameters:
 
 <h5>Cancels an unfulfilled intent once its route deadline has passed, recording the CANCELLED sentinel as its claimant so it can never be fulfilled afterward.</h5>
 
-The sentinel is `CANCELLED_CLAIMANT` = the low 20 bytes of `keccak256("eco.portal.intent.cancelled")` = `0xe685056aEc77686A83E2a6bDf37c6f71dD2fdB5f`, stored left-padded to bytes32 and returned by `CANCELLED()`. It is deliberately a valid EVM address, so every prover carries and records a cancellation like any claimant; it is hash-derived, so no key controls it, and `withdraw` rejects it. It matches `eco-svm-std`'s `CANCELLED` byte for byte.
+The sentinel is `CANCELLED_CLAIMANT` = the low 20 bytes of `keccak256("eco.portal.intent.cancelled")` = `0xe685056aEc77686A83E2a6bDf37c6f71dD2fdB5f`, stored left-padded to bytes32 (`CANCELLED_CLAIMANT_BYTES32`). It is deliberately a valid EVM address, so every prover carries and records a cancellation like any claimant; it is hash-derived, so no key controls it, and `withdraw` rejects it. It matches `eco-svm-std`'s `CANCELLED` byte for byte.
 
 Parameters:
 
