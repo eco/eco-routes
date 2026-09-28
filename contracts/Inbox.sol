@@ -157,7 +157,10 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
     /**
      * @notice Cancels an unfulfilled intent and initiates proving in one transaction
      * @dev Mirrors fulfillAndProve: prove forwards this contract's balance to the
-     *      prover, which refunds any excess to the caller
+     *      prover, which refunds any excess to the caller. Idempotent after a prior
+     *      cancel: the intent is proven without cancelling it again. A refund service
+     *      must not use this to prove before the destination is final; see the spec's
+     *      accepted-risk section (cancel, wait for finality, then prove).
      * @param intentHash The hash of the intent to cancel
      * @param route The route of the intent
      * @param rewardHash The hash of the reward details
@@ -173,7 +176,9 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         uint64 sourceChainDomainID,
         bytes memory data
     ) external payable {
-        _cancel(intentHash, route, rewardHash);
+        if (claimants[intentHash] != CANCELLED_CLAIMANT) {
+            _cancel(intentHash, route, rewardHash);
+        }
 
         bytes32[] memory intentHashes = new bytes32[](1);
         intentHashes[0] = intentHash;
@@ -297,7 +302,11 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         if (block.timestamp <= route.deadline) {
             revert RouteNotExpired(route.deadline);
         }
-        if (claimants[intentHash] != bytes32(0)) {
+        bytes32 recorded = claimants[intentHash];
+        if (recorded == CANCELLED_CLAIMANT) {
+            revert IntentAlreadyCancelled(intentHash);
+        }
+        if (recorded != bytes32(0)) {
             revert IntentAlreadyFulfilled(intentHash);
         }
 

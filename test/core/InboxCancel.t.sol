@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {Vm} from "forge-std/Test.sol";
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
 import {Intent, CANCELLED_CLAIMANT} from "../../contracts/types/Intent.sol";
@@ -166,11 +167,67 @@ contract InboxCancelTest is BaseTest {
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                IInbox.IntentAlreadyFulfilled.selector,
+                IInbox.IntentAlreadyCancelled.selector,
                 intentHash
             )
         );
         portal.cancel(intentHash, i.route, rewardHash);
+    }
+
+    function testCancelAndProveAfterFrontRunCancelStillProves() public {
+        (
+            Intent memory i,
+            bytes32 intentHash,
+            bytes32 rewardHash
+        ) = _destinationIntent();
+        vm.warp(uint256(i.route.deadline) + 1);
+        vm.prank(otherPerson);
+        portal.cancel(intentHash, i.route, rewardHash);
+
+        vm.recordLogs();
+        portal.cancelAndProve(
+            intentHash,
+            i.route,
+            rewardHash,
+            address(prover),
+            uint64(block.chainid),
+            ""
+        );
+
+        assertEq(portal.claimants(intentHash), CANCELLED_CLAIMANT);
+        assertEq(prover.proveCallCount(), 1);
+        assertEq(prover.argClaimants(0), CANCELLED_CLAIMANT);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 j = 0; j < logs.length; j++) {
+            assertTrue(logs[j].topics[0] != IInbox.IntentCancelled.selector);
+        }
+    }
+
+    function testCancelAndProveRevertsAfterFulfill() public {
+        (
+            Intent memory i,
+            bytes32 intentHash,
+            bytes32 rewardHash
+        ) = _destinationIntent();
+        vm.warp(i.route.deadline);
+        vm.prank(solver);
+        portal.fulfill(intentHash, i.route, rewardHash, solverClaimant);
+
+        vm.warp(uint256(i.route.deadline) + 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IInbox.IntentAlreadyFulfilled.selector,
+                intentHash
+            )
+        );
+        portal.cancelAndProve(
+            intentHash,
+            i.route,
+            rewardHash,
+            address(prover),
+            uint64(block.chainid),
+            ""
+        );
     }
 
     function testCancelRevertsOnWrongPortal() public {
