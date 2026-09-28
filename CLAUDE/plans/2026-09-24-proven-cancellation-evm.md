@@ -1,5 +1,10 @@
 # Proven Cancellation (EVM) Implementation Plan
 
+> **Status: pre-implementation plan, superseded by the spec as built**
+> (`CLAUDE/specs/2026-09-24-proven-cancellation-design.md`). Kept for history; where the two differ, the spec wins.
+> Notably D10: the build uses `optimizer_runs = 10,000` (not 1,000,000), and the Portal's EIP-170 margin is now
+> 2,060 B (not 926 B). The unticked steps below were not updated as tasks were executed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let anyone cancel an unfulfilled intent on the destination Portal after `route.deadline`, carry that cancellation back through every existing prover as a sentinel claimant, and let the source Portal refund a proven cancellation immediately, with `reward.deadline` kept as the timeout fallback.
@@ -12,14 +17,14 @@
 
 ## Global Constraints
 
-- Worktree: `/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation`, branch `cfebres/proven-cancellation`. Use absolute paths; never `cd` (pass `--root` to forge, `--cwd` to yarn, `-C` to git).
+- Worktree: the repository root, branch `cfebres/proven-cancellation`. Use absolute paths; never `cd` (pass `--root` to forge, `--cwd` to yarn, `-C` to git).
 - Sentinel: `CANCELLED_CLAIMANT = keccak256("eco.portal.intent.cancelled")` = `0xa8aa898126679f5f179cb3a4e685056aec77686a83e2a6bdf37c6f71dd2fdb5f`. Defined once, file-level, in `contracts/types/Intent.sol`; never re-typed as a literal in contracts.
 - Wire format unchanged: `[chainId u64 BE] ‖ N × [intentHash ‖ claimant]`. No destination-side prover code changes.
 - `enum Outcome { None, Fulfilled, Cancelled }`; `None` = not proven. Existence of a proof is `outcome != None`, never `claimant != address(0)`. A Cancelled proof has `claimant == address(0)`.
 - Time partition: `fulfill` allowed iff `block.timestamp <= route.deadline`; `cancel` allowed iff `block.timestamp > route.deadline` (strict).
 - Conflicts: first recorded outcome wins per prover (D7); `AggregatorProver` resolves by member priority.
 - Release is a **minor** version (D8): commit subjects use `feat(...)`, `fix(...)`, `test(...)`, `docs(...)`; never `!`, never a `BREAKING CHANGE` footer.
-- Every commit message ends with the line `Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP` (pass it as a second `-m`). No co-author lines.
+- Every commit message ends with the session attribution line (pass it as a second `-m`). No co-author lines.
 - Stage files by name (`git -C <wt> add <path> ...`), never `git add -A` / `.`.
 - Format only the files you touched: `npx --prefix <wt> prettier --write <files>`; lint contracts you touched: `npx --prefix <wt> solhint <files>`. Never blanket-format.
 - **EIP-170 size gate:** at baseline `Portal` runtime is **23,650 B** and `PortalTron` **23,650 B** against the 24,576 B limit (**926 B margin**). After every task that touches `Inbox.sol` or `IntentSource.sol`, run the size gate (see Task 1 Step 7). If either exceeds 24,576 B, **STOP and report** — do not change optimizer settings, split contracts, or delete features on your own. The user decides the cut only after seeing measured sizes.
@@ -72,9 +77,9 @@
 - [ ] **Step 0: Prepare the worktree (once)**
 
 ```bash
-git -C /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation submodule update --init --recursive
-[ -e /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation/node_modules ] || ln -s /Users/carlosfebres/dev/eco/eco-routes/node_modules /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation/node_modules
-forge build --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --sizes 2>&1 | grep -E '^\| Portal(Tron)? '
+git -C . submodule update --init --recursive
+[ -e node_modules ] || ln -s ../eco-routes/node_modules node_modules
+forge build --root . --sizes 2>&1 | grep -E '^\| Portal(Tron)? '
 ```
 Expected: `Portal` and `PortalTron` runtime 23,650 (the baseline). `node_modules` is git-ignored; the symlink is safe because `yarn.lock` is identical to the main checkout.
 
@@ -320,7 +325,7 @@ contract InboxCancelTest is BaseTest {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract InboxCancelTest`
+Run: `forge test --root . --match-contract InboxCancelTest`
 Expected: compilation error — `Declaration "CANCELLED_CLAIMANT" not found` / `Member "cancel" not found`.
 
 - [ ] **Step 3: Add the sentinel constant**
@@ -467,22 +472,22 @@ In `_fulfill`, directly after the `ZeroClaimant` check add:
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract 'InboxCancelTest|InboxTest'`
+Run: `forge test --root . --match-contract 'InboxCancelTest|InboxTest'`
 Expected: all PASS.
 
 - [ ] **Step 7: Size gate**
 
-Run: `forge build --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --sizes 2>&1 | grep -E '^\| Portal(Tron)? '`
+Run: `forge build --root . --sizes 2>&1 | grep -E '^\| Portal(Tron)? '`
 Expected: both runtime sizes < 24,576. Record the new margin in the task report. If either is ≥ 24,576: STOP and report (Global Constraints).
 
 - [ ] **Step 8: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/contracts/types/Intent.sol $W/contracts/interfaces/IInbox.sol $W/contracts/Inbox.sol $W/test/core/InboxCancel.t.sol
 npx --prefix $W solhint $W/contracts/types/Intent.sol $W/contracts/interfaces/IInbox.sol $W/contracts/Inbox.sol
 git -C $W add contracts/types/Intent.sol contracts/interfaces/IInbox.sol contracts/Inbox.sol test/core/InboxCancel.t.sol
-git -C $W commit -m "feat(inbox): cancel unfulfilled intents after the route deadline" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(inbox): cancel unfulfilled intents after the route deadline"
 ```
 
 ---
@@ -561,7 +566,7 @@ Append to `InboxCancelTest`:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract InboxCancelTest`
+Run: `forge test --root . --match-contract InboxCancelTest`
 Expected: compilation error — `Member "cancelAndProve" not found`.
 
 - [ ] **Step 3: Implement**
@@ -622,7 +627,7 @@ Expected: compilation error — `Member "cancelAndProve" not found`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract InboxCancelTest`
+Run: `forge test --root . --match-contract InboxCancelTest`
 Expected: all PASS.
 
 - [ ] **Step 5: Size gate** — same command and stop rule as Task 1 Step 7.
@@ -630,11 +635,11 @@ Expected: all PASS.
 - [ ] **Step 6: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/contracts/interfaces/IInbox.sol $W/contracts/Inbox.sol $W/test/core/InboxCancel.t.sol
 npx --prefix $W solhint $W/contracts/interfaces/IInbox.sol $W/contracts/Inbox.sol
 git -C $W add contracts/interfaces/IInbox.sol contracts/Inbox.sol test/core/InboxCancel.t.sol
-git -C $W commit -m "feat(inbox): add cancelAndProve" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(inbox): add cancelAndProve"
 ```
 
 ---
@@ -832,7 +837,7 @@ Append to `AggregatorProverMemberValidationTest` (`test/scripts/AggregatorProver
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract 'ProofOutcomeTest|PolymerProverTest|AggregatorProverTest|AggregatorProverMemberValidationTest'`
+Run: `forge test --root . --match-contract 'ProofOutcomeTest|PolymerProverTest|AggregatorProverTest|AggregatorProverMemberValidationTest'`
 Expected: compilation error — `Member "outcome" not found` / `Source "contracts/test/ShortDynamicProver.sol" not found`.
 
 - [ ] **Step 3: Change `IProver`**
@@ -1182,13 +1187,13 @@ contract MockDomainProverLegacyShape {
 
 - [ ] **Step 10: Build and run the full Foundry suite**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation`
+Run: `forge test --root .`
 Expected: all PASS, including the new tests and the untouched ones (`test_gas_worstCaseFanOutAtMaxMembers` must stay under its 60,000-gas tripwire; if it fails, report the measured number rather than raising the tripwire).
-Then grep for any construction you missed: `grep -rn -E 'ProofData\((address|claimant|portalClaimant)' /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation/contracts /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation/test` — every hit must pass three arguments.
+Then grep for any construction you missed: `grep -rn -E 'ProofData\((address|claimant|portalClaimant)' contracts test` — every hit must pass three arguments.
 
 - [ ] **Step 11: Run the Hardhat/TS suites (typechain regenerates)**
 
-Run: `yarn --cwd /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation test:hardhat` and `yarn --cwd /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation test:ts`
+Run: `yarn --cwd . test:hardhat` and `yarn --cwd . test:ts`
 Expected: PASS (TS tests read `.claimant`/`.destination` by name, so the extra field is transparent).
 
 - [ ] **Step 12: Size gate** — Task 1 Step 7 command and stop rule.
@@ -1196,12 +1201,12 @@ Expected: PASS (TS tests read `.claimant`/`.destination` by name, so the extra f
 - [ ] **Step 13: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 F="contracts/interfaces/IProver.sol contracts/prover/BaseProver.sol contracts/prover/PolymerProver.sol contracts/prover/LocalProver.sol contracts/prover/AggregatorProver.sol scripts/Deploy.s.sol contracts/test/TestProver.sol contracts/test/TestMessageBridgeProver.sol contracts/test/MockDomainProver.sol contracts/test/MockDomainProverDirtyChainId.sol contracts/test/DirtyBitsProver.sol contracts/test/ShortDynamicProver.sol contracts/test/MockDomainProverLegacyShape.sol test/source/IntentSource.t.sol test/prover/ProofOutcome.t.sol test/prover/PolymerProver.t.sol test/prover/AggregatorProver.t.sol test/scripts/AggregatorProverMemberValidation.t.sol"
 for f in $F; do npx --prefix $W prettier --write $W/$f; done
 npx --prefix $W solhint $W/contracts/interfaces/IProver.sol $W/contracts/prover/BaseProver.sol $W/contracts/prover/PolymerProver.sol $W/contracts/prover/LocalProver.sol $W/contracts/prover/AggregatorProver.sol
 git -C $W add $F
-git -C $W commit -m "feat(prover): record a proof outcome alongside the claimant" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(prover): record a proof outcome alongside the claimant"
 ```
 
 ---
@@ -1344,7 +1349,7 @@ Append to `PolymerProverTest` (add the same `CANCELLED_CLAIMANT` import):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract 'ProofOutcomeTest|PolymerProverTest'`
+Run: `forge test --root . --match-contract 'ProofOutcomeTest|PolymerProverTest'`
 Expected: the four new Cancelled tests FAIL (outcome None — the sentinel is skipped as a non-EVM address).
 
 - [ ] **Step 3: Implement**
@@ -1402,17 +1407,17 @@ In `BaseProver.sol` add `import {CANCELLED_CLAIMANT} from "../types/Intent.sol";
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-path 'test/prover/*'`
+Run: `forge test --root . --match-path 'test/prover/*'`
 Expected: all PASS.
 
 - [ ] **Step 5: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/contracts/prover/BaseProver.sol $W/test/prover/ProofOutcome.t.sol $W/test/prover/PolymerProver.t.sol
 npx --prefix $W solhint $W/contracts/prover/BaseProver.sol
 git -C $W add contracts/prover/BaseProver.sol test/prover/ProofOutcome.t.sol test/prover/PolymerProver.t.sol
-git -C $W commit -m "feat(prover): record proven cancellations from the CANCELLED sentinel" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(prover): record proven cancellations from the CANCELLED sentinel"
 ```
 
 ---
@@ -1456,7 +1461,7 @@ Append to `LocalProverTest`:
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-test test_provenIntents_ReportsCancelledIntent`
+Run: `forge test --root . --match-test test_provenIntents_ReportsCancelledIntent`
 Expected: FAIL — outcome None, destination 0 (the sentinel currently hits the invalid-address griefing branch).
 
 - [ ] **Step 3: Implement**
@@ -1474,17 +1479,17 @@ Update the function NatSpec with one line: `Returns a Cancelled proof when the P
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract LocalProverTest`
+Run: `forge test --root . --match-contract LocalProverTest`
 Expected: all PASS.
 
 - [ ] **Step 5: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/contracts/prover/LocalProver.sol $W/test/prover/LocalProver.t.sol
 npx --prefix $W solhint $W/contracts/prover/LocalProver.sol
 git -C $W add contracts/prover/LocalProver.sol test/prover/LocalProver.t.sol
-git -C $W commit -m "feat(prover): report cancelled same-chain intents from LocalProver" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(prover): report cancelled same-chain intents from LocalProver"
 ```
 
 ---
@@ -1557,7 +1562,7 @@ Append to `AggregatorProverTest`:
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract AggregatorProverTest`
+Run: `forge test --root . --match-contract AggregatorProverTest`
 Expected: `returnsCancelledMemberProof` and `firstMemberWinsCancelledOverFulfilled` FAIL (Cancelled tuples are skipped); the others PASS already (they pin the guards).
 
 - [ ] **Step 3: Implement**
@@ -1584,17 +1589,17 @@ Update the NatSpec's KNOWN LIMITATION paragraph: a wrong-destination Cancelled e
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract 'AggregatorProver'`
+Run: `forge test --root . --match-contract 'AggregatorProver'`
 Expected: all PASS, including `AggregatorProverIntegration` and the gas tripwire.
 
 - [ ] **Step 5: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/contracts/prover/AggregatorProver.sol $W/test/prover/AggregatorProver.t.sol
 npx --prefix $W solhint $W/contracts/prover/AggregatorProver.sol
 git -C $W add contracts/prover/AggregatorProver.sol test/prover/AggregatorProver.t.sol
-git -C $W commit -m "feat(prover): surface cancelled member proofs from AggregatorProver" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(prover): surface cancelled member proofs from AggregatorProver"
 ```
 
 ---
@@ -1766,7 +1771,7 @@ contract IntentSourceCancellationTest is BaseTest {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract IntentSourceCancellationTest`
+Run: `forge test --root . --match-contract IntentSourceCancellationTest`
 Expected: compilation error — `Member "CancelledIntent" not found`.
 
 - [ ] **Step 3: Add the error**
@@ -1885,21 +1890,21 @@ Replace `_validateWithdraw` with:
 
 - [ ] **Step 5: Run to verify they pass**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-path 'test/source/*'`
+Run: `forge test --root . --match-path 'test/source/*'`
 Expected: all PASS (existing `IntentSourceTest` included).
 
 - [ ] **Step 6: Full suite + size gate**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation` — all PASS. Then the Task 1 Step 7 size gate.
+Run: `forge test --root .` — all PASS. Then the Task 1 Step 7 size gate.
 
 - [ ] **Step 7: Format, lint, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/contracts/interfaces/IIntentSource.sol $W/contracts/IntentSource.sol $W/test/source/IntentSourceCancellation.t.sol
 npx --prefix $W solhint $W/contracts/interfaces/IIntentSource.sol $W/contracts/IntentSource.sol
 git -C $W add contracts/interfaces/IIntentSource.sol contracts/IntentSource.sol test/source/IntentSourceCancellation.t.sol
-git -C $W commit -m "feat(portal): refund proven cancellations before the reward deadline" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "feat(portal): refund proven cancellations before the reward deadline"
 ```
 
 ---
@@ -2147,17 +2152,17 @@ In each of the four bridge test files add `import {CANCELLED_CLAIMANT} from "../
 
 - [ ] **Step 2: Run the tests**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-test 'Cancelled|cancelled'`
+Run: `forge test --root . --match-test 'Cancelled|cancelled'`
 Expected: all PASS (behaviour landed in Tasks 4, 5, 7). If one fails, it is a real bug in the earlier task — fix it there, not in the test.
 
 - [ ] **Step 3: Format, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 F="test/prover/HyperProver.t.sol test/prover/LayerZeroProver.t.sol test/prover/MetaProver.t.sol test/prover/CCIPProver.t.sol test/prover/LocalProver.t.sol"
 for f in $F; do npx --prefix $W prettier --write $W/$f; done
 git -C $W add $F
-git -C $W commit -m "test(prover): cover proven cancellation on every receive path" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "test(prover): cover proven cancellation on every receive path"
 ```
 
 (`CCIPProver.t.sol` is not prettier-clean on `main` today — its lines exceed the print width. Run `npx --prefix $W prettier --check $W/test/prover/CCIPProver.t.sol` on the untouched file first; if it already fails, **skip prettier for that file** and hand-format your addition to match its style.)
@@ -2322,16 +2327,16 @@ contract ProvenCancellationFlowTest is BaseTest {
 
 - [ ] **Step 2: Run the tests**
 
-Run: `forge test --root /Users/carlosfebres/dev/eco/eco-routes-proven-cancellation --match-contract ProvenCancellationFlowTest`
+Run: `forge test --root . --match-contract ProvenCancellationFlowTest`
 Expected: all PASS.
 
 - [ ] **Step 3: Format, commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 npx --prefix $W prettier --write $W/test/core/ProvenCancellationFlow.t.sol
 git -C $W add test/core/ProvenCancellationFlow.t.sol
-git -C $W commit -m "test(portal): cover the cancel, prove, refund flow end to end" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "test(portal): cover the cancel, prove, refund flow end to end"
 ```
 
 ---
@@ -2360,7 +2365,7 @@ In the AggregatorProver paragraph and the `AGGREGATOR_PROVER_MEMBERS` entry, rep
 - [ ] **Step 2: Full verification**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 forge test --root $W
 yarn --cwd $W test:hardhat
 yarn --cwd $W test:ts
@@ -2372,9 +2377,9 @@ Expected: every suite PASS; `Portal`/`PortalTron` runtime < 24,576 (report the f
 - [ ] **Step 3: Commit**
 
 ```bash
-W=/Users/carlosfebres/dev/eco/eco-routes-proven-cancellation
+W=.
 git -C $W add CLAUDE.md contracts/README.md scripts/tron/run-tron-evm-intent.ts
-git -C $W commit -m "docs: document proven cancellation" -m "Claude-Session: https://claude.ai/code/session_01Fs7GU5DoDuKhLo9VDktMXP"
+git -C $W commit -m "docs: document proven cancellation"
 git -C $W status --short
 ```
 Expected: `git status --short` shows nothing tracked as modified (the `node_modules` symlink is ignored).
