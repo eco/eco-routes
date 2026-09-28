@@ -23,6 +23,13 @@ questions, not decided here).
 
 - No change to the timeout fallback semantics. The accepted residual solver loss (a timeout refund of a fulfilled
   intent whose proof never arrived) remains accepted.
+- **Accepted risk: cancellation proofs relayed before destination finality.** A cancellation proof relayed before
+  the destination block that recorded `cancel` is final (e.g. MetaProver's `FinalityState.INSTANT`, default
+  Hyperlane ISMs, LayerZero DVN confirmations, Polymer pre-confirmations), followed by a destination reorg spanning
+  `route.deadline` that re-includes a pending `fulfill`, refunds the creator and leaves the solver unpaid: the
+  source records the Cancelled proof first, and first recorded wins (D7), so the solver's later Fulfilled proof is
+  ignored. This is accepted. Operational rule: a refund service must call `cancel`, wait for the destination block
+  to be final, and only then call `prove`; it must not use `cancelAndProve` for this.
 - No activation for in-flight / legacy intents: the fast path exists only on the new deployment (§8).
 - No user self-attestation of any outcome. Only the destination Portal's recorded state, carried by a whitelisted
   prover, can prove a cancellation.
@@ -40,7 +47,7 @@ questions, not decided here).
 | D6 | SVM `close_fulfill_marker` leaves a **tombstone** instead of deleting the marker | Otherwise a closed marker is indistinguishable from "never fulfilled" and `cancel` could succeed on a fulfilled intent. |
 | D7 | Conflicting outcomes: **first recorded wins**, per prover; `AggregatorProver` resolves by member priority | Deliberate deviation from the Notion spec's "explicit conflict policy" wording, decided 2026-09-24. Conflicts require a compromised prover/bridge (the destination makes the outcomes mutually exclusive). |
 | D8 | Release as a **minor** version (`feat:` commits, no `BREAKING CHANGE`) | Decided 2026-09-24. Justified by D4 being ABI-additive. |
-| D9 | **Accepted risk:** the new EVM `IntentSource` reads proofs with the typed three-word call; an intent whose `reward.prover` is a pre-change (two-word) prover can neither withdraw nor refund | Decided 2026-09-24. Creators must name new-generation provers. Rejected: a length-tolerant low-level read. The original reason was Portal bytecode (926 B under EIP-170 at runs 1,000,000); at runs 10,000 (D10) it has 2,174 B of room, and D9 was re-confirmed on 2026-09-27 after review on #443 as a scope decision, not a size one. Residual exposure: a direct caller or stale integration naming an old-generation prover on the new Portal. |
+| D9 | **Accepted risk:** the new EVM `IntentSource` reads proofs with the typed three-word call; an intent whose `reward.prover` is a pre-change (two-word) prover can neither withdraw nor refund | Decided 2026-09-24. Creators must name new-generation provers. Rejected: a length-tolerant low-level read. The original reason was Portal bytecode (926 B under EIP-170 at runs 1,000,000); at runs 10,000 (D10) it has 2,060 B of room, and D9 was re-confirmed on 2026-09-27 after review on #443 as a scope decision, not a size one. Residual exposure: a direct caller or stale integration naming an old-generation prover on the new Portal. |
 | D10 | EIP-170: if `Portal`/`PortalTron` exceed 24,576 B, stop and decide the cut with measured sizes | Decided 2026-09-24. Tripped at Task 2 (`cancelAndProve`): Portal 24,727 B at runs=1,000,000. **Resolution (user, 2026-09-24): `foundry.toml` `optimizer_runs` 1,000,000 → 10,000** → 22,067 B (2,509 B margin). Measured: runs 100,000 = 24,727 B; 1,000 = 21,038 B; 200 = 19,902 B. |
 
 ## 3. Protocol
@@ -97,11 +104,14 @@ function cancelAndProve(
      reuses it verbatim: `route.portal == address(this)` else `InvalidPortal`; `keccak256(abi.encodePacked(CHAIN_ID,
      keccak256(abi.encode(route)), rewardHash)) == intentHash` else `InvalidHash`.
 3. `block.timestamp > route.deadline` else `RouteNotExpired`.
-4. `claimants[intentHash] == 0` else `IntentAlreadyFulfilled`.
+4. `claimants[intentHash] != CANCELLED` else `IntentAlreadyCancelled`; `claimants[intentHash] == 0` else
+   `IntentAlreadyFulfilled`.
 5. `claimants[intentHash] = CANCELLED`; emit `IntentCancelled`.
 
 No funds move. `cancelAndProve` mirrors `fulfillAndProve`: cancel, then `prove` for the single hash, so a
-refund service needs one transaction. `cancel`/`cancelAndProve` take `Route memory` rather than `calldata`
+refund service needs one transaction. It is idempotent after a prior `cancel`: when `claimants[intentHash]`
+already holds `CANCELLED` it skips the cancel and only proves, so a third party's front-run `cancel` cannot make
+it revert. `cancel`/`cancelAndProve` take `Route memory` rather than `calldata`
 (matching `fulfill`'s existing signature) — the external selector is unaffected.
 
 `_fulfill`: add `if (claimant == CANCELLED) revert ReservedClaimant();` next to the existing `ZeroClaimant` check.
@@ -308,7 +318,7 @@ As built (`eco-routes-svm`, user-approved rulings 2026-09-25; full client-visibl
   distinguish a live `FulfillMarker` from a `FulfillTombstone`. Both call sites must read the claimant (recognizing
   `CANCELLED` and both account discriminators) before the new program IDs carry solver-v2 traffic.
 - **solver-v2 EVM claimant readers have the same gap.** `EvmExecutorService.readOnChainClaimant` (`src/modules/blockchain/evm/services/evm.executor.service.ts:3001`) treats any non-zero `claimants[intentHash]` as fulfilled, with no awareness of the `CANCELLED` sentinel (D4). It is used by `readClaimantState` (`:2222`), the execution-retry guard (`:3042`), and `assertNotAlreadyFulfilledOnDroppedAttestation` (`:3074`, the dropped-Gateway-attestation refund guard). Against the new Portal, all three misread a cancelled intent as fulfilled: `readClaimantState` reports `'fulfilled'`, the retry guard treats the intent as settled and stops retrying, and the dropped-attestation guard withholds the refund it exists to allow. **Release gate:** all three must recognize `CANCELLED` before solver-v2 serves traffic against the new Portal. `EvmReaderService.classifyProvenClaimant`'s withdrawal preflight (`evm.reader.service.ts:1236`) already reads claimant 0 for a Cancelled proof and classifies it `'unproven'` — that call site is the mitigation pattern the other three must copy, not a second gap.
-- **`cancel` on an already-cancelled intent reverts `IntentAlreadyFulfilled`, not a distinct error** — the destination record is a single write-once cell (§3.1), so a second `cancel` hits the same "not empty" guard as a second `fulfill`. Refund services that retry `cancelAndProve`/`cancel` after a first attempt's tx is lost or unconfirmed must read `claimants(h)` (EVM) / the marker account (SVM) themselves to distinguish "already cancelled by our own prior attempt → skip straight to `prove`" from "already fulfilled → do not refund" before deciding how to handle that revert.
+- **EVM: a second `cancel` reverts `IntentAlreadyCancelled`, distinct from `IntentAlreadyFulfilled`, and `cancelAndProve` on an already-cancelled intent skips the cancel and proves.** A front-run or retried `cancel` therefore never looks like a fulfillment on EVM. SVM still reports an already-cancelled intent with the same error as a fulfilled one (the marker creation fails, §3.1), so an SVM refund service must read the marker account to distinguish "already cancelled → skip straight to `prove`" from "already fulfilled → do not refund".
 - **Refund service:** drive `cancelAndProve` (EVM) / `cancel` + `prove` in one transaction (SVM) after
   `route.deadline`; record which refund path was used. On SVM, before `reward.deadline` it must pass every reward
   mint's vault-ATA chunk (§7) or the fast-path refund fails `InvalidMint`; it must also forward a close-proof
