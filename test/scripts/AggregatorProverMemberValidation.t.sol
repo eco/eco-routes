@@ -9,6 +9,7 @@ import {MockDomainProverMalformedProvenIntents} from "../../contracts/test/MockD
 import {MockDomainProverDirtyChainId} from "../../contracts/test/MockDomainProverDirtyChainId.sol";
 import {MockDomainProverEmptyDynamic} from "../../contracts/test/MockDomainProverEmptyDynamic.sol";
 import {MockDomainProverLegacyShape} from "../../contracts/test/MockDomainProverLegacyShape.sol";
+import {MockDomainProverShortDynamic} from "../../contracts/test/MockDomainProverShortDynamic.sol";
 import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
@@ -190,15 +191,35 @@ contract AggregatorProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
-    /// @dev Regression pin for the empty-dynamic gap in _tryProvenIntentsShape.
-    ///      An empty `bytes` return encodes to exactly 64 bytes (offset 0x20,
-    ///      length 0x00). AggregatorProver.provenIntents skips that payload at
-    ///      runtime, so the member would be skipped for EVERY intentHash
-    ///      forever — and membership is immutable. The probe requires exactly
-    ///      96 bytes of zero words, which an honest member satisfies because
-    ///      bytes32(0) is an unproven hash.
+    /// @dev An empty `bytes` return encodes to exactly 64 bytes (offset 0x20,
+    ///      length 0x00), which the 96-byte length gate in
+    ///      _tryProvenIntentsShape rejects. AggregatorProver.provenIntents skips
+    ///      that payload at runtime, so the member would be skipped for EVERY
+    ///      intentHash forever — and membership is immutable. The strict
+    ///      all-zero check is pinned by
+    ///      test_rejectsMemberWithShortDynamicProvenIntents.
     function test_rejectsMemberWithEmptyDynamicProvenIntents() public {
         MockDomainProverEmptyDynamic bad = new MockDomainProverEmptyDynamic();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(bad)))
+        );
+        ctx.hyperProver = address(bad);
+
+        vm.expectRevert(
+            bytes(
+                "member provenIntents does not return a well-formed ProofData"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev Regression pin for the strict all-zero check in
+    ///      _tryProvenIntentsShape. A 32-byte `bytes` return encodes to exactly
+    ///      96 bytes (0x20, 0x20, data) and every word fits its field's range,
+    ///      so only strict zero-equality rejects it. An honest member returns
+    ///      three zero words because bytes32(0) is an unproven hash.
+    function test_rejectsMemberWithShortDynamicProvenIntents() public {
+        MockDomainProverShortDynamic bad = new MockDomainProverShortDynamic();
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(bad)))
         );
