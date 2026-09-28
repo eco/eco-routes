@@ -129,7 +129,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
 
         // Call prove with the intent hash array
         // This will also refund any excess ETH
-        prove(prover, sourceChainDomainID, intentHashes, data);
+        _proveNonReentrant(prover, sourceChainDomainID, intentHashes, data);
 
         return result;
     }
@@ -190,7 +190,7 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
         bytes32[] memory intentHashes = new bytes32[](1);
         intentHashes[0] = intentHash;
 
-        prove(prover, sourceChainDomainID, intentHashes, data);
+        _proveNonReentrant(prover, sourceChainDomainID, intentHashes, data);
     }
 
     /**
@@ -210,17 +210,53 @@ abstract contract Inbox is DestinationSettler, IInbox, ReentrancyGuard {
      *      You MUST consult the specific bridge provider's documentation to determine
      *      the correct domain ID for the source chain.
      */
-    // nonReentrant: prove forwards this contract's full balance into the prover,
+    // nonReentrant: _prove forwards this contract's full balance into the prover,
     // which refunds any overpayment with an all-gas call back to msg.sender. The
     // guard keeps that structural (not just documented in the prover) so a refund
-    // recipient cannot reenter prove. fulfillAndProve calls prove without holding
-    // the guard, so the internal call is the first (non-reentrant) entry.
+    // recipient cannot reenter prove.
     function prove(
         address prover,
         uint64 sourceChainDomainID,
         bytes32[] memory intentHashes,
         bytes memory data
-    ) public payable nonReentrant {
+    ) external payable nonReentrant {
+        _prove(prover, sourceChainDomainID, intentHashes, data);
+    }
+
+    /**
+     * @notice Guarded proving entry for fulfillAndProve and cancelAndProve
+     * @dev Takes the same guard as prove around the proving tail only, so a call
+     *      fulfill executes may still reach prove. The guard lives on these thin
+     *      wrappers, not on _prove: via-IR inlines a modifier's body into every
+     *      caller, while _prove, called from two wrappers, stays a single copy.
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
+     */
+    function _proveNonReentrant(
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes,
+        bytes memory data
+    ) private nonReentrant {
+        _prove(prover, sourceChainDomainID, intentHashes, data);
+    }
+
+    /**
+     * @notice Proving tail shared by prove, fulfillAndProve and cancelAndProve
+     * @dev Callers must hold the reentrancy guard (prove, _proveNonReentrant)
+     * @param prover Address of prover on the destination chain
+     * @param sourceChainDomainID Domain ID of the source chain
+     * @param intentHashes Array of intent hashes to prove
+     * @param data Additional data for message formatting
+     */
+    function _prove(
+        address prover,
+        uint64 sourceChainDomainID,
+        bytes32[] memory intentHashes,
+        bytes memory data
+    ) private {
         uint256 size = intentHashes.length;
 
         // Encode chain ID followed by intent hash/claimant pairs as bytes

@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {Intent, Route, Reward, TokenAmount, Call} from "../../contracts/types/Intent.sol";
 import {TypeCasts} from "@hyperlane-xyz/core/contracts/libs/TypeCasts.sol";
@@ -369,6 +370,52 @@ contract InboxTest is BaseTest {
 
         // Verify intent was marked as fulfilled
         assertEq(portal.claimants(intentHash), claimantBytes);
+    }
+
+    function testFulfillAndProveForwardsDomainDataAndValueToProver() public {
+        Intent memory intent = _createIntent();
+        bytes32 rewardHash = keccak256(abi.encode(intent.reward));
+        bytes32 intentHash = keccak256(
+            abi.encodePacked(
+                intent.destination,
+                keccak256(abi.encode(intent.route)),
+                rewardHash
+            )
+        );
+        bytes32 claimantBytes = bytes32(uint256(uint160(recipient)));
+        // A domain distinct from both chain IDs, so a swapped argument shows
+        uint64 domain = 424242;
+        bytes memory data = hex"c0ffee";
+
+        vm.expectCall(
+            address(prover),
+            0.1 ether,
+            abi.encodeCall(
+                IProver.prove,
+                (
+                    solver,
+                    domain,
+                    abi.encodePacked(
+                        uint64(block.chainid),
+                        intentHash,
+                        claimantBytes
+                    ),
+                    data
+                )
+            )
+        );
+        vm.prank(solver);
+        portal.fulfillAndProve{value: 0.1 ether}(
+            intentHash,
+            intent.route,
+            rewardHash,
+            claimantBytes,
+            address(prover),
+            domain,
+            data
+        );
+
+        assertEq(prover.proveCallCount(), 1);
     }
 
     function testInitiateProvingWithMultipleIntents() public {

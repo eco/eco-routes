@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {Vm} from "forge-std/Test.sol";
 import {BaseTest} from "../BaseTest.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {Intent, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 
 contract InboxCancelTest is BaseTest {
@@ -190,6 +191,48 @@ contract InboxCancelTest is BaseTest {
             )
         );
         portal.cancel(intentHash, i.route, rewardHash);
+    }
+
+    function testCancelAndProveForwardsDomainDataAndValueToProver() public {
+        (
+            Intent memory i,
+            bytes32 intentHash,
+            bytes32 rewardHash
+        ) = _destinationIntent();
+        vm.warp(uint256(i.route.deadline) + 1);
+        vm.deal(otherPerson, 1 ether);
+        // A domain distinct from the chain ID, so a swapped argument shows
+        uint64 domain = 424242;
+        bytes memory data = hex"c0ffee";
+
+        vm.expectCall(
+            address(prover),
+            0.1 ether,
+            abi.encodeCall(
+                IProver.prove,
+                (
+                    otherPerson,
+                    domain,
+                    abi.encodePacked(
+                        uint64(block.chainid),
+                        intentHash,
+                        CANCELLED_CLAIMANT_BYTES32
+                    ),
+                    data
+                )
+            )
+        );
+        vm.prank(otherPerson);
+        portal.cancelAndProve{value: 0.1 ether}(
+            intentHash,
+            i.route,
+            rewardHash,
+            address(prover),
+            domain,
+            data
+        );
+
+        assertEq(prover.proveCallCount(), 1);
     }
 
     function testCancelAndProveAfterFrontRunCancelStillProves() public {
