@@ -14,7 +14,13 @@ Operational scripts for the Eco-Routes protocol.
   Configuration comes from environment variables (see the "Key Environment
   Variables" section of the root `CLAUDE.md` / `README.md`): `SALT`,
   `MAILBOX_CONTRACT`, `ROUTER_CONTRACT`, `LAYERZERO_ENDPOINT`,
-  `POLYMER_CROSS_L2_PROVER_V2`, `CCIP_ROUTER`, the per-bridge
+  `POLYMER_CROSS_L2_PROVER_V2` (whenever it is set, `POLYMER_SOLANA_CHAIN_ID`,
+  `SOLANA_CHAIN_ID` and `POLYMER_SOLANA_PROVER` — the raw 32-byte Solana
+  program ID, hex-encoded — are required with no default, since all three land
+  in PolymerProver immutables; `POLYMER_MAX_LOG_DATA_SIZE` defaults to 2048 —
+  `encodedProofs` is `8 + 64*n` bytes for an n-intent `Inbox.prove` batch, so
+  2048 = 31 intents; see `.env.example` for the 24-pair Solana ceiling),
+  `CCIP_ROUTER`, the per-bridge
   `*_CROSS_VM_PROVERS` lists, and the per-bridge `*_DOMAIN_CONFIG` lists
   (`HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`).
 

@@ -7,3 +7,7 @@ typechain-types
 templates
 lib
 CHANGELOG.md
+
+# Vendored verbatim from solady (contracts/libs/Base58.sol header pins the commit);
+# reformatting it breaks diffability against upstream.
+contracts/libs/Base58.sol

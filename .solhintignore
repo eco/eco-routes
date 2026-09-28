@@ -1,1 +1,3 @@
 node_modules
+# Vendored verbatim from solady; solhint --fix (yarn format) must never rewrite it
+contracts/libs/Base58.sol

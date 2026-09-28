@@ -307,12 +307,14 @@ Integrates with LayerZero protocol:
 
 #### PolymerProver Contract
 
-Integrates with Polymer protocol:
+Integrates with Polymer protocol; accepts EVM `IntentFulfilledFromSource` events and Solana `Prove:` logs:
 
 #### Key Functions:
 
 - `prove` - Emit IntentFulfilledFromSource events for Polymer to relay
-- `validate` - Validate and process proofs from Polymer's CrossL2ProverV2
+- `validate` - Validate and process EVM proofs from Polymer's CrossL2ProverV2
+- `validateSolana` - Validate a Polymer proof of Solana `Prove:` logs from a whitelisted Solana prover program
+- Batch forms: `validateBatch`, `validateSolanaBatch`
 
 ### Supporting Contracts
 
