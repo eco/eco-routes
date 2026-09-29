@@ -1,3 +1,6 @@
+## 2.12.0 (2026-09-29)
+
+* feat: add proven cancellation for fast permissionless refunds (#443) ([b57b222](https://github.com/eco/eco-routes/commit/b57b222)), closes [#443](https://github.com/eco/eco-routes/issues/443)
 ## 2.11.0 (2026-09-26)
 
 * fix(prover): preserve native-aliased route token balances (#444) ([e456ef0](https://github.com/eco/eco-routes/commit/e456ef0)), closes [#444](https://github.com/eco/eco-routes/issues/444)

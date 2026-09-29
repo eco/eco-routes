@@ -13,7 +13,7 @@ contract RevertingProver is IProver {
     error AlwaysReverts();
 
     function version() external pure returns (string memory) {
-        return "2.11.0";
+        return "2.12.0";
     }
 
     function getProofType() external pure returns (string memory) {
