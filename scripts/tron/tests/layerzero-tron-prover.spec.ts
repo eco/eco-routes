@@ -32,31 +32,50 @@ const POLICY = {
   crossVmProvers: [],
   chains: {
     '8453': chain(30184),
-    '1': chain(30101),
-    '728126428': chain(30420, { vm: 'tron' }),
+    '1': chain(30101, { confirmations: 32 }),
+    '43114': chain(30106, { confirmations: 20, planned: true }),
+    // DVNs deliberately not in address order: the constructor needs them ascending.
+    '728126428': chain(30420, {
+      vm: 'tron',
+      confirmations: 19,
+      dvns: { canary: addr(0x300), lzLabs: addr(0x100), horizen: addr(0x200) },
+    }),
   },
 }
 
 const EVM_PROVER = '0xEc00FE5F9625328757A0648934EAbe9A5685a541'
 const PORTAL = '0xbbe65c636a745ccb12fb0a8376f5ed089a86983a'
-const DELEGATE = '0x6cae25455bf5fcf19ce737ad50ee3bc481fcddd4'
 const BYTECODE = '0x6080604052'
 
 const CTOR = [
   'address',
   'address',
-  'address',
   'bytes32[]',
   'uint256',
   'tuple(uint64 domain, uint64 chainId)[]',
+  'tuple(address sendLibrary, address receiveLibrary, address executor, uint32 maxMessageSize, address[] requiredDVNs, uint64 sendConfirmations, uint64[] receiveConfirmations)',
 ]
 
+const TRON = POLICY.chains['728126428']
+const EXPECTED_DOMAINS = [
+  { domain: 30101n, chainId: 1n },
+  { domain: 30184n, chainId: 8453n },
+  { domain: 30106n, chainId: 43114n },
+]
+const EXPECTED_LZ_CONFIG = {
+  sendLibrary: TRON.sendUln302,
+  receiveLibrary: TRON.receiveUln302,
+  executor: TRON.executor,
+  maxMessageSize: 10000n,
+  requiredDVNs: [addr(0x100), addr(0x200), addr(0x300)],
+  sendConfirmations: 19n,
+  // Each origin's own confirmations, in domain order.
+  receiveConfirmations: [32n, 10n, 20n],
+}
+
 describe('tronDomainConfig', () => {
-  it('maps every EVM chain of the policy eid -> chainId, ordered by chain id, never Tron', () => {
-    expect(tronDomainConfig(POLICY)).toEqual([
-      { domain: 30101n, chainId: 1n },
-      { domain: 30184n, chainId: 8453n },
-    ])
+  it('maps every EVM chain of the policy, planned ones included, eid -> chainId, ordered by chain id, never Tron', () => {
+    expect(tronDomainConfig(POLICY)).toEqual(EXPECTED_DOMAINS)
   })
 
   it('refuses a policy without a Tron chain', () => {
@@ -72,31 +91,49 @@ describe('buildTronLayerZeroProverInitCode', () => {
     buildTronLayerZeroProverInitCode(BYTECODE, POLICY, {
       evmProver: EVM_PROVER,
       portal: PORTAL,
-      delegate: DELEGATE,
     })
 
-  it('appends the six v2.12 constructor args: endpoint, delegate, portal, [evm prover], 200k, domains', () => {
+  it('appends the constructor args: endpoint, portal, [evm prover], 200k, domains, pinned LZ config', () => {
     const { initCode } = build()
     expect(initCode.startsWith(BYTECODE)).toBe(true)
-    const [endpoint, delegate, portal, provers, minGas, domains] =
+    const [endpoint, portal, provers, minGas, domains, lzConfig] =
       ethers.AbiCoder.defaultAbiCoder().decode(
         CTOR,
         '0x' + initCode.slice(BYTECODE.length),
       )
-    expect(endpoint.toLowerCase()).toBe(POLICY.chains['728126428'].endpointV2)
-    expect(delegate.toLowerCase()).toBe(DELEGATE)
+    expect(endpoint.toLowerCase()).toBe(TRON.endpointV2)
     expect(portal.toLowerCase()).toBe(PORTAL)
     expect(provers).toEqual([ethers.zeroPadValue(EVM_PROVER.toLowerCase(), 32)])
     expect(minGas).toBe(200000n)
     expect(
-      domains.map((d: { domain: bigint; chainId: bigint }) => [
-        d.domain,
-        d.chainId,
-      ]),
-    ).toEqual([
-      [30101n, 1n],
-      [30184n, 8453n],
-    ])
+      domains.map((d: { domain: bigint; chainId: bigint }) => ({
+        domain: d.domain,
+        chainId: d.chainId,
+      })),
+    ).toEqual(EXPECTED_DOMAINS)
+    expect({
+      sendLibrary: lzConfig.sendLibrary.toLowerCase(),
+      receiveLibrary: lzConfig.receiveLibrary.toLowerCase(),
+      executor: lzConfig.executor.toLowerCase(),
+      maxMessageSize: lzConfig.maxMessageSize,
+      requiredDVNs: lzConfig.requiredDVNs.map((d: string) => d.toLowerCase()),
+      sendConfirmations: lzConfig.sendConfirmations,
+      receiveConfirmations: [...lzConfig.receiveConfirmations],
+    }).toEqual(EXPECTED_LZ_CONFIG)
+  })
+
+  it('refuses a policy whose Tron chain lacks a required DVN', () => {
+    const tron = { ...TRON, dvns: { canary: addr(0x300), lzLabs: addr(0x100) } }
+    const policy = {
+      ...POLICY,
+      chains: { ...POLICY.chains, '728126428': tron },
+    }
+    expect(() =>
+      buildTronLayerZeroProverInitCode(BYTECODE, policy, {
+        evmProver: EVM_PROVER,
+        portal: PORTAL,
+      }),
+    ).toThrow(/horizen/)
   })
 
   it("matches the compiled LayerZeroProver's own constructor encoding", () => {
@@ -108,26 +145,22 @@ describe('buildTronLayerZeroProverInitCode', () => {
     const { abi } = JSON.parse(fs.readFileSync(artifact, 'utf8'))
     const { initCode } = build()
     const expected = new ethers.Interface(abi).encodeDeploy([
-      POLICY.chains['728126428'].endpointV2,
-      DELEGATE,
+      TRON.endpointV2,
       PORTAL,
       [ethers.zeroPadValue(EVM_PROVER.toLowerCase(), 32)],
       200000n,
-      [
-        { domain: 30101n, chainId: 1n },
-        { domain: 30184n, chainId: 8453n },
-      ],
+      EXPECTED_DOMAINS,
+      EXPECTED_LZ_CONFIG,
     ])
     expect('0x' + initCode.slice(BYTECODE.length)).toBe(expected)
   })
 
-  it.each(['evmProver', 'portal', 'delegate'])(
+  it.each(['evmProver', 'portal'])(
     'refuses a zero or malformed %s',
     (field) => {
       const args = {
         evmProver: EVM_PROVER,
         portal: PORTAL,
-        delegate: DELEGATE,
         [field]: addr(0),
       }
       expect(() =>
@@ -136,7 +169,6 @@ describe('buildTronLayerZeroProverInitCode', () => {
       const bad = {
         evmProver: EVM_PROVER,
         portal: PORTAL,
-        delegate: DELEGATE,
         [field]: '0x12',
       }
       expect(() =>

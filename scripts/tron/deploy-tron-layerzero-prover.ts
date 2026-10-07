@@ -2,12 +2,14 @@
  * deploy-tron-layerzero-prover.ts — deploys the Tron LayerZeroProver (PAR-503).
  *
  * Tron only: the EVM provers are deployed by eco-routes-deployer (`pnpm start deploy
- * --contract layerzeroprover`), and every pathway, Tron included, is configured, verified
- * and revoked with its `lz` command. This script deploys the Tron prover through the Tron
- * CREATE2 factory with the v2.12 constructor:
+ * --contract layerzeroprover`), and every chain, Tron included, is checked with its
+ * `lz verify` command. This script deploys the Tron prover through the Tron CREATE2
+ * factory. The prover is born locked: its constructor pins every pathway and makes the
+ * prover its own endpoint delegate, so there is nothing to configure or revoke afterwards.
  *
- *   (endpoint, delegate, portal, provers = [EVM prover], minGasLimit = 200000,
- *    domainConfig = every EVM chain of config/layerzero.json, eid -> chainId)
+ *   (endpoint, portal, provers = [EVM prover], minGasLimit = 200000,
+ *    domainConfig = every EVM chain of config/layerzero.json (planned ones included),
+ *    lzConfig = Tron's libraries, executor, required DVNs and confirmations)
  *
  * Deploy Tron FIRST: its whitelist needs the EVM prover's predicted CREATE3 address, and the
  * EVM provers need this Tron address in config/layerzero.json `crossVmProvers`.
@@ -19,7 +21,7 @@
  *     --portal <Tron Portal, 0x hex or T... base58> --salt <bytes32>
  *
  *   # Predict only, no key needed:
- *   npx ts-node scripts/tron/deploy-tron-layerzero-prover.ts ... --dry-run --delegate <0x hex>
+ *   npx ts-node scripts/tron/deploy-tron-layerzero-prover.ts ... --dry-run
  *
  * Env: PRIVATE_KEY (not needed with --dry-run), TRON_RPC_URL (Tron full-node HTTP API,
  * default https://api.trongrid.io), TRON_CREATE2_FACTORY (default the mainnet factory).
@@ -77,9 +79,6 @@ async function main(): Promise<void> {
     privateKey ? { fullHost, privateKey } : { fullHost },
   )
 
-  const delegate = privateKey
-    ? toHex20(tronWeb, tronWeb.defaultAddress.base58 as string)
-    : toHex20(tronWeb, required('delegate'))
   const factory = process.env.TRON_CREATE2_FACTORY ?? MAINNET_CREATE2_FACTORY
   const factoryHex20 = toHex20(tronWeb, factory)
 
@@ -88,25 +87,35 @@ async function main(): Promise<void> {
     '../../out/LayerZeroProver.sol/LayerZeroProver.json',
   )
   const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'))
-  const { initCode, endpoint, whitelist } = buildTronLayerZeroProverInitCode(
-    artifact.bytecode.object ?? artifact.bytecode,
-    policy,
-    {
-      evmProver: required('evm-prover'),
-      portal: toHex20(tronWeb, required('portal')),
-      delegate,
-    },
-  )
+  const { initCode, endpoint, whitelist, lzConfig } =
+    buildTronLayerZeroProverInitCode(
+      artifact.bytecode.object ?? artifact.bytecode,
+      policy,
+      {
+        evmProver: required('evm-prover'),
+        portal: toHex20(tronWeb, required('portal')),
+      },
+    )
   const domains = tronDomainConfig(policy)
   const predicted = predictTronCreate2Address(factoryHex20, salt, initCode)
 
   console.log('Tron LayerZeroProver')
   console.log(`  endpoint:    ${endpoint} (${toBase58(endpoint)})`)
-  console.log(`  delegate:    ${delegate} (${toBase58(delegate)})`)
   console.log(`  portal:      ${toHex20(tronWeb, required('portal'))}`)
   console.log(`  whitelist:   ${whitelist.join(', ')}`)
   console.log(
     `  domain map (${domains.length}): ${domains.map((d) => `${d.domain}->${d.chainId}`).join(', ')}`,
+  )
+  console.log(`  send lib:    ${lzConfig.sendLibrary}`)
+  console.log(`  receive lib: ${lzConfig.receiveLibrary}`)
+  console.log(
+    `  executor:    ${lzConfig.executor} (maxMessageSize ${lzConfig.maxMessageSize})`,
+  )
+  console.log(
+    `  DVNs:        ${lzConfig.requiredDVNs.join(', ')} (all required)`,
+  )
+  console.log(
+    `  confirmations: send ${lzConfig.sendConfirmations}; receive ${domains.map((d, i) => `${d.domain}:${lzConfig.receiveConfirmations[i]}`).join(', ')}`,
   )
   console.log(`  factory:     ${factory}`)
   console.log(`  salt:        ${salt}`)
@@ -119,7 +128,7 @@ async function main(): Promise<void> {
     console.log(
       '\nA contract already exists at the predicted address; verifying it instead.',
     )
-    await verify(tronWeb, predicted, { endpoint, delegate, whitelist, domains })
+    await verify(tronWeb, predicted, { endpoint, whitelist, domains })
     return
   }
   if (dryRun) {
@@ -162,7 +171,7 @@ async function main(): Promise<void> {
   if (deployed !== predicted) {
     throw new Error(`Deployed at ${deployed}, but predicted ${predicted}`)
   }
-  await verify(tronWeb, deployed, { endpoint, delegate, whitelist, domains })
+  await verify(tronWeb, deployed, { endpoint, whitelist, domains })
 
   console.log(
     '\nNext: add this address to eco-routes-deployer config/layerzero.json crossVmProvers:',
@@ -170,13 +179,15 @@ async function main(): Promise<void> {
   console.log(`  "${deployed}"`)
 }
 
-/** Reads the deployed prover back and fails on any mismatch. */
+/**
+ * Reads the deployed prover back and fails on any mismatch. The pinned pathways are
+ * checked by eco-routes-deployer `lz verify`, which reads Tron like any other chain.
+ */
 async function verify(
   tronWeb: TronWeb,
   prover: string,
   expected: {
     endpoint: string
-    delegate: string
     whitelist: string[]
     domains: { domain: bigint; chainId: bigint }[]
   },
@@ -232,9 +243,9 @@ async function verify(
     ['address'],
     await call(expected.endpoint, 'delegates(address)', ['address'], [prover]),
   )
-  if (delegate.toLowerCase() !== expected.delegate) {
+  if (delegate.toLowerCase() !== prover.toLowerCase()) {
     problems.push(
-      `endpoint delegate is ${delegate}, expected ${expected.delegate}`,
+      `endpoint delegate is ${delegate}, expected the prover itself`,
     )
   }
 
@@ -244,7 +255,7 @@ async function verify(
     )
   }
   console.log(
-    `  ✓ verified ${prover}: whitelist, ${expected.domains.length} domains, endpoint, delegate`,
+    `  ✓ verified ${prover}: whitelist, ${expected.domains.length} domains, endpoint, delegate locked to itself`,
   )
 }
 
