@@ -67,7 +67,7 @@ contract Deploy is Script {
         address mailbox;
         address router;
         address layerZeroEndpoint;
-        address layerZeroDelegate;
+        LayerZeroProver.LayerZeroConfig layerZeroConfig;
         address polymerCrossL2ProverV2;
         uint256 polymerMaxLogDataSize;
         uint32 polymerSolanaChainId;
@@ -111,7 +111,6 @@ contract Deploy is Script {
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
-        ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
         ctx.polymerCrossL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_V2",
             address(0)
@@ -250,6 +249,13 @@ contract Deploy is Script {
         ctx.layerZeroDomainConfig = _parseDomainConfig(
             vm.envOr("LAYERZERO_DOMAIN_CONFIG", string(""))
         );
+        // LayerZeroProver pins every pathway in its constructor and has no
+        // delegate, so its pathway security is a deploy input too.
+        if (ctx.layerZeroEndpoint != address(0)) {
+            ctx.layerZeroConfig = _layerZeroConfigFromEnv(
+                ctx.layerZeroDomainConfig
+            );
+        }
 
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -537,11 +543,11 @@ contract Deploy is Script {
 
         ctx.layerZeroProverConstructorArgs = abi.encode(
             ctx.layerZeroEndpoint,
-            ctx.layerZeroDelegate,
             ctx.portal,
             provers,
             minGasLimit,
-            ctx.layerZeroDomainConfig
+            ctx.layerZeroDomainConfig,
+            ctx.layerZeroConfig
         );
 
         bytes memory layerZeroProverBytecode = abi.encodePacked(
@@ -1168,6 +1174,103 @@ contract Deploy is Script {
         }
 
         return domains;
+    }
+
+    /**
+     * @notice Reads LayerZeroProver's pinned pathway security from env
+     * @dev Unset addresses and counts stay zero, which the constructor rejects
+     *      by name rather than letting them fall back to LayerZero's defaults.
+     *      LAYERZERO_REQUIRED_DVNS must be strictly ascending (ULN302 enforces).
+     * @param domains The LAYERZERO_DOMAIN_CONFIG domains, in constructor order
+     * @return config The constructor's LayerZeroConfig
+     */
+    function _layerZeroConfigFromEnv(
+        IMessageBridgeProver.Domain[] memory domains
+    ) internal view returns (LayerZeroProver.LayerZeroConfig memory config) {
+        config.sendLibrary = vm.envOr("LAYERZERO_SEND_LIBRARY", address(0));
+        config.receiveLibrary = vm.envOr(
+            "LAYERZERO_RECEIVE_LIBRARY",
+            address(0)
+        );
+        config.executor = vm.envOr("LAYERZERO_EXECUTOR", address(0));
+        uint256 maxMessageSize = vm.envOr(
+            "LAYERZERO_MAX_MESSAGE_SIZE",
+            uint256(10_000)
+        );
+        require(
+            maxMessageSize <= type(uint32).max,
+            "LAYERZERO_MAX_MESSAGE_SIZE exceeds uint32"
+        );
+        config.maxMessageSize = uint32(maxMessageSize);
+        config.requiredDVNs = vm.envOr(
+            "LAYERZERO_REQUIRED_DVNS",
+            ",",
+            new address[](0)
+        );
+        uint256 sendConfirmations = vm.envOr(
+            "LAYERZERO_SEND_CONFIRMATIONS",
+            uint256(0)
+        );
+        require(
+            sendConfirmations <= type(uint64).max,
+            "LAYERZERO_SEND_CONFIRMATIONS exceeds uint64"
+        );
+        config.sendConfirmations = uint64(sendConfirmations);
+        config.receiveConfirmations = _orderReceiveConfirmations(
+            domains,
+            _parseDomainConfig(
+                vm.envOr("LAYERZERO_RECEIVE_CONFIRMATIONS", string(""))
+            )
+        );
+    }
+
+    /**
+     * @notice Lines LAYERZERO_RECEIVE_CONFIRMATIONS up with the domain map
+     * @dev The env list uses the domain-config format (`eid:confirmations`, the
+     *      second field read as confirmations) in any order. The constructor
+     *      reads confirmations by domainConfig index, so every domain must
+     *      appear exactly once and nothing else may.
+     * @param domains The LAYERZERO_DOMAIN_CONFIG domains, in constructor order
+     * @param entries Parsed LAYERZERO_RECEIVE_CONFIRMATIONS entries
+     * @return confirmations One value per domain, in domain order
+     */
+    function _orderReceiveConfirmations(
+        IMessageBridgeProver.Domain[] memory domains,
+        IMessageBridgeProver.Domain[] memory entries
+    ) internal pure returns (uint64[] memory confirmations) {
+        require(
+            entries.length == domains.length,
+            string.concat(
+                "LAYERZERO_RECEIVE_CONFIRMATIONS: ",
+                vm.toString(entries.length),
+                " entries for ",
+                vm.toString(domains.length),
+                " LAYERZERO_DOMAIN_CONFIG domains"
+            )
+        );
+        confirmations = new uint64[](domains.length);
+        for (uint256 i = 0; i < domains.length; i++) {
+            bool found = false;
+            for (uint256 j = 0; j < entries.length; j++) {
+                if (entries[j].domain != domains[i].domain) continue;
+                require(
+                    !found,
+                    string.concat(
+                        "LAYERZERO_RECEIVE_CONFIRMATIONS: duplicate domain ",
+                        vm.toString(uint256(domains[i].domain))
+                    )
+                );
+                confirmations[i] = entries[j].chainId;
+                found = true;
+            }
+            require(
+                found,
+                string.concat(
+                    "LAYERZERO_RECEIVE_CONFIRMATIONS: missing domain ",
+                    vm.toString(uint256(domains[i].domain))
+                )
+            );
+        }
     }
 
     function getContractSalt(

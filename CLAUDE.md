@@ -187,7 +187,12 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `MAILBOX_CONTRACT` - Hyperlane mailbox address
 - `ROUTER_CONTRACT` - Metalayer router address
 - `LAYERZERO_ENDPOINT` - LayerZero endpoint address
-- `LAYERZERO_DELEGATE` - LayerZero delegate (optional; defaults to deployer)
+- LayerZeroProver pathway security (required when `LAYERZERO_ENDPOINT` is set). The prover is **born locked**: its constructor pins the libraries, executor and ULN of every `LAYERZERO_DOMAIN_CONFIG` domain, then makes the prover its own endpoint delegate, so nothing can change a pathway afterwards (there is no delegate to configure or revoke). Unset values reach the constructor as zero, which it rejects by name rather than inheriting LayerZero's mutable defaults:
+  - `LAYERZERO_SEND_LIBRARY`, `LAYERZERO_RECEIVE_LIBRARY` - SendUln302 / ReceiveUln302
+  - `LAYERZERO_EXECUTOR`, `LAYERZERO_MAX_MESSAGE_SIZE` (default 10000)
+  - `LAYERZERO_REQUIRED_DVNS` - comma-separated, strictly ascending; all required, no optional DVNs
+  - `LAYERZERO_SEND_CONFIRMATIONS` - this chain's block confirmations
+  - `LAYERZERO_RECEIVE_CONFIRMATIONS` - `eid:confirmations` pairs (any order) naming exactly the `LAYERZERO_DOMAIN_CONFIG` domains
 - `POLYMER_CROSS_L2_PROVER_V2` - Polymer CrossL2ProverV2 address
 - `POLYMER_MAX_LOG_DATA_SIZE` - max `encodedProofs` size in bytes accepted by `PolymerProver.prove` (optional; defaults to `2048`). Fixed at deploy time (constructor-only, no setter); the constructor rejects `0` and anything above `MAX_LOG_DATA_SIZE_GUARD` (32 KiB). The 32 KiB guard is a sanity bound, not the operational ceiling: `encodedProofs` is `8 + 64*n` bytes for an n-intent `Inbox.prove` batch, so 2048 allows 31 intents per batch (a 32-intent batch reverts `MaxDataSizeExceeded`); Polymer's `unindexed_data` cap (~3000 bytes, ~45 pairs) bounds any event; and a Solana consumer drains at most `MAX_INTENTS_PER_PROVE` (24 pairs, 1544 bytes) in one legacy transaction with no resume mode, so an oversized Solana-bound event costs a wasted Polymer proof and an `Inbox.prove` retry with a smaller batch.
 - `POLYMER_SOLANA_CHAIN_ID` - Polymer's own chain identifier for Solana, stored as `SOLANA_POLYMER_CHAIN_ID` and used to gate which emitting chain's logs are treated as Solana (documented as `2`; confirm with Polymer per environment). **Required when deploying PolymerProver**, no default. Distinct from `SOLANA_CHAIN_ID`. Immutable, and the PolymerProver CREATE3 salt does not mix it in, so a wrong value is permanent at that address.

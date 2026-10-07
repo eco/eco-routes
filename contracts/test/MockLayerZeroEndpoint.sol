@@ -7,10 +7,74 @@ pragma solidity ^0.8.26;
 import {ILayerZeroEndpointV2} from "../interfaces/layerzero/ILayerZeroEndpointV2.sol";
 import {ILayerZeroReceiver} from "../interfaces/layerzero/ILayerZeroReceiver.sol";
 
-contract MockLayerZeroEndpoint {
+/**
+ * @dev The EndpointV2 OApp-configuration surface LayerZeroProver uses, with the
+ *      real endpoint's access rule: only the OApp itself or its delegate may
+ *      configure it. Stores configs verbatim so tests can read back exactly
+ *      what the prover pinned.
+ */
+abstract contract LayerZeroEndpointConfigMock {
+    mapping(address => address) public delegates;
+    mapping(address => mapping(uint32 => address)) public sendLibrary;
+    mapping(address => mapping(uint32 => address)) public receiveLibrary;
+    mapping(address => mapping(uint32 => uint256))
+        public receiveLibraryGracePeriod;
+    mapping(address => mapping(address => mapping(uint32 => mapping(uint32 => bytes))))
+        internal _configs;
+
+    modifier onlyAuthorized(address oapp) {
+        if (msg.sender != oapp && msg.sender != delegates[oapp]) {
+            revert("LZ_Unauthorized");
+        }
+        _;
+    }
+
+    function setDelegate(address delegate) external {
+        delegates[msg.sender] = delegate;
+    }
+
+    function setSendLibrary(
+        address oapp,
+        uint32 eid,
+        address lib
+    ) external onlyAuthorized(oapp) {
+        sendLibrary[oapp][eid] = lib;
+    }
+
+    function setReceiveLibrary(
+        address oapp,
+        uint32 eid,
+        address lib,
+        uint256 gracePeriod
+    ) external onlyAuthorized(oapp) {
+        receiveLibrary[oapp][eid] = lib;
+        receiveLibraryGracePeriod[oapp][eid] = gracePeriod;
+    }
+
+    function setConfig(
+        address oapp,
+        address lib,
+        ILayerZeroEndpointV2.SetConfigParam[] calldata params
+    ) external onlyAuthorized(oapp) {
+        for (uint256 i = 0; i < params.length; i++) {
+            _configs[oapp][lib][params[i].eid][params[i].configType] = params[i]
+                .config;
+        }
+    }
+
+    function getConfig(
+        address oapp,
+        address lib,
+        uint32 eid,
+        uint32 configType
+    ) external view returns (bytes memory) {
+        return _configs[oapp][lib][eid][configType];
+    }
+}
+
+contract MockLayerZeroEndpoint is LayerZeroEndpointConfigMock {
     uint256 public constant FEE = 0.001 ether;
     bool public dispatched;
-    mapping(address => address) public delegates;
 
     function send(
         ILayerZeroEndpointV2.MessagingParams calldata params,
@@ -42,10 +106,6 @@ contract MockLayerZeroEndpoint {
     ) external pure returns (ILayerZeroEndpointV2.MessagingFee memory) {
         return
             ILayerZeroEndpointV2.MessagingFee({nativeFee: FEE, lzTokenFee: 0});
-    }
-
-    function setDelegate(address delegate) external {
-        delegates[msg.sender] = delegate;
     }
 }
 
