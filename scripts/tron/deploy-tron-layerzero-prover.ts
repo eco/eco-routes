@@ -144,7 +144,7 @@ async function main(): Promise<void> {
 
   let deployed: string | undefined
   for (let i = 0; i < 60 && !deployed; i++) {
-    await new Promise((r) => setTimeout(r, 3000))
+    await new Promise((resolve) => setTimeout(resolve, 3000))
     const info = (await tronWeb.trx.getTransactionInfo(sent.txid)) as {
       id?: string
       receipt?: { result?: string }
