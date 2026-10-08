@@ -89,12 +89,18 @@ The system supports multiple bridge protocols through specialized prover contrac
   and the solver picks a live one at fulfillment time. Security floor is the
   weakest member, and membership is immutable. Emits no `IntentProven` /
   `IntentProofInvalidated`: **indexers must watch the member provers, not this
-  address.** Membership requires a **bridge-attested** `destination`: only
-  `MessageBridgeProver` descendants qualify, because their destination is
-  cross-checked against the bridge origin domain in `_handleCrossChainMessage`.
-  `PolymerProver` and `LocalProver` do not qualify and are rejected at deploy
-  time — a member that can record a wrong `destination` shadows valid proofs held
-  by lower-priority members, and the refund path cannot recover from that.
+  address.** Membership requires an **attested** `destination`, because a
+  member that can record a wrong `destination` shadows valid proofs held by
+  lower-priority members, and the refund path cannot recover from that.
+  `MessageBridgeProver` descendants qualify: their destination is cross-checked
+  against the bridge origin domain in `_handleCrossChainMessage`. `PolymerProver`
+  qualifies too: `validate` reverts `InvalidDestinationChain` unless the chain
+  Polymer attributes the event to equals the 8-byte chain-ID header the
+  destination Portal wrote, and that Portal hashes every intent it fulfills with
+  the same `CHAIN_ID`, so its destination cannot disagree with the intent hash.
+  The deploy validator admits only the run's own `PolymerProver`
+  (`ctx.polymerProver`, built from this source; every release since v2.9.0 has
+  the check). `LocalProver` does not qualify and is rejected at deploy time.
   `HyperProver`/`MetaProver` members additionally **require a non-empty
   `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`**: their resolvers fall back to
   `chainId != 0 ? chainId : originDomain`, so an omitted lane records a

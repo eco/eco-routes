@@ -12,6 +12,8 @@ import {TestProver} from "../../contracts/test/TestProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
+import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
+import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 
 /// @dev Harness exposing Deploy's internal validator and member-list parser
 ///      to tests
@@ -100,20 +102,62 @@ contract AggregatorProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
-    function test_rejectsPolymerProver() public {
-        // Uses MockDomainProver (which exposes chainIdByDomain), not a real
-        // PolymerProver, deliberately: a real PolymerProver has no
-        // chainIdByDomain and would already be rejected one line earlier by
-        // the unconditional probe, never reaching the Polymer-specific check
-        // this test targets.
-        MockDomainProver polymer = new MockDomainProver();
+    function _realPolymerProver() internal returns (PolymerProver) {
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = _b32(address(0xBEEF));
+        return
+            new PolymerProver(
+                address(new Portal(address(0))),
+                address(new TestCrossL2ProverV2(10, address(0), "", "")),
+                32 * 1024,
+                1, // Solana's Polymer chain id
+                1399811149, // Solana's Eco chain id
+                provers
+            );
+    }
+
+    function test_acceptsPolymerProverDeployedThisRun() public {
+        // No chainIdByDomain, and no domain config to round-trip: its
+        // destination is checked inside validate() instead.
+        PolymerProver polymer = _realPolymerProver();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(polymer)))
+        );
+        ctx.polymerProver = address(polymer);
+
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsPolymerProverNotFromThisRun() public {
+        // A PolymerProver deployed elsewhere may predate the header check,
+        // so it gets no Polymer branch; even the escape hatch cannot admit
+        // it past the chainIdByDomain probe.
+        PolymerProver polymer = _realPolymerProver();
+        Deploy.DeploymentContext memory ctx = _ctxWith(
+            _one(_b32(address(polymer)))
+        );
+        ctx.allowUnverifiedMembers = true;
+
+        vm.expectRevert(
+            bytes(
+                "member does not expose chainIdByDomain; destination not bridge-attested"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsPolymerMemberWithMalformedProvenIntents() public {
+        // The Polymer branch skips the domain checks, not the shape check.
+        MockDomainProverMalformedProvenIntents polymer = new MockDomainProverMalformedProvenIntents();
         Deploy.DeploymentContext memory ctx = _ctxWith(
             _one(_b32(address(polymer)))
         );
         ctx.polymerProver = address(polymer);
 
         vm.expectRevert(
-            bytes("PolymerProver destination is not bridge-attested")
+            bytes(
+                "member provenIntents does not return a well-formed ProofData"
+            )
         );
         harness.exposedValidate(ctx);
     }
