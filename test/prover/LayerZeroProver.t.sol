@@ -9,10 +9,9 @@ import {Portal} from "../../contracts/Portal.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 import {Intent, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
+import {LayerZeroEndpointConfigMock} from "../../contracts/test/MockLayerZeroEndpoint.sol";
 
-contract MockLayerZeroEndpoint {
-    mapping(address => address) public delegates;
-
+contract MockLayerZeroEndpoint is LayerZeroEndpointConfigMock {
     function send(
         ILayerZeroEndpointV2.MessagingParams calldata params,
         address /* refundAddress */
@@ -38,28 +37,19 @@ contract MockLayerZeroEndpoint {
                 lzTokenFee: 0
             });
     }
-
-    function setDelegate(address delegate) external {
-        delegates[msg.sender] = delegate;
-    }
 }
 
 /**
  * @dev Extended mock that (a) records the `options` field from every `send()` call
  *      and (b) supports low-gas message delivery to reproduce the OOG wedge, and
- *      (c) exposes a delegate-gated `skip()` to prove post-revocation unrecoverability.
+ *      (c) exposes a delegate-gated `skip()` to prove the locked delegate cannot be used.
  */
-contract RecordingMockLayerZeroEndpoint {
-    mapping(address => address) public delegates;
+contract RecordingMockLayerZeroEndpoint is LayerZeroEndpointConfigMock {
     bytes public lastOptions;
 
     // Mirrors LZ V2's lazyInboundNonce: path key => highest successfully delivered nonce.
     // key = keccak256(abi.encode(srcEid, sender, receiver))
     mapping(bytes32 => uint64) public lazyInboundNonce;
-
-    function setDelegate(address delegate) external {
-        delegates[msg.sender] = delegate;
-    }
 
     function send(
         ILayerZeroEndpointV2.MessagingParams calldata params,
@@ -149,6 +139,43 @@ contract LayerZeroProverTest is BaseTest {
     bytes32 constant SOURCE_PROVER =
         bytes32(uint256(uint160(0x1234567890123456789012345678901234567890)));
 
+    address constant SEND_LIB = address(0x5E4D11B);
+    address constant RECEIVE_LIB = address(0x8EC11B);
+    address constant EXECUTOR = address(0xE8EC);
+    address constant DVN_A = address(0xD1);
+    address constant DVN_B = address(0xD2);
+    address constant DVN_C = address(0xD3);
+    uint32 constant MAX_MESSAGE_SIZE_BASE = 10_000;
+    uint64 constant SEND_CONFIRMATIONS = 15;
+    uint64 constant RECEIVE_CONFIRMATIONS_BASE = 20;
+
+    /// @dev A valid pathway config for `domainCount` domains; domain i gets
+    ///      RECEIVE_CONFIRMATIONS_BASE + i receive confirmations and a
+    ///      MAX_MESSAGE_SIZE_BASE + i executor message cap.
+    function _lzConfig(
+        uint256 domainCount
+    ) internal pure returns (LayerZeroProver.LayerZeroConfig memory config) {
+        address[] memory dvns = new address[](3);
+        dvns[0] = DVN_A;
+        dvns[1] = DVN_B;
+        dvns[2] = DVN_C;
+        uint64[] memory receiveConfirmations = new uint64[](domainCount);
+        uint32[] memory maxMessageSizes = new uint32[](domainCount);
+        for (uint256 i = 0; i < domainCount; i++) {
+            receiveConfirmations[i] = RECEIVE_CONFIRMATIONS_BASE + uint64(i);
+            maxMessageSizes[i] = MAX_MESSAGE_SIZE_BASE + uint32(i);
+        }
+        config = LayerZeroProver.LayerZeroConfig({
+            sendLibrary: SEND_LIB,
+            receiveLibrary: RECEIVE_LIB,
+            executor: EXECUTOR,
+            maxMessageSizes: maxMessageSizes,
+            requiredDVNs: dvns,
+            sendConfirmations: SEND_CONFIRMATIONS,
+            receiveConfirmations: receiveConfirmations
+        });
+    }
+
     /**
      * @notice Helper function to encode proofs from separate arrays
      * @param intentHashes Array of intent hashes
@@ -213,11 +240,11 @@ contract LayerZeroProverTest is BaseTest {
 
         lzProver = new LayerZeroProver(
             address(endpoint),
-            address(this), // delegate
             address(portal),
             trustedProvers,
             200000,
-            domains
+            domains,
+            _lzConfig(domains.length)
         );
     }
 
@@ -385,11 +412,11 @@ contract LayerZeroProverTest is BaseTest {
         vm.expectRevert(LayerZeroProver.EndpointCannotBeZeroAddress.selector);
         new LayerZeroProver(
             address(0),
-            address(this), // delegate
             address(portal),
             trustedProvers,
             200000,
-            new IMessageBridgeProver.Domain[](0)
+            new IMessageBridgeProver.Domain[](0),
+            _lzConfig(0)
         );
     }
 
@@ -649,32 +676,241 @@ contract LayerZeroProverTest is BaseTest {
         uint64 destination
     );
 
-    // ── revokeDelegation ──────────────────────────────────────────────────────
+    // ── Born-locked pathway config ────────────────────────────────────────────
 
-    function test_revokeDelegation_succeeds() public {
-        // address(this) is the delegate set in setUp
-        vm.expectEmit(true, false, false, false, address(lzProver));
-        emit LayerZeroProver.DelegationRevoked(address(this));
+    /// @dev Domains registered in setUp, in order.
+    function _setUpDomains() internal pure returns (uint32[3] memory eids) {
+        eids = [uint32(SOURCE_CHAIN_ID), uint32(1), uint32(2)];
+    }
 
-        lzProver.revokeDelegation();
+    function _expectedUln(
+        uint64 confirmations
+    ) internal pure returns (bytes memory) {
+        address[] memory dvns = new address[](3);
+        dvns[0] = DVN_A;
+        dvns[1] = DVN_B;
+        dvns[2] = DVN_C;
+        return
+            abi.encode(
+                LayerZeroProver.UlnConfig({
+                    confirmations: confirmations,
+                    requiredDVNCount: 3,
+                    optionalDVNCount: type(uint8).max,
+                    optionalDVNThreshold: 0,
+                    requiredDVNs: dvns,
+                    optionalDVNs: new address[](0)
+                })
+            );
+    }
 
+    function test_constructor_pinsLibrariesOnEveryDomain() public view {
+        uint32[3] memory eids = _setUpDomains();
+        for (uint256 i = 0; i < eids.length; i++) {
+            assertEq(
+                endpoint.sendLibrary(address(lzProver), eids[i]),
+                SEND_LIB
+            );
+            assertEq(
+                endpoint.receiveLibrary(address(lzProver), eids[i]),
+                RECEIVE_LIB
+            );
+            assertEq(
+                endpoint.receiveLibraryGracePeriod(address(lzProver), eids[i]),
+                0
+            );
+        }
+    }
+
+    function test_constructor_pinsSendExecutorAndUln() public view {
+        uint32[3] memory eids = _setUpDomains();
+        for (uint256 i = 0; i < eids.length; i++) {
+            // Executor: each destination's own message cap, matched by index.
+            assertEq(
+                endpoint.getConfig(address(lzProver), SEND_LIB, eids[i], 1),
+                abi.encode(
+                    LayerZeroProver.ExecutorConfig({
+                        maxMessageSize: MAX_MESSAGE_SIZE_BASE + uint32(i),
+                        executor: EXECUTOR
+                    })
+                )
+            );
+            // Send side: this chain's confirmations, optional DVNs NIL (255), never 0.
+            assertEq(
+                endpoint.getConfig(address(lzProver), SEND_LIB, eids[i], 2),
+                _expectedUln(SEND_CONFIRMATIONS)
+            );
+        }
+    }
+
+    function test_constructor_pinsReceiveUlnPerDomain() public view {
+        uint32[3] memory eids = _setUpDomains();
+        for (uint256 i = 0; i < eids.length; i++) {
+            // Receive side: the origin chain's confirmations, matched by index.
+            assertEq(
+                endpoint.getConfig(address(lzProver), RECEIVE_LIB, eids[i], 2),
+                _expectedUln(RECEIVE_CONFIRMATIONS_BASE + uint64(i))
+            );
+            assertEq(
+                endpoint
+                    .getConfig(address(lzProver), RECEIVE_LIB, eids[i], 1)
+                    .length,
+                0,
+                "receive library gets no executor config"
+            );
+        }
+    }
+
+    function test_constructor_locksDelegateToItself() public {
         assertEq(endpoint.delegates(address(lzProver)), address(lzProver));
+
+        // Neither the deployer nor anyone else can change a pathway afterwards.
+        ILayerZeroEndpointV2.SetConfigParam[]
+            memory params = new ILayerZeroEndpointV2.SetConfigParam[](1);
+        params[0] = ILayerZeroEndpointV2.SetConfigParam({
+            eid: uint32(SOURCE_CHAIN_ID),
+            configType: 2,
+            config: ""
+        });
+        vm.expectRevert("LZ_Unauthorized");
+        endpoint.setConfig(address(lzProver), SEND_LIB, params);
+
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert("LZ_Unauthorized");
+        endpoint.setSendLibrary(
+            address(lzProver),
+            uint32(SOURCE_CHAIN_ID),
+            makeAddr("evilLib")
+        );
     }
 
-    function test_revokeDelegation_revertsIfNotDelegate() public {
-        address nonDelegate = makeAddr("nonDelegate");
-        vm.prank(nonDelegate);
-        vm.expectRevert(LayerZeroProver.NotDelegate.selector);
-        lzProver.revokeDelegation();
+    function _deployWith(
+        LayerZeroProver.LayerZeroConfig memory config
+    ) internal returns (LayerZeroProver) {
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = SOURCE_PROVER;
+        IMessageBridgeProver.Domain[]
+            memory domains = new IMessageBridgeProver.Domain[](2);
+        domains[0] = IMessageBridgeProver.Domain({domain: 1, chainId: 1});
+        domains[1] = IMessageBridgeProver.Domain({domain: 2, chainId: 2});
+        return
+            new LayerZeroProver(
+                address(endpoint),
+                address(portal),
+                provers,
+                200_000,
+                domains,
+                config
+            );
     }
 
-    function test_revokeDelegation_locksSubsequentCalls() public {
-        // Revoke once — delegate is now address(lzProver)
-        lzProver.revokeDelegation();
+    function test_constructor_revertsOnZeroLibrary() public {
+        LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+        config.sendLibrary = address(0);
+        vm.expectRevert(LayerZeroProver.LibraryCannotBeZeroAddress.selector);
+        _deployWith(config);
 
-        // Original delegate can no longer call it
-        vm.expectRevert(LayerZeroProver.NotDelegate.selector);
-        lzProver.revokeDelegation();
+        config = _lzConfig(2);
+        config.receiveLibrary = address(0);
+        vm.expectRevert(LayerZeroProver.LibraryCannotBeZeroAddress.selector);
+        _deployWith(config);
+    }
+
+    /// @dev ULN302 reads executor 0 / maxMessageSize 0 as "use LayerZero's default".
+    function test_constructor_revertsOnDefaultingExecutorConfig() public {
+        LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+        config.executor = address(0);
+        vm.expectRevert(LayerZeroProver.InvalidExecutorConfig.selector);
+        _deployWith(config);
+
+        config = _lzConfig(2);
+        config.maxMessageSizes[1] = 0;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.InvalidMaxMessageSize.selector,
+                uint64(2)
+            )
+        );
+        _deployWith(config);
+    }
+
+    function test_constructor_revertsOnMaxMessageSizesLengthMismatch() public {
+        LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+        config.maxMessageSizes = _lzConfig(3).maxMessageSizes;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.MaxMessageSizesLengthMismatch.selector,
+                2,
+                3
+            )
+        );
+        _deployWith(config);
+    }
+
+    /// @dev ULN302 reads requiredDVNCount 0 as "use LayerZero's default DVNs".
+    function test_constructor_revertsOnRequiredDVNCountOutOfRange() public {
+        LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+        config.requiredDVNs = new address[](0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.InvalidRequiredDVNCount.selector,
+                0
+            )
+        );
+        _deployWith(config);
+
+        config.requiredDVNs = new address[](128);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.InvalidRequiredDVNCount.selector,
+                128
+            )
+        );
+        _deployWith(config);
+    }
+
+    /// @dev 0 inherits LayerZero's default; type(uint64).max is ULN302's NIL (zero blocks).
+    function test_constructor_revertsOnUnpinnedSendConfirmations() public {
+        uint64[2] memory bad = [uint64(0), type(uint64).max];
+        for (uint256 i = 0; i < bad.length; i++) {
+            LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+            config.sendConfirmations = bad[i];
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    LayerZeroProver.InvalidSendConfirmations.selector,
+                    bad[i]
+                )
+            );
+            _deployWith(config);
+        }
+    }
+
+    function test_constructor_revertsOnUnpinnedReceiveConfirmations() public {
+        uint64[2] memory bad = [uint64(0), type(uint64).max];
+        for (uint256 i = 0; i < bad.length; i++) {
+            LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+            config.receiveConfirmations[1] = bad[i];
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    LayerZeroProver.InvalidReceiveConfirmations.selector,
+                    uint64(2),
+                    bad[i]
+                )
+            );
+            _deployWith(config);
+        }
+    }
+
+    function test_constructor_revertsOnReceiveConfirmationsLengthMismatch()
+        public
+    {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.ReceiveConfirmationsLengthMismatch.selector,
+                2,
+                3
+            )
+        );
+        _deployWith(_lzConfig(3));
     }
 
     /// @dev Delivers one (intentHash, claimant) pair from SOURCE_PROVER on
@@ -782,8 +1018,9 @@ contract LayerZeroProverTest is BaseTest {
     //     the nonce permanently unprocessed and blocking all subsequent messages on
     //     the same (srcEid, sender) path.
     //
-    //  4. After revokeDelegation(), no external party can call skip/clear on the
-    //     endpoint, making a stuck nonce permanently unrecoverable.
+    //  4. The delegate is locked to the prover at construction, so no external
+    //     party can call skip/clear on the endpoint, making a stuck nonce
+    //     permanently unrecoverable.
     // ─────────────────────────────────────────────────────────────────────────
 
     /// @dev Deploy a prover wired to a RecordingMockLayerZeroEndpoint.
@@ -805,11 +1042,11 @@ contract LayerZeroProverTest is BaseTest {
         });
         recProver = new LayerZeroProver(
             address(recEndpoint),
-            address(this), // delegate
             address(portal),
             provers,
             200_000,
-            domains
+            domains,
+            _lzConfig(domains.length)
         );
     }
 
@@ -1200,42 +1437,31 @@ contract LayerZeroProverTest is BaseTest {
     }
 
     /**
-     * @notice After revokeDelegation(), no one can call skip/clear to recover a stuck nonce.
-     * @dev revokeDelegation() sets the endpoint delegate to address(lzProver). Since the
+     * @notice No one can call skip/clear to recover a stuck nonce.
+     * @dev The constructor sets the endpoint delegate to the prover itself. Since the
      *      prover has no function that calls endpoint.skip() or endpoint.clear(), the
-     *      delegate slot is permanently occupied by an account that cannot act on it.
-     *      Any previous operator loses the ability to perform recovery operations.
+     *      delegate slot is permanently occupied by an account that cannot act on it,
+     *      and the deployer never held it.
      */
-    function test_dos_postRevokeDelegation_skipImpossible() public {
+    function test_dos_lockedDelegate_skipImpossible() public {
         (
             RecordingMockLayerZeroEndpoint recEndpoint,
             LayerZeroProver recProver
         ) = _deployWithRecordingEndpoint();
 
-        // address(this) is the current delegate — revoke it.
-        recProver.revokeDelegation();
-
-        // Delegate is now the prover itself.
         assertEq(
             recEndpoint.delegates(address(recProver)),
             address(recProver),
-            "delegate must be lzProver after revocation"
+            "delegate must be the prover from construction"
         );
 
-        // The original operator is no longer the delegate and cannot call skip.
+        // The deployer is not the delegate and cannot call skip.
         vm.expectRevert("RecordingMock: not delegate");
         recEndpoint.skip(
             address(recProver),
             uint32(SOURCE_CHAIN_ID),
             SOURCE_PROVER,
             1
-        );
-
-        // address(recProver) is the delegate but exposes no function to call skip —
-        // no recovery path exists for a wedged nonce.
-        assertTrue(
-            recEndpoint.delegates(address(recProver)) == address(recProver),
-            "lzProver is its own delegate with no skip capability"
         );
     }
 

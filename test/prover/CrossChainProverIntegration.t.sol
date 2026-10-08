@@ -70,13 +70,23 @@ contract CrossChainProverIntegrationTest is BaseTest {
         );
         bytes32[] memory lzProvers = new bytes32[](1);
         lzProvers[0] = bytes32(uint256(uint160(address(prover))));
+        address[] memory lzDVNs = new address[](1);
+        lzDVNs[0] = address(0xD1);
         layerZeroProver = new LayerZeroProver(
             address(lzEndpoint),
-            address(this), // delegate
             address(portal),
             lzProvers,
             200000,
-            new IMessageBridgeProver.Domain[](0)
+            new IMessageBridgeProver.Domain[](0),
+            LayerZeroProver.LayerZeroConfig({
+                sendLibrary: address(0x5E4D11B),
+                receiveLibrary: address(0x8EC11B),
+                executor: address(0xE8EC),
+                maxMessageSizes: new uint32[](0),
+                requiredDVNs: lzDVNs,
+                sendConfirmations: 15,
+                receiveConfirmations: new uint64[](0)
+            })
         );
 
         vm.stopPrank();
@@ -285,10 +295,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
 
         assertFalse(intentSource.isIntentFunded(provenIntent));
         assertEq(tokenA.balanceOf(claimant), initialBalanceA + MINT_AMOUNT);
-        assertEq(
-            tokenB.balanceOf(claimant),
-            initialBalanceB + MINT_AMOUNT * 2
-        );
+        assertEq(tokenB.balanceOf(claimant), initialBalanceB + MINT_AMOUNT * 2);
     }
 
     function testSpoofedHeaderProofRevertsAtReceiveNeverRecordsClaimant()
