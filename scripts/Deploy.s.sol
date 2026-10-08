@@ -16,6 +16,8 @@ import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
 import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
+import {IProver} from "../contracts/interfaces/IProver.sol";
+import {AddressConverter} from "../contracts/libs/AddressConverter.sol";
 
 // OpenZeppelin
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -879,7 +881,7 @@ contract Deploy is Script {
         address member
     ) internal view returns (bool ok) {
         (bool success, bytes memory ret) = member.staticcall(
-            abi.encodeWithSignature("provenIntents(bytes32)", bytes32(0))
+            abi.encodeCall(IProver.provenIntents, (bytes32(0)))
         );
         if (!success || ret.length != 64) {
             return false;
@@ -925,9 +927,12 @@ contract Deploy is Script {
 
         for (uint256 i = 0; i < ctx.aggregatorProverMembers.length; i++) {
             bytes32 raw = ctx.aggregatorProverMembers[i];
-            require(uint256(raw) >> 160 == 0, "member is not an EVM address");
+            require(
+                AddressConverter.isValidAddress(raw),
+                "member is not an EVM address"
+            );
 
-            address member = address(uint160(uint256(raw)));
+            address member = AddressConverter.toAddress(raw);
             require(member != address(0), "member is zero address");
 
             // A codeless member is skipped forever by the aggregator's
@@ -1081,7 +1086,7 @@ contract Deploy is Script {
             console.log(
                 "  member",
                 i,
-                address(uint160(uint256(ctx.aggregatorProverMembers[i])))
+                AddressConverter.toAddress(ctx.aggregatorProverMembers[i])
             );
         }
     }
