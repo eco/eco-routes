@@ -8,6 +8,9 @@ import {TestProver} from "../../contracts/test/TestProver.sol";
 import {RevertingProver} from "../../contracts/test/RevertingProver.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
+import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
+import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
@@ -285,9 +288,9 @@ contract AggregatorProverIntegrationTest is Test {
     ///      forwards a challenge, and past `reward.deadline` refunds the creator while the
     ///      solver who delivered goes unpaid. The mitigation is deploy-time membership
     ///      validation (`Deploy.validateAggregatorProverMembers`), which restricts members to
-    ///      provers whose `destination` is bridge-attested by
-    ///      `MessageBridgeProver._handleCrossChainMessage`; the asymmetry itself remains in
-    ///      `IntentSource`.
+    ///      provers whose `destination` is attested (by
+    ///      `MessageBridgeProver._handleCrossChainMessage`, or by `PolymerProver.validate`'s
+    ///      header check); the asymmetry itself remains in `IntentSource`.
     ///      When that asymmetry is fixed, this test MUST be updated to assert the fixed
     ///      behaviour.
     function test_refund_shadowedProofRefundsCreator_knownLimitation() public {
@@ -465,5 +468,127 @@ contract AggregatorProverIntegrationTest is Test {
             "creator must not be refunded"
         );
         assertEq(solver.balance - solverBefore, REWARD);
+    }
+
+    /// @dev A PolymerProver member ahead of `proverB`, proving through the real
+    ///      validate() path against a stubbed CrossL2ProverV2
+    function _polymerAggregator()
+        internal
+        returns (
+            AggregatorProver agg,
+            PolymerProver polymer,
+            TestCrossL2ProverV2 crossL2,
+            address emitter
+        )
+    {
+        emitter = makeAddr("polymerDestinationProver");
+        bytes32[] memory whitelist = new bytes32[](1);
+        whitelist[0] = bytes32(uint256(uint160(emitter)));
+        crossL2 = new TestCrossL2ProverV2(0, address(0), "", "");
+        polymer = new PolymerProver(
+            address(portal),
+            address(crossL2),
+            32 * 1024,
+            1,
+            1399811149,
+            whitelist
+        );
+
+        bytes32[] memory members = new bytes32[](2);
+        members[0] = bytes32(uint256(uint160(address(polymer))));
+        members[1] = bytes32(uint256(uint160(address(proverB))));
+        agg = new AggregatorProver(members);
+    }
+
+    /// @dev Stubs a Polymer-attested IntentFulfilledFromSource event: Polymer
+    ///      attributes it to `attestedChain`; the destination Portal wrote
+    ///      `headerChain` into the payload. Returns the proof to validate.
+    function _stubPolymerEvent(
+        TestCrossL2ProverV2 crossL2,
+        address emitter,
+        uint64 attestedChain,
+        uint64 headerChain,
+        bytes32 intentHash
+    ) internal returns (bytes memory proof) {
+        crossL2.setAll(
+            uint32(attestedChain),
+            emitter,
+            abi.encodePacked(
+                keccak256("IntentFulfilledFromSource(uint64,bytes)"),
+                bytes32(block.chainid)
+            ),
+            abi.encodePacked(
+                headerChain,
+                intentHash,
+                bytes32(uint256(uint160(solver)))
+            )
+        );
+        // The stub's constructor entry is index 0; setAll appends index 1.
+        proof = abi.encodePacked(uint256(1));
+    }
+
+    function test_polymerMember_recordsTheIntentsOwnDestination() public {
+        (
+            AggregatorProver agg,
+            PolymerProver polymer,
+            TestCrossL2ProverV2 crossL2,
+            address emitter
+        ) = _polymerAggregator();
+        Intent memory intent = _intent(address(agg), bytes32(uint256(20)));
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        polymer.validate(
+            _stubPolymerEvent(
+                crossL2,
+                emitter,
+                DESTINATION,
+                DESTINATION,
+                intentHash
+            )
+        );
+
+        IProver.ProofData memory proof = agg.provenIntents(intentHash);
+        assertEq(proof.claimant, solver);
+        assertEq(proof.destination, DESTINATION);
+
+        // One withdraw pays: nothing to challenge out first.
+        uint256 before = solver.balance;
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance - before, REWARD);
+    }
+
+    /// @dev The shadowing precondition is an entry whose destination differs
+    ///      from the intent's. Polymer cannot write one: a header that
+    ///      disagrees with the attested chain reverts, so the valid proof of
+    ///      the lower-priority member still blocks a late refund.
+    function test_polymerMember_cannotShadowWithAWrongDestination() public {
+        (
+            AggregatorProver agg,
+            PolymerProver polymer,
+            TestCrossL2ProverV2 crossL2,
+            address emitter
+        ) = _polymerAggregator();
+        Intent memory intent = _intent(address(agg), bytes32(uint256(21)));
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+        proverB.addProvenIntent(intentHash, solver, DESTINATION);
+
+        bytes memory proof = _stubPolymerEvent(
+            crossL2,
+            emitter,
+            WRONG_DESTINATION,
+            DESTINATION,
+            intentHash
+        );
+        vm.expectRevert(PolymerProver.InvalidDestinationChain.selector);
+        polymer.validate(proof);
+
+        vm.warp(block.timestamp + 2000);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IIntentSource.IntentNotClaimed.selector,
+                intentHash
+            )
+        );
+        portal.refund(DESTINATION, routeHash, intent.reward);
     }
 }

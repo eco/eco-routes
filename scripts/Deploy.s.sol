@@ -905,11 +905,13 @@ contract Deploy is Script {
      *      same shadowed value, never forwards a challenge, and past
      *      reward.deadline refunds the creator while the solver who
      *      delivered goes unpaid. This validator is the mitigation: it
-     *      restricts members to provers whose `destination` is
-     *      bridge-attested by MessageBridgeProver._handleCrossChainMessage,
-     *      removing the two config-triggered causes (codeless member,
-     *      non-bridge-attested member). The asymmetry itself remains in
-     *      IntentSource.
+     *      restricts members to provers whose `destination` is attested,
+     *      either by MessageBridgeProver._handleCrossChainMessage (with every
+     *      configured lane round-tripped) or, for this run's PolymerProver,
+     *      by validate()'s check that Polymer's attested chain equals the
+     *      Portal-written chain-ID header. That removes the two
+     *      config-triggered causes (codeless member, unattested member). The
+     *      asymmetry itself remains in IntentSource.
      * @param ctx Deployment context carrying the member list and domain configs
      */
     function validateAggregatorProverMembers(
@@ -929,36 +931,6 @@ contract Deploy is Script {
             // members than the operator believes they configured.
             require(member.code.length > 0, "member has no code on this chain");
 
-            // Defense-in-depth, not the real gate: PolymerProver writes
-            // _provenIntents through its own processIntent and never routes
-            // through BaseProver._processIntentProofs, so its destination is
-            // not bridge-attested. But PolymerProver is BaseProver+Whitelist,
-            // not a MessageBridgeProver descendant, so it has no
-            // chainIdByDomain and the unconditional probe below already
-            // rejects it one step earlier regardless of this check. This
-            // require is also a no-op exactly when it looks most needed: it
-            // is gated on ctx.polymerProver != address(0), so an operator who
-            // lists a previously-deployed PolymerProver as a member without
-            // POLYMER_CROSS_L2_PROVER_V2 set in this run never reaches it.
-            // Kept anyway because its error message is clearer than the
-            // probe's.
-            require(
-                ctx.polymerProver == address(0) || member != ctx.polymerProver,
-                "PolymerProver destination is not bridge-attested"
-            );
-
-            // chainIdByDomain exists only on MessageBridgeProver descendants —
-            // exactly the provers whose destination is bridge-attested via
-            // _handleCrossChainMessage. Its ABSENCE is the signal, so probe it
-            // unconditionally: the per-lane loop below cannot serve as the probe
-            // because HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are exceptions-only
-            // and are legitimately empty.
-            (bool probed, ) = _tryChainIdByDomain(member, 0);
-            require(
-                probed,
-                "member does not expose chainIdByDomain; destination not bridge-attested"
-            );
-
             // A member whose provenIntents reverts under staticcall, or
             // returns a wrong-shaped payload, is silently skipped forever at
             // runtime by AggregatorProver.provenIntents' own guards — and membership
@@ -966,6 +938,34 @@ contract Deploy is Script {
             require(
                 _tryProvenIntentsShape(member),
                 "member provenIntents does not return a well-formed ProofData"
+            );
+
+            // PolymerProver is not a MessageBridgeProver, but its destination
+            // is attested all the same: validate() reverts unless the chain
+            // Polymer attributes the event to equals the 8-byte chain-ID
+            // header the destination Portal wrote, and that Portal hashes
+            // every intent it fulfills with the same CHAIN_ID. There is no
+            // domain map to get wrong, so it cannot record a destination
+            // that disagrees with the intent hash. Only the PolymerProver of
+            // this run qualifies (built from this source; every release since
+            // v2.9.0 has the check): one deployed elsewhere still has to pass
+            // the chainIdByDomain probe below, which it cannot.
+            if (
+                ctx.polymerProver != address(0) && member == ctx.polymerProver
+            ) {
+                continue;
+            }
+
+            // chainIdByDomain exists only on MessageBridgeProver descendants —
+            // exactly the provers whose destination is bridge-attested via
+            // _handleCrossChainMessage. Its ABSENCE is the signal, so probe it
+            // for every other member: the per-lane loop below cannot serve as the probe
+            // because HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are exceptions-only
+            // and are legitimately empty.
+            (bool probed, ) = _tryChainIdByDomain(member, 0);
+            require(
+                probed,
+                "member does not expose chainIdByDomain; destination not bridge-attested"
             );
 
             IMessageBridgeProver.Domain[] memory domains;
