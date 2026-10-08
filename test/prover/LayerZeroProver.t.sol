@@ -145,12 +145,13 @@ contract LayerZeroProverTest is BaseTest {
     address constant DVN_A = address(0xD1);
     address constant DVN_B = address(0xD2);
     address constant DVN_C = address(0xD3);
-    uint32 constant MAX_MESSAGE_SIZE = 10_000;
+    uint32 constant MAX_MESSAGE_SIZE_BASE = 10_000;
     uint64 constant SEND_CONFIRMATIONS = 15;
     uint64 constant RECEIVE_CONFIRMATIONS_BASE = 20;
 
     /// @dev A valid pathway config for `domainCount` domains; domain i gets
-    ///      RECEIVE_CONFIRMATIONS_BASE + i receive confirmations.
+    ///      RECEIVE_CONFIRMATIONS_BASE + i receive confirmations and a
+    ///      MAX_MESSAGE_SIZE_BASE + i executor message cap.
     function _lzConfig(
         uint256 domainCount
     ) internal pure returns (LayerZeroProver.LayerZeroConfig memory config) {
@@ -159,14 +160,16 @@ contract LayerZeroProverTest is BaseTest {
         dvns[1] = DVN_B;
         dvns[2] = DVN_C;
         uint64[] memory receiveConfirmations = new uint64[](domainCount);
+        uint32[] memory maxMessageSizes = new uint32[](domainCount);
         for (uint256 i = 0; i < domainCount; i++) {
             receiveConfirmations[i] = RECEIVE_CONFIRMATIONS_BASE + uint64(i);
+            maxMessageSizes[i] = MAX_MESSAGE_SIZE_BASE + uint32(i);
         }
         config = LayerZeroProver.LayerZeroConfig({
             sendLibrary: SEND_LIB,
             receiveLibrary: RECEIVE_LIB,
             executor: EXECUTOR,
-            maxMessageSize: MAX_MESSAGE_SIZE,
+            maxMessageSizes: maxMessageSizes,
             requiredDVNs: dvns,
             sendConfirmations: SEND_CONFIRMATIONS,
             receiveConfirmations: receiveConfirmations
@@ -719,17 +722,17 @@ contract LayerZeroProverTest is BaseTest {
     }
 
     function test_constructor_pinsSendExecutorAndUln() public view {
-        bytes memory executorConfig = abi.encode(
-            LayerZeroProver.ExecutorConfig({
-                maxMessageSize: MAX_MESSAGE_SIZE,
-                executor: EXECUTOR
-            })
-        );
         uint32[3] memory eids = _setUpDomains();
         for (uint256 i = 0; i < eids.length; i++) {
+            // Executor: each destination's own message cap, matched by index.
             assertEq(
                 endpoint.getConfig(address(lzProver), SEND_LIB, eids[i], 1),
-                executorConfig
+                abi.encode(
+                    LayerZeroProver.ExecutorConfig({
+                        maxMessageSize: MAX_MESSAGE_SIZE_BASE + uint32(i),
+                        executor: EXECUTOR
+                    })
+                )
             );
             // Send side: this chain's confirmations, optional DVNs NIL (255), never 0.
             assertEq(
@@ -820,8 +823,26 @@ contract LayerZeroProverTest is BaseTest {
         _deployWith(config);
 
         config = _lzConfig(2);
-        config.maxMessageSize = 0;
-        vm.expectRevert(LayerZeroProver.InvalidExecutorConfig.selector);
+        config.maxMessageSizes[1] = 0;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.InvalidMaxMessageSize.selector,
+                uint64(2)
+            )
+        );
+        _deployWith(config);
+    }
+
+    function test_constructor_revertsOnMaxMessageSizesLengthMismatch() public {
+        LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+        config.maxMessageSizes = _lzConfig(3).maxMessageSizes;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.MaxMessageSizesLengthMismatch.selector,
+                2,
+                3
+            )
+        );
         _deployWith(config);
     }
 

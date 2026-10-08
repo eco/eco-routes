@@ -75,7 +75,7 @@ describe('LayerZeroProver Test', (): void => {
       sendLibrary: SEND_LIB,
       receiveLibrary: RECEIVE_LIB,
       executor: EXECUTOR,
-      maxMessageSize: 10000,
+      maxMessageSizes: Array.from({ length: domainCount }, () => 10000),
       requiredDVNs: DVNS,
       sendConfirmations: 15,
       receiveConfirmations: Array.from({ length: domainCount }, () => 20),

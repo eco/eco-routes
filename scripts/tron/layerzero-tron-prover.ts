@@ -18,7 +18,7 @@ const CONSTRUCTOR_TYPES = [
   'bytes32[]', // provers (whitelist)
   'uint256', // minGasLimit
   'tuple(uint64 domain, uint64 chainId)[]', // domainConfig
-  'tuple(address sendLibrary, address receiveLibrary, address executor, uint32 maxMessageSize, address[] requiredDVNs, uint64 sendConfirmations, uint64[] receiveConfirmations)', // lzConfig
+  'tuple(address sendLibrary, address receiveLibrary, address executor, uint32[] maxMessageSizes, address[] requiredDVNs, uint64 sendConfirmations, uint64[] receiveConfirmations)', // lzConfig
 ]
 
 export interface LayerZeroPolicyChain {
@@ -30,6 +30,8 @@ export interface LayerZeroPolicyChain {
   receiveUln302: string
   executor: string
   dvns: Record<string, string>
+  /** Largest message this chain can receive; overrides `policy.maxMessageSize`. */
+  maxMessageSize?: number
 }
 
 export interface LayerZeroPolicy {
@@ -49,7 +51,7 @@ export interface TronLayerZeroConfig {
   sendLibrary: string
   receiveLibrary: string
   executor: string
-  maxMessageSize: bigint
+  maxMessageSizes: bigint[]
   requiredDVNs: string[]
   sendConfirmations: bigint
   receiveConfirmations: bigint[]
@@ -92,12 +94,16 @@ export function tronDomainConfig(
 /**
  * The Tron pathway security, as the deployer pins it on the EVM side: Tron's libraries,
  * executor and required DVNs (ascending, as ULN302 requires), Tron's own confirmations
- * for sends, and each origin's confirmations for receives, in domain order.
+ * for sends, and, in domain order, each destination's message cap (its own
+ * `maxMessageSize`, else the policy's) and each origin's confirmations for receives.
  */
 export function tronLayerZeroConfig(
   policy: LayerZeroPolicy,
 ): TronLayerZeroConfig {
   const tron = tronChain(policy)
+  const remotes = tronDomainConfig(policy).map(
+    ({ chainId }) => policy.chains[chainId.toString()],
+  )
   const requiredDVNs = policy.policy.requiredDVNs
     .map((name) => requireAddress(`Tron DVN ${name}`, tron.dvns[name] ?? ''))
     .sort((a, b) => (BigInt(a) < BigInt(b) ? -1 : 1))
@@ -105,12 +111,12 @@ export function tronLayerZeroConfig(
     sendLibrary: requireAddress('Tron sendUln302', tron.sendUln302),
     receiveLibrary: requireAddress('Tron receiveUln302', tron.receiveUln302),
     executor: requireAddress('Tron executor', tron.executor),
-    maxMessageSize: BigInt(policy.policy.maxMessageSize),
+    maxMessageSizes: remotes.map((c) =>
+      BigInt(c.maxMessageSize ?? policy.policy.maxMessageSize),
+    ),
     requiredDVNs,
     sendConfirmations: BigInt(tron.confirmations),
-    receiveConfirmations: tronDomainConfig(policy).map(({ chainId }) =>
-      BigInt(policy.chains[chainId.toString()].confirmations),
-    ),
+    receiveConfirmations: remotes.map((c) => BigInt(c.confirmations)),
   }
 }
 

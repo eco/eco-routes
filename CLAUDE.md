@@ -189,7 +189,8 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `LAYERZERO_ENDPOINT` - LayerZero endpoint address
 - LayerZeroProver pathway security (required when `LAYERZERO_ENDPOINT` is set). The prover is **born locked**: its constructor pins the libraries, executor and ULN of every `LAYERZERO_DOMAIN_CONFIG` domain, then makes the prover its own endpoint delegate, so nothing can change a pathway afterwards (there is no delegate to configure or revoke). Unset values reach the constructor as zero, which it rejects by name rather than inheriting LayerZero's mutable defaults:
   - `LAYERZERO_SEND_LIBRARY`, `LAYERZERO_RECEIVE_LIBRARY` - SendUln302 / ReceiveUln302
-  - `LAYERZERO_EXECUTOR`, `LAYERZERO_MAX_MESSAGE_SIZE` (default 10000)
+  - `LAYERZERO_EXECUTOR`
+  - `LAYERZERO_MAX_MESSAGE_SIZES` - `eid:maxMessageSize` pairs (any order) naming exactly the `LAYERZERO_DOMAIN_CONFIG` domains; the executor cap for messages sent TO that domain. Per destination because receivers differ: an EVM prover takes 10000 bytes (156 proofs), the Solana layerzero_prover only 392 (8-byte header + 6 pairs): the LayerZero executor's delivery transaction costs ~95 bytes per pair, and 7 pairs measured 1227 bytes against its 1220-byte Solana limit (devnet E2E, 2026-10-08), a failure the send library cannot see. The send library enforces it at quote time, so an oversized batch reverts `LZ_MessageLib_InvalidMessageSize` in `fetchFee`/`prove` rather than reaching a receiver that cannot process it
   - `LAYERZERO_REQUIRED_DVNS` - comma-separated, strictly ascending; all required, no optional DVNs
   - `LAYERZERO_SEND_CONFIRMATIONS` - this chain's block confirmations
   - `LAYERZERO_RECEIVE_CONFIRMATIONS` - `eid:confirmations` pairs (any order) naming exactly the `LAYERZERO_DOMAIN_CONFIG` domains

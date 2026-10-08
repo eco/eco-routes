@@ -82,7 +82,7 @@ contract CrossChainProverIntegrationTest is BaseTest {
                 sendLibrary: address(0x5E4D11B),
                 receiveLibrary: address(0x8EC11B),
                 executor: address(0xE8EC),
-                maxMessageSize: 10_000,
+                maxMessageSizes: new uint32[](0),
                 requiredDVNs: lzDVNs,
                 sendConfirmations: 15,
                 receiveConfirmations: new uint64[](0)

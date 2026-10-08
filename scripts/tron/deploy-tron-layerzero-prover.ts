@@ -109,7 +109,7 @@ async function main(): Promise<void> {
   console.log(`  send lib:    ${lzConfig.sendLibrary}`)
   console.log(`  receive lib: ${lzConfig.receiveLibrary}`)
   console.log(
-    `  executor:    ${lzConfig.executor} (maxMessageSize ${lzConfig.maxMessageSize})`,
+    `  executor:    ${lzConfig.executor}; maxMessageSize ${domains.map((d, i) => `${d.domain}:${lzConfig.maxMessageSizes[i]}`).join(', ')}`,
   )
   console.log(
     `  DVNs:        ${lzConfig.requiredDVNs.join(', ')} (all required)`,

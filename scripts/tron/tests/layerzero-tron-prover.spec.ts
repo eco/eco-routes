@@ -31,7 +31,8 @@ const POLICY = {
   },
   crossVmProvers: [],
   chains: {
-    '8453': chain(30184),
+    // A receiver that processes fewer proofs per message (like Solana) caps its own pathway.
+    '8453': chain(30184, { maxMessageSize: 392 }),
     '1': chain(30101, { confirmations: 32 }),
     '43114': chain(30106, { confirmations: 20, planned: true }),
     // DVNs deliberately not in address order: the constructor needs them ascending.
@@ -53,7 +54,7 @@ const CTOR = [
   'bytes32[]',
   'uint256',
   'tuple(uint64 domain, uint64 chainId)[]',
-  'tuple(address sendLibrary, address receiveLibrary, address executor, uint32 maxMessageSize, address[] requiredDVNs, uint64 sendConfirmations, uint64[] receiveConfirmations)',
+  'tuple(address sendLibrary, address receiveLibrary, address executor, uint32[] maxMessageSizes, address[] requiredDVNs, uint64 sendConfirmations, uint64[] receiveConfirmations)',
 ]
 
 const TRON = POLICY.chains['728126428']
@@ -66,7 +67,8 @@ const EXPECTED_LZ_CONFIG = {
   sendLibrary: TRON.sendUln302,
   receiveLibrary: TRON.receiveUln302,
   executor: TRON.executor,
-  maxMessageSize: 10000n,
+  // Each destination's own cap, else the policy's, in domain order.
+  maxMessageSizes: [10000n, 392n, 10000n],
   requiredDVNs: [addr(0x100), addr(0x200), addr(0x300)],
   sendConfirmations: 19n,
   // Each origin's own confirmations, in domain order.
@@ -115,7 +117,7 @@ describe('buildTronLayerZeroProverInitCode', () => {
       sendLibrary: lzConfig.sendLibrary.toLowerCase(),
       receiveLibrary: lzConfig.receiveLibrary.toLowerCase(),
       executor: lzConfig.executor.toLowerCase(),
-      maxMessageSize: lzConfig.maxMessageSize,
+      maxMessageSizes: [...lzConfig.maxMessageSizes],
       requiredDVNs: lzConfig.requiredDVNs.map((d: string) => d.toLowerCase()),
       sendConfirmations: lzConfig.sendConfirmations,
       receiveConfirmations: [...lzConfig.receiveConfirmations],

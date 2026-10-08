@@ -4,8 +4,8 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 import {Deploy} from "../../scripts/Deploy.s.sol";
 
-/// @dev Harness exposing how Deploy lines LAYERZERO_RECEIVE_CONFIRMATIONS up
-///      with LAYERZERO_DOMAIN_CONFIG
+/// @dev Harness exposing how Deploy lines LAYERZERO_RECEIVE_CONFIRMATIONS and
+///      LAYERZERO_MAX_MESSAGE_SIZES up with LAYERZERO_DOMAIN_CONFIG
 contract DeployLayerZeroConfigHarness is Deploy {
     function orderReceiveConfirmations(
         string memory domainConfig,
@@ -15,6 +15,17 @@ contract DeployLayerZeroConfigHarness is Deploy {
             _orderReceiveConfirmations(
                 _parseDomainConfig(domainConfig),
                 _parseDomainConfig(receiveConfirmations)
+            );
+    }
+
+    function orderMaxMessageSizes(
+        string memory domainConfig,
+        string memory maxMessageSizes
+    ) external pure returns (uint32[] memory) {
+        return
+            _orderMaxMessageSizes(
+                _parseDomainConfig(domainConfig),
+                _parseDomainConfig(maxMessageSizes)
             );
     }
 }
@@ -69,5 +80,35 @@ contract DeployLayerZeroConfigTest is Test {
             "30101:1,30110:42161",
             "30101:32,30101:20"
         );
+    }
+
+    /// @dev Each destination keeps its own cap: Solana's receiver handles far
+    ///      fewer proofs per message than an EVM one.
+    function test_ordersMaxMessageSizesByDomainConfig() public view {
+        uint32[] memory sizes = harness.orderMaxMessageSizes(
+            "30101:1,30168:1399811149,30420:728126428",
+            "30168:392,30420:10000,30101:10000"
+        );
+        assertEq(sizes.length, 3);
+        assertEq(sizes[0], 10_000);
+        assertEq(sizes[1], 392);
+        assertEq(sizes[2], 10_000);
+    }
+
+    function test_maxMessageSizesRevertsOnMissingDomain() public {
+        vm.expectRevert(
+            bytes("LAYERZERO_MAX_MESSAGE_SIZES: missing domain 30168")
+        );
+        harness.orderMaxMessageSizes(
+            "30101:1,30168:1399811149",
+            "30101:10000,30184:10000"
+        );
+    }
+
+    function test_maxMessageSizesRevertsAboveUint32() public {
+        vm.expectRevert(
+            bytes("LAYERZERO_MAX_MESSAGE_SIZES: domain 30101 exceeds uint32")
+        );
+        harness.orderMaxMessageSizes("30101:1", "30101:4294967296");
     }
 }

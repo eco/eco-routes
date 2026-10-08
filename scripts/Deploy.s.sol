@@ -1193,15 +1193,12 @@ contract Deploy is Script {
             address(0)
         );
         config.executor = vm.envOr("LAYERZERO_EXECUTOR", address(0));
-        uint256 maxMessageSize = vm.envOr(
-            "LAYERZERO_MAX_MESSAGE_SIZE",
-            uint256(10_000)
+        config.maxMessageSizes = _orderMaxMessageSizes(
+            domains,
+            _parseDomainConfig(
+                vm.envOr("LAYERZERO_MAX_MESSAGE_SIZES", string(""))
+            )
         );
-        require(
-            maxMessageSize <= type(uint32).max,
-            "LAYERZERO_MAX_MESSAGE_SIZE exceeds uint32"
-        );
-        config.maxMessageSize = uint32(maxMessageSize);
         config.requiredDVNs = vm.envOr(
             "LAYERZERO_REQUIRED_DVNS",
             ",",
@@ -1227,28 +1224,77 @@ contract Deploy is Script {
     /**
      * @notice Lines LAYERZERO_RECEIVE_CONFIRMATIONS up with the domain map
      * @dev The env list uses the domain-config format (`eid:confirmations`, the
-     *      second field read as confirmations) in any order. The constructor
-     *      reads confirmations by domainConfig index, so every domain must
-     *      appear exactly once and nothing else may.
+     *      second field read as confirmations) in any order.
      * @param domains The LAYERZERO_DOMAIN_CONFIG domains, in constructor order
      * @param entries Parsed LAYERZERO_RECEIVE_CONFIRMATIONS entries
-     * @return confirmations One value per domain, in domain order
+     * @return One value per domain, in domain order
      */
     function _orderReceiveConfirmations(
         IMessageBridgeProver.Domain[] memory domains,
         IMessageBridgeProver.Domain[] memory entries
-    ) internal pure returns (uint64[] memory confirmations) {
+    ) internal pure returns (uint64[] memory) {
+        return
+            _orderByDomain("LAYERZERO_RECEIVE_CONFIRMATIONS", domains, entries);
+    }
+
+    /**
+     * @notice Lines LAYERZERO_MAX_MESSAGE_SIZES up with the domain map
+     * @dev `eid:maxMessageSize` pairs in any order. Each destination gets its
+     *      own cap, so there is no chain-wide default to forget an exception to.
+     * @param domains The LAYERZERO_DOMAIN_CONFIG domains, in constructor order
+     * @param entries Parsed LAYERZERO_MAX_MESSAGE_SIZES entries
+     * @return sizes One value per domain, in domain order
+     */
+    function _orderMaxMessageSizes(
+        IMessageBridgeProver.Domain[] memory domains,
+        IMessageBridgeProver.Domain[] memory entries
+    ) internal pure returns (uint32[] memory sizes) {
+        uint64[] memory values = _orderByDomain(
+            "LAYERZERO_MAX_MESSAGE_SIZES",
+            domains,
+            entries
+        );
+        sizes = new uint32[](values.length);
+        for (uint256 i = 0; i < values.length; i++) {
+            require(
+                values[i] <= type(uint32).max,
+                string.concat(
+                    "LAYERZERO_MAX_MESSAGE_SIZES: domain ",
+                    vm.toString(uint256(domains[i].domain)),
+                    " exceeds uint32"
+                )
+            );
+            sizes[i] = uint32(values[i]);
+        }
+    }
+
+    /**
+     * @notice Lines a per-domain `eid:value` env list up with the domain map
+     * @dev The constructor reads per-domain values by domainConfig index, so
+     *      every domain must appear exactly once and nothing else may. The
+     *      value is parsed into the Domain struct's chainId field.
+     * @param varName Env var name, for error messages
+     * @param domains The LAYERZERO_DOMAIN_CONFIG domains, in constructor order
+     * @param entries Parsed env entries
+     * @return values One value per domain, in domain order
+     */
+    function _orderByDomain(
+        string memory varName,
+        IMessageBridgeProver.Domain[] memory domains,
+        IMessageBridgeProver.Domain[] memory entries
+    ) internal pure returns (uint64[] memory values) {
         require(
             entries.length == domains.length,
             string.concat(
-                "LAYERZERO_RECEIVE_CONFIRMATIONS: ",
+                varName,
+                ": ",
                 vm.toString(entries.length),
                 " entries for ",
                 vm.toString(domains.length),
                 " LAYERZERO_DOMAIN_CONFIG domains"
             )
         );
-        confirmations = new uint64[](domains.length);
+        values = new uint64[](domains.length);
         for (uint256 i = 0; i < domains.length; i++) {
             bool found = false;
             for (uint256 j = 0; j < entries.length; j++) {
@@ -1256,17 +1302,19 @@ contract Deploy is Script {
                 require(
                     !found,
                     string.concat(
-                        "LAYERZERO_RECEIVE_CONFIRMATIONS: duplicate domain ",
+                        varName,
+                        ": duplicate domain ",
                         vm.toString(uint256(domains[i].domain))
                     )
                 );
-                confirmations[i] = entries[j].chainId;
+                values[i] = entries[j].chainId;
                 found = true;
             }
             require(
                 found,
                 string.concat(
-                    "LAYERZERO_RECEIVE_CONFIRMATIONS: missing domain ",
+                    varName,
+                    ": missing domain ",
                     vm.toString(uint256(domains[i].domain))
                 )
             );

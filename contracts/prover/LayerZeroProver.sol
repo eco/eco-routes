@@ -38,7 +38,9 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
      * @param sendLibrary Send library (SendUln302) for every remote eid
      * @param receiveLibrary Receive library (ReceiveUln302) for every remote eid
      * @param executor Executor paid to deliver outbound messages
-     * @param maxMessageSize Largest outbound message the executor accepts
+     * @param maxMessageSizes Largest outbound message the executor accepts, per
+     *        destination, parallel to domainConfig: a non-EVM receiver (Solana)
+     *        can process far fewer proofs per message than an EVM one
      * @param requiredDVNs DVNs that must all verify, strictly ascending
      * @param sendConfirmations Block confirmations DVNs wait for on this chain
      * @param receiveConfirmations Confirmations per origin, parallel to domainConfig
@@ -47,7 +49,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         address sendLibrary;
         address receiveLibrary;
         address executor;
-        uint32 maxMessageSize;
+        uint32[] maxMessageSizes;
         address[] requiredDVNs;
         uint64 sendConfirmations;
         uint64[] receiveConfirmations;
@@ -122,9 +124,22 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
     error LibraryCannotBeZeroAddress();
 
     /**
-     * @notice Executor and maxMessageSize must be set; ULN302 reads 0 as the default
+     * @notice Executor must be set; ULN302 reads 0 as the default executor
      */
     error InvalidExecutorConfig();
+
+    /**
+     * @notice A maxMessageSize must be set; ULN302 reads 0 as the default
+     * @param domain The destination domain the value was given for
+     */
+    error InvalidMaxMessageSize(uint64 domain);
+
+    /**
+     * @notice maxMessageSizes must have one entry per domainConfig entry
+     * @param expected domainConfig length
+     * @param actual maxMessageSizes length
+     */
+    error MaxMessageSizesLengthMismatch(uint256 expected, uint256 actual);
 
     /**
      * @notice Required DVN count must be 1..127; ULN302 reads 0 as the default DVNs
@@ -239,9 +254,7 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             lzConfig.sendLibrary == address(0) ||
             lzConfig.receiveLibrary == address(0)
         ) revert LibraryCannotBeZeroAddress();
-        if (lzConfig.executor == address(0) || lzConfig.maxMessageSize == 0) {
-            revert InvalidExecutorConfig();
-        }
+        if (lzConfig.executor == address(0)) revert InvalidExecutorConfig();
         uint256 dvnCount = lzConfig.requiredDVNs.length;
         if (dvnCount == 0 || dvnCount > MAX_DVN_COUNT) {
             revert InvalidRequiredDVNCount(dvnCount);
@@ -255,6 +268,12 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
                 lzConfig.receiveConfirmations.length
             );
         }
+        if (lzConfig.maxMessageSizes.length != domainConfig.length) {
+            revert MaxMessageSizesLengthMismatch(
+                domainConfig.length,
+                lzConfig.maxMessageSizes.length
+            );
+        }
         for (uint256 i = 0; i < domainConfig.length; ++i) {
             if (!_isPinned(lzConfig.receiveConfirmations[i])) {
                 revert InvalidReceiveConfirmations(
@@ -262,12 +281,16 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
                     lzConfig.receiveConfirmations[i]
                 );
             }
+            if (lzConfig.maxMessageSizes[i] == 0) {
+                revert InvalidMaxMessageSize(domainConfig[i].domain);
+            }
         }
     }
 
     /**
      * @notice The setConfig entries for both libraries
-     * @dev Send library: executor + ULN with this chain's confirmations, per eid.
+     * @dev Send library: executor with the destination's message cap + ULN with
+     *      this chain's confirmations, per eid.
      *      Receive library: ULN with the origin's confirmations, per eid.
      * @param domainConfig Domain map; each domain is a remote eid
      * @param lzConfig Validated pathway security
@@ -286,9 +309,6 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
         )
     {
         uint256 count = domainConfig.length;
-        bytes memory executorConfig = abi.encode(
-            ExecutorConfig(lzConfig.maxMessageSize, lzConfig.executor)
-        );
         bytes memory sendUln = _encodeUln(
             lzConfig.sendConfirmations,
             lzConfig.requiredDVNs
@@ -301,7 +321,12 @@ contract LayerZeroProver is ILayerZeroReceiver, MessageBridgeProver, Semver {
             sendParams[2 * i] = ILayerZeroEndpointV2.SetConfigParam(
                 eid,
                 CONFIG_TYPE_EXECUTOR,
-                executorConfig
+                abi.encode(
+                    ExecutorConfig(
+                        lzConfig.maxMessageSizes[i],
+                        lzConfig.executor
+                    )
+                )
             );
             sendParams[2 * i + 1] = ILayerZeroEndpointV2.SetConfigParam(
                 eid,
