@@ -69,8 +69,8 @@ Operational scripts for the Eco-Routes protocol.
   provers on the same chain, when `AGGREGATOR_PROVER_MEMBERS` is set: an ordered,
   comma-separated list of member prover addresses (max 8) — **order is
   priority**, the first member with a non-zero claimant wins. Each element may
-  be a 20-byte address or a full 32-byte `bytes32` (left-padded
-  automatically), e.g.:
+  be a 20-byte address (left-padded to `bytes32` automatically) or a full
+  32-byte `bytes32`, e.g.:
 
   ```bash
   AGGREGATOR_PROVER_MEMBERS=0x1111111111111111111111111111111111111111,0x2222222222222222222222222222222222222222

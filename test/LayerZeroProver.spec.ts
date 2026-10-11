@@ -65,6 +65,23 @@ describe('LayerZeroProver Test', (): void => {
     return ethers.concat(parts)
   }
 
+  // Born-locked pathway config: the constructor pins it on every domain.
+  const SEND_LIB = '0x' + '5e'.repeat(20)
+  const RECEIVE_LIB = '0x' + '8e'.repeat(20)
+  const EXECUTOR = '0x' + 'e8'.repeat(20)
+  const DVNS = ['0x' + 'd1'.repeat(20), '0x' + 'd2'.repeat(20)]
+  function lzConfig(domainCount: number) {
+    return {
+      sendLibrary: SEND_LIB,
+      receiveLibrary: RECEIVE_LIB,
+      executor: EXECUTOR,
+      maxMessageSizes: Array.from({ length: domainCount }, () => 10000),
+      requiredDVNs: DVNS,
+      sendConfirmations: 15,
+      receiveConfirmations: Array.from({ length: domainCount }, () => 20),
+    }
+  }
+
   async function deployLayerZeroProverFixture(): Promise<{
     inbox: Inbox
     mockEndpoint: TestLayerZeroEndpoint
@@ -109,11 +126,11 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
         [],
+        lzConfig(0),
       )
 
       expect(await layerZeroProver.ENDPOINT()).to.equal(
@@ -128,7 +145,6 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [
           ethers.zeroPadValue(additionalProver, 32),
@@ -136,6 +152,7 @@ describe('LayerZeroProver Test', (): void => {
         ],
         200000,
         [],
+        lzConfig(0),
       )
 
       expect(
@@ -155,33 +172,47 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
         [],
+        lzConfig(0),
       )
       expect(await layerZeroProver.getProofType()).to.equal('LayerZero')
     })
 
-    it('should set the delegate on the endpoint', async () => {
+    it('should pin every pathway and lock the delegate to itself', async () => {
       layerZeroProver = await (
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
-        [],
+        [[12345, 12345]],
+        lzConfig(1),
       )
+      const prover = await layerZeroProver.getAddress()
 
-      // The constructor should have called setDelegate
-      // In a real test, we'd verify the delegate was set correctly
-      // For now, we just verify the deployment succeeded
-      expect(await layerZeroProver.ENDPOINT()).to.equal(
-        await mockEndpoint.getAddress(),
+      expect(await mockEndpoint.delegates(prover)).to.equal(prover)
+      expect(
+        (await mockEndpoint.sendLibrary(prover, 12345)).toLowerCase(),
+      ).to.equal(SEND_LIB)
+      expect(
+        (await mockEndpoint.receiveLibrary(prover, 12345)).toLowerCase(),
+      ).to.equal(RECEIVE_LIB)
+
+      const uln = (confirmations: number) =>
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ['tuple(uint64,uint8,uint8,uint8,address[],address[])'],
+          [[confirmations, DVNS.length, 255, 0, DVNS, []]],
+        )
+      expect(await mockEndpoint.getConfig(prover, SEND_LIB, 12345, 2)).to.equal(
+        uln(15),
       )
+      expect(
+        await mockEndpoint.getConfig(prover, RECEIVE_LIB, 12345, 2),
+      ).to.equal(uln(20))
     })
   })
 
@@ -191,7 +222,6 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [
           ethers.zeroPadValue(await inbox.getAddress(), 32),
@@ -202,6 +232,7 @@ describe('LayerZeroProver Test', (): void => {
         // these tests' lzReceive origin (srcEid) and message header both use
         // the default chainId of 12345.
         [[12345, 12345]],
+        lzConfig(1),
       )
     })
 
@@ -321,11 +352,11 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
         [], // no lzReceive calls in this section, so no domain registration needed
+        lzConfig(0),
       )
     })
 
@@ -599,13 +630,13 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
         // lzReceive is called below with origin.srcEid=12345 and a message
         // header of 12345 (default); LayerZeroProver is strict, so register it.
         [[12345, 12345]],
+        lzConfig(1),
       )
 
       const intentHash1 = ethers.keccak256('0x1234')
@@ -655,7 +686,6 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
@@ -663,6 +693,7 @@ describe('LayerZeroProver Test', (): void => {
         // (12345) with a message header of 12345 (default); LayerZeroProver
         // is strict, so register it.
         [[12345, 12345]],
+        lzConfig(1),
       )
 
       const portal = await ethers.getContractAt(
@@ -783,7 +814,6 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [ethers.zeroPadValue(await inbox.getAddress(), 32)],
         200000,
@@ -791,6 +821,7 @@ describe('LayerZeroProver Test', (): void => {
         // (12345) with a message header of 12345 (default); LayerZeroProver
         // is strict, so register it.
         [[12345, 12345]],
+        lzConfig(1),
       )
 
       const portal = await ethers.getContractAt(
@@ -1100,11 +1131,11 @@ describe('LayerZeroProver Test', (): void => {
         await ethers.getContractFactory('LayerZeroProver')
       ).deploy(
         await mockEndpoint.getAddress(),
-        await owner.getAddress(), // delegate
         await inbox.getAddress(),
         [],
         200000,
         [],
+        lzConfig(0),
       )
 
       // Create intent with LayerZero as the prover
