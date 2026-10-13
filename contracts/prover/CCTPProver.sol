@@ -217,22 +217,32 @@ contract CCTPProver is MessageBridgeProver, IMessageHandlerV2, Semver {
         }
     }
 
-    // Receive path (IMessageHandlerV2) is added in Task 3.
+    /**
+     * @notice Circle callback for messages attested at Finalized (2000)
+     * @dev Same path as the Unfinalized variant: no finality allowlist
+     */
     function handleReceiveFinalizedMessage(
-        uint32,
-        bytes32,
-        uint32,
-        bytes calldata
-    ) external view override only(TRANSMITTER) returns (bool) {
-        return false;
+        uint32 sourceDomain,
+        bytes32 sender,
+        uint32 /* finalityThresholdExecuted */,
+        bytes calldata messageBody
+    ) external override only(TRANSMITTER) returns (bool) {
+        _handleCrossChainMessage(sourceDomain, sender, messageBody);
+        return true;
     }
 
+    /**
+     * @notice Circle callback for messages attested below Finalized (Fast, 1000)
+     * @dev Accepted from every configured peer. A revert here reverts the whole
+     *      receiveMessage, so the nonce stays unused and the relay can be retried.
+     */
     function handleReceiveUnfinalizedMessage(
-        uint32,
-        bytes32,
-        uint32,
-        bytes calldata
-    ) external view override only(TRANSMITTER) returns (bool) {
-        return false;
+        uint32 sourceDomain,
+        bytes32 sender,
+        uint32 /* finalityThresholdExecuted */,
+        bytes calldata messageBody
+    ) external override only(TRANSMITTER) returns (bool) {
+        _handleCrossChainMessage(sourceDomain, sender, messageBody);
+        return true;
     }
 }

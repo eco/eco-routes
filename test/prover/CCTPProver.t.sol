@@ -5,6 +5,8 @@ import {BaseTest} from "../BaseTest.sol";
 import {CCTPProver} from "../../contracts/prover/CCTPProver.sol";
 import {MockMessageTransmitterV2} from "../../contracts/test/MockMessageTransmitterV2.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 
 contract RejectsEth {
     receive() external payable {
@@ -400,5 +402,219 @@ contract CCTPProverTest is BaseTest {
         bytes memory proofs = _proofs(127); // 8 + 127*64 = 8136 <= 8192
         _prove(ARB_DOMAIN, proofs, 0);
         assertEq(transmitter.lastMessageBody().length, 8136);
+    }
+
+    // ---------- receive ----------
+
+    function _body(
+        uint64 chainId,
+        bytes32 intentHash,
+        bytes32 claimant
+    ) internal pure returns (bytes memory) {
+        return abi.encodePacked(chainId, intentHash, claimant);
+    }
+
+    function _claimant(address a) internal pure returns (bytes32) {
+        return bytes32(uint256(uint160(a)));
+    }
+
+    function test_receive_fastFromArbitrumRecords() public {
+        bytes32 h = keccak256("arb-intent");
+        address solver = makeAddr("solver");
+        transmitter.deliver(
+            address(cctp),
+            ARB_DOMAIN,
+            EVM_PEER,
+            1000,
+            _body(ARB_CHAIN_ID, h, _claimant(solver))
+        );
+
+        IProver.ProofData memory p = cctp.provenIntents(h);
+        assertEq(p.claimant, solver);
+        assertEq(p.destination, ARB_CHAIN_ID);
+    }
+
+    function test_receive_finalizedFromArbitrumRecords() public {
+        bytes32 h = keccak256("arb-final");
+        address solver = makeAddr("solver");
+        transmitter.deliver(
+            address(cctp),
+            ARB_DOMAIN,
+            EVM_PEER,
+            2000,
+            _body(ARB_CHAIN_ID, h, _claimant(solver))
+        );
+        assertEq(cctp.provenIntents(h).claimant, solver);
+    }
+
+    function test_receive_ethereumDomainZeroRecords() public {
+        bytes32 h = keccak256("eth-intent");
+        address solver = makeAddr("solver");
+        transmitter.deliver(
+            address(cctp),
+            ETH_DOMAIN,
+            EVM_PEER,
+            1000,
+            _body(ETH_CHAIN_ID, h, _claimant(solver))
+        );
+
+        IProver.ProofData memory p = cctp.provenIntents(h);
+        assertEq(p.claimant, solver);
+        assertEq(p.destination, ETH_CHAIN_ID);
+    }
+
+    function test_receive_solanaProgramIdSenderRecords() public {
+        bytes32 h = keccak256("sol-intent");
+        address solver = makeAddr("solver");
+        transmitter.deliver(
+            address(cctp),
+            SOLANA_DOMAIN,
+            SOLANA_PEER,
+            1000,
+            _body(SOLANA_CHAIN_ID, h, _claimant(solver))
+        );
+        assertEq(cctp.provenIntents(h).destination, SOLANA_CHAIN_ID);
+    }
+
+    function test_receive_returnsTrueOnBothHandlers() public {
+        vm.startPrank(address(transmitter));
+        assertTrue(
+            cctp.handleReceiveUnfinalizedMessage(
+                ARB_DOMAIN,
+                EVM_PEER,
+                1000,
+                _body(ARB_CHAIN_ID, keccak256("a"), _claimant(address(1)))
+            )
+        );
+        assertTrue(
+            cctp.handleReceiveFinalizedMessage(
+                ARB_DOMAIN,
+                EVM_PEER,
+                2000,
+                _body(ARB_CHAIN_ID, keccak256("b"), _claimant(address(1)))
+            )
+        );
+        vm.stopPrank();
+    }
+
+    function test_receive_onlyTransmitter() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.UnauthorizedSender.selector,
+                address(transmitter),
+                address(this)
+            )
+        );
+        cctp.handleReceiveFinalizedMessage(
+            ARB_DOMAIN,
+            EVM_PEER,
+            2000,
+            _body(ARB_CHAIN_ID, keccak256("x"), _claimant(address(1)))
+        );
+    }
+
+    function test_receive_rejectsNonWhitelistedSender() public {
+        bytes32 stranger = _claimant(makeAddr("stranger"));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.UnauthorizedIncomingProof.selector,
+                stranger
+            )
+        );
+        transmitter.deliver(
+            address(cctp),
+            ARB_DOMAIN,
+            stranger,
+            1000,
+            _body(ARB_CHAIN_ID, keccak256("x"), _claimant(address(1)))
+        );
+    }
+
+    function test_receive_rejectsUnregisteredDomain() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.UnregisteredDomain.selector,
+                uint64(2)
+            )
+        );
+        transmitter.deliver(
+            address(cctp),
+            2,
+            EVM_PEER,
+            1000,
+            _body(10, keccak256("x"), _claimant(address(1)))
+        );
+    }
+
+    /// Review Focus 4: same CREATE3 address on every chain, so a whitelisted
+    /// sender from one domain must not be able to claim another chain.
+    function test_receive_rejectsChainIdNotMatchingAttestedDomain() public {
+        bytes32 h = keccak256("spoof");
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IMessageBridgeProver.ChainIdMismatch.selector,
+                uint64(ETH_DOMAIN),
+                ETH_CHAIN_ID,
+                ARB_CHAIN_ID
+            )
+        );
+        transmitter.deliver(
+            address(cctp),
+            ETH_DOMAIN,
+            EVM_PEER,
+            1000,
+            _body(ARB_CHAIN_ID, h, _claimant(address(1)))
+        );
+        assertEq(cctp.provenIntents(h).claimant, address(0));
+    }
+
+    function test_receive_firstProofWins() public {
+        bytes32 h = keccak256("conflict");
+        address first = makeAddr("first");
+        address second = makeAddr("second");
+        transmitter.deliver(
+            address(cctp),
+            ARB_DOMAIN,
+            EVM_PEER,
+            1000,
+            _body(ARB_CHAIN_ID, h, _claimant(first))
+        );
+        transmitter.deliver(
+            address(cctp),
+            ARB_DOMAIN,
+            EVM_PEER,
+            1000,
+            _body(ARB_CHAIN_ID, h, _claimant(second))
+        );
+        assertEq(cctp.provenIntents(h).claimant, first);
+    }
+
+    function test_receive_recordsCancelledClaimant() public {
+        bytes32 h = keccak256("cancelled");
+        transmitter.deliver(
+            address(cctp),
+            ARB_DOMAIN,
+            EVM_PEER,
+            1000,
+            _body(ARB_CHAIN_ID, h, CANCELLED_CLAIMANT_BYTES32)
+        );
+        assertEq(cctp.provenIntents(h).claimant, CANCELLED_CLAIMANT);
+    }
+
+    function test_receive_multiplePairs() public {
+        bytes32 h1 = keccak256("m1");
+        bytes32 h2 = keccak256("m2");
+        address a = makeAddr("a");
+        address b = makeAddr("b");
+        bytes memory body = abi.encodePacked(
+            ARB_CHAIN_ID,
+            h1,
+            _claimant(a),
+            h2,
+            _claimant(b)
+        );
+        transmitter.deliver(address(cctp), ARB_DOMAIN, EVM_PEER, 1000, body);
+        assertEq(cctp.provenIntents(h1).claimant, a);
+        assertEq(cctp.provenIntents(h2).claimant, b);
     }
 }
