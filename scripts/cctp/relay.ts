@@ -8,6 +8,9 @@
  *
  *   npx tsx scripts/cctp/relay.ts --env testnet --source-domain 3 \
  *     --tx-hash 0x… --dest-rpc $BASE_SEPOLIA_RPC [--from 0x256B…1471]
+ *
+ * The printed ecocast command expects DEST_RPC exported in the shell, e.g.
+ *   export DEST_RPC=<same url as --dest-rpc>
  */
 import { createPublicClient, http, type Hex } from 'viem'
 import {
@@ -60,6 +63,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e)
+  console.error((e as Error).message)
   process.exitCode = 1
 })

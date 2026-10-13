@@ -109,11 +109,12 @@ The system supports multiple bridge protocols through specialized prover contrac
   `PolymerProver` and `LocalProver` do not qualify and are rejected at deploy
   time — a member that can record a wrong `destination` shadows valid proofs held
   by lower-priority members, and the refund path cannot recover from that.
+  Including `CCTPProver` lowers the security floor to Circle's Fast confirmation for Ethereum and Solana origins (spec D2).
   `HyperProver`/`MetaProver` members additionally **require a non-empty
   `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`**: their resolvers fall back to
   `chainId != 0 ? chainId : originDomain`, so an omitted lane records a
   wrong-but-plausible `destination` rather than failing closed, which is a
-  shadowing entry reachable from a config omission alone. `LayerZeroProver` is
+  shadowing entry reachable from a config omission alone. `LayerZeroProver` and `CCTPProver` are
   exempt (strict map, reverts `UnregisteredDomain`). Note this requirement
   applies only when the prover is an aggregator **member** — those two configs
   remain exceptions-only for an ordinary deploy. Members are also required to
@@ -211,7 +212,7 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `CCTP_MESSAGE_TRANSMITTER` - Circle MessageTransmitterV2 (`0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` mainnet, `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` testnet). Unset skips CCTPProver.
 - `CCTP_CROSS_VM_PROVERS` - comma-separated extra whitelist entries (20-byte or 32-byte hex; malformed fails by name). Put the Solana `cctp-prover` program ID here as 32-byte hex. Self is added left-padded automatically; the list plus self may total at most 20 entries.
 - `CCTP_DOMAIN_CONFIG` - strict `domain:chainId` list (e.g. `0:1,3:42161,5:1399811149`); must enumerate every accepted origin; domain 0 (Ethereum) is valid.
-- `CCTP_MAX_PAIRS_CONFIG` - `domain:maxPairs` per destination domain (e.g. `5:<measured>`); the Solana lane (5) must be set from the SVM plan's G3 measurement. `Deploy.s.sol` refuses to run (before broadcast) when `CCTP_DOMAIN_CONFIG` lists domain 5 but this has no domain-5 entry.
+- `CCTP_MAX_PAIRS_CONFIG` - `domain:maxPairs` per destination domain (e.g. `5:<measured>`); the Solana lane (5) must be set from the SVM plan's G3 measurement. The domain-5 entry is required on every CCTP deploy: `Deploy.s.sol` refuses to run (before broadcast) when this has no domain-5 entry.
 - Per-bridge cross-VM prover lists (comma-separated `bytes32` addresses): `HYPER_CROSS_VM_PROVERS`, `META_CROSS_VM_PROVERS`, `LAYERZERO_CROSS_VM_PROVERS`, `POLYMER_CROSS_VM_PROVERS`, `CCIP_CROSS_VM_PROVERS`. `POLYMER_CROSS_VM_PROVERS` carries EVM/Tron provers only (each element a 20-byte `0x` address or 32-byte `0x` bytes32; a malformed element fails the deploy by name) — the Solana program ID belongs in `POLYMER_SOLANA_PROVER`.
 - Per-bridge origin domain config (comma-separated `domain:chainId` pairs, e.g. `100:10,200:8453`; unset/empty parses to an empty array): `HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`, `CCIP_DOMAIN_CONFIG`. `HyperProver`/`MetaProver` resolvers fall back to `domain == chainId`, so `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG` are exceptions-only and may be left empty. `LayerZeroProver`/`CCIPProver`/`CCTPProver` use a strict domain->chainId map with no fallback, so `LAYERZERO_DOMAIN_CONFIG`/`CCIP_DOMAIN_CONFIG`/`CCTP_DOMAIN_CONFIG` must enumerate every origin chain accepted.
 - `AGGREGATOR_PROVER_MEMBERS` - Ordered, comma-separated member prover addresses
@@ -232,7 +233,7 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   since the member set is a constructor arg that may legitimately differ.
 - `AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
   allows `AggregatorProver` members that were not deployed in the current run
-  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`). Read once in
+  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`/`cctpProver`). Read once in
   `run()` into `ctx.allowUnverifiedMembers`, so `validateAggregatorProverMembers`
   is a pure function of the context and tests set a struct field rather than
   mutating process-wide env state. The EVM-shape, non-zero, has-code,
