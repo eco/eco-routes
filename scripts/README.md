@@ -104,6 +104,13 @@ Operational scripts for the Eco-Routes protocol.
      The constructor reverts `MemberHasNoCode` rather than skipping a codeless
      member at runtime, so onboarding a chain before all members are live fails
      loudly instead of quietly deploying a smaller trust set.
+  4. **A `CCIPProver` member is named by `CCIP_PROVER`, not deployed here.**
+     This script never deploys CCIP, so the existing prover is verified by
+     address: `getProofType()` must be `CCIP`, `PORTAL()` this run's Portal,
+     `ROUTER()` equal to `CCIP_ROUTER` (with code), and every lane in the
+     then-mandatory `CCIP_DOMAIN_CONFIG` must round-trip through
+     `chainIdByDomain`. No escape hatch is needed, and setting it does not
+     skip these checks. Its whitelist is not compared; audit it out of band.
 
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated

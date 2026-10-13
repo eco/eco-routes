@@ -106,6 +106,9 @@ contract Deploy is Script {
         bytes polymerProverConstructorArgs;
         bytes32[] aggregatorProverMembers;
         bool allowUnverifiedMembers;
+        address ccipProver;
+        address ccipRouter;
+        IMessageBridgeProver.Domain[] ccipDomainConfig;
         bytes32 aggregatorProverSalt;
         address aggregatorProver;
         bytes aggregatorProverConstructorArgs;
@@ -256,6 +259,22 @@ contract Deploy is Script {
             "AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS",
             false
         );
+
+        // An existing CCIPProver to admit as an aggregator member. This script
+        // never deploys CCIP (scripts/DeployCCIPProver.s.sol does, at vanity
+        // addresses unrelated to this script's CREATE3 salts), so it cannot be
+        // matched against a prover of this run the way the others are. It is
+        // named here instead and verified against the router and lanes the
+        // operator states, so admitting it needs no escape hatch. Checked
+        // before broadcast so a half-configured member fails early.
+        ctx.ccipProver = vm.envOr("CCIP_PROVER", address(0));
+        if (ctx.ccipProver != address(0)) {
+            ctx.ccipRouter = vm.envOr("CCIP_ROUTER", address(0));
+            ctx.ccipDomainConfig = _parseDomainConfig(
+                vm.envOr("CCIP_DOMAIN_CONFIG", string(""))
+            );
+            _requireCCIPMemberInputs(ctx);
+        }
 
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
@@ -1115,12 +1134,14 @@ contract Deploy is Script {
      *      delivered goes unpaid. This validator is the mitigation: it
      *      restricts members to provers whose `destination` is attested,
      *      either by MessageBridgeProver._handleCrossChainMessage (this run's
-     *      HyperProver, MetaProver, LayerZeroProver or CCTPProver, with every
-     *      configured lane round-tripped) or, for this run's PolymerProver,
-     *      by validate()'s check that Polymer's attested chain equals the
-     *      Portal-written chain-ID header. That removes the two
-     *      config-triggered causes (codeless member, unattested member). The
-     *      asymmetry itself remains in IntentSource.
+     *      HyperProver, MetaProver, LayerZeroProver or CCTPProver, or the
+     *      existing CCIPProver named by CCIP_PROVER once _requireCCIPMember
+     *      has checked its type, Portal and router; every configured lane
+     *      round-tripped) or, for this run's PolymerProver, by validate()'s
+     *      check that Polymer's attested chain equals the Portal-written
+     *      chain-ID header. That removes the two config-triggered causes
+     *      (codeless member, unattested member). The asymmetry itself
+     *      remains in IntentSource.
      * @param ctx Deployment context carrying the member list and domain configs
      */
     function validateAggregatorProverMembers(
@@ -1191,6 +1212,16 @@ contract Deploy is Script {
                 // Strict map like LayerZero: an omitted lane reverts
                 // UnregisteredDomain rather than recording a wrong destination.
                 domains = ctx.cctpDomainConfig;
+            } else if (member == ctx.ccipProver) {
+                // Not deployed by this run, so its Portal, router and identity
+                // are checked here rather than assumed, and its lanes come
+                // from CCIP_DOMAIN_CONFIG. Its map is strict too, but unlike
+                // LayerZero's and CCTP's it was not built from this run's
+                // config, so the lane loop below is the only check of it and
+                // _requireCCIPMember refuses an empty config. Runs whatever
+                // the escape hatch says.
+                _requireCCIPMember(ctx, member);
+                domains = ctx.ccipDomainConfig;
             } else {
                 require(
                     allowUnverified,
@@ -1212,7 +1243,9 @@ contract Deploy is Script {
             //
             // LayerZeroProver and CCTPProver are exempt: their strict domain->chainId map has no
             // fallback and reverts UnregisteredDomain, so an omitted lane yields
-            // no proof at all rather than a wrong destination.
+            // no proof at all rather than a wrong destination. CCIPProver is
+            // strict as well; its non-empty config is required by
+            // _requireCCIPMember for a different reason (see there).
             require(
                 !needsExplicitLanes || domains.length > 0,
                 "aggregator member needs an explicit domain config; its resolver falls back to domain==chainId"
@@ -1233,6 +1266,114 @@ contract Deploy is Script {
                 );
             }
         }
+    }
+
+    /// @dev CCIP_PROVER needs CCIP_ROUTER and a non-empty CCIP_DOMAIN_CONFIG.
+    ///      Run before broadcast from run(), and again by _requireCCIPMember so
+    ///      the validator does not depend on run() having checked. The lanes
+    ///      are mandatory although CCIPProver's map is strict (an unlisted
+    ///      selector reverts UnregisteredDomain, no fallback): the prover was
+    ///      deployed by another tool, so the configured lanes are the only
+    ///      evidence its map matches what the operator expects, and CCIP chain
+    ///      selectors are 64-bit, so the map cannot be enumerated the way
+    ///      _validateCCTPProverMatchesContext probes CCTP domains 0..63.
+    function _requireCCIPMemberInputs(
+        DeploymentContext memory ctx
+    ) internal pure {
+        require(
+            ctx.ccipRouter != address(0),
+            "CCIP_ROUTER is required when CCIP_PROVER is set"
+        );
+        require(
+            ctx.ccipDomainConfig.length > 0,
+            "CCIP_DOMAIN_CONFIG must list the CCIP_PROVER lanes to verify"
+        );
+    }
+
+    /// @dev Reads a no-argument getter returning one address, without
+    ///      trusting the callee's return shape (same reasoning as
+    ///      _tryChainIdByDomain: decode wide, then range-check).
+    function _tryAddressGetter(
+        address target,
+        string memory signature
+    ) internal view returns (bool ok, address value) {
+        (bool success, bytes memory ret) = target.staticcall(
+            abi.encodeWithSignature(signature)
+        );
+        if (!success || ret.length != 32) {
+            return (false, address(0));
+        }
+        uint256 raw = abi.decode(ret, (uint256));
+        if (raw >> 160 != 0) {
+            return (false, address(0));
+        }
+        return (true, address(uint160(raw)));
+    }
+
+    /**
+     * @notice Verifies an existing CCIPProver named by CCIP_PROVER before it
+     *         becomes an aggregator member
+     * @dev The provers this script deploys are bound to ctx.portal by
+     *      construction; this one was deployed by another tool, so each of
+     *      those properties is read back instead:
+     *      - getProofType() is exactly "CCIP", so a mistyped address naming
+     *        another MessageBridgeProver (MetaProver also has ROUTER()) fails
+     *        by name. Compared as raw returndata, so a wrong shape cannot
+     *        revert in this frame.
+     *      - PORTAL() is this run's Portal: a prover bound to another Portal
+     *        never sees this Portal's fulfillments, so its proofs could not
+     *        settle intents published here.
+     *      - ROUTER() is CCIP_ROUTER and has code. The router is the only
+     *        caller ccipReceive accepts and the source of the
+     *        sourceChainSelector the destination is resolved from, so it is
+     *        what makes the destination bridge-attested.
+     *      Its lanes are then round-tripped by the caller's loop. The
+     *      whitelist (trusted origin senders) is NOT compared: this script
+     *      has no expected list for a prover it did not deploy, so audit
+     *      getWhitelist() out of band.
+     * @param ctx Deployment context carrying the Portal and CCIP inputs
+     * @param member The member equal to ctx.ccipProver
+     */
+    function _requireCCIPMember(
+        DeploymentContext memory ctx,
+        address member
+    ) internal view {
+        _requireCCIPMemberInputs(ctx);
+        require(
+            ctx.portal != address(0),
+            "CCIP_PROVER needs this run's Portal; set PORTAL_CONTRACT"
+        );
+
+        (bool typed, bytes memory proofType) = member.staticcall(
+            abi.encodeWithSignature("getProofType()")
+        );
+        require(
+            typed &&
+                keccak256(proofType) == keccak256(abi.encode(string("CCIP"))),
+            "CCIP_PROVER is not a CCIPProver (getProofType() is not CCIP)"
+        );
+
+        (bool hasPortal, address portal) = _tryAddressGetter(
+            member,
+            "PORTAL()"
+        );
+        require(
+            hasPortal && portal == ctx.portal,
+            "CCIP_PROVER is bound to a different Portal than this run's"
+        );
+
+        (bool hasRouter, address router) = _tryAddressGetter(
+            member,
+            "ROUTER()"
+        );
+        require(
+            hasRouter && router == ctx.ccipRouter,
+            "CCIP_PROVER ROUTER() is not CCIP_ROUTER"
+        );
+        require(
+            ctx.ccipRouter.code.length > 0,
+            "CCIP_ROUTER has no code on this chain"
+        );
     }
 
     function deployAggregatorProver(
