@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {Portal} from "../../contracts/Portal.sol";
 import {CCTPProver} from "../../contracts/prover/CCTPProver.sol";
 import {IMessageTransmitterV2} from "../../contracts/interfaces/cctp/IMessageTransmitterV2.sol";
+import {IProver} from "../../contracts/interfaces/IProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
 
 /// @dev Run with CCTP_FORK_RPC_URL set to a Base mainnet RPC; skipped otherwise.
@@ -155,11 +156,13 @@ contract CCTPProverForkTest is Test {
         if (skipFork) return;
         bytes memory m1 = _message(keccak256("g1"), 1000, _body(1));
         bytes memory m2 = _message(keccak256("g2"), 1000, _body(11));
+        bytes memory a1 = _attest(m1);
+        bytes memory a2 = _attest(m2);
         uint256 g = gasleft();
-        IMessageTransmitterV2(TRANSMITTER).receiveMessage(m1, _attest(m1));
+        IMessageTransmitterV2(TRANSMITTER).receiveMessage(m1, a1);
         uint256 one = g - gasleft();
         g = gasleft();
-        IMessageTransmitterV2(TRANSMITTER).receiveMessage(m2, _attest(m2));
+        IMessageTransmitterV2(TRANSMITTER).receiveMessage(m2, a2);
         uint256 eleven = g - gasleft();
         console.log("per extra pair:", (eleven - one) / 10);
         assertLt((eleven - one) / 10, 35_000);
