@@ -112,23 +112,20 @@ contract CCTPProverForkTest is Test {
         bytes32 nonce = keccak256("fork-nonce-1");
         bytes memory message = _message(nonce, 1000, _body(1));
 
+        bytes memory att = _attest(message);
         uint256 g = gasleft();
         assertTrue(
-            IMessageTransmitterV2(TRANSMITTER).receiveMessage(
-                message,
-                _attest(message)
-            )
+            IMessageTransmitterV2(TRANSMITTER).receiveMessage(message, att)
         );
         uint256 used = g - gasleft();
         console.log("receiveMessage gas, 1 pair:", used);
         assertLt(used, 160_000);
 
-        assertEq(
-            cctp
-                .provenIntents(keccak256(abi.encode("fork", uint256(0))))
-                .destination,
-            ARB_CHAIN_ID
+        IProver.ProofData memory proof = cctp.provenIntents(
+            keccak256(abi.encode("fork", uint256(0)))
         );
+        assertEq(proof.destination, ARB_CHAIN_ID);
+        assertEq(proof.claimant, address(uint160(0xC1A1)));
 
         vm.expectRevert(bytes("Nonce already used"));
         IMessageTransmitterV2(TRANSMITTER).receiveMessage(
@@ -149,6 +146,12 @@ contract CCTPProverForkTest is Test {
                 message,
                 _attest(message)
             )
+        );
+        assertEq(
+            cctp
+                .provenIntents(keccak256(abi.encode("fork", uint256(0))))
+                .destination,
+            ARB_CHAIN_ID
         );
     }
 
