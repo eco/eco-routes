@@ -108,7 +108,7 @@ contract CCTPProverForkTest is Test {
     }
 
     function test_fork_receiveMessageFastRecordsAndConsumesNonce() public {
-        if (skipFork) return;
+        if (skipFork) vm.skip(true);
         bytes32 nonce = keccak256("fork-nonce-1");
         bytes memory message = _message(nonce, 1000, _body(1));
 
@@ -135,7 +135,7 @@ contract CCTPProverForkTest is Test {
     }
 
     function test_fork_receiveMessageFinalizedRecords() public {
-        if (skipFork) return;
+        if (skipFork) vm.skip(true);
         bytes memory message = _message(
             keccak256("fork-nonce-2"),
             2000,
@@ -156,7 +156,7 @@ contract CCTPProverForkTest is Test {
     }
 
     function test_fork_gasPerExtraPair() public {
-        if (skipFork) return;
+        if (skipFork) vm.skip(true);
         bytes memory m1 = _message(keccak256("g1"), 1000, _body(1));
         bytes memory m2 = _message(keccak256("g2"), 1000, _body(11));
         bytes memory a1 = _attest(m1);
@@ -169,5 +169,27 @@ contract CCTPProverForkTest is Test {
         uint256 eleven = g - gasleft();
         console.log("per extra pair:", (eleven - one) / 10);
         assertLt((eleven - one) / 10, 35_000);
+    }
+
+    /// Circle caps the sendMessage body; on an uncapped lane the prover
+    /// forwards whatever the Portal hands it, so the cap is Circle's alone.
+    function test_fork_sendMessageBodyLimit() public {
+        if (skipFork) vm.skip(true);
+        address portal = cctp.PORTAL();
+        bytes32 peer = PEER;
+        bytes memory ok = _proofs(127);
+        bytes memory tooBig = _proofs(128);
+
+        vm.prank(portal);
+        cctp.prove(address(this), ARB_DOMAIN, ok, abi.encode(peer));
+
+        vm.prank(portal);
+        vm.expectRevert(bytes("Message body exceeds max size"));
+        cctp.prove(address(this), ARB_DOMAIN, tooBig, abi.encode(peer));
+    }
+
+    /// encodedProofs = 8-byte chainId header + n * 64-byte (hash, claimant) pairs
+    function _proofs(uint256 n) internal pure returns (bytes memory) {
+        return _body(n);
     }
 }
