@@ -320,4 +320,50 @@ contract DeployCCTPProverTest is Test {
         );
         harness.exposedValidateMatches(ctx, address(live), address(live));
     }
+
+    function test_validateMatches_revertsOnExtraLiveWhitelistEntry() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        // live trusts [self, PEER_A]; the ctx now expects only [self]
+        ctx.cctpCrossVmProvers = new bytes32[](0);
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different whitelist (extra or reordered entries); deploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnReorderedWhitelist() public {
+        Deploy.DeploymentContext memory ctx = harness.emptyContext();
+        MockMessageTransmitterV2 tx_ = new MockMessageTransmitterV2(6);
+        ctx.portal = PORTAL;
+        ctx.cctpMessageTransmitter = address(tx_);
+        ctx.cctpCrossVmProvers = new bytes32[](2);
+        ctx.cctpCrossVmProvers[0] = _b32(PEER_A);
+        ctx.cctpCrossVmProvers[1] = _b32(address(0xB0B));
+        address self = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this))
+        );
+        CCTPProver live = new CCTPProver(
+            PORTAL,
+            address(tx_),
+            harness.exposedWhitelist(ctx, self),
+            ctx.cctpDomainConfig,
+            ctx.cctpMaxPairsConfig
+        );
+        // same members, swapped order: membership passes, the hash does not
+        ctx.cctpCrossVmProvers[0] = _b32(address(0xB0B));
+        ctx.cctpCrossVmProvers[1] = _b32(PEER_A);
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different whitelist (extra or reordered entries); deploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
 }

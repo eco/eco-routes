@@ -725,6 +725,14 @@ contract Deploy is Script {
                 "CCTPProver already deployed at this salt without a CCTP_CROSS_VM_PROVERS entry in its whitelist; redeploy at a new SALT"
             );
         }
+        // Membership is blind to EXTRA live entries (extra trusted origin
+        // senders). The ordered hash is the exact comparison, as in
+        // _validatePolymerProverMatchesContext; a pure reorder fails too.
+        require(
+            keccak256(abi.encode(live.getWhitelist())) ==
+                keccak256(abi.encode(provers)),
+            "CCTPProver already deployed at this salt has a different whitelist (extra or reordered entries); deploy at a new SALT"
+        );
     }
 
     function deployPolymerProver(
