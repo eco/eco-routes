@@ -81,6 +81,20 @@ The system supports multiple bridge protocols through specialized prover contrac
 - **MetaProver**: Metalayer router integration
 - **PolymerProver**: Polymer cross-chain verification
 - **CCIPProver**: Chainlink CCIP integration
+- **CCTPProver**: Circle CCTP V2 generic messages via `IMessageHandlerV2`. Always sends at
+  `minFinalityThreshold = 1000` (Fast) with `destinationCaller = 0`, and accepts Fast or
+  Finalized from any configured peer — there is deliberately no finality allowlist: a
+  receiver refusing Fast would need every message on that lane re-attested at Finalized
+  (Iris `POST /v2/reattest`) before delivery, and a sender/receiver policy pair can drift. No
+  bridge fee; nobody auto-relays, so a relayer submits `receiveMessage` and pays gas
+  (`scripts/cctp/relay.ts`; measured on a Base fork against the live transmitter at 86,604 gas
+  for 1 pair, plus about 21.8k per extra pair). Strict domain map with **domain 0 = Ethereum allowed** (its own
+  registration loop; `MessageBridgeProver` is unchanged). Bridge-attested destination, so a
+  valid `AggregatorProver` member (strict class, like LayerZero). Whitelist EVM peers
+  **left-padded** (`bytes32(uint256(uint160(a)))`) and the Solana `cctp-prover` **program
+  ID** raw. The Solana lane needs a `maxPairs` cap (`CCTP_MAX_PAIRS_CONFIG`). Accepted risk:
+  Ethereum/Solana origins are trusted after Circle's fast confirmation (~2 blocks on
+  Ethereum vs Hyperlane's 15).
 - **LocalProver**: Same-chain proof handling (with a `LocalProverTron` variant for TRON)
 - **AggregatorProver**: Read-only 1-of-N union over other provers on the same
   chain. Records no proofs and dispatches no messages — `prove()` reverts;
@@ -194,8 +208,12 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `SOLANA_CHAIN_ID` - Eco's chain ID for Solana, checked against each Solana proof's `destination` and recorded in `ProofData.destination` (`1399811149` mainnet, `1399811150` devnet). **Required when deploying PolymerProver**, no default. Immutable; a wrong value can only be corrected by redeploying `PolymerProver` at a new salt.
 - `POLYMER_SOLANA_PROVER` - raw 32-byte program ID of the eco-routes-svm `polymer-prover` program, hex-encoded (`0x` + 64 hex chars, not base58). The script appends it to PolymerProver's immutable whitelist (`Deploy.polymerProverWhitelist`), which is what `validateSolana` gates `programID` on. **Required when deploying PolymerProver**, no default. Immutable and not mixed into the CREATE3 salt, so a rerun that adds or changes it at an occupied address fails the rerun guard instead of silently keeping the old whitelist; recovery is a redeploy at a new salt.
 - `CCIP_ROUTER` - Chainlink CCIP router address
+- `CCTP_MESSAGE_TRANSMITTER` - Circle MessageTransmitterV2 (`0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` mainnet, `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` testnet). Unset skips CCTPProver.
+- `CCTP_CROSS_VM_PROVERS` - comma-separated extra whitelist entries (20-byte or 32-byte hex; malformed fails by name). Put the Solana `cctp-prover` program ID here as 32-byte hex. Self is added left-padded automatically; the list plus self may total at most 20 entries.
+- `CCTP_DOMAIN_CONFIG` - strict `domain:chainId` list (e.g. `0:1,3:42161,5:1399811149`); must enumerate every accepted origin; domain 0 (Ethereum) is valid.
+- `CCTP_MAX_PAIRS_CONFIG` - `domain:maxPairs` per destination domain (e.g. `5:<measured>`); the Solana lane (5) must be set from the SVM plan's G3 measurement. `Deploy.s.sol` refuses to run (before broadcast) when `CCTP_DOMAIN_CONFIG` lists domain 5 but this has no domain-5 entry.
 - Per-bridge cross-VM prover lists (comma-separated `bytes32` addresses): `HYPER_CROSS_VM_PROVERS`, `META_CROSS_VM_PROVERS`, `LAYERZERO_CROSS_VM_PROVERS`, `POLYMER_CROSS_VM_PROVERS`, `CCIP_CROSS_VM_PROVERS`. `POLYMER_CROSS_VM_PROVERS` carries EVM/Tron provers only (each element a 20-byte `0x` address or 32-byte `0x` bytes32; a malformed element fails the deploy by name) — the Solana program ID belongs in `POLYMER_SOLANA_PROVER`.
-- Per-bridge origin domain config (comma-separated `domain:chainId` pairs, e.g. `100:10,200:8453`; unset/empty parses to an empty array): `HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`, `CCIP_DOMAIN_CONFIG`. `HyperProver`/`MetaProver` resolvers fall back to `domain == chainId`, so `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG` are exceptions-only and may be left empty. `LayerZeroProver`/`CCIPProver` use a strict domain->chainId map with no fallback, so `LAYERZERO_DOMAIN_CONFIG`/`CCIP_DOMAIN_CONFIG` must enumerate every origin chain accepted.
+- Per-bridge origin domain config (comma-separated `domain:chainId` pairs, e.g. `100:10,200:8453`; unset/empty parses to an empty array): `HYPER_DOMAIN_CONFIG`, `META_DOMAIN_CONFIG`, `LAYERZERO_DOMAIN_CONFIG`, `CCIP_DOMAIN_CONFIG`. `HyperProver`/`MetaProver` resolvers fall back to `domain == chainId`, so `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG` are exceptions-only and may be left empty. `LayerZeroProver`/`CCIPProver`/`CCTPProver` use a strict domain->chainId map with no fallback, so `LAYERZERO_DOMAIN_CONFIG`/`CCIP_DOMAIN_CONFIG`/`CCTP_DOMAIN_CONFIG` must enumerate every origin chain accepted.
 - `AGGREGATOR_PROVER_MEMBERS` - Ordered, comma-separated member prover addresses
   for `AggregatorProver` (max 8). Each element may be either a 20-byte address
   (`0x` + 40 hex chars, the form operators will normally write) or a full
