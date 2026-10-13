@@ -13,6 +13,7 @@ import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
+import {CCTPProver} from "../contracts/prover/CCTPProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
 import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
@@ -68,6 +69,7 @@ contract Deploy is Script {
         address router;
         address layerZeroEndpoint;
         address layerZeroDelegate;
+        address cctpMessageTransmitter;
         address polymerCrossL2ProverV2;
         uint256 polymerMaxLogDataSize;
         uint32 polymerSolanaChainId;
@@ -77,24 +79,30 @@ contract Deploy is Script {
         bytes32[] hyperCrossVmProvers;
         bytes32[] metaCrossVmProvers;
         bytes32[] layerZeroCrossVmProvers;
+        bytes32[] cctpCrossVmProvers;
         bytes32[] polymerCrossVmProvers;
         IMessageBridgeProver.Domain[] hyperDomainConfig;
         IMessageBridgeProver.Domain[] metaDomainConfig;
         IMessageBridgeProver.Domain[] layerZeroDomainConfig;
+        IMessageBridgeProver.Domain[] cctpDomainConfig;
+        CCTPProver.MaxPairs[] cctpMaxPairsConfig;
         address deployer;
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
         bytes32 layerZeroProverSalt;
+        bytes32 cctpProverSalt;
         bytes32 polymerProverSalt;
         address portal;
         address hyperProver;
         address metaProver;
         address layerZeroProver;
+        address cctpProver;
         address polymerProver;
         bytes hyperProverConstructorArgs;
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
+        bytes cctpProverConstructorArgs;
         bytes polymerProverConstructorArgs;
         bytes32[] aggregatorProverMembers;
         bool allowUnverifiedMembers;
@@ -112,6 +120,10 @@ contract Deploy is Script {
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
         ctx.layerZeroDelegate = vm.envOr("LAYERZERO_DELEGATE", ctx.deployer);
+        ctx.cctpMessageTransmitter = vm.envOr(
+            "CCTP_MESSAGE_TRANSMITTER",
+            address(0)
+        );
         ctx.polymerCrossL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_V2",
             address(0)
@@ -200,6 +212,14 @@ contract Deploy is Script {
                 "POLYMER_CROSS_VM_PROVERS"
             );
 
+        string memory cctpCrossVmProversRaw = vm.envOr(
+            "CCTP_CROSS_VM_PROVERS",
+            string("")
+        );
+        ctx.cctpCrossVmProvers = bytes(cctpCrossVmProversRaw).length == 0
+            ? new bytes32[](0)
+            : _parseBytes32List(cctpCrossVmProversRaw, "CCTP_CROSS_VM_PROVERS");
+
         // Ordered, comma-separated member provers for AggregatorProver.
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
         // Set explicitly rather than derived from what was deployed this run —
@@ -250,6 +270,14 @@ contract Deploy is Script {
         ctx.layerZeroDomainConfig = _parseDomainConfig(
             vm.envOr("LAYERZERO_DOMAIN_CONFIG", string(""))
         );
+        // CCTP uses a strict map and must enumerate every accepted origin.
+        // Domain 0 is Ethereum and is valid here.
+        ctx.cctpDomainConfig = _parseDomainConfig(
+            vm.envOr("CCTP_DOMAIN_CONFIG", string(""))
+        );
+        ctx.cctpMaxPairsConfig = _parseMaxPairsConfig(
+            vm.envOr("CCTP_MAX_PAIRS_CONFIG", string(""))
+        );
 
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -258,8 +286,9 @@ contract Deploy is Script {
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
+        bool hasCctp = ctx.cctpMessageTransmitter != address(0);
         bool needsPortal = !hasExistingPortal &&
-            (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+            (hasMailbox || hasRouter || hasLayerZero || hasPolymer || hasCctp);
         // Compute salts for each contract
         if (needsPortal) {
             ctx.portalSalt = ctx.salt;
@@ -277,6 +306,12 @@ contract Deploy is Script {
                 ctx.salt,
                 "LAYERZERO_PROVER"
             );
+        }
+
+        if (hasCctp) {
+            ctx.cctpProverSalt = getContractSalt(ctx.salt, "CCTP_PROVER");
+            // Fail on an uncapped Solana lane before anything is broadcast.
+            _requireSolanaLaneCap(ctx);
         }
 
         if (hasPolymer) {
@@ -321,6 +356,11 @@ contract Deploy is Script {
             deployLayerZeroProver(ctx);
         }
 
+        // Deploy CCTPProver
+        if (hasCctp) {
+            deployCCTPProver(ctx);
+        }
+
         // Deploy PolymerProver
         if (hasPolymer) {
             deployPolymerProver(ctx);
@@ -344,8 +384,9 @@ contract Deploy is Script {
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
+        bool hasCctp = ctx.cctpMessageTransmitter != address(0);
         bool needsPortal = !hasExistingPortal &&
-            (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+            (hasMailbox || hasRouter || hasLayerZero || hasPolymer || hasCctp);
         bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
 
         uint num = 0;
@@ -353,6 +394,7 @@ contract Deploy is Script {
         num = hasMailbox ? num + 1 : num;
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
+        num = hasCctp ? num + 1 : num;
         num = hasPolymer ? num + 1 : num;
         num = hasAggregatorProver ? num + 1 : num;
 
@@ -389,6 +431,14 @@ contract Deploy is Script {
                 contractAddress: ctx.layerZeroProver,
                 contractPath: "contracts/prover/LayerZeroProver.sol:LayerZeroProver",
                 constructorArgs: ctx.layerZeroProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+        if (hasCctp) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.cctpProver,
+                contractPath: "contracts/prover/CCTPProver.sol:CCTPProver",
+                constructorArgs: ctx.cctpProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -564,6 +614,85 @@ contract Deploy is Script {
         }
 
         console.log("LayerZeroProver :", ctx.layerZeroProver);
+    }
+
+    /**
+     * @notice CCTPProver whitelist: self first, then CCTP_CROSS_VM_PROVERS
+     * @dev Self is LEFT-padded (bytes32(uint256(uint160(a)))) because that is
+     *      how MessageTransmitterV2 reports an EVM sender in the message
+     *      header. The bytes32(bytes20(a)) form used for the other provers'
+     *      self-reference would never match a CCTP sender.
+     */
+    function cctpProverWhitelist(
+        DeploymentContext memory ctx,
+        address preview
+    ) internal pure returns (bytes32[] memory provers) {
+        require(
+            ctx.cctpCrossVmProvers.length < MAX_WHITELIST_SIZE,
+            "CCTP_CROSS_VM_PROVERS + self exceed the 20-slot whitelist"
+        );
+        provers = new bytes32[](1 + ctx.cctpCrossVmProvers.length);
+        provers[0] = bytes32(uint256(uint160(preview)));
+        for (uint256 i = 0; i < ctx.cctpCrossVmProvers.length; i++) {
+            provers[i + 1] = ctx.cctpCrossVmProvers[i];
+        }
+    }
+
+    /**
+     * @notice Reverts when the Solana lane (CCTP domain 5) is enabled without
+     *         a maxPairs cap
+     * @dev Catches a typo in CCTP_MAX_PAIRS_CONFIG that would otherwise leave
+     *      the Solana lane silently uncapped.
+     */
+    function _requireSolanaLaneCap(DeploymentContext memory ctx) internal pure {
+        bool solanaListed;
+        for (uint256 i = 0; i < ctx.cctpDomainConfig.length; i++) {
+            if (ctx.cctpDomainConfig[i].domain == 5) {
+                solanaListed = true;
+                break;
+            }
+        }
+        if (!solanaListed) return;
+        for (uint256 j = 0; j < ctx.cctpMaxPairsConfig.length; j++) {
+            if (ctx.cctpMaxPairsConfig[j].domain == 5) return;
+        }
+        revert(
+            "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) when CCTP_DOMAIN_CONFIG lists it"
+        );
+    }
+
+    function deployCCTPProver(
+        DeploymentContext memory ctx
+    ) internal returns (address cctpProver) {
+        address preview = create3Deployer.deployedAddress(
+            bytes(""), // Bytecode isn't used to determine the deployed address
+            ctx.deployer,
+            ctx.cctpProverSalt
+        );
+
+        ctx.cctpProverConstructorArgs = abi.encode(
+            ctx.portal,
+            ctx.cctpMessageTransmitter,
+            cctpProverWhitelist(ctx, preview),
+            ctx.cctpDomainConfig,
+            ctx.cctpMaxPairsConfig
+        );
+
+        bool deployed;
+        (ctx.cctpProver, deployed) = deployWithCreate3(
+            abi.encodePacked(
+                type(CCTPProver).creationCode,
+                ctx.cctpProverConstructorArgs
+            ),
+            ctx.deployer,
+            ctx.cctpProverSalt
+        );
+        if (deployed) {
+            _requireReusableProver(ctx.cctpProver, ctx.portal, "CCTPProver");
+        }
+
+        console.log("CCTPProver :", ctx.cctpProver);
+        return ctx.cctpProver;
     }
 
     function deployPolymerProver(
@@ -978,6 +1107,10 @@ contract Deploy is Script {
                 needsExplicitLanes = true;
             } else if (member == ctx.layerZeroProver) {
                 domains = ctx.layerZeroDomainConfig;
+            } else if (member == ctx.cctpProver) {
+                // Strict map like LayerZero: an omitted lane reverts
+                // UnregisteredDomain rather than recording a wrong destination.
+                domains = ctx.cctpDomainConfig;
             } else {
                 require(
                     allowUnverified,
@@ -997,7 +1130,7 @@ contract Deploy is Script {
             // mandatory, even though HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are
             // exceptions-only (and may stay empty) for a NON-member deploy.
             //
-            // LayerZeroProver is exempt: its strict domain->chainId map has no
+            // LayerZeroProver and CCTPProver are exempt: their strict domain->chainId map has no
             // fallback and reverts UnregisteredDomain, so an omitted lane yields
             // no proof at all rather than a wrong destination.
             require(
@@ -1168,6 +1301,38 @@ contract Deploy is Script {
         }
 
         return domains;
+    }
+
+    /// @notice Parses CCTP_MAX_PAIRS_CONFIG: comma-separated `domain:maxPairs`
+    function _parseMaxPairsConfig(
+        string memory csv
+    ) internal pure returns (CCTPProver.MaxPairs[] memory caps) {
+        if (bytes(csv).length == 0) {
+            return new CCTPProver.MaxPairs[](0);
+        }
+        string[] memory entries = vm.split(csv, ",");
+        caps = new CCTPProver.MaxPairs[](entries.length);
+        for (uint256 i = 0; i < entries.length; i++) {
+            string[] memory parts = vm.split(entries[i], ":");
+            require(
+                parts.length == 2,
+                "Invalid CCTP_MAX_PAIRS_CONFIG entry: expected domain:maxPairs"
+            );
+            uint256 domain = vm.parseUint(parts[0]);
+            uint256 maxPairs = vm.parseUint(parts[1]);
+            require(
+                domain <= type(uint32).max,
+                "CCTP_MAX_PAIRS_CONFIG domain exceeds uint32"
+            );
+            require(
+                maxPairs > 0 && maxPairs <= type(uint16).max,
+                "CCTP_MAX_PAIRS_CONFIG maxPairs must be 1..65535"
+            );
+            caps[i] = CCTPProver.MaxPairs({
+                domain: uint32(domain),
+                maxPairs: uint16(maxPairs)
+            });
+        }
     }
 
     function getContractSalt(
