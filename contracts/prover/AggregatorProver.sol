@@ -240,8 +240,9 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      creator while the solver who delivered goes unpaid. The mitigation
      *      is `Deploy.validateAggregatorProverMembers`, which admits only
      *      provers whose `destination` is attested: `MessageBridgeProver`
-     *      descendants, which cross-check it against the bridge origin domain
-     *      in `_handleCrossChainMessage`, and `PolymerProver`, whose
+     *      descendants (`HyperProver`, `MetaProver`, `LayerZeroProver`,
+     *      `CCTPProver`), which cross-check it against the bridge origin
+     *      domain in `_handleCrossChainMessage`, and `PolymerProver`, whose
      *      `validate` reverts unless Polymer's attested chain equals the
      *      chain-ID header the destination Portal wrote (the same `CHAIN_ID`
      *      that Portal hashes every intent it fulfills with).

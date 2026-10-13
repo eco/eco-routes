@@ -1114,7 +1114,8 @@ contract Deploy is Script {
      *      reward.deadline refunds the creator while the solver who
      *      delivered goes unpaid. This validator is the mitigation: it
      *      restricts members to provers whose `destination` is attested,
-     *      either by MessageBridgeProver._handleCrossChainMessage (with every
+     *      either by MessageBridgeProver._handleCrossChainMessage (this run's
+     *      HyperProver, MetaProver, LayerZeroProver or CCTPProver, with every
      *      configured lane round-tripped) or, for this run's PolymerProver,
      *      by validate()'s check that Polymer's attested chain equals the
      *      Portal-written chain-ID header. That removes the two

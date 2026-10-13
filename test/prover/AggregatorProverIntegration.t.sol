@@ -11,6 +11,8 @@ import {TestMailbox} from "../../contracts/test/TestMailbox.sol";
 import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 import {IProver} from "../../contracts/interfaces/IProver.sol";
+import {CCTPProver} from "../../contracts/prover/CCTPProver.sol";
+import {MockMessageTransmitterV2} from "../../contracts/test/MockMessageTransmitterV2.sol";
 import {Intent, Route, Reward, TokenAmount, Call, CANCELLED_CLAIMANT, CANCELLED_CLAIMANT_BYTES32} from "../../contracts/types/Intent.sol";
 import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
@@ -590,5 +592,124 @@ contract AggregatorProverIntegrationTest is Test {
             )
         );
         portal.refund(DESTINATION, routeHash, intent.reward);
+    }
+
+    /// @dev CCTP domain of DESTINATION (Base) and the CCTP peer that sends from it
+    uint32 internal constant DESTINATION_CCTP_DOMAIN = 6;
+    bytes32 internal constant CCTP_PEER = bytes32(uint256(0xC0C7));
+
+    /// @dev [PolymerProver, CCTPProver, proverB], in priority order
+    function _polymerCctpAggregator()
+        internal
+        returns (
+            AggregatorProver agg,
+            PolymerProver polymer,
+            CCTPProver cctp,
+            MockMessageTransmitterV2 transmitter,
+            TestCrossL2ProverV2 crossL2,
+            address emitter
+        )
+    {
+        (, polymer, crossL2, emitter) = _polymerAggregator();
+
+        transmitter = new MockMessageTransmitterV2(2);
+        bytes32[] memory peers = new bytes32[](1);
+        peers[0] = CCTP_PEER;
+        IMessageBridgeProver.Domain[]
+            memory lanes = new IMessageBridgeProver.Domain[](1);
+        lanes[0] = IMessageBridgeProver.Domain({
+            domain: DESTINATION_CCTP_DOMAIN,
+            chainId: DESTINATION
+        });
+        cctp = new CCTPProver(
+            address(portal),
+            address(transmitter),
+            peers,
+            lanes,
+            new CCTPProver.MaxPairs[](0)
+        );
+
+        bytes32[] memory members = new bytes32[](3);
+        members[0] = bytes32(uint256(uint160(address(polymer))));
+        members[1] = bytes32(uint256(uint160(address(cctp))));
+        members[2] = bytes32(uint256(uint160(address(proverB))));
+        agg = new AggregatorProver(members);
+    }
+
+    /// @dev Delivers a finalized CCTP proof from DESTINATION through the mock transmitter
+    function _deliverCctp(
+        MockMessageTransmitterV2 transmitter,
+        CCTPProver cctp,
+        bytes32 intentHash,
+        address claimant
+    ) internal {
+        transmitter.deliver(
+            address(cctp),
+            DESTINATION_CCTP_DOMAIN,
+            CCTP_PEER,
+            2000,
+            abi.encodePacked(
+                DESTINATION,
+                intentHash,
+                bytes32(uint256(uint160(claimant)))
+            )
+        );
+    }
+
+    function test_polymerCctpMembers_cctpProofVisibleWhenPolymerEmpty() public {
+        (
+            AggregatorProver agg,
+            ,
+            CCTPProver cctp,
+            MockMessageTransmitterV2 transmitter,
+            ,
+
+        ) = _polymerCctpAggregator();
+        Intent memory intent = _intent(address(agg), bytes32(uint256(22)));
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+
+        _deliverCctp(transmitter, cctp, intentHash, solver);
+
+        IProver.ProofData memory proof = agg.provenIntents(intentHash);
+        assertEq(proof.claimant, solver);
+        assertEq(proof.destination, DESTINATION);
+
+        uint256 before = solver.balance;
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance - before, REWARD);
+    }
+
+    /// @dev Both members hold a valid proof: the higher-priority Polymer
+    ///      member's claimant is the one reported and paid
+    function test_polymerCctpMembers_polymerOutranksCctp() public {
+        (
+            AggregatorProver agg,
+            PolymerProver polymer,
+            CCTPProver cctp,
+            MockMessageTransmitterV2 transmitter,
+            TestCrossL2ProverV2 crossL2,
+            address emitter
+        ) = _polymerCctpAggregator();
+        Intent memory intent = _intent(address(agg), bytes32(uint256(23)));
+        (bytes32 intentHash, bytes32 routeHash) = _publish(intent);
+        address cctpClaimant = makeAddr("cctpClaimant");
+
+        _deliverCctp(transmitter, cctp, intentHash, cctpClaimant);
+        polymer.validate(
+            _stubPolymerEvent(
+                crossL2,
+                emitter,
+                DESTINATION,
+                DESTINATION,
+                intentHash
+            )
+        );
+
+        assertEq(agg.provenIntents(intentHash).claimant, solver);
+
+        uint256 before = solver.balance;
+        portal.withdraw(DESTINATION, routeHash, intent.reward);
+        assertEq(solver.balance - before, REWARD);
+        assertEq(cctpClaimant.balance, 0);
     }
 }

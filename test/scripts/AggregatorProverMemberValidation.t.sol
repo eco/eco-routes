@@ -14,6 +14,8 @@ import {Portal} from "../../contracts/Portal.sol";
 import {HyperProver} from "../../contracts/prover/HyperProver.sol";
 import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
+import {CCTPProver} from "../../contracts/prover/CCTPProver.sol";
+import {MockMessageTransmitterV2} from "../../contracts/test/MockMessageTransmitterV2.sol";
 
 /// @dev Harness exposing Deploy's internal validator and member-list parser
 ///      to tests
@@ -142,6 +144,72 @@ contract AggregatorProverMemberValidationTest is Test {
             bytes(
                 "member does not expose chainIdByDomain; destination not bridge-attested"
             )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev Ethereum (CCTP domain 0) and Arbitrum lanes, local domain 2
+    function _cctpLanes()
+        internal
+        pure
+        returns (IMessageBridgeProver.Domain[] memory lanes)
+    {
+        lanes = new IMessageBridgeProver.Domain[](2);
+        lanes[0] = IMessageBridgeProver.Domain({domain: 0, chainId: 1});
+        lanes[1] = IMessageBridgeProver.Domain({domain: 3, chainId: 42161});
+    }
+
+    function _realCctpProver() internal returns (CCTPProver) {
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = _b32(address(0xBEEF));
+        return
+            new CCTPProver(
+                address(new Portal(address(0))),
+                address(new MockMessageTransmitterV2(2)),
+                provers,
+                _cctpLanes(),
+                new CCTPProver.MaxPairs[](0)
+            );
+    }
+
+    function _polymerCctpHyperCtx(
+        IMessageBridgeProver.Domain[] memory cctpLanes
+    ) internal returns (Deploy.DeploymentContext memory ctx) {
+        PolymerProver polymer = _realPolymerProver();
+        CCTPProver cctp = _realCctpProver();
+        bytes32[] memory members = new bytes32[](3);
+        members[0] = _b32(address(polymer));
+        members[1] = _b32(address(cctp));
+        members[2] = _b32(address(hyper));
+        ctx = _ctxWith(members);
+        ctx.polymerProver = address(polymer);
+        ctx.cctpProver = address(cctp);
+        ctx.cctpDomainConfig = cctpLanes;
+        hyper.setDomain(100, 10);
+        ctx.hyperDomainConfig = new IMessageBridgeProver.Domain[](1);
+        ctx.hyperDomainConfig[0] = IMessageBridgeProver.Domain({
+            domain: 100,
+            chainId: 10
+        });
+    }
+
+    function test_acceptsMixedPolymerCctpHyperSet() public {
+        // EVM member set with a CCTP domain-0 (Ethereum) lane. A Tron set
+        // has no CCTP member: CCTP is not on Tron.
+        harness.exposedValidate(_polymerCctpHyperCtx(_cctpLanes()));
+    }
+
+    function test_polymerBranchStillValidatesLaterMembers() public {
+        // The Polymer `continue` skips only the Polymer member: a CCTP lane
+        // behind it that disagrees with the deployed map still fails.
+        IMessageBridgeProver.Domain[] memory lanes = _cctpLanes();
+        lanes[0].chainId = 10;
+        // Built first: expectRevert binds to the next call, and building the
+        // context deploys contracts.
+        Deploy.DeploymentContext memory ctx = _polymerCctpHyperCtx(lanes);
+
+        vm.expectRevert(
+            bytes("member domain map disagrees with configured lane")
         );
         harness.exposedValidate(ctx);
     }
