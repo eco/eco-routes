@@ -688,6 +688,12 @@ contract Deploy is Script {
         return ctx.cctpProver;
     }
 
+    /// @dev Highest CCTP domain probed when comparing a reused CCTPProver's
+    ///      lane and cap maps to the config. Circle assigns CCTP domains
+    ///      sequentially from 0 and the highest live today is 28 (EDGE), so
+    ///      63 leaves headroom. Raise it if Circle assigns domains past it.
+    uint64 internal constant MAX_CCTP_DOMAIN_PROBE = 63;
+
     /// @dev Every CCTPProver constructor argument is immutable or setter-less
     ///      and the salt is name-only, so a rerun with changed env vars
     ///      short-circuits in deployWithCreate3 and silently keeps the old
@@ -716,6 +722,39 @@ contract Deploy is Script {
                 live.maxPairsByDomain(ctx.cctpMaxPairsConfig[i].domain) ==
                     ctx.cctpMaxPairsConfig[i].maxPairs,
                 "CCTPProver already deployed at this salt with a different CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            );
+        }
+        // The per-entry checks above are blind to lanes the live prover
+        // registered that the current config no longer lists, so probe every
+        // domain and require the live map to equal the config exactly.
+        for (uint64 d = 0; d <= MAX_CCTP_DOMAIN_PROBE; d++) {
+            uint64 wantChainId = 0;
+            for (uint256 i = 0; i < ctx.cctpDomainConfig.length; i++) {
+                if (ctx.cctpDomainConfig[i].domain == d) {
+                    wantChainId = ctx.cctpDomainConfig[i].chainId;
+                }
+            }
+            require(
+                live.chainIdByDomain(d) == wantChainId,
+                string.concat(
+                    "CCTPProver already deployed at this salt has a different lane for CCTP domain ",
+                    vm.toString(uint256(d)),
+                    " than CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+                )
+            );
+            uint16 wantCap = 0;
+            for (uint256 i = 0; i < ctx.cctpMaxPairsConfig.length; i++) {
+                if (ctx.cctpMaxPairsConfig[i].domain == d) {
+                    wantCap = ctx.cctpMaxPairsConfig[i].maxPairs;
+                }
+            }
+            require(
+                live.maxPairsByDomain(uint32(d)) == wantCap,
+                string.concat(
+                    "CCTPProver already deployed at this salt has a different batch cap for CCTP domain ",
+                    vm.toString(uint256(d)),
+                    " than CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+                )
             );
         }
         bytes32[] memory provers = cctpProverWhitelist(ctx, preview);

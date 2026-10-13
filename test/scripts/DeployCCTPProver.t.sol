@@ -366,4 +366,108 @@ contract DeployCCTPProverTest is Test {
         );
         harness.exposedValidateMatches(ctx, address(live), address(live));
     }
+
+    // ---- exact lane / cap map comparison on rerun ----
+
+    function _deployLiveWith(
+        string memory lanes,
+        string memory caps
+    ) internal returns (CCTPProver live, Deploy.DeploymentContext memory ctx) {
+        MockMessageTransmitterV2 tx_ = new MockMessageTransmitterV2(6);
+        ctx = harness.emptyContext();
+        ctx.portal = PORTAL;
+        ctx.cctpMessageTransmitter = address(tx_);
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig(lanes);
+        ctx.cctpMaxPairsConfig = harness.exposedParseMaxPairs(caps);
+        address self = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this))
+        );
+        live = new CCTPProver(
+            PORTAL,
+            address(tx_),
+            harness.exposedWhitelist(ctx, self),
+            ctx.cctpDomainConfig,
+            ctx.cctpMaxPairsConfig
+        );
+    }
+
+    function test_validateMatches_exactMapsWithDomainZeroPass() public {
+        (
+            CCTPProver live,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLiveWith("0:1,3:42161", "0:2,5:6");
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnExtraLiveLane() public {
+        (
+            CCTPProver live,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLiveWith("3:42161,7:10", "5:6");
+        // operator drops domain 7 from the config
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("3:42161");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different lane for CCTP domain 7 than CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnExtraLiveDomainZeroLane() public {
+        (
+            CCTPProver live,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLiveWith("0:1,3:42161", "5:6");
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("3:42161");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different lane for CCTP domain 0 than CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnExtraLiveLaneAtProbeBound() public {
+        (
+            CCTPProver live,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLiveWith("3:42161,63:10", "5:6");
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("3:42161");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different lane for CCTP domain 63 than CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnExtraLiveCap() public {
+        (
+            CCTPProver live,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLiveWith("3:42161", "5:6,9:4");
+        ctx.cctpMaxPairsConfig = harness.exposedParseMaxPairs("5:6");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different batch cap for CCTP domain 9 than CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnExtraLiveDomainZeroCap() public {
+        (
+            CCTPProver live,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLiveWith("3:42161", "0:2,5:6");
+        ctx.cctpMaxPairsConfig = harness.exposedParseMaxPairs("5:6");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt has a different batch cap for CCTP domain 0 than CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
 }
