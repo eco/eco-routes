@@ -639,25 +639,17 @@ contract Deploy is Script {
     }
 
     /**
-     * @notice Reverts when the Solana lane (CCTP domain 5) is enabled without
-     *         a maxPairs cap
-     * @dev Catches a typo in CCTP_MAX_PAIRS_CONFIG that would otherwise leave
-     *      the Solana lane silently uncapped.
+     * @notice Reverts when CCTP_MAX_PAIRS_CONFIG has no domain-5 (Solana) cap
+     * @dev Unconditional: the Solana lane MUST be capped on every CCTP deploy
+     *      (spec section 3), whatever CCTP_DOMAIN_CONFIG lists. A missing
+     *      entry would otherwise leave the lane silently uncapped.
      */
     function _requireSolanaLaneCap(DeploymentContext memory ctx) internal pure {
-        bool solanaListed;
-        for (uint256 i = 0; i < ctx.cctpDomainConfig.length; i++) {
-            if (ctx.cctpDomainConfig[i].domain == 5) {
-                solanaListed = true;
-                break;
-            }
-        }
-        if (!solanaListed) return;
         for (uint256 j = 0; j < ctx.cctpMaxPairsConfig.length; j++) {
             if (ctx.cctpMaxPairsConfig[j].domain == 5) return;
         }
         revert(
-            "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) when CCTP_DOMAIN_CONFIG lists it"
+            "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) on every CCTP deploy"
         );
     }
 
@@ -689,10 +681,50 @@ contract Deploy is Script {
         );
         if (deployed) {
             _requireReusableProver(ctx.cctpProver, ctx.portal, "CCTPProver");
+            _validateCCTPProverMatchesContext(ctx, ctx.cctpProver, preview);
         }
 
         console.log("CCTPProver :", ctx.cctpProver);
         return ctx.cctpProver;
+    }
+
+    /// @dev Every CCTPProver constructor argument is immutable or setter-less
+    ///      and the salt is name-only, so a rerun with changed env vars
+    ///      short-circuits in deployWithCreate3 and silently keeps the old
+    ///      values. One require each so the operator learns WHICH field
+    ///      diverged. Keep in sync with the constructor args in
+    ///      deployCCTPProver.
+    function _validateCCTPProverMatchesContext(
+        DeploymentContext memory ctx,
+        address prover,
+        address preview
+    ) internal view {
+        CCTPProver live = CCTPProver(payable(prover));
+        require(
+            live.TRANSMITTER() == ctx.cctpMessageTransmitter,
+            "CCTPProver already deployed at this salt with a different CCTP_MESSAGE_TRANSMITTER; redeploy at a new SALT"
+        );
+        for (uint256 i = 0; i < ctx.cctpDomainConfig.length; i++) {
+            require(
+                live.chainIdByDomain(ctx.cctpDomainConfig[i].domain) ==
+                    ctx.cctpDomainConfig[i].chainId,
+                "CCTPProver already deployed at this salt with a different CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+            );
+        }
+        for (uint256 i = 0; i < ctx.cctpMaxPairsConfig.length; i++) {
+            require(
+                live.maxPairsByDomain(ctx.cctpMaxPairsConfig[i].domain) ==
+                    ctx.cctpMaxPairsConfig[i].maxPairs,
+                "CCTPProver already deployed at this salt with a different CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            );
+        }
+        bytes32[] memory provers = cctpProverWhitelist(ctx, preview);
+        for (uint256 i = 0; i < provers.length; i++) {
+            require(
+                live.isWhitelisted(provers[i]),
+                "CCTPProver already deployed at this salt without a CCTP_CROSS_VM_PROVERS entry in its whitelist; redeploy at a new SALT"
+            );
+        }
     }
 
     function deployPolymerProver(

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Deploy} from "../../scripts/Deploy.s.sol";
 import {CCTPProver} from "../../contracts/prover/CCTPProver.sol";
 import {IMessageBridgeProver} from "../../contracts/interfaces/IMessageBridgeProver.sol";
+import {MockMessageTransmitterV2} from "../../contracts/test/MockMessageTransmitterV2.sol";
 import {MockDomainProver} from "../../contracts/test/MockDomainProver.sol";
 
 contract DeployCCTPHarness is Deploy {
@@ -37,6 +38,14 @@ contract DeployCCTPHarness is Deploy {
         DeploymentContext memory ctx
     ) external pure {
         _requireSolanaLaneCap(ctx);
+    }
+
+    function exposedValidateMatches(
+        DeploymentContext memory ctx,
+        address prover,
+        address preview
+    ) external view {
+        _validateCCTPProverMatchesContext(ctx, prover, preview);
     }
 
     function exposedParseDomainConfig(
@@ -156,14 +165,25 @@ contract DeployCCTPProverTest is Test {
         harness.exposedValidate(ctx); // strict map: no explicit lanes required
     }
 
-    function test_solanaLaneCap_revertsWhenListedWithoutCap() public {
+    function test_solanaLaneCap_revertsWithoutCap() public {
         Deploy.DeploymentContext memory ctx = harness.emptyContext();
         ctx.cctpDomainConfig = harness.exposedParseDomainConfig(
             "0:1,5:1399811149"
         );
         vm.expectRevert(
             bytes(
-                "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) when CCTP_DOMAIN_CONFIG lists it"
+                "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) on every CCTP deploy"
+            )
+        );
+        harness.exposedRequireSolanaLaneCap(ctx);
+    }
+
+    function test_solanaLaneCap_revertsWithoutSolanaListed() public {
+        Deploy.DeploymentContext memory ctx = harness.emptyContext();
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("0:1,3:42161");
+        vm.expectRevert(
+            bytes(
+                "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) on every CCTP deploy"
             )
         );
         harness.exposedRequireSolanaLaneCap(ctx);
@@ -178,9 +198,126 @@ contract DeployCCTPProverTest is Test {
         harness.exposedRequireSolanaLaneCap(ctx);
     }
 
-    function test_solanaLaneCap_passesWithoutSolana() public view {
-        Deploy.DeploymentContext memory ctx = harness.emptyContext();
-        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("0:1,3:42161");
-        harness.exposedRequireSolanaLaneCap(ctx);
+    // ---- rerun validator against a real CCTPProver ----
+
+    address internal constant PORTAL = address(0xF0F0);
+    address internal constant PEER_A = address(0xA11CE);
+
+    function _deployLive()
+        internal
+        returns (
+            CCTPProver live,
+            MockMessageTransmitterV2 tx_,
+            Deploy.DeploymentContext memory ctx
+        )
+    {
+        tx_ = new MockMessageTransmitterV2(6);
+        ctx = harness.emptyContext();
+        ctx.portal = PORTAL;
+        ctx.cctpMessageTransmitter = address(tx_);
+        ctx.cctpCrossVmProvers = new bytes32[](1);
+        ctx.cctpCrossVmProvers[0] = _b32(PEER_A);
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("3:42161");
+        ctx.cctpMaxPairsConfig = harness.exposedParseMaxPairs("5:6");
+        // self placeholder: the real address is only known after deploy, so
+        // build with a precomputed CREATE address.
+        address self = vm.computeCreateAddress(
+            address(this),
+            vm.getNonce(address(this))
+        );
+        live = new CCTPProver(
+            PORTAL,
+            address(tx_),
+            harness.exposedWhitelist(ctx, self),
+            ctx.cctpDomainConfig,
+            ctx.cctpMaxPairsConfig
+        );
+        assertEq(address(live), self);
+    }
+
+    function test_validateMatches_passes() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnTransmitter() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        ctx.cctpMessageTransmitter = address(new MockMessageTransmitterV2(6));
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt with a different CCTP_MESSAGE_TRANSMITTER; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnDomainChainId() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        ctx.cctpDomainConfig = harness.exposedParseDomainConfig("3:10");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt with a different CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnMaxPairsValue() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        ctx.cctpMaxPairsConfig = harness.exposedParseMaxPairs("5:7");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt with a different CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnMissingMaxPairs() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        ctx.cctpMaxPairsConfig = harness.exposedParseMaxPairs("3:4,5:6");
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt with a different CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
+    }
+
+    function test_validateMatches_revertsOnMissingWhitelistEntry() public {
+        (
+            CCTPProver live,
+            ,
+            Deploy.DeploymentContext memory ctx
+        ) = _deployLive();
+        ctx.cctpCrossVmProvers = new bytes32[](2);
+        ctx.cctpCrossVmProvers[0] = _b32(PEER_A);
+        ctx.cctpCrossVmProvers[1] = _b32(address(0xB0B));
+        vm.expectRevert(
+            bytes(
+                "CCTPProver already deployed at this salt without a CCTP_CROSS_VM_PROVERS entry in its whitelist; redeploy at a new SALT"
+            )
+        );
+        harness.exposedValidateMatches(ctx, address(live), address(live));
     }
 }
