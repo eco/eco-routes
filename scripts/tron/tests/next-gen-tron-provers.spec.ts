@@ -24,6 +24,8 @@ import {
   requireAddressWhitelist,
   requireLiveMembers,
   toTronBase58,
+  contractHasCode,
+  EMPTY_CODE_HASH,
 } from '../next-gen-tron-provers'
 
 const coder = ethers.AbiCoder.defaultAbiCoder()
@@ -354,6 +356,31 @@ describe('Tron AggregatorProver constructor', () => {
         requireLiveMembers(swapped, probe(), expected),
       ).rejects.toThrow(/priority 0 reports getProofType\(\) "Polymer"/)
     })
+  })
+})
+
+describe('contractHasCode', () => {
+  it('counts a contract created by another contract, which Tron returns with code_hash only', () => {
+    // Shape of /wallet/getcontract for TEcoHmv6… (deployed through the CREATE2 factory).
+    expect(
+      contractHasCode({
+        code_hash:
+          '9a1f0a1fb0d1bfb4c09b4b0b2b3ca8b3c1a2ae5d16a2a3de2f9a0e7c4b6f5d21',
+      }),
+    ).toBe(true)
+  })
+
+  it('counts a directly deployed contract, which carries its bytecode', () => {
+    expect(contractHasCode({ bytecode: '6080604052' })).toBe(true)
+  })
+
+  it('refuses an account with no contract, and the empty-code hash', () => {
+    expect(contractHasCode({})).toBe(false)
+    expect(contractHasCode(undefined)).toBe(false)
+    expect(contractHasCode({ code_hash: EMPTY_CODE_HASH })).toBe(false)
+    expect(
+      contractHasCode({ code_hash: '0x' + EMPTY_CODE_HASH.toUpperCase() }),
+    ).toBe(false)
   })
 })
 

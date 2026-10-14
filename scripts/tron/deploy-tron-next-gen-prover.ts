@@ -46,6 +46,7 @@ import {
   aggregatorProverConstructorArgs,
   aggregatorProverReadback,
   buildInitCode,
+  contractHasCode,
   hyperProverReadback,
   nextGenHyperProverArgs,
   nextGenPolymerProverArgs,
@@ -122,7 +123,9 @@ class TronClient {
     const contract = await this.tronWeb.trx
       .getContract(toTronBase58(hex20))
       .catch(() => undefined)
-    return Boolean((contract as { bytecode?: string } | undefined)?.bytecode)
+    return contractHasCode(
+      contract as { bytecode?: string; code_hash?: string } | undefined,
+    )
   }
 
   async requireCode(hex20: string, label: string): Promise<void> {

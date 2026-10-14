@@ -406,6 +406,23 @@ export async function requireLiveMembers(
   }
 }
 
+/** keccak256 of empty code: what `code_hash` would be for an account with no code. */
+export const EMPTY_CODE_HASH =
+  'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
+
+/**
+ * Whether a `/wallet/getcontract` response describes deployed code. Tron omits `bytecode` for
+ * contracts created by another contract (our CREATE2 factory) and returns only `code_hash`, so
+ * either field counts; an account with no contract returns `{}`.
+ */
+export function contractHasCode(
+  contract: { bytecode?: string; code_hash?: string } | undefined,
+): boolean {
+  if (contract?.bytecode) return true
+  const codeHash = (contract?.code_hash ?? '').replace(/^0x/, '').toLowerCase()
+  return codeHash !== '' && codeHash !== EMPTY_CODE_HASH
+}
+
 /** Creation bytecode followed by the encoded constructor arguments. */
 export function buildInitCode(bytecode: string, encodedArgs: string): string {
   const creation = bytecode.startsWith('0x') ? bytecode : '0x' + bytecode
