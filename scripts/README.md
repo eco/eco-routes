@@ -137,3 +137,12 @@ The release process (auto-refreshing release PR → approve → squash-merge →
 tag + GitHub release) is documented in [`RELEASE.md`](../RELEASE.md) at the
 repo root. The `scripts/release/update-versions.ts` step above is the piece
 that lives here.
+
+## CCTP relay (reference)
+
+`npx tsx scripts/cctp/relay.ts --env testnet --source-domain <cctp domain> --tx-hash <source tx> --dest-rpc <url>`
+
+Polls Iris (`/v2/messages/{domain}?transactionHash=`), decodes and simulates
+`receiveMessage` on the destination, then prints an `ecocast send …` line to submit with
+the `eco-ops` keystore. It never signs. For a Solana destination, use
+`cctp-relay` in eco-routes-svm.
