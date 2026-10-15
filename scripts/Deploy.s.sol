@@ -1288,6 +1288,14 @@ contract Deploy is Script {
             ctx.ccipDomainConfig.length > 0,
             "CCIP_DOMAIN_CONFIG must list the CCIP_PROVER lanes to verify"
         );
+        // chainIdByDomain returns 0 for an unregistered selector, so a lane
+        // with chainId 0 would pass the round-trip without verifying anything.
+        for (uint256 i = 0; i < ctx.ccipDomainConfig.length; i++) {
+            require(
+                ctx.ccipDomainConfig[i].chainId != 0,
+                "CCIP_DOMAIN_CONFIG lane has chainId 0"
+            );
+        }
     }
 
     /// @dev Reads a no-argument getter returning one address, without
@@ -1327,10 +1335,13 @@ contract Deploy is Script {
      *        caller ccipReceive accepts and the source of the
      *        sourceChainSelector the destination is resolved from, so it is
      *        what makes the destination bridge-attested.
-     *      Its lanes are then round-tripped by the caller's loop. The
-     *      whitelist (trusted origin senders) is NOT compared: this script
-     *      has no expected list for a prover it did not deploy, so audit
-     *      getWhitelist() out of band.
+     *      Its configured lanes are then round-tripped by the caller's loop.
+     *      Two things are NOT compared, because this script has no expected
+     *      value for a prover it did not deploy, so audit both out of band:
+     *      the whitelist (getWhitelist()), and any lane the prover registered
+     *      that CCIP_DOMAIN_CONFIG omits (its constructor's DomainRegistered
+     *      events). A wrong chainId on an unlisted lane records a wrong
+     *      destination, which can shadow another member's valid proof.
      * @param ctx Deployment context carrying the Portal and CCIP inputs
      * @param member The member equal to ctx.ccipProver
      */

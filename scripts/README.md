@@ -110,7 +110,11 @@ Operational scripts for the Eco-Routes protocol.
      `ROUTER()` equal to `CCIP_ROUTER` (with code), and every lane in the
      then-mandatory `CCIP_DOMAIN_CONFIG` must round-trip through
      `chainIdByDomain`. No escape hatch is needed, and setting it does not
-     skip these checks. Its whitelist is not compared; audit it out of band.
+     skip these checks. Two things are not compared, so audit both out of
+     band: its whitelist (`getWhitelist()`), and any lane it registered that
+     `CCIP_DOMAIN_CONFIG` omits (its constructor's `DomainRegistered` events).
+     A wrong chainId on an unlisted lane records a wrong destination, which can
+     shadow another member's valid proof.
 
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated

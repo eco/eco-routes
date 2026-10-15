@@ -123,9 +123,13 @@ The system supports multiple bridge protocols through specialized prover contrac
   `CCIP_DOMAIN_CONFIG` lane to round-trip through `chainIdByDomain`. Its map is
   strict, but the config is still mandatory for a CCIP member: the map was not
   built by this run, so the lanes are the only check of it, and 64-bit chain
-  selectors cannot be enumerated. Its whitelist is not compared (no expected list
-  exists for a prover this script did not deploy): audit `getWhitelist()` out of
-  band. `LocalProver` does not qualify and is rejected at deploy time.
+  selectors cannot be enumerated. Two things are not compared (no expected value
+  exists for a prover this script did not deploy), so audit both out of band: its
+  whitelist (`getWhitelist()`), and any lane it registered that
+  `CCIP_DOMAIN_CONFIG` omits (its constructor's `DomainRegistered` events). A
+  wrong chainId on an unlisted lane records a wrong destination, which can shadow
+  another member's valid proof. A lane configured with chainId 0 is refused: it
+  would match any unregistered selector. `LocalProver` does not qualify and is rejected at deploy time.
   Including `CCTPProver` lowers the security floor to Circle's Fast confirmation for Ethereum and Solana origins (spec D2).
   `HyperProver`/`MetaProver` members additionally **require a non-empty
   `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`**: their resolvers fall back to

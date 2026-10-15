@@ -420,6 +420,23 @@ contract AggregatorProverMemberValidationTest is Test {
         harness.exposedValidate(ctx);
     }
 
+    function test_rejectsCcipLaneWithZeroChainId() public {
+        // The Base selector is unregistered, so it resolves to 0 and a lane
+        // configured with chainId 0 would match it without checking anything.
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipDomainConfig = new IMessageBridgeProver.Domain[](1);
+        ctx.ccipDomainConfig[0] = IMessageBridgeProver.Domain({
+            domain: CCIP_BASE,
+            chainId: 0
+        });
+
+        vm.expectRevert(bytes("CCIP_DOMAIN_CONFIG lane has chainId 0"));
+        harness.exposedValidate(ctx);
+    }
+
     function test_rejectsCodelessCcipProver() public {
         address portal = address(new Portal(address(0)));
         address router = address(new TestCCIPRouter(address(0)));
