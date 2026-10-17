@@ -115,7 +115,21 @@ The system supports multiple bridge protocols through specialized prover contrac
   the same `CHAIN_ID`, so its destination cannot disagree with the intent hash.
   The deploy validator admits only the run's own `PolymerProver`
   (`ctx.polymerProver`, built from this source; every release since v2.9.0 has
-  the check). `LocalProver` does not qualify and is rejected at deploy time.
+  the check). `CCIPProver` qualifies as a `MessageBridgeProver` but is never
+  deployed by `Deploy.s.sol` (the live ones come from `DeployCCIPProver.s.sol` at
+  vanity addresses), so it is admitted by address: `CCIP_PROVER` names it and the
+  validator requires `getProofType() == "CCIP"`, `PORTAL()` equal to this run's
+  Portal, `ROUTER()` equal to `CCIP_ROUTER` (with code), and every
+  `CCIP_DOMAIN_CONFIG` lane to round-trip through `chainIdByDomain`. Its map is
+  strict, but the config is still mandatory for a CCIP member: the map was not
+  built by this run, so the lanes are the only check of it, and 64-bit chain
+  selectors cannot be enumerated. Two things are not compared (no expected value
+  exists for a prover this script did not deploy), so audit both out of band: its
+  whitelist (`getWhitelist()`), and any lane it registered that
+  `CCIP_DOMAIN_CONFIG` omits (its constructor's `DomainRegistered` events). A
+  wrong chainId on an unlisted lane records a wrong destination, which can shadow
+  another member's valid proof. A lane configured with chainId 0 is refused: it
+  would match any unregistered selector. `LocalProver` does not qualify and is rejected at deploy time.
   Including `CCTPProver` lowers the security floor to Circle's Fast confirmation for Ethereum and Solana origins (spec D2).
   `HyperProver`/`MetaProver` members additionally **require a non-empty
   `HYPER_DOMAIN_CONFIG`/`META_DOMAIN_CONFIG`**: their resolvers fall back to
@@ -215,7 +229,8 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
 - `POLYMER_SOLANA_CHAIN_ID` - Polymer's own chain identifier for Solana, stored as `SOLANA_POLYMER_CHAIN_ID` and used to gate which emitting chain's logs are treated as Solana (documented as `2`; confirm with Polymer per environment). **Required when deploying PolymerProver**, no default. Distinct from `SOLANA_CHAIN_ID`. Immutable, and the PolymerProver CREATE3 salt does not mix it in, so a wrong value is permanent at that address.
 - `SOLANA_CHAIN_ID` - Eco's chain ID for Solana, checked against each Solana proof's `destination` and recorded in `ProofData.destination` (`1399811149` mainnet, `1399811150` devnet). **Required when deploying PolymerProver**, no default. Immutable; a wrong value can only be corrected by redeploying `PolymerProver` at a new salt.
 - `POLYMER_SOLANA_PROVER` - raw 32-byte program ID of the eco-routes-svm `polymer-prover` program, hex-encoded (`0x` + 64 hex chars, not base58). The script appends it to PolymerProver's immutable whitelist (`Deploy.polymerProverWhitelist`), which is what `validateSolana` gates `programID` on. **Required when deploying PolymerProver**, no default. Immutable and not mixed into the CREATE3 salt, so a rerun that adds or changes it at an occupied address fails the rerun guard instead of silently keeping the old whitelist; recovery is a redeploy at a new salt.
-- `CCIP_ROUTER` - Chainlink CCIP router address
+- `CCIP_ROUTER` - Chainlink CCIP router address. **Required when `CCIP_PROVER` is set**: the validator requires the member's `ROUTER()` to equal it (Ethereum `0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D`, Base `0x881e3A65B4d4a04dD529061dd0071cf975F58bCD`, Ronin `0x46527571D5D1B68eE7Eb60B18A32e6C60DcEAf99`, as in `DeployCCIPProver.s.sol`).
+- `CCIP_PROVER` - address of an existing `CCIPProver` to admit as an `AggregatorProver` member without the escape hatch (`Deploy.s.sol` never deploys CCIP; the live prover is `0xEC0B53A81C996da376F125E541E40082815CDcDc` on chains 1, 8453 and 2020). Also list it in `AGGREGATOR_PROVER_MEMBERS`. When set, `CCIP_ROUTER` and a non-empty `CCIP_DOMAIN_CONFIG` (CCIP chain selector `:` chainId, e.g. `5009297550715157269:1,6916147374840168594:2020` on Base) are required and checked before broadcast; `PORTAL_CONTRACT` (or a Portal deployed in the run) must be the Portal the prover is bound to.
 - `CCTP_MESSAGE_TRANSMITTER` - Circle MessageTransmitterV2 (`0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` mainnet, `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` testnet). Unset skips CCTPProver.
 - `CCTP_CROSS_VM_PROVERS` - comma-separated extra whitelist entries (20-byte or 32-byte hex; malformed fails by name). Put the Solana `cctp-prover` program ID here as 32-byte hex. Self is added left-padded automatically; the list plus self may total at most 20 entries.
 - `CCTP_DOMAIN_CONFIG` - strict `domain:chainId` list (e.g. `0:1,3:42161,5:1399811149`); must enumerate every accepted origin; domain 0 (Ethereum) is valid.
@@ -240,18 +255,17 @@ Provers share a common base: `BaseProver` (implements `IProver`, `ERC165`) is th
   since the member set is a constructor arg that may legitimately differ.
 - `AGGREGATOR_PROVER_ALLOW_UNVERIFIED_MEMBERS` - **Unsafe escape hatch.** When `true`,
   allows `AggregatorProver` members that were not deployed in the current run
-  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`/`cctpProver`). Read once in
+  (i.e. not `ctx.hyperProver`/`metaProver`/`layerZeroProver`/`cctpProver`/`polymerProver`,
+  nor the `CCIP_PROVER` prover). Read once in
   `run()` into `ctx.allowUnverifiedMembers`, so `validateAggregatorProverMembers`
   is a pure function of the context and tests set a struct field rather than
   mutating process-wide env state. The EVM-shape, non-zero, has-code,
   `chainIdByDomain`-presence, and `provenIntents`-shape checks still apply, but
   **domain-lane verification is skipped entirely** for members admitted this
   way — there is no per-lane check to skip to, because a member outside the
-  matched set never reaches the domain-config loop. `CCIPProver` can _only_
-  be admitted through this hatch: it is deployed by a separate script
-  (`scripts/DeployCCIPProver.s.sol`), so it can never equal one of `ctx`'s own
-  prover fields, and it uses a strict domain->chainId map with no fallback,
-  making it the member type most sensitive to a config error. Any member
+  matched set never reaches the domain-config loop. A `CCIPProver` does **not**
+  need this hatch: name it in `CCIP_PROVER` and it is verified like the others
+  (and setting the hatch does not skip those checks). Any member
   admitted via this hatch requires **out-of-band** verification of its domain
   table against the bridge operator's published values before deployment —
   leave the hatch unset unless you have done that audit.

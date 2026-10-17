@@ -16,12 +16,20 @@ import {PolymerProver} from "../../contracts/prover/PolymerProver.sol";
 import {TestCrossL2ProverV2} from "../../contracts/test/TestCrossL2ProverV2.sol";
 import {CCTPProver} from "../../contracts/prover/CCTPProver.sol";
 import {MockMessageTransmitterV2} from "../../contracts/test/MockMessageTransmitterV2.sol";
+import {CCIPProver} from "../../contracts/prover/CCIPProver.sol";
+import {TestCCIPRouter} from "../../contracts/test/TestCCIPRouter.sol";
 
 /// @dev Harness exposing Deploy's internal validator and member-list parser
 ///      to tests
 contract DeployHarness is Deploy {
     function exposedValidate(DeploymentContext memory ctx) external view {
         validateAggregatorProverMembers(ctx);
+    }
+
+    function exposedRequireCCIPMemberInputs(
+        DeploymentContext memory ctx
+    ) external pure {
+        _requireCCIPMemberInputs(ctx);
     }
 
     function emptyContext()
@@ -212,6 +220,349 @@ contract AggregatorProverMemberValidationTest is Test {
             bytes("member domain map disagrees with configured lane")
         );
         harness.exposedValidate(ctx);
+    }
+
+    // ---------------------------------------------------------------------
+    // CCIPProver named by CCIP_PROVER
+    // ---------------------------------------------------------------------
+
+    /// @dev CCIP chain selectors of the live lanes (Ethereum, Base, Ronin)
+    uint64 internal constant CCIP_ETHEREUM = 5009297550715157269;
+    uint64 internal constant CCIP_BASE = 15971525489660198786;
+    uint64 internal constant CCIP_RONIN = 6916147374840168594;
+
+    /// @dev The live CCIPProver's vanity address on chains 1, 8453 and 2020.
+    ///      Deployed by DeployCCIPProver.s.sol, not at any CREATE3 address
+    ///      this script derives.
+    address internal constant LIVE_CCIP_PROVER =
+        0xEC0B53A81C996da376F125E541E40082815CDcDc;
+
+    /// @dev Lanes as seen from Base: Ethereum and Ronin origins
+    function _ccipLanes()
+        internal
+        pure
+        returns (IMessageBridgeProver.Domain[] memory lanes)
+    {
+        lanes = new IMessageBridgeProver.Domain[](2);
+        lanes[0] = IMessageBridgeProver.Domain({
+            domain: CCIP_ETHEREUM,
+            chainId: 1
+        });
+        lanes[1] = IMessageBridgeProver.Domain({
+            domain: CCIP_RONIN,
+            chainId: 2020
+        });
+    }
+
+    function _ccipArgs(
+        address router,
+        address portal,
+        address self
+    ) internal pure returns (bytes memory) {
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = _b32(self);
+        return abi.encode(router, portal, provers, 0, _ccipLanes());
+    }
+
+    /// @dev A CCIPProver at the live vanity address, built from this source
+    ///      with the live constructor shape (self-only whitelist).
+    function _vanityCcipProver(
+        address router,
+        address portal
+    ) internal returns (address) {
+        deployCodeTo(
+            "CCIPProver.sol:CCIPProver",
+            _ccipArgs(router, portal, LIVE_CCIP_PROVER),
+            LIVE_CCIP_PROVER
+        );
+        return LIVE_CCIP_PROVER;
+    }
+
+    /// @dev Context naming `ccip` as CCIP_PROVER, with matching Portal,
+    ///      router and lanes and the escape hatch explicitly off
+    function _ccipCtx(
+        address ccip,
+        address portal,
+        address router
+    ) internal view returns (Deploy.DeploymentContext memory ctx) {
+        ctx = _ctxWith(_one(_b32(ccip)));
+        ctx.portal = portal;
+        ctx.ccipProver = ccip;
+        ctx.ccipRouter = router;
+        ctx.ccipDomainConfig = _ccipLanes();
+        ctx.allowUnverifiedMembers = false;
+    }
+
+    function test_acceptsFreshCcipProver() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = _b32(address(0xBEEF));
+        CCIPProver ccip = new CCIPProver(
+            router,
+            portal,
+            provers,
+            0,
+            _ccipLanes()
+        );
+
+        harness.exposedValidate(_ccipCtx(address(ccip), portal, router));
+    }
+
+    function test_acceptsPreexistingCcipProverAtVanityAddress() public {
+        // The generation's case: CCIP is not redeployed, so the member is the
+        // existing prover at an address this script never derives, and the
+        // escape hatch stays off (_ccipCtx sets it false).
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+
+        harness.exposedValidate(_ccipCtx(ccip, portal, router));
+    }
+
+    function test_rejectsCcipProverWithoutCcipProverInput() public {
+        // Without CCIP_PROVER the same prover is an unknown member: the CCIP
+        // branch is what admits it, not some looser default.
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipProver = address(0);
+
+        vm.expectRevert(bytes("member is not a prover deployed in this run"));
+        harness.exposedValidate(ctx);
+    }
+
+    function test_escapeHatchDoesNotSkipCcipChecks() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, address(0xB0B));
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.allowUnverifiedMembers = true;
+
+        vm.expectRevert(
+            bytes("CCIP_PROVER is bound to a different Portal than this run's")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipProverBoundToAnotherPortal() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(
+            router,
+            address(new Portal(address(0)))
+        );
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+
+        vm.expectRevert(
+            bytes("CCIP_PROVER is bound to a different Portal than this run's")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipMemberWithoutRunPortal() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.portal = address(0);
+
+        vm.expectRevert(
+            bytes("CCIP_PROVER needs this run's Portal; set PORTAL_CONTRACT")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipMemberWithoutLaneConfig() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipDomainConfig = new IMessageBridgeProver.Domain[](0);
+
+        vm.expectRevert(
+            bytes(
+                "CCIP_DOMAIN_CONFIG must list the CCIP_PROVER lanes to verify"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipLaneMapMismatch() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipDomainConfig[1].chainId = 8453;
+
+        vm.expectRevert(
+            bytes("member domain map disagrees with configured lane")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipLaneMissingFromLiveMap() public {
+        // The Base selector is not registered on a Base-side prover, so it
+        // resolves to 0 and cannot match a configured chainId.
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipDomainConfig[0] = IMessageBridgeProver.Domain({
+            domain: CCIP_BASE,
+            chainId: 8453
+        });
+
+        vm.expectRevert(
+            bytes("member domain map disagrees with configured lane")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipLaneWithZeroChainId() public {
+        // The Base selector is unregistered, so it resolves to 0 and a lane
+        // configured with chainId 0 would match it without checking anything.
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipDomainConfig = new IMessageBridgeProver.Domain[](1);
+        ctx.ccipDomainConfig[0] = IMessageBridgeProver.Domain({
+            domain: CCIP_BASE,
+            chainId: 0
+        });
+
+        vm.expectRevert(bytes("CCIP_DOMAIN_CONFIG lane has chainId 0"));
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCodelessCcipProver() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        Deploy.DeploymentContext memory ctx = _ccipCtx(
+            LIVE_CCIP_PROVER,
+            portal,
+            router
+        );
+
+        vm.expectRevert(bytes("member has no code on this chain"));
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipProverWithAnotherRouter() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(
+            ccip,
+            portal,
+            address(new TestCCIPRouter(address(0)))
+        );
+
+        vm.expectRevert(bytes("CCIP_PROVER ROUTER() is not CCIP_ROUTER"));
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCodelessCcipRouter() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(0xC0FFEE);
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+
+        vm.expectRevert(bytes("CCIP_ROUTER has no code on this chain"));
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsCcipMemberWithoutRouterInput() public {
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        Deploy.DeploymentContext memory ctx = _ccipCtx(ccip, portal, router);
+        ctx.ccipRouter = address(0);
+
+        vm.expectRevert(
+            bytes("CCIP_ROUTER is required when CCIP_PROVER is set")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_rejectsNonCcipProverNamedAsCcipProver() public {
+        // A mistyped CCIP_PROVER naming another MessageBridgeProver with the
+        // same lanes still fails, on its proof type.
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        bytes32[] memory provers = new bytes32[](1);
+        provers[0] = _b32(address(0xBEEF));
+        HyperProver notCcip = new HyperProver(
+            address(new TestMailbox(address(0))),
+            portal,
+            provers,
+            _ccipLanes()
+        );
+        Deploy.DeploymentContext memory ctx = _ccipCtx(
+            address(notCcip),
+            portal,
+            router
+        );
+
+        vm.expectRevert(
+            bytes(
+                "CCIP_PROVER is not a CCIPProver (getProofType() is not CCIP)"
+            )
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    function test_acceptsMixedPolymerCctpCcipHyperSet() public {
+        // CCIP last, behind the Polymer `continue`: its checks still run.
+        Deploy.DeploymentContext memory ctx = _polymerCctpHyperCtx(
+            _cctpLanes()
+        );
+        address portal = address(new Portal(address(0)));
+        address router = address(new TestCCIPRouter(address(0)));
+        address ccip = _vanityCcipProver(router, portal);
+        bytes32[] memory members = new bytes32[](4);
+        for (uint256 i = 0; i < 3; i++) {
+            members[i] = ctx.aggregatorProverMembers[i];
+        }
+        members[3] = _b32(ccip);
+        ctx.aggregatorProverMembers = members;
+        ctx.portal = portal;
+        ctx.ccipProver = ccip;
+        ctx.ccipRouter = router;
+        ctx.ccipDomainConfig = _ccipLanes();
+
+        harness.exposedValidate(ctx);
+
+        ctx.ccipDomainConfig[0].chainId = 10;
+        vm.expectRevert(
+            bytes("member domain map disagrees with configured lane")
+        );
+        harness.exposedValidate(ctx);
+    }
+
+    /// @dev run() calls this before broadcast whenever CCIP_PROVER is set
+    function test_ccipInputsCheckedBeforeBroadcast() public {
+        Deploy.DeploymentContext memory ctx = harness.emptyContext();
+        ctx.ccipProver = LIVE_CCIP_PROVER;
+        ctx.ccipDomainConfig = _ccipLanes();
+        vm.expectRevert(
+            bytes("CCIP_ROUTER is required when CCIP_PROVER is set")
+        );
+        harness.exposedRequireCCIPMemberInputs(ctx);
+
+        ctx.ccipRouter = address(0xC0FFEE);
+        ctx.ccipDomainConfig = new IMessageBridgeProver.Domain[](0);
+        vm.expectRevert(
+            bytes(
+                "CCIP_DOMAIN_CONFIG must list the CCIP_PROVER lanes to verify"
+            )
+        );
+        harness.exposedRequireCCIPMemberInputs(ctx);
+
+        ctx.ccipDomainConfig = _ccipLanes();
+        harness.exposedRequireCCIPMemberInputs(ctx);
     }
 
     function test_rejectsPolymerMemberWithMalformedProvenIntents() public {
