@@ -1,3 +1,11 @@
+## 2.13.0 (2026-10-17)
+
+* feat(deploy): admit an existing CCIPProver as an AggregatorProver member (#456) ([b195b55](https://github.com/eco/eco-routes/commit/b195b55)), closes [#456](https://github.com/eco/eco-routes/issues/456)
+* feat(deploy): admit PolymerProver as an AggregatorProver member (#448) ([aa9bd12](https://github.com/eco/eco-routes/commit/aa9bd12)), closes [#448](https://github.com/eco/eco-routes/issues/448) [#453](https://github.com/eco/eco-routes/issues/453)
+* feat(prover): add CCTPProver over Circle CCTP V2 generic messages (#453) ([ab7137e](https://github.com/eco/eco-routes/commit/ab7137e)), closes [#453](https://github.com/eco/eco-routes/issues/453)
+* chore(deps): bump the major group across 1 directory with 4 updates (#424) ([7f44a44](https://github.com/eco/eco-routes/commit/7f44a44)), closes [#424](https://github.com/eco/eco-routes/issues/424)
+* chore(deps): bump the minor-and-patch group across 1 directory with 16 updates (#449) ([5643a20](https://github.com/eco/eco-routes/commit/5643a20)), closes [#449](https://github.com/eco/eco-routes/issues/449)
+* chore(deps): bump the minor-and-patch group with 3 updates (#462) ([aeb61e7](https://github.com/eco/eco-routes/commit/aeb61e7)), closes [#462](https://github.com/eco/eco-routes/issues/462)
 ## 2.12.0 (2026-09-29)
 
 * feat: add proven cancellation for fast permissionless refunds (#443) ([b57b222](https://github.com/eco/eco-routes/commit/b57b222)), closes [#443](https://github.com/eco/eco-routes/issues/443)
