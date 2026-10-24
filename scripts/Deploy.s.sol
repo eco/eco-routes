@@ -13,6 +13,7 @@ import {Portal} from "../contracts/Portal.sol";
 import {HyperProver} from "../contracts/prover/HyperProver.sol";
 import {MetaProver} from "../contracts/prover/MetaProver.sol";
 import {LayerZeroProver} from "../contracts/prover/LayerZeroProver.sol";
+import {CCTPProver} from "../contracts/prover/CCTPProver.sol";
 import {PolymerProver} from "../contracts/prover/PolymerProver.sol";
 import {AggregatorProver} from "../contracts/prover/AggregatorProver.sol";
 import {IMessageBridgeProver} from "../contracts/interfaces/IMessageBridgeProver.sol";
@@ -70,6 +71,7 @@ contract Deploy is Script {
         address router;
         address layerZeroEndpoint;
         LayerZeroProver.LayerZeroConfig layerZeroConfig;
+        address cctpMessageTransmitter;
         address polymerCrossL2ProverV2;
         uint256 polymerMaxLogDataSize;
         uint32 polymerSolanaChainId;
@@ -79,27 +81,36 @@ contract Deploy is Script {
         bytes32[] hyperCrossVmProvers;
         bytes32[] metaCrossVmProvers;
         bytes32[] layerZeroCrossVmProvers;
+        bytes32[] cctpCrossVmProvers;
         bytes32[] polymerCrossVmProvers;
         IMessageBridgeProver.Domain[] hyperDomainConfig;
         IMessageBridgeProver.Domain[] metaDomainConfig;
         IMessageBridgeProver.Domain[] layerZeroDomainConfig;
+        IMessageBridgeProver.Domain[] cctpDomainConfig;
+        CCTPProver.MaxPairs[] cctpMaxPairsConfig;
         address deployer;
         bytes32 portalSalt;
         bytes32 hyperProverSalt;
         bytes32 metaProverSalt;
         bytes32 layerZeroProverSalt;
+        bytes32 cctpProverSalt;
         bytes32 polymerProverSalt;
         address portal;
         address hyperProver;
         address metaProver;
         address layerZeroProver;
+        address cctpProver;
         address polymerProver;
         bytes hyperProverConstructorArgs;
         bytes metaProverConstructorArgs;
         bytes layerZeroProverConstructorArgs;
+        bytes cctpProverConstructorArgs;
         bytes polymerProverConstructorArgs;
         bytes32[] aggregatorProverMembers;
         bool allowUnverifiedMembers;
+        address ccipProver;
+        address ccipRouter;
+        IMessageBridgeProver.Domain[] ccipDomainConfig;
         bytes32 aggregatorProverSalt;
         address aggregatorProver;
         bytes aggregatorProverConstructorArgs;
@@ -113,6 +124,10 @@ contract Deploy is Script {
         ctx.mailbox = vm.envOr("MAILBOX_CONTRACT", address(0));
         ctx.router = vm.envOr("ROUTER_CONTRACT", address(0));
         ctx.layerZeroEndpoint = vm.envOr("LAYERZERO_ENDPOINT", address(0));
+        ctx.cctpMessageTransmitter = vm.envOr(
+            "CCTP_MESSAGE_TRANSMITTER",
+            address(0)
+        );
         ctx.polymerCrossL2ProverV2 = vm.envOr(
             "POLYMER_CROSS_L2_PROVER_V2",
             address(0)
@@ -201,6 +216,14 @@ contract Deploy is Script {
                 "POLYMER_CROSS_VM_PROVERS"
             );
 
+        string memory cctpCrossVmProversRaw = vm.envOr(
+            "CCTP_CROSS_VM_PROVERS",
+            string("")
+        );
+        ctx.cctpCrossVmProvers = bytes(cctpCrossVmProversRaw).length == 0
+            ? new bytes32[](0)
+            : _parseBytes32List(cctpCrossVmProversRaw, "CCTP_CROSS_VM_PROVERS");
+
         // Ordered, comma-separated member provers for AggregatorProver.
         // ORDER IS PRIORITY: the first member holding a non-zero claimant wins.
         // Set explicitly rather than derived from what was deployed this run —
@@ -238,6 +261,22 @@ contract Deploy is Script {
             false
         );
 
+        // An existing CCIPProver to admit as an aggregator member. This script
+        // never deploys CCIP (scripts/DeployCCIPProver.s.sol does, at vanity
+        // addresses unrelated to this script's CREATE3 salts), so it cannot be
+        // matched against a prover of this run the way the others are. It is
+        // named here instead and verified against the router and lanes the
+        // operator states, so admitting it needs no escape hatch. Checked
+        // before broadcast so a half-configured member fails early.
+        ctx.ccipProver = vm.envOr("CCIP_PROVER", address(0));
+        if (ctx.ccipProver != address(0)) {
+            ctx.ccipRouter = vm.envOr("CCIP_ROUTER", address(0));
+            ctx.ccipDomainConfig = _parseDomainConfig(
+                vm.envOr("CCIP_DOMAIN_CONFIG", string(""))
+            );
+            _requireCCIPMemberInputs(ctx);
+        }
+
         // Per-bridge origin domain -> chainId config (optional; empty string
         // when unset). Hyper/Meta resolvers fall back to domain==chainId, so
         // their config is exceptions-only and may legitimately be empty.
@@ -258,6 +297,14 @@ contract Deploy is Script {
                 ctx.layerZeroDomainConfig
             );
         }
+        // CCTP uses a strict map and must enumerate every accepted origin.
+        // Domain 0 is Ethereum and is valid here.
+        ctx.cctpDomainConfig = _parseDomainConfig(
+            vm.envOr("CCTP_DOMAIN_CONFIG", string(""))
+        );
+        ctx.cctpMaxPairsConfig = _parseMaxPairsConfig(
+            vm.envOr("CCTP_MAX_PAIRS_CONFIG", string(""))
+        );
 
         ctx.deployFilePath = vm.envString("DEPLOY_FILE");
         ctx.deployer = vm.rememberKey(vm.envUint("PRIVATE_KEY"));
@@ -266,8 +313,9 @@ contract Deploy is Script {
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
+        bool hasCctp = ctx.cctpMessageTransmitter != address(0);
         bool needsPortal = !hasExistingPortal &&
-            (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+            (hasMailbox || hasRouter || hasLayerZero || hasPolymer || hasCctp);
         // Compute salts for each contract
         if (needsPortal) {
             ctx.portalSalt = ctx.salt;
@@ -285,6 +333,12 @@ contract Deploy is Script {
                 ctx.salt,
                 "LAYERZERO_PROVER"
             );
+        }
+
+        if (hasCctp) {
+            ctx.cctpProverSalt = getContractSalt(ctx.salt, "CCTP_PROVER");
+            // Fail on an uncapped Solana lane before anything is broadcast.
+            _requireSolanaLaneCap(ctx);
         }
 
         if (hasPolymer) {
@@ -329,6 +383,11 @@ contract Deploy is Script {
             deployLayerZeroProver(ctx);
         }
 
+        // Deploy CCTPProver
+        if (hasCctp) {
+            deployCCTPProver(ctx);
+        }
+
         // Deploy PolymerProver
         if (hasPolymer) {
             deployPolymerProver(ctx);
@@ -352,8 +411,9 @@ contract Deploy is Script {
         bool hasRouter = ctx.router != address(0);
         bool hasLayerZero = ctx.layerZeroEndpoint != address(0);
         bool hasPolymer = ctx.polymerCrossL2ProverV2 != address(0);
+        bool hasCctp = ctx.cctpMessageTransmitter != address(0);
         bool needsPortal = !hasExistingPortal &&
-            (hasMailbox || hasRouter || hasLayerZero || hasPolymer);
+            (hasMailbox || hasRouter || hasLayerZero || hasPolymer || hasCctp);
         bool hasAggregatorProver = ctx.aggregatorProverMembers.length > 0;
 
         uint num = 0;
@@ -361,6 +421,7 @@ contract Deploy is Script {
         num = hasMailbox ? num + 1 : num;
         num = hasRouter ? num + 1 : num;
         num = hasLayerZero ? num + 1 : num;
+        num = hasCctp ? num + 1 : num;
         num = hasPolymer ? num + 1 : num;
         num = hasAggregatorProver ? num + 1 : num;
 
@@ -397,6 +458,14 @@ contract Deploy is Script {
                 contractAddress: ctx.layerZeroProver,
                 contractPath: "contracts/prover/LayerZeroProver.sol:LayerZeroProver",
                 constructorArgs: ctx.layerZeroProverConstructorArgs,
+                chainId: block.chainid
+            });
+        }
+        if (hasCctp) {
+            contracts[count++] = VerificationData({
+                contractAddress: ctx.cctpProver,
+                contractPath: "contracts/prover/CCTPProver.sol:CCTPProver",
+                constructorArgs: ctx.cctpProverConstructorArgs,
                 chainId: block.chainid
             });
         }
@@ -572,6 +641,164 @@ contract Deploy is Script {
         }
 
         console.log("LayerZeroProver :", ctx.layerZeroProver);
+    }
+
+    /**
+     * @notice CCTPProver whitelist: self first, then CCTP_CROSS_VM_PROVERS
+     * @dev Self is LEFT-padded (bytes32(uint256(uint160(a)))) because that is
+     *      how MessageTransmitterV2 reports an EVM sender in the message
+     *      header. The bytes32(bytes20(a)) form used for the other provers'
+     *      self-reference would never match a CCTP sender.
+     */
+    function cctpProverWhitelist(
+        DeploymentContext memory ctx,
+        address preview
+    ) internal pure returns (bytes32[] memory provers) {
+        require(
+            ctx.cctpCrossVmProvers.length < MAX_WHITELIST_SIZE,
+            "CCTP_CROSS_VM_PROVERS + self exceed the 20-slot whitelist"
+        );
+        provers = new bytes32[](1 + ctx.cctpCrossVmProvers.length);
+        provers[0] = bytes32(uint256(uint160(preview)));
+        for (uint256 i = 0; i < ctx.cctpCrossVmProvers.length; i++) {
+            provers[i + 1] = ctx.cctpCrossVmProvers[i];
+        }
+    }
+
+    /**
+     * @notice Reverts when CCTP_MAX_PAIRS_CONFIG has no domain-5 (Solana) cap
+     * @dev Unconditional: the Solana lane MUST be capped on every CCTP deploy
+     *      (spec section 3), whatever CCTP_DOMAIN_CONFIG lists. A missing
+     *      entry would otherwise leave the lane silently uncapped.
+     */
+    function _requireSolanaLaneCap(DeploymentContext memory ctx) internal pure {
+        for (uint256 j = 0; j < ctx.cctpMaxPairsConfig.length; j++) {
+            if (ctx.cctpMaxPairsConfig[j].domain == 5) return;
+        }
+        revert(
+            "CCTP_MAX_PAIRS_CONFIG must cap domain 5 (Solana) on every CCTP deploy"
+        );
+    }
+
+    function deployCCTPProver(
+        DeploymentContext memory ctx
+    ) internal returns (address cctpProver) {
+        address preview = create3Deployer.deployedAddress(
+            bytes(""), // Bytecode isn't used to determine the deployed address
+            ctx.deployer,
+            ctx.cctpProverSalt
+        );
+
+        ctx.cctpProverConstructorArgs = abi.encode(
+            ctx.portal,
+            ctx.cctpMessageTransmitter,
+            cctpProverWhitelist(ctx, preview),
+            ctx.cctpDomainConfig,
+            ctx.cctpMaxPairsConfig
+        );
+
+        bool deployed;
+        (ctx.cctpProver, deployed) = deployWithCreate3(
+            abi.encodePacked(
+                type(CCTPProver).creationCode,
+                ctx.cctpProverConstructorArgs
+            ),
+            ctx.deployer,
+            ctx.cctpProverSalt
+        );
+        if (deployed) {
+            _requireReusableProver(ctx.cctpProver, ctx.portal, "CCTPProver");
+            _validateCCTPProverMatchesContext(ctx, ctx.cctpProver, preview);
+        }
+
+        console.log("CCTPProver :", ctx.cctpProver);
+        return ctx.cctpProver;
+    }
+
+    /// @dev Highest CCTP domain probed when comparing a reused CCTPProver's
+    ///      lane and cap maps to the config. Circle assigns CCTP domains
+    ///      sequentially from 0 and the highest live today is 28 (EDGE), so
+    ///      63 leaves headroom. Raise it if Circle assigns domains past it.
+    uint64 internal constant MAX_CCTP_DOMAIN_PROBE = 63;
+
+    /// @dev Every CCTPProver constructor argument is immutable or setter-less
+    ///      and the salt is name-only, so a rerun with changed env vars
+    ///      short-circuits in deployWithCreate3 and silently keeps the old
+    ///      values. One require each so the operator learns WHICH field
+    ///      diverged. Keep in sync with the constructor args in
+    ///      deployCCTPProver.
+    function _validateCCTPProverMatchesContext(
+        DeploymentContext memory ctx,
+        address prover,
+        address preview
+    ) internal view {
+        CCTPProver live = CCTPProver(payable(prover));
+        require(
+            live.TRANSMITTER() == ctx.cctpMessageTransmitter,
+            "CCTPProver already deployed at this salt with a different CCTP_MESSAGE_TRANSMITTER; redeploy at a new SALT"
+        );
+        for (uint256 i = 0; i < ctx.cctpDomainConfig.length; i++) {
+            require(
+                live.chainIdByDomain(ctx.cctpDomainConfig[i].domain) ==
+                    ctx.cctpDomainConfig[i].chainId,
+                "CCTPProver already deployed at this salt with a different CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+            );
+        }
+        for (uint256 i = 0; i < ctx.cctpMaxPairsConfig.length; i++) {
+            require(
+                live.maxPairsByDomain(ctx.cctpMaxPairsConfig[i].domain) ==
+                    ctx.cctpMaxPairsConfig[i].maxPairs,
+                "CCTPProver already deployed at this salt with a different CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+            );
+        }
+        // The per-entry checks above are blind to lanes the live prover
+        // registered that the current config no longer lists, so probe every
+        // domain and require the live map to equal the config exactly.
+        for (uint64 d = 0; d <= MAX_CCTP_DOMAIN_PROBE; d++) {
+            uint64 wantChainId = 0;
+            for (uint256 i = 0; i < ctx.cctpDomainConfig.length; i++) {
+                if (ctx.cctpDomainConfig[i].domain == d) {
+                    wantChainId = ctx.cctpDomainConfig[i].chainId;
+                }
+            }
+            require(
+                live.chainIdByDomain(d) == wantChainId,
+                string.concat(
+                    "CCTPProver already deployed at this salt has a different lane for CCTP domain ",
+                    vm.toString(uint256(d)),
+                    " than CCTP_DOMAIN_CONFIG; redeploy at a new SALT"
+                )
+            );
+            uint16 wantCap = 0;
+            for (uint256 i = 0; i < ctx.cctpMaxPairsConfig.length; i++) {
+                if (ctx.cctpMaxPairsConfig[i].domain == d) {
+                    wantCap = ctx.cctpMaxPairsConfig[i].maxPairs;
+                }
+            }
+            require(
+                live.maxPairsByDomain(uint32(d)) == wantCap,
+                string.concat(
+                    "CCTPProver already deployed at this salt has a different batch cap for CCTP domain ",
+                    vm.toString(uint256(d)),
+                    " than CCTP_MAX_PAIRS_CONFIG; redeploy at a new SALT"
+                )
+            );
+        }
+        bytes32[] memory provers = cctpProverWhitelist(ctx, preview);
+        for (uint256 i = 0; i < provers.length; i++) {
+            require(
+                live.isWhitelisted(provers[i]),
+                "CCTPProver already deployed at this salt without a CCTP_CROSS_VM_PROVERS entry in its whitelist; redeploy at a new SALT"
+            );
+        }
+        // Membership is blind to EXTRA live entries (extra trusted origin
+        // senders). The ordered hash is the exact comparison, as in
+        // _validatePolymerProverMatchesContext; a pure reorder fails too.
+        require(
+            keccak256(abi.encode(live.getWhitelist())) ==
+                keccak256(abi.encode(provers)),
+            "CCTPProver already deployed at this salt has a different whitelist (extra or reordered entries); deploy at a new SALT"
+        );
     }
 
     function deployPolymerProver(
@@ -913,11 +1140,16 @@ contract Deploy is Script {
      *      same shadowed value, never forwards a challenge, and past
      *      reward.deadline refunds the creator while the solver who
      *      delivered goes unpaid. This validator is the mitigation: it
-     *      restricts members to provers whose `destination` is
-     *      bridge-attested by MessageBridgeProver._handleCrossChainMessage,
-     *      removing the two config-triggered causes (codeless member,
-     *      non-bridge-attested member). The asymmetry itself remains in
-     *      IntentSource.
+     *      restricts members to provers whose `destination` is attested,
+     *      either by MessageBridgeProver._handleCrossChainMessage (this run's
+     *      HyperProver, MetaProver, LayerZeroProver or CCTPProver, or the
+     *      existing CCIPProver named by CCIP_PROVER once _requireCCIPMember
+     *      has checked its type, Portal and router; every configured lane
+     *      round-tripped) or, for this run's PolymerProver, by validate()'s
+     *      check that Polymer's attested chain equals the Portal-written
+     *      chain-ID header. That removes the two config-triggered causes
+     *      (codeless member, unattested member). The asymmetry itself
+     *      remains in IntentSource.
      * @param ctx Deployment context carrying the member list and domain configs
      */
     function validateAggregatorProverMembers(
@@ -940,36 +1172,6 @@ contract Deploy is Script {
             // members than the operator believes they configured.
             require(member.code.length > 0, "member has no code on this chain");
 
-            // Defense-in-depth, not the real gate: PolymerProver writes
-            // _provenIntents through its own processIntent and never routes
-            // through BaseProver._processIntentProofs, so its destination is
-            // not bridge-attested. But PolymerProver is BaseProver+Whitelist,
-            // not a MessageBridgeProver descendant, so it has no
-            // chainIdByDomain and the unconditional probe below already
-            // rejects it one step earlier regardless of this check. This
-            // require is also a no-op exactly when it looks most needed: it
-            // is gated on ctx.polymerProver != address(0), so an operator who
-            // lists a previously-deployed PolymerProver as a member without
-            // POLYMER_CROSS_L2_PROVER_V2 set in this run never reaches it.
-            // Kept anyway because its error message is clearer than the
-            // probe's.
-            require(
-                ctx.polymerProver == address(0) || member != ctx.polymerProver,
-                "PolymerProver destination is not bridge-attested"
-            );
-
-            // chainIdByDomain exists only on MessageBridgeProver descendants —
-            // exactly the provers whose destination is bridge-attested via
-            // _handleCrossChainMessage. Its ABSENCE is the signal, so probe it
-            // unconditionally: the per-lane loop below cannot serve as the probe
-            // because HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are exceptions-only
-            // and are legitimately empty.
-            (bool probed, ) = _tryChainIdByDomain(member, 0);
-            require(
-                probed,
-                "member does not expose chainIdByDomain; destination not bridge-attested"
-            );
-
             // A member whose provenIntents reverts under staticcall, or
             // returns a wrong-shaped payload, is silently skipped forever at
             // runtime by AggregatorProver.provenIntents' own guards — and membership
@@ -977,6 +1179,34 @@ contract Deploy is Script {
             require(
                 _tryProvenIntentsShape(member),
                 "member provenIntents does not return a well-formed ProofData"
+            );
+
+            // PolymerProver is not a MessageBridgeProver, but its destination
+            // is attested all the same: validate() reverts unless the chain
+            // Polymer attributes the event to equals the 8-byte chain-ID
+            // header the destination Portal wrote, and that Portal hashes
+            // every intent it fulfills with the same CHAIN_ID. There is no
+            // domain map to get wrong, so it cannot record a destination
+            // that disagrees with the intent hash. Only the PolymerProver of
+            // this run qualifies (built from this source; every release since
+            // v2.9.0 has the check): one deployed elsewhere still has to pass
+            // the chainIdByDomain probe below, which it cannot.
+            if (
+                ctx.polymerProver != address(0) && member == ctx.polymerProver
+            ) {
+                continue;
+            }
+
+            // chainIdByDomain exists only on MessageBridgeProver descendants —
+            // exactly the provers whose destination is bridge-attested via
+            // _handleCrossChainMessage. Its ABSENCE is the signal, so probe it
+            // for every other member: the per-lane loop below cannot serve as the probe
+            // because HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are exceptions-only
+            // and are legitimately empty.
+            (bool probed, ) = _tryChainIdByDomain(member, 0);
+            require(
+                probed,
+                "member does not expose chainIdByDomain; destination not bridge-attested"
             );
 
             IMessageBridgeProver.Domain[] memory domains;
@@ -989,6 +1219,20 @@ contract Deploy is Script {
                 needsExplicitLanes = true;
             } else if (member == ctx.layerZeroProver) {
                 domains = ctx.layerZeroDomainConfig;
+            } else if (member == ctx.cctpProver) {
+                // Strict map like LayerZero: an omitted lane reverts
+                // UnregisteredDomain rather than recording a wrong destination.
+                domains = ctx.cctpDomainConfig;
+            } else if (member == ctx.ccipProver) {
+                // Not deployed by this run, so its Portal, router and identity
+                // are checked here rather than assumed, and its lanes come
+                // from CCIP_DOMAIN_CONFIG. Its map is strict too, but unlike
+                // LayerZero's and CCTP's it was not built from this run's
+                // config, so the lane loop below is the only check of it and
+                // _requireCCIPMember refuses an empty config. Runs whatever
+                // the escape hatch says.
+                _requireCCIPMember(ctx, member);
+                domains = ctx.ccipDomainConfig;
             } else {
                 require(
                     allowUnverified,
@@ -1008,9 +1252,11 @@ contract Deploy is Script {
             // mandatory, even though HYPER_DOMAIN_CONFIG/META_DOMAIN_CONFIG are
             // exceptions-only (and may stay empty) for a NON-member deploy.
             //
-            // LayerZeroProver is exempt: its strict domain->chainId map has no
+            // LayerZeroProver and CCTPProver are exempt: their strict domain->chainId map has no
             // fallback and reverts UnregisteredDomain, so an omitted lane yields
-            // no proof at all rather than a wrong destination.
+            // no proof at all rather than a wrong destination. CCIPProver is
+            // strict as well; its non-empty config is required by
+            // _requireCCIPMember for a different reason (see there).
             require(
                 !needsExplicitLanes || domains.length > 0,
                 "aggregator member needs an explicit domain config; its resolver falls back to domain==chainId"
@@ -1031,6 +1277,125 @@ contract Deploy is Script {
                 );
             }
         }
+    }
+
+    /// @dev CCIP_PROVER needs CCIP_ROUTER and a non-empty CCIP_DOMAIN_CONFIG.
+    ///      Run before broadcast from run(), and again by _requireCCIPMember so
+    ///      the validator does not depend on run() having checked. The lanes
+    ///      are mandatory although CCIPProver's map is strict (an unlisted
+    ///      selector reverts UnregisteredDomain, no fallback): the prover was
+    ///      deployed by another tool, so the configured lanes are the only
+    ///      evidence its map matches what the operator expects, and CCIP chain
+    ///      selectors are 64-bit, so the map cannot be enumerated the way
+    ///      _validateCCTPProverMatchesContext probes CCTP domains 0..63.
+    function _requireCCIPMemberInputs(
+        DeploymentContext memory ctx
+    ) internal pure {
+        require(
+            ctx.ccipRouter != address(0),
+            "CCIP_ROUTER is required when CCIP_PROVER is set"
+        );
+        require(
+            ctx.ccipDomainConfig.length > 0,
+            "CCIP_DOMAIN_CONFIG must list the CCIP_PROVER lanes to verify"
+        );
+        // chainIdByDomain returns 0 for an unregistered selector, so a lane
+        // with chainId 0 would pass the round-trip without verifying anything.
+        for (uint256 i = 0; i < ctx.ccipDomainConfig.length; i++) {
+            require(
+                ctx.ccipDomainConfig[i].chainId != 0,
+                "CCIP_DOMAIN_CONFIG lane has chainId 0"
+            );
+        }
+    }
+
+    /// @dev Reads a no-argument getter returning one address, without
+    ///      trusting the callee's return shape (same reasoning as
+    ///      _tryChainIdByDomain: decode wide, then range-check).
+    function _tryAddressGetter(
+        address target,
+        string memory signature
+    ) internal view returns (bool ok, address value) {
+        (bool success, bytes memory ret) = target.staticcall(
+            abi.encodeWithSignature(signature)
+        );
+        if (!success || ret.length != 32) {
+            return (false, address(0));
+        }
+        uint256 raw = abi.decode(ret, (uint256));
+        if (raw >> 160 != 0) {
+            return (false, address(0));
+        }
+        return (true, address(uint160(raw)));
+    }
+
+    /**
+     * @notice Verifies an existing CCIPProver named by CCIP_PROVER before it
+     *         becomes an aggregator member
+     * @dev The provers this script deploys are bound to ctx.portal by
+     *      construction; this one was deployed by another tool, so each of
+     *      those properties is read back instead:
+     *      - getProofType() is exactly "CCIP", so a mistyped address naming
+     *        another MessageBridgeProver (MetaProver also has ROUTER()) fails
+     *        by name. Compared as raw returndata, so a wrong shape cannot
+     *        revert in this frame.
+     *      - PORTAL() is this run's Portal: a prover bound to another Portal
+     *        never sees this Portal's fulfillments, so its proofs could not
+     *        settle intents published here.
+     *      - ROUTER() is CCIP_ROUTER and has code. The router is the only
+     *        caller ccipReceive accepts and the source of the
+     *        sourceChainSelector the destination is resolved from, so it is
+     *        what makes the destination bridge-attested.
+     *      Its configured lanes are then round-tripped by the caller's loop.
+     *      Two things are NOT compared, because this script has no expected
+     *      value for a prover it did not deploy, so audit both out of band:
+     *      the whitelist (getWhitelist()), and any lane the prover registered
+     *      that CCIP_DOMAIN_CONFIG omits (its constructor's DomainRegistered
+     *      events). A wrong chainId on an unlisted lane records a wrong
+     *      destination, which can shadow another member's valid proof.
+     * @param ctx Deployment context carrying the Portal and CCIP inputs
+     * @param member The member equal to ctx.ccipProver
+     */
+    function _requireCCIPMember(
+        DeploymentContext memory ctx,
+        address member
+    ) internal view {
+        _requireCCIPMemberInputs(ctx);
+        require(
+            ctx.portal != address(0),
+            "CCIP_PROVER needs this run's Portal; set PORTAL_CONTRACT"
+        );
+
+        (bool typed, bytes memory proofType) = member.staticcall(
+            abi.encodeWithSignature("getProofType()")
+        );
+        require(
+            typed &&
+                keccak256(proofType) == keccak256(abi.encode(string("CCIP"))),
+            "CCIP_PROVER is not a CCIPProver (getProofType() is not CCIP)"
+        );
+
+        (bool hasPortal, address portal) = _tryAddressGetter(
+            member,
+            "PORTAL()"
+        );
+        require(
+            hasPortal && portal == ctx.portal,
+            "CCIP_PROVER is bound to a different Portal than this run's"
+        );
+
+        (bool hasRouter, address router) = _tryAddressGetter(
+            member,
+            "ROUTER()"
+        );
+        require(
+            hasRouter && router == ctx.ccipRouter,
+            "CCIP_PROVER ROUTER() is not CCIP_ROUTER"
+        );
+        require(
+            ctx.ccipRouter.code.length > 0,
+            "CCIP_ROUTER has no code on this chain"
+        );
     }
 
     function deployAggregatorProver(
@@ -1323,6 +1688,38 @@ contract Deploy is Script {
                     vm.toString(uint256(domains[i].domain))
                 )
             );
+        }
+    }
+
+    /// @notice Parses CCTP_MAX_PAIRS_CONFIG: comma-separated `domain:maxPairs`
+    function _parseMaxPairsConfig(
+        string memory csv
+    ) internal pure returns (CCTPProver.MaxPairs[] memory caps) {
+        if (bytes(csv).length == 0) {
+            return new CCTPProver.MaxPairs[](0);
+        }
+        string[] memory entries = vm.split(csv, ",");
+        caps = new CCTPProver.MaxPairs[](entries.length);
+        for (uint256 i = 0; i < entries.length; i++) {
+            string[] memory parts = vm.split(entries[i], ":");
+            require(
+                parts.length == 2,
+                "Invalid CCTP_MAX_PAIRS_CONFIG entry: expected domain:maxPairs"
+            );
+            uint256 domain = vm.parseUint(parts[0]);
+            uint256 maxPairs = vm.parseUint(parts[1]);
+            require(
+                domain <= type(uint32).max,
+                "CCTP_MAX_PAIRS_CONFIG domain exceeds uint32"
+            );
+            require(
+                maxPairs > 0 && maxPairs <= type(uint16).max,
+                "CCTP_MAX_PAIRS_CONFIG maxPairs must be 1..65535"
+            );
+            caps[i] = CCTPProver.MaxPairs({
+                domain: uint32(domain),
+                maxPairs: uint16(maxPairs)
+            });
         }
     }
 

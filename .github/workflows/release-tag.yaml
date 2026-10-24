@@ -41,7 +41,7 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
         if: steps.detect.outputs.version != ''
         with:
           fetch-depth: 0 # needed to locate the release commit by message

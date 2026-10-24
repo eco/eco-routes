@@ -104,6 +104,17 @@ Operational scripts for the Eco-Routes protocol.
      The constructor reverts `MemberHasNoCode` rather than skipping a codeless
      member at runtime, so onboarding a chain before all members are live fails
      loudly instead of quietly deploying a smaller trust set.
+  4. **A `CCIPProver` member is named by `CCIP_PROVER`, not deployed here.**
+     This script never deploys CCIP, so the existing prover is verified by
+     address: `getProofType()` must be `CCIP`, `PORTAL()` this run's Portal,
+     `ROUTER()` equal to `CCIP_ROUTER` (with code), and every lane in the
+     then-mandatory `CCIP_DOMAIN_CONFIG` must round-trip through
+     `chainIdByDomain`. No escape hatch is needed, and setting it does not
+     skip these checks. Two things are not compared, so audit both out of
+     band: its whitelist (`getWhitelist()`), and any lane it registered that
+     `CCIP_DOMAIN_CONFIG` omits (its constructor's `DomainRegistered` events).
+     A wrong chainId on an unlisted lane records a wrong destination, which can
+     shadow another member's valid proof.
 
 - `DeployCCIPProver.s.sol` — Standalone deployment for the CCIP prover.
   Also reads `CCIP_DOMAIN_CONFIG` (same `domain:chainId` comma-separated
@@ -137,3 +148,12 @@ The release process (auto-refreshing release PR → approve → squash-merge →
 tag + GitHub release) is documented in [`RELEASE.md`](../RELEASE.md) at the
 repo root. The `scripts/release/update-versions.ts` step above is the piece
 that lives here.
+
+## CCTP relay (reference)
+
+`npx tsx scripts/cctp/relay.ts --env testnet --source-domain <cctp domain> --tx-hash <source tx> --dest-rpc <url>`
+
+Polls Iris (`/v2/messages/{domain}?transactionHash=`), decodes and simulates
+`receiveMessage` on the destination, then prints an `ecocast send …` line to submit with
+the `eco-ops` keystore. It never signs. For a Solana destination, use
+`cctp-relay` in eco-routes-svm.

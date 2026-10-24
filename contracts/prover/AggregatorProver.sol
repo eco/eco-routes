@@ -192,9 +192,10 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      simply burns gas without returning is the same failure mode by a
      *      different mechanism. This is tolerated because deploy-time
      *      validation (`Deploy.validateAggregatorProverMembers`) only duck-types
-     *      each member — it probes `chainIdByDomain(uint64)`, the shape of
-     *      `provenIntents(bytes32)`, and any configured domain lanes — checks
-     *      that any contract implementing those functions passes, not a
+     *      each member — it probes the shape of `provenIntents(bytes32)`,
+     *      `chainIdByDomain(uint64)` on every member other than the run's own
+     *      PolymerProver, and any configured domain lanes — checks that any
+     *      contract implementing those functions passes, not a
      *      guarantee of `MessageBridgeProver`-descended or repo-built
      *      bytecode. It guards against an operator's config mistake (e.g. a
      *      non-bridge-attested or unrelated address), not against a
@@ -237,9 +238,13 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      forwards a challenge, and past `reward.deadline` refunds the
      *      creator while the solver who delivered goes unpaid. The mitigation
      *      is `Deploy.validateAggregatorProverMembers`, which admits only
-     *      `MessageBridgeProver` descendants — the provers whose `destination`
-     *      is cross-checked against the bridge origin domain in
-     *      `_handleCrossChainMessage`.
+     *      provers whose `destination` is attested: `MessageBridgeProver`
+     *      descendants (`HyperProver`, `MetaProver`, `LayerZeroProver`,
+     *      `CCTPProver`), which cross-check it against the bridge origin
+     *      domain in `_handleCrossChainMessage`, and `PolymerProver`, whose
+     *      `validate` reverts unless Polymer's attested chain equals the
+     *      chain-ID header the destination Portal wrote (the same `CHAIN_ID`
+     *      that Portal hashes every intent it fulfills with).
      *
      *      Be precise about how far that reaches. `HyperProver` and
      *      `MetaProver` resolve an unregistered domain via
