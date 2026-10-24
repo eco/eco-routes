@@ -50,6 +50,11 @@ contract DeployLayerZeroConfigTest is Test {
         assertEq(confirmations[2], 19);
     }
 
+    function test_emptyDomainConfigYieldsEmptyLists() public view {
+        assertEq(harness.orderReceiveConfirmations("", "").length, 0);
+        assertEq(harness.orderMaxMessageSizes("", "").length, 0);
+    }
+
     function test_revertsOnMissingDomain() public {
         vm.expectRevert(
             bytes("LAYERZERO_RECEIVE_CONFIRMATIONS: missing domain 30110")

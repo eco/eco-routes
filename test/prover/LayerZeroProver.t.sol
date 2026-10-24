@@ -844,6 +844,17 @@ contract LayerZeroProverTest is BaseTest {
             )
         );
         _deployWith(config);
+
+        config = _lzConfig(2);
+        config.maxMessageSizes = _lzConfig(1).maxMessageSizes;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.MaxMessageSizesLengthMismatch.selector,
+                2,
+                1
+            )
+        );
+        _deployWith(config);
     }
 
     /// @dev ULN302 reads requiredDVNCount 0 as "use LayerZero's default DVNs".
@@ -911,6 +922,17 @@ contract LayerZeroProverTest is BaseTest {
             )
         );
         _deployWith(_lzConfig(3));
+
+        LayerZeroProver.LayerZeroConfig memory config = _lzConfig(2);
+        config.receiveConfirmations = _lzConfig(1).receiveConfirmations;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LayerZeroProver.ReceiveConfirmationsLengthMismatch.selector,
+                2,
+                1
+            )
+        );
+        _deployWith(config);
     }
 
     /// @dev Delivers one (intentHash, claimant) pair from SOURCE_PROVER on
