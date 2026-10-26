@@ -13,7 +13,12 @@ import {IIntentSource} from "../../contracts/interfaces/IIntentSource.sol";
 import {IInbox} from "../../contracts/interfaces/IInbox.sol";
 import {IExecutor} from "../../contracts/interfaces/IExecutor.sol";
 import {FeeOnPushToken} from "../../contracts/test/FeeOnPushToken.sol";
-import {Call, Reward, Route, TokenAmount} from "../../contracts/types/Intent.sol";
+import {
+    Call,
+    Reward,
+    Route,
+    TokenAmount
+} from "../../contracts/types/Intent.sol";
 
 /// @notice Stands in for a DEX: pays a fixed output to a named recipient out of its own inventory.
 contract IntegrationSwapper {
@@ -29,6 +34,14 @@ contract IntegrationSwapper {
  *      Nothing calls `chain()` directly.
  */
 contract IntentChainerIntegrationTest is BaseTest {
+    struct RollbackBalances {
+        uint256 chainer;
+        uint256 swapper;
+        uint256 supply;
+        uint256 solver;
+        uint256 input;
+    }
+
     IntentChainer internal chainer;
     IntegrationSwapper internal swapper;
     address internal solver;
@@ -413,11 +426,12 @@ contract IntentChainerIntegrationTest is BaseTest {
             preseedChainer ? address(chainer) : address(swapper),
             SWAP_OUT
         );
-        uint256 chainerBefore = feeToken.balanceOf(address(chainer));
-        uint256 swapperBefore = feeToken.balanceOf(address(swapper));
-        uint256 supplyBefore = feeToken.totalSupply();
-        uint256 solverBefore = _prepareSolver(solver, SWAP_IN);
-        uint256 inputBefore = tokenA.balanceOf(address(swapper));
+        RollbackBalances memory before;
+        before.chainer = feeToken.balanceOf(address(chainer));
+        before.swapper = feeToken.balanceOf(address(swapper));
+        before.supply = feeToken.totalSupply();
+        before.solver = _prepareSolver(solver, SWAP_IN);
+        before.input = tokenA.balanceOf(address(swapper));
         Route memory parentRoute = _intentOneRoute(bytes32(uint256(30)), order);
         parentRoute.calls[1].data = abi.encodeCall(
             IntegrationSwapper.swap,
@@ -455,20 +469,20 @@ contract IntentChainerIntegrationTest is BaseTest {
 
         assertEq(
             feeToken.balanceOf(address(chainer)),
-            chainerBefore,
+            before.chainer,
             "chainer restored"
         );
         assertEq(feeToken.balanceOf(vault2), prefunding, "vault unchanged");
         assertEq(
             feeToken.balanceOf(address(swapper)),
-            swapperBefore,
+            before.swapper,
             "swap undone"
         );
-        assertEq(feeToken.totalSupply(), supplyBefore, "fee burn undone");
-        assertEq(tokenA.balanceOf(solver), solverBefore, "solver refunded");
+        assertEq(feeToken.totalSupply(), before.supply, "fee burn undone");
+        assertEq(tokenA.balanceOf(solver), before.solver, "solver refunded");
         assertEq(
             tokenA.balanceOf(address(swapper)),
-            inputBefore,
+            before.input,
             "input transfer undone"
         );
         assertEq(
