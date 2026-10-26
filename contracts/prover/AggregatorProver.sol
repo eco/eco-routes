@@ -155,17 +155,15 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
 
     /**
      * @notice Returns the first member proof with a non-zero claimant
-     * @dev Iterates members in immutable priority order. Members that are
-     *      codeless, revert, or return a zero claimant are skipped and never
-     *      propagated: a zero-claimant success must fall through to the next
-     *      member, not terminate the search.
+     * @dev Iterates members in immutable priority order. Members that revert,
+     *      return a wrong-shaped payload, or return a zero claimant are skipped
+     *      and never propagated: a zero-claimant success must fall through to
+     *      the next member, not terminate the search.
      *
-     *      The `code.length` guard closes the CODELESS case: a staticcall to a
-     *      codeless address SUCCEEDS with empty returndata, and ABI-decoding
-     *      empty data would revert in THIS frame where try/catch cannot catch
-     *      it. Without it, a member deployed only on other chains would brick
-     *      withdraw AND refund for every intent naming this aggregator.
-     *      Mirrors the same defense at IntentSource.sol:872-880.
+     *      There is NO runtime `code.length` guard: the constructor rejects
+     *      codeless members (MemberHasNoCode), and even if one were reached, a
+     *      staticcall to a codeless address SUCCEEDS with empty returndata,
+     *      which the `ret.length == 64` check below skips rather than decodes.
      *
      *      The call below is a low-level staticcall, not an interface call,
      *      and the read path is revert-free for ANY 64-byte payload, honest or
@@ -193,10 +191,11 @@ contract AggregatorProver is IProver, ERC165, Whitelist, Semver {
      *      still costs us quadratic memory-expansion gas; a member that
      *      simply burns gas without returning is the same failure mode by a
      *      different mechanism. This is tolerated because deploy-time
-     *      validation (`Deploy.validateAggregatorProverMembers`) only probes that
-     *      each member other than the run's own PolymerProver exposes
-     *      `chainIdByDomain(uint64)` — a duck-typed check
-     *      that any contract implementing that one function passes, not a
+     *      validation (`Deploy.validateAggregatorProverMembers`) only duck-types
+     *      each member — it probes the shape of `provenIntents(bytes32)`,
+     *      `chainIdByDomain(uint64)` on every member other than the run's own
+     *      PolymerProver, and any configured domain lanes — checks that any
+     *      contract implementing those functions passes, not a
      *      guarantee of `MessageBridgeProver`-descended or repo-built
      *      bytecode. It guards against an operator's config mistake (e.g. a
      *      non-bridge-attested or unrelated address), not against a
