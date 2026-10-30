@@ -1,3 +1,16 @@
+## 2.13.0 (2026-10-30)
+
+* chore(deps): bump the major group across 1 directory with 13 updates (#470) ([b5b70b5](https://github.com/eco/eco-routes/commit/b5b70b5)), closes [#470](https://github.com/eco/eco-routes/issues/470)
+* chore(deps): bump the major group across 1 directory with 4 updates (#424) ([7f44a44](https://github.com/eco/eco-routes/commit/7f44a44)), closes [#424](https://github.com/eco/eco-routes/issues/424)
+* chore(deps): bump the minor-and-patch group across 1 directory with 16 updates (#449) ([5643a20](https://github.com/eco/eco-routes/commit/5643a20)), closes [#449](https://github.com/eco/eco-routes/issues/449)
+* chore(deps): bump the minor-and-patch group with 2 updates (#474) ([aa17b84](https://github.com/eco/eco-routes/commit/aa17b84)), closes [#474](https://github.com/eco/eco-routes/issues/474)
+* chore(deps): bump the minor-and-patch group with 3 updates (#462) ([aeb61e7](https://github.com/eco/eco-routes/commit/aeb61e7)), closes [#462](https://github.com/eco/eco-routes/issues/462)
+* chore(deps): bump the minor-and-patch group with 4 updates (#472) ([9f93092](https://github.com/eco/eco-routes/commit/9f93092)), closes [#472](https://github.com/eco/eco-routes/issues/472)
+* test(chain): reduce rollback fixture stack pressure (#473) ([f3ce524](https://github.com/eco/eco-routes/commit/f3ce524)), closes [#473](https://github.com/eco/eco-routes/issues/473)
+* feat(chain): add IntentChainer for runtime-amount intent chaining (#438) ([e2e3975](https://github.com/eco/eco-routes/commit/e2e3975)), closes [#438](https://github.com/eco/eco-routes/issues/438) [eco-routes-svm#89](https://github.com/eco-routes-svm/issues/89)
+* feat(deploy): admit an existing CCIPProver as an AggregatorProver member (#456) ([b195b55](https://github.com/eco/eco-routes/commit/b195b55)), closes [#456](https://github.com/eco/eco-routes/issues/456)
+* feat(deploy): admit PolymerProver as an AggregatorProver member (#448) ([aa9bd12](https://github.com/eco/eco-routes/commit/aa9bd12)), closes [#448](https://github.com/eco/eco-routes/issues/448) [#453](https://github.com/eco/eco-routes/issues/453)
+* feat(prover): add CCTPProver over Circle CCTP V2 generic messages (#453) ([ab7137e](https://github.com/eco/eco-routes/commit/ab7137e)), closes [#453](https://github.com/eco/eco-routes/issues/453)
 ## 2.12.0 (2026-09-29)
 
 * feat: add proven cancellation for fast permissionless refunds (#443) ([b57b222](https://github.com/eco/eco-routes/commit/b57b222)), closes [#443](https://github.com/eco/eco-routes/issues/443)
