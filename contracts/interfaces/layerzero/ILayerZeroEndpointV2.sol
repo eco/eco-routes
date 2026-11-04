@@ -68,6 +68,53 @@ interface ILayerZeroEndpointV2 {
     ) external view returns (MessagingFee memory fee);
 
     /**
+     * @notice One library config entry for a remote endpoint
+     * @dev Mirrors LayerZero's IMessageLibManager.SetConfigParam
+     * @param eid Remote endpoint ID the config applies to
+     * @param configType Library-specific type (ULN302: 1 = executor, 2 = ULN)
+     * @param config ABI-encoded config for that type
+     */
+    struct SetConfigParam {
+        uint32 eid;
+        uint32 configType;
+        bytes config;
+    }
+
+    /**
+     * @notice Pin the library used to send to a remote endpoint
+     * @param oapp OApp being configured
+     * @param eid Remote endpoint ID
+     * @param newLib Registered send library
+     */
+    function setSendLibrary(address oapp, uint32 eid, address newLib) external;
+
+    /**
+     * @notice Pin the library used to verify messages from a remote endpoint
+     * @param oapp OApp being configured
+     * @param eid Remote endpoint ID
+     * @param newLib Registered receive library
+     * @param gracePeriod Blocks the previous library stays valid (0 = none)
+     */
+    function setReceiveLibrary(
+        address oapp,
+        uint32 eid,
+        address newLib,
+        uint256 gracePeriod
+    ) external;
+
+    /**
+     * @notice Write library configs for an OApp
+     * @param oapp OApp being configured
+     * @param lib Library the configs belong to
+     * @param params Configs to write
+     */
+    function setConfig(
+        address oapp,
+        address lib,
+        SetConfigParam[] calldata params
+    ) external;
+
+    /**
      * @notice Set delegate for message handling
      * @param delegate Address of the delegate
      */
