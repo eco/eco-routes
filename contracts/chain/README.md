@@ -226,12 +226,14 @@ below remains historical deployment evidence, not evidence that V5 is live. Usin
 requires a separate chainer-only deployment on the execution chains and client address
 updates. No Portal or Vault redeployment is needed.
 
-**INTENT_CHAINER_V4** was deployed and verified on 2026-09-09 at:
+**INTENT_CHAINER_V4** was deployed and verified on 2026-09-09 (Arc: 2026-11-13) at:
 
 `0x96f7DBa7E587f359a8f585C335fe510E4dC9bCC0`
 
-The address is identical on all 14 rollout chains: **1, 10, 56, 130, 137, 143, 146,
-480, 999, 8453, 9745, 42161, 42220, 57073**. See the
+The address is identical on all 15 chains: **1, 10, 56, 130, 137, 143, 146, 480, 999,
+5042, 8453, 9745, 42161, 42220, 57073**. Arc was deployed after the rollout by resending
+the Base deployment's exact factory calldata, because the rollout script now selects
+V5's salt. See the
 [deployment manifest](../../deployments/intent-chainer-v4.json) for receipts, source
 commits, compiler settings and the exact runtime-code hash. Each deployment passed
 receipt, bytecode, read-only getter and SHA-256/MODEXP precompile checks.
@@ -249,7 +251,7 @@ destination requires no new EVM chainer or Portal deployment for this derivation
 Verify source-chain precompile compatibility before enabling Solana items elsewhere.
 
 Use the existing rollout script: `./scripts/deployIntentChainers.sh` is a dry run;
-add `--broadcast` to deploy. Its default is the 14-chain fleet above. `CHAIN_IDS`
+add `--broadcast` to deploy. Its default is the 15-chain fleet above. `CHAIN_IDS`
 overrides the selection, and `RPC_<chain id>` overrides an endpoint. The script checks
 chain identity, CREATE3 availability, precompiles, existing runtime and consistent
 address prediction before broadcasting. It verifies runtime again afterward and
