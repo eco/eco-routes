@@ -72,7 +72,9 @@ unset _CALLER_CHAIN_IDS
 
 # Operator-selected V4 rollout, verified on 2026-09-09. Unfunded networks were
 # explicitly excluded; CHAIN_IDS can opt them back in after they are ready.
-MAINNETS="1 10 56 130 137 143 146 480 999 8453 9745 42161 42220 57073"
+# Arc (5042), which carries the v2.12 Portal, joined the list after its V4
+# deployment on 2026-11-13.
+MAINNETS="1 10 56 130 137 143 146 480 999 5042 8453 9745 42161 42220 57073"
 TESTNETS="84532 11155111 11155420"
 
 CHAIN_IDS="${CHAIN_IDS:-$MAINNETS}"
@@ -109,6 +111,7 @@ rpc_url() {
         57073)      echo "https://ink-mainnet.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         10241024)   echo "https://rpc.alienxchain.io/http" ;;
         143)        echo "https://rpc.monad.xyz" ;;
+        5042)       echo "https://rpc.mainnet.arc.io" ;;
         84532)      echo "https://base-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         11155111)   echo "https://eth-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;
         11155420)   echo "https://opt-sepolia.g.alchemy.com/v2/$ALCHEMY_API_KEY" ;;

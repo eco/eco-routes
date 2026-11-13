@@ -107,6 +107,15 @@
       "status": "verified"
     },
     {
+      "chainId": 5042,
+      "name": "Arc",
+      "transactionHash": "0x0401f6b08c886f277c5c449432d1269a03a0727e708279a1d56a03d04aac63a5",
+      "blockNumber": 31090040,
+      "blockHash": "0xcb8d1d9ea8b703944e9d0237e8f39aa92edafdfb935a9da5d3747285911cc820",
+      "gasUsed": "2588578",
+      "status": "verified"
+    },
+    {
       "chainId": 8453,
       "name": "Base",
       "transactionHash": "0xc93160097407e926d3f79f67feedec032ed4bf6b17f35660dca55e9509ec51c7",
@@ -156,6 +165,7 @@
   "exclusionReason": "Excluded by operator after zero native gas balances were confirmed; no transactions sent.",
   "deploymentNotes": [
     "HyperEVM deployment used Foundry --gas-estimate-multiplier 105 after a successful 2.9M-gas simulation under the live 3M small-block limit; no HyperCore account-mode changes or asset transfers were made.",
+    "Arc (5042) was added on 2026-11-13 outside the rollout script, which now selects the INTENT_CHAINER_V5 salt: the deployer resent the Base deployment's exact factory calldata (keccak 0x70301f1e475d8ae15a80f245039b684cd4b4bbc22e9dde2940e61eeba8e4f95f, the same bytes as on Ethereum and Arbitrum One). Before sending, eth_call confirmed the SHA-256 and MODEXP precompiles and that the simulated deploy returns this address; afterwards the runtime matched byte for byte through rpc.mainnet.arc.io and rpc.drpc.mainnet.arc.io.",
     "Existing Portals and previous chainer deployments were not modified. Solver/SDK configuration was not changed."
   ]
 }
