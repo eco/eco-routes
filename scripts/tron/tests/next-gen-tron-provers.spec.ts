@@ -302,7 +302,7 @@ describe('Tron AggregatorProver constructor', () => {
   })
 
   describe('requireLiveMembers', () => {
-    const members = [addr(0x1111), addr(0x2222), layerzero]
+    const members = [addr(0x1111), layerzero]
     const expected = {
       portal: NEXT_GEN.portalTron,
       proofTypes: AGGREGATOR_MEMBER_PROOF_TYPES,
@@ -321,10 +321,28 @@ describe('Tron AggregatorProver constructor', () => {
       ...overrides,
     })
 
-    it('accepts live members bound to PortalTron in Hyperlane > Polymer > LayerZero order', async () => {
+    it('expects exactly Hyperlane > LayerZero: Polymer is never a member', () => {
+      expect([...AGGREGATOR_MEMBER_PROOF_TYPES]).toEqual(['Hyperlane', 'LayerZero'])
+    })
+
+    it('accepts live members bound to PortalTron in Hyperlane > LayerZero order', async () => {
       await expect(
         requireLiveMembers(members, probe(), expected),
       ).resolves.toBeUndefined()
+    })
+
+    it('refuses a Polymer member at any position', async () => {
+      for (const set of [
+        [addr(0x2222), layerzero],
+        [addr(0x1111), addr(0x2222)],
+      ]) {
+        await expect(
+          requireLiveMembers(set, probe(), expected),
+        ).rejects.toThrow(/reports getProofType\(\) "Polymer"/)
+      }
+      await expect(
+        requireLiveMembers([addr(0x1111), addr(0x2222), layerzero], probe(), expected),
+      ).rejects.toThrow(/Expected 2 members/)
     })
 
     it('refuses when a member has no code, before any other probe', async () => {
@@ -342,7 +360,7 @@ describe('Tron AggregatorProver constructor', () => {
     it('refuses a member bound to another Portal', async () => {
       const p = probe({
         portal: jest.fn(async (m: string) =>
-          m === addr(0x2222) ? addr(0x9999) : NEXT_GEN.portalTron,
+          m === layerzero ? addr(0x9999) : NEXT_GEN.portalTron,
         ),
       })
       await expect(requireLiveMembers(members, p, expected)).rejects.toThrow(
@@ -351,10 +369,10 @@ describe('Tron AggregatorProver constructor', () => {
     })
 
     it('refuses members out of priority order', async () => {
-      const swapped = [addr(0x2222), addr(0x1111), layerzero]
+      const swapped = [layerzero, addr(0x1111)]
       await expect(
         requireLiveMembers(swapped, probe(), expected),
-      ).rejects.toThrow(/priority 0 reports getProofType\(\) "Polymer"/)
+      ).rejects.toThrow(/priority 0 reports getProofType\(\) "LayerZero"/)
     })
   })
 })
