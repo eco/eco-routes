@@ -344,12 +344,12 @@ export const nextGenPolymerProverArgs = () =>
     trustedProvers: [NEXT_GEN.evmPolymerProver],
   })
 
-/** The Tron aggregator's members, in priority order, by the proof type each reports. */
-export const AGGREGATOR_MEMBER_PROOF_TYPES = [
-  'Hyperlane',
-  'Polymer',
-  'LayerZero',
-] as const
+/**
+ * The Tron aggregator's members, in priority order, by the proof type each reports. Polymer is
+ * deliberately not a member: the aggregator is a 1-of-N union, so its floor is its weakest
+ * member, and Polymer's proof check rests on one immutable signer.
+ */
+export const AGGREGATOR_MEMBER_PROOF_TYPES = ['Hyperlane', 'LayerZero'] as const
 
 /** The on-chain reads `requireLiveMembers` needs; the deploy script backs them with TronWeb. */
 export interface MemberProbe {
@@ -361,7 +361,7 @@ export interface MemberProbe {
 /**
  * Refuses unless every member holds code (the constructor would revert with
  * MemberHasNoCode), is bound to `portal`, and reports the expected proof type at its
- * priority slot (Hyperlane, Polymer, LayerZero), so a swapped or stale member is caught
+ * priority slot (Hyperlane, LayerZero), so a swapped or stale member is caught
  * before broadcast. Codeless members are reported first and stop the other probes.
  */
 export async function requireLiveMembers(

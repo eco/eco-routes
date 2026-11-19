@@ -7,7 +7,7 @@
  *                          identity domain map of the 12 EVM lanes)
  *   --contract polymer     PolymerProver(PortalTron, CrossL2ProverV2, 2048, 2, 1399811149,
  *                          [pad(EVM PolymerProver)])
- *   --contract aggregator  AggregatorProver([pad(hyper), pad(polymer), pad(layerzero)])
+ *   --contract aggregator  AggregatorProver([pad(hyper), pad(layerzero)])  (no Polymer member)
  *
  * The fixed values live in next-gen-tron-provers.ts (NEXT_GEN). Nothing Solana is
  * whitelisted: Tron↔Solana is intentionally closed (PolymerProver still needs the Solana
@@ -23,7 +23,7 @@
  *   npx ts-node scripts/tron/deploy-tron-next-gen-prover.ts --contract hyper --salt <bytes32>
  *   npx ts-node scripts/tron/deploy-tron-next-gen-prover.ts --contract polymer --salt <bytes32>
  *   npx ts-node scripts/tron/deploy-tron-next-gen-prover.ts --contract aggregator --salt <bytes32> \
- *     --hyper <T…|0x…> --polymer <T…|0x…> --layerzero <T…|0x…>
+ *     --hyper <T…|0x…> --layerzero <T…|0x…>
  *   ... add --execute to broadcast (needs PRIVATE_KEY and enough energy; see --allow-trx-burn)
  *
  * Flags: --from <T…> estimates energy for that deployer when no key is set;
@@ -215,7 +215,6 @@ function plan(kind: ContractKind): Plan {
   }
   const args = aggregatorProverConstructorArgs([
     required('hyper'),
-    required('polymer'),
     required('layerzero'),
   ])
   return {
@@ -506,7 +505,7 @@ function printAddresses(name: string, hex20: string): void {
     )
   } else if (name === 'PolymerProver') {
     console.log(
-      '  → eco-routes-deployer config/polymer.json tron.prover, and the Tron aggregator --polymer',
+      '  → eco-routes-deployer config/polymer.json tron.prover (not an aggregator member)',
     )
   }
 }
