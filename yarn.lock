@@ -6703,17 +6703,7 @@ aws4@^1.8.0:
   resolved "https://registry.yarnpkg.com/aws4/-/aws4-1.13.2.tgz#0aa167216965ac9474ccfa83892cfb6b3e1e52ef"
   integrity sha512-lHe62zvbTB5eEABUVi/AwVh0ZKY9rMMDhmm+eeyuuUQbQ3+J+fONVQOZyj+DdrvD4BY33uYniyRJ4UJIaSKAfw==
 
-axios@1.18.0:
-  version "1.18.0"
-  resolved "https://registry.yarnpkg.com/axios/-/axios-1.18.0.tgz#8a7f8854af280fcaae063272df2ed9f3837d2398"
-  integrity sha512-E32NzpYKp++W7XRe52rHiXV2ehxmh3wbdgO7MHeFM+vqxLBYHzt0ElkiImtOBxtOmyp0yoC8C6uESVV84Y2/hw==
-  dependencies:
-    follow-redirects "^1.16.0"
-    form-data "^4.0.5"
-    https-proxy-agent "^5.0.1"
-    proxy-from-env "^2.1.0"
-
-axios@^1.6.0, axios@^1.6.7, axios@^1.7.2, axios@^1.8.2:
+axios@1.20.0, axios@^1.6.0, axios@^1.6.7, axios@^1.7.2, axios@^1.8.2:
   version "1.20.0"
   resolved "https://registry.yarnpkg.com/axios/-/axios-1.20.0.tgz#515513445aa60e71d04b6521ca6210829ccb4786"
   integrity sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==
@@ -9935,7 +9925,7 @@ form-data@^4.0.0:
     combined-stream "^1.0.8"
     mime-types "^2.1.12"
 
-form-data@^4.0.5, form-data@^4.0.6:
+form-data@^4.0.6:
   version "4.0.6"
   resolved "https://registry.yarnpkg.com/form-data/-/form-data-4.0.6.tgz#28e864e1b786dbebb68db1f452f9635278665827"
   integrity sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==
@@ -13749,10 +13739,10 @@ own-keys@^1.0.1:
     object-keys "^1.1.1"
     safe-push-apply "^1.0.0"
 
-ox@0.14.63:
-  version "0.14.63"
-  resolved "https://registry.yarnpkg.com/ox/-/ox-0.14.63.tgz#5d8136d832d885c53cc16814899af1c8ab465cb7"
-  integrity sha512-TSKYN151boL1Aq/vsFrd8Buvd7v+oTQr8V7z4f4QQTSMB+ohD8cbNbHCtKRLI0Gs8LuYKirf5qvElTKVIFe2jw==
+ox@0.14.67:
+  version "0.14.67"
+  resolved "https://registry.yarnpkg.com/ox/-/ox-0.14.67.tgz#c113fc3aa87194f7a45c68bbb8e58cae639d0476"
+  integrity sha512-6v6UlwgsmiyTujZp0aVDuN8uIBAtl/QZadBADFRZ2zp1+CM9TqDzd+rPKJ5PYvWPlCvz8JvoO9dTr42+1PhBhA==
   dependencies:
     "@adraffy/ens-normalize" "^1.11.0"
     "@noble/ciphers" "^1.3.0"
@@ -14419,9 +14409,9 @@ prettier@^2.3.1, prettier@^2.7.1, prettier@^2.8.3:
   integrity sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==
 
 prettier@^3.0.3, prettier@^3.1.1:
-  version "3.9.10"
-  resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.9.10.tgz#ac378e432f1a7381518f2e080816bbaefa38d585"
-  integrity sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==
+  version "3.10.1"
+  resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.10.1.tgz#00b1c1872f9650ec22093d5bdafdca0fe6760f77"
+  integrity sha512-70vp3ZUYoPlFbF9uiTdXHUUCGEIp7d4+6p+8DYbkm2jP7x/3i/paXVF6dopSI3zd/CEitrZN1rc4i85xWmmXlg==
 
 pretty-format@30.5.1, pretty-format@^30.0.0:
   version "30.5.1"
@@ -16445,11 +16435,11 @@ treeverse@^3.0.0:
   integrity sha512-gcANaAnd2QDZFmHFEOF4k7uc1J/6a6z3DJMd/QwEyxLoKGiptJRwid582r7QIsFlFMIZ3SnxfS52S4hm2DHkuQ==
 
 tronweb@^6.0.4:
-  version "6.5.1"
-  resolved "https://registry.yarnpkg.com/tronweb/-/tronweb-6.5.1.tgz#040a7ff065eac45fb4492e17c88371a553038604"
-  integrity sha512-mqa3WIBq7sYtkkIywa2Jop3UwJX6EgIrBkFpm3sSjppStTOTtYeMJyeIHJVvFFCaYN4vjU1FDjQPSvHFTcuzEw==
+  version "6.5.2"
+  resolved "https://registry.yarnpkg.com/tronweb/-/tronweb-6.5.2.tgz#84ec92d08b2b163b65b9136c1e21da9d2021d0b9"
+  integrity sha512-vUpR5WrOcFbWKWSN4FJpz0DofoaRybEuPhrzUX285k++dDIlYDvQ0DCzNrhjo+uogsTq2yQr/XPSS8IZX5r47w==
   dependencies:
-    axios "1.18.0"
+    axios "1.20.0"
     bignumber.js "9.1.2"
     ethereum-cryptography "2.2.1"
     ethers "6.17.0"
@@ -17111,9 +17101,9 @@ viem@2.8.6:
     ws "8.13.0"
 
 viem@2.x, viem@^2.22.21, viem@^2.27.0:
-  version "2.57.17"
-  resolved "https://registry.yarnpkg.com/viem/-/viem-2.57.17.tgz#9fd4060ade0f09cdc8a9d73910867f0929efe7ed"
-  integrity sha512-yIMqNoKoVAMwX+zVbqkxfqq7qbGHmKXZidh/xfVpiPTJlAbbDDdDIMH5dDQWxhZcj56L8tPOwsIIxF618P+TOg==
+  version "2.58.0"
+  resolved "https://registry.yarnpkg.com/viem/-/viem-2.58.0.tgz#405b4089edc149a8d812d934a3c7a8250e7ea0c9"
+  integrity sha512-oBGZGy6VptLmAATtEua71a7FzCXT5y74dQoeDP8EDHmBsWhQ34rXeHKz6tHeciKWnJ3zBT1u8sby8tAtg0gouA==
   dependencies:
     "@noble/curves" "1.9.1"
     "@noble/hashes" "1.8.0"
@@ -17121,7 +17111,7 @@ viem@2.x, viem@^2.22.21, viem@^2.27.0:
     "@scure/bip39" "1.6.0"
     abitype "1.2.3"
     isows "1.0.7"
-    ox "0.14.63"
+    ox "0.14.67"
     ws "8.21.0"
 
 viem@^1.20.0:
